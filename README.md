@@ -28,7 +28,7 @@ Set the following environment variables, requried for sbt and hyperdsl scripts:
     FORGE_HOME: Forge repository home directory
     JAVA_HOME: JDK home directory
 
-`init-env.sh` in hyperdsl sets the sensible defaults for all of these paths except JAVA_HOME for the current session. Add these variables to your login shell's startup script to avoid having to manually set these each session.
+*init-env.sh* in hyperdsl sets the sensible defaults for all of these paths except `JAVA_HOME` for the current session. Add these variables to your login shell's startup script to avoid having to manually set these each session.
 
 Now, clone Spatial to the directory of your choice and type:
 
