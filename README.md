@@ -31,7 +31,7 @@ Now, clone Spatial to the directory of your choice and type:
 
     cd spatial && make
 
-The setup script will prompt you for the SPATIAL_HOME environment variable. Press enter to use the current directory. To skip this message in the future, set this variable in your login shell's startup script.
+The setup script will prompt you for the `SPATIAL_HOME` environment variable. Press enter to use the current directory. To skip this message in the future, set this variable in your login shell's startup script.
 
 
 **[Optional]** To track the most recent commits relevant to Spatial on each submodule of hyperdsl:
