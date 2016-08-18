@@ -1,13 +1,16 @@
 # Spatial
 Spatial is a Forge DSL for programming reconfigurable hardware from a parameterized, high level abstraction.
 
-Installation
-============
-
-Prerequisites:
+Prerequisites
+=============
 
 * Java JDK: http://www.oracle.com/technetwork/java/javase/downloads/index.html
+* Scala SBT: http://www.scala-sbt.org
 * **[Optional]** Sphinx: http://www.sphinx-doc.org/en/stable/ (autodocumentation)
+
+
+Installation
+============
 
 Building Spatial requires the `spatial` branch of the hyperdsl (https://github.com/stanford-ppl/hyperdsl) project. Hyperdsl is itself composed of three submodules: Forge, Delite, and LMS, all of which also have a `spatial` branch.
 
