@@ -44,4 +44,17 @@ The setup script will prompt you for the `SPATIAL_HOME` environment variable. Pr
     cd $LMS_HOME && git checkout spatial
 
 
+Introduction to Spatial
+=======================
+Coming Soon!
+
+
+The Spatial Programming Model
+=============================
+Coming Soon!
+
+
+Design Space Exploration with Spatial
+=====================================
+Coming Soon!
 
