@@ -17,7 +17,7 @@ To setup hyperdsl after cloning:
     git checkout spatial
     git submodule update --init
 
-sbt and other hyperdsl-related scripts require the following environment variables to be set:
+Set the following environment variables, requried for sbt and hyperdsl scripts:
 
     HYPER_HOME: hyperdsl repository home directory
     LMS_HOME: virtualization-lms-core repository home directory
@@ -25,7 +25,14 @@ sbt and other hyperdsl-related scripts require the following environment variabl
     FORGE_HOME: Forge repository home directory
     JAVA_HOME: JDK home directory
 
-init-env.sh in hyperdsl sets the sensible defaults for all of these paths except JAVA_HOME for the current session
+init-env.sh in hyperdsl sets the sensible defaults for all of these paths except JAVA_HOME for the current session. Add these variables to your login shell's startup script to avoid having to manually set these each session.
+
+Now, clone Spatial to the directory of your choice and type:
+
+    cd spatial && make
+
+The setup script will prompt you for the SPATIAL_HOME environment variable. Press enter to use the current directory. To skip this message in the future, set this variable in your login shell's startup script.
+
 
 **[Optional]** To track the most recent commits relevant to Spatial on each submodule of hyperdsl:
 
@@ -33,6 +40,5 @@ init-env.sh in hyperdsl sets the sensible defaults for all of these paths except
     cd $FORGE_HOME && git checkout spatial
     cd $LMS_HOME && git checkout spatial
 
-To setup spatial after cloning, just enter the directory and call `make`.
 
 
