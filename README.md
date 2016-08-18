@@ -6,8 +6,8 @@ Installation
 
 Prerequisites:
 
-    Java JDK: http://www.oracle.com/technetwork/java/javase/downloads/index.html
-    [Optional] Sphinx: http://www.sphinx-doc.org/en/stable/ (autodocumentation)
+* Java JDK: http://www.oracle.com/technetwork/java/javase/downloads/index.html
+* [Optional] Sphinx: http://www.sphinx-doc.org/en/stable/ (autodocumentation)
 
 Building Spatial requires the `spatial` branch of the hyperdsl (https://github.com/stanford-ppl/hyperdsl) project. Hyperdsl is itself composed of three submodules: Forge, Delite, and LMS, all of which also have a `spatial` branch.
 
