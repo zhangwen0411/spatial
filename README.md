@@ -14,8 +14,8 @@ Building Spatial requires the `spatial` branch of the hyperdsl (https://github.c
 To setup hyperdsl after cloning:
 
     cd hyperdsl
-    git submodule update --init
     git checkout spatial
+    git submodule update --init
 
 sbt and other hyperdsl-related scripts require the following environment variables to be set:
 
