@@ -1,0 +1,74 @@
+#!/bin/bash
+dsl="Spatial"
+lcdsl=`echo "$dsl" | tr '[:upper:]' '[:lower:]'`
+
+pkg="dsls.$lcdsl"
+
+if [ "$SPATIAL_HOME" == "" ]; then
+	echo -e "SPATIAL_HOME environment variable is not set"
+	echo -n "SPATIAL_HOME [press enter to use current directory]: "
+	read DIR
+	if [ "$DIR" == "" ]; then
+  	SPATIAL_HOME=$PWD
+	else
+		SPATIAL_HOME=$DIR
+	fi
+fi
+
+if [ "$FORGE_HOME" == "" ]; then
+	echo -e "FORGE_HOME environment variable must be defined"
+fi
+
+set -e
+
+FORGE_EXTERN="${FORGE_HOME}/extern"
+FORGE_STATIC="${FORGE_HOME}/static"
+FORGE_DSLS="${FORGE_HOME}/src/dsls"
+FORGE_APPS="${FORGE_HOME}/apps"
+
+ln -sf -T "$SPATIAL_HOME/static" "$FORGE_STATIC/$dsl"
+ln -sf -T "$SPATIAL_HOME/extern" "$FORGE_EXTERN/$dsl"
+ln -sf -T "$SPATIAL_HOME/dsl"    "$FORGE_DSLS/$lcdsl"
+ln -sf -T "$SPATIAL_HOME/apps"   "$FORGE_APPS/$dsl"
+
+DEST="$SPATIAL_HOME/published/"
+APPS="$DEST/$dsl/apps"
+DSL_RUNNER=ppl.dsl.forge.dsls.${lcdsl}.${dsl}DSLRunner
+
+cd $HYPER_HOME
+sbt compile
+
+echo "forge $DSL_RUNNER"
+$FORGE_HOME/bin/forge $DSL_RUNNER
+
+echo publish $dsl --no-apps --dest $DEST 
+$FORGE_HOME/bin/publish $dsl --no-apps --dest $DEST
+
+cd "$DEST/$dsl"
+if ! [ -L $APPS ]; then
+	ln -sf -T "$SPATIAL_HOME/apps" $APPS
+fi 
+
+echo "sbt compile"
+sbt compile
+
+hasSphinx=which sphinx
+
+if [ "hasSphinx" != "" ]; then
+	pushd .
+	echo "cd sphinx"
+	cd "sphinx"
+	echo "sphinx-build -b latex source build"
+	sphinx-build -b latex source build
+	pushd .
+	cd build
+	make clean all > /dev/null
+	popd
+	popd
+	cp "sphinx/build/$dsl.pdf" $SPATIAL_HOME/Manual.pdf
+	pushd .
+	cd "sphinx"
+	sphinx-build -b html source build
+	popd
+fi
+
