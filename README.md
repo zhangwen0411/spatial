@@ -7,7 +7,7 @@ Installation
 Prerequisites:
 
 * Java JDK: http://www.oracle.com/technetwork/java/javase/downloads/index.html
-* [Optional] Sphinx: http://www.sphinx-doc.org/en/stable/ (autodocumentation)
+* *[Optional]* Sphinx: http://www.sphinx-doc.org/en/stable/ (autodocumentation)
 
 Building Spatial requires the `spatial` branch of the hyperdsl (https://github.com/stanford-ppl/hyperdsl) project. Hyperdsl is itself composed of three submodules: Forge, Delite, and LMS, all of which also have a `spatial` branch.
 
@@ -27,7 +27,7 @@ sbt and other hyperdsl-related scripts require the following environment variabl
 
 init-env.sh in hyperdsl sets the sensible defaults for all of these paths except JAVA_HOME for the current session
 
-[Optional] To track the most recent commits relevant to Spatial on each submodule of hyperdsl:
+*[Optional]* To track the most recent commits relevant to Spatial on each submodule of hyperdsl:
 
     cd $DELITE_HOME && git checkout spatial
     cd $FORGE_HOME && git checkout spatial
