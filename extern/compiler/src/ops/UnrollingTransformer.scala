@@ -10,6 +10,19 @@ import spatial.compiler.ops._
 
 trait UnrollingTransformExp extends ReductionAnalysisExp with LoweredPipeOpsExp with MemoryAnalysisExp {
   this: SpatialExp =>
+
+  case class UnrolledResult(isIt: Boolean) extends Metadata
+  object isReduceResult {
+    def update(e: Exp[Any], isIt: Boolean) { setMetadata(e, UnrolledResult(isIt)) }
+    def apply(e: Exp[Any]) = meta[UnrolledResult](e).map(_.isIt).getOrElse(false)
+  }
+
+  case class ReduceStarter(isIt: Boolean) extends Metadata
+  object isReduceStarter {
+    def update(e: Exp[Any], isIt: Boolean) { setMetadata(e, ReduceStarter(isIt)) }
+    def apply(e: Exp[Any]) = meta[UnrolledResult](e).map(_.isIt).getOrElse(false)
+  }
+
 }
 
 trait UnrollingTransformer extends MultiPassTransformer {
@@ -248,6 +261,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
       withSubstScope(idx -> newIdx){ inlineBlock(ld) }
     }
     val newRes = reduce(treeResult, accumLoad)
+    isReduceResult(newRes) = true
+    isReduceStarter(accumLoad) = true // TODO: Why is this accumLoad not real?
 
     duringClone{e => if (SpatialConfig.genCGRA) reduceType(e) = None }{
       withSubstScope(res -> newRes, idx -> newIdx){ inlineBlock(st) }

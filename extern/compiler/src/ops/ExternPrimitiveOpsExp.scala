@@ -148,7 +148,7 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
 
 
 trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
-  val IR:SpatialExp with MemoryAnalysisExp with DeliteTransform
+  val IR:UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DeliteTransform
 
   import IR.{infix_until => _, looprange_until => _, println => _, _}
 
@@ -192,6 +192,13 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
     case ConstFixPt(x,_,_,_) =>
       if (!emitted_consts.contains((sym, rhs))) {
         emitted_consts += ((sym, rhs))
+      }
+    case FixPt_Add(a,b) =>
+      val pre = maxJPre(sym)
+      if (isReduceResult(sym)) {
+        emit(s"""$pre ${quote(sym)} = ${quote(a)}; // Is result of tree, ignore ${quote(b)}""")
+      } else {
+        emit(s"""$pre ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
       }
     case Tpes_Int_to_fix(x) =>  // Emit this node in MaxJ only if x is a const
       val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])

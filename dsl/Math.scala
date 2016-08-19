@@ -350,10 +350,6 @@ trait SpatialMath {
 			@ val pre = maxJPre(sym)
     	$pre $sym = -$0 ;
 		}))
-    impl (add_fix) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 + $1 ;
-		}))
     impl (sub_fix) (codegen(maxj, ${
 			@ val pre = maxJPre(sym)
     	$pre $sym = $0 - $1 ;
@@ -406,10 +402,6 @@ trait SpatialMath {
     impl (neg_flt) (codegen(maxj, ${
 			@ val pre = maxJPre(sym)
     	$pre $sym = -$0 ;
-		}))
-    impl (add_flt) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 + $1 ;
 		}))
     impl (sub_flt) (codegen(maxj, ${
 			@ val pre = maxJPre(sym)

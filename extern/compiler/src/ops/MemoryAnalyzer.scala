@@ -16,7 +16,7 @@ import spatial.compiler.ops._
 trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnalysisExp {
   this: SpatialExp =>
 
-  var fold_in_out_accums = HashMap[Exp[Any],Exp[Any]]()
+  var bram_redloop_map = HashMap[Exp[Any],Exp[Any]]()
 
   // TODO
   def isDblBuf(e: Exp[Any]) = duplicatesOf(e).headOption match {
