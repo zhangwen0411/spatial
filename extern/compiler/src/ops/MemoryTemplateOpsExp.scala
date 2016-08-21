@@ -270,8 +270,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                   emit(s"""${quote(b)}.connectRdone(${quote(reader)}_done);""")
                 }
                 if (writersOf(b).isEmpty) throw new Exception(s"Bram ${quote(b)} has no writer!")
-                val writer = writersOf(b).head._1
-                emit(s"""${quote(b)}.connectWdone(${quote(writer)}_done);""")
+                val topWriter = topWritersOf(b).head
+                topWriter match {
+                  case (writer, _, _) =>
+                    emit(s"""${quote(b)}.connectWdone(${quote(writer)}_done);""")
+                  case _ =>
+                    val writer = writersOf(b).head._1
+                    emit(s"""${quote(b)}.connectWdone(${quote(writer)}_done);""")
+                }
               }
             case _ =>
               dups.zipWithIndex.foreach { case (d, i) =>
@@ -283,8 +289,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                     }
                   }
                   if (writersOf(b).isEmpty) throw new Exception(s"Bram ${quote(b)} has no writer!")
-                  val writer = writersOf(b).head._1
-                  emit(s"""${quote(b)}_${i}.connectWdone(${quote(writer)}_done);""")
+                  val topWriter = topWritersOf(b).head
+                  topWriter match {
+                    case (writer, _, _) =>
+                      emit(s"""${quote(b)}_${i}.connectWdone(${quote(writer)}_done);""")
+                    case _ =>
+                      val writer = writersOf(b).head._1
+                      emit(s"""${quote(b)}_${i}.connectWdone(${quote(writer)}_done);""")
+                  }
 
                 }
               }
@@ -324,14 +336,21 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       val choose_from = r.map { case (_,_,a) => a }
       val i = choose_from.indexOf(sym)
       val b_i = instanceIndexOf(sym, bram)
+      val bram_name = if (dups.length == 1) { s"${quote(bram)}" } else {s"${quote(bram)}_${b_i}"}
+      val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
+      val num_dims = dimsOf(bram).length
 
-      parIndicesOf(r(i)._3) match {
-        case Nil =>
-          val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
-          val inds = accessIndicesOf(r(i)._3)
+      val inds = parIndicesOf(r(i)._3) match {
+        case Nil => List(accessIndicesOf(r(i)._3))
+        case _ => parIndicesOf(r(i)._3)
+      }
+      
+      num_dims match {
+        case 1 => // 1D bram
           inds.length match {
-            case 1 =>
-              val addr0 = inds(0)
+            case 1 => // One address
+              // Spit out DFEVar if not already done
+              val addr0 = inds(0)(0)
               addr0 match {
                 case Def(rhs0) =>
                   if (!emitted_consts.contains((addr0, rhs0))) {
@@ -339,132 +358,72 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                   }
                 case _ =>
               }
-
-              if (dups.length == 1) {
-                emit(s"""${pre} ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr)}); //2""")
+              if (par) {
+                emit(s"""$pre ${quote(sym)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${quote(bram)}.connectRport(${quote(addr0)}))); //2""")
               } else {
-                emit(s"""${pre} ${quote(sym)} = ${quote(bram)}_${b_i}.connectRport(${quote(addr)}); //3""")
+                emit(s"""${pre} ${quote(sym)} = ${bram_name}.connectRport(${quote(addr0)}); //3""")            
               }
-            case 2 =>
-              val addr0 = inds(0)
-              val addr1 = inds(1)
+            case _ => // Many address
+              emit(s"""${pre} ${quote(sym)} = ${bram_name}.connectRport(${quote(addr)}); //4""")
+          }
+        case 2 => // 2D bram
+          inds.length match {
+            case 1 => // One address
+              val addr0 = inds(0)(0)
+              val addr1 = inds(0)(1)
               addr0 match {
-                case Def(rhs0) =>
-                  if (!emitted_consts.contains((addr0, rhs0))) {
-                    emitted_consts += ((addr0, rhs0))
-                  }
+                case Def(rhs0) => if (!emitted_consts.contains((addr0, rhs0))) { emitted_consts += ((addr0, rhs0)) }
                 case _ =>
               }
               addr1 match {
-                case Def(rhs1) =>
-                  if (!emitted_consts.contains((addr1, rhs1))) {
-                    emitted_consts += ((addr1, rhs1))
-                  }
+                case Def(rhs1) => if (!emitted_consts.contains((addr1, rhs1))) { emitted_consts += ((addr1, rhs1)) }
                 case _ =>
               }
-              if (dups.length == 1) {
-                emit(s"""${pre} ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr0)}, ${quote(addr1)}); //4""")
+              if (par) {
+                emit(s"""$pre ${quote(sym)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}))); //5""")
               } else {
-                emit(s"""${pre} ${quote(sym)} = ${quote(bram)}_${b_i}.connectRport(${quote(addr0)}, ${quote(addr1)}); //5""")
+                emit(s"""$pre ${quote(sym)} = ${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}); //6""")
               }
-
-            case _ => throw new Exception("Can't codegen!")
-          }
-        case _ =>
-          val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
-          val inds = parIndicesOf(r(i)._3)
-          val dimzz = dimsOf(bram)
-          if (dups.length == 1) {
-            inds.length match {
-              case 1 =>
-                dimzz.length match {
-                  case 1 =>
-                    val addr0 = inds(0)(0)
-                    if (par) {
-                      emit(s"""$pre ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr)}); //6""")
-                    } else {
-                      emit(s"""$pre ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr)}); //7""")
-                    }
-                  case _ =>
-                    val addr0 = inds(0)(0)
-                    val addr1 = inds(0)(1)
-                    if (par) {
-                      emit(s"""$pre ${quote(sym)} = new DFEVectorType<DFEVar>(${quote(bram)}.type, 1).newInstance(this, Arrays.asList(${quote(bram)}.connectRport(${quote(addr0)}, ${quote(addr1)}))); //8""")
-                    } else {
-                      emit(s"""$pre ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr0)}, ${quote(addr1)}); //9""")
-                    }  
-                }
-              case _ =>
-                val a = inds(0)
-                val b = inds(1)
-                a.length match {
-                  case 1 => 
-                    emit(s"""$pre ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr)}); //9""")
-                  case _ =>
-                    if (quote(a(1)) == quote(b(1))) { //ugly ass hack
-                      var addr1 = ""
-                      val addr0 = inds.map { row =>
-                                    row.length match {
-                                      case 1 =>
-                                        addr1 = quote(1)
-                                        quote(row(0))
-                                      case _ =>
-                                        addr1 = quote(row(0))
-                                        quote(row(0))
-                                      }
+            case _ =>
+              val a = inds(0)
+              val b = inds(1)
+              if (quote(a(1)) == quote(b(1))) { // TODO: Check if stride = dim, rather than if quote(first_colAddr) = quote(second_colAddr)
+                var addr1 = ""
+                val addr0 = inds.map { row =>
+                              row.length match {
+                                case 1 =>
+                                  addr1 = quote(1)
+                                  quote(row(0))
+                                case _ =>
+                                  addr1 = quote(row(0))
+                                  quote(row(0))
                                 }
-
-                      emit(s"""//all readers share column. vectorized """)
-                      emit(s"""${pre} ${quote(sym)} = ${quote(bram)}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}); //10""")
-                    } else {
-                      var addr0 = ""
-                      val addr1 = inds.map { row =>
-                                    row.length match {
-                                      case 1 =>
-                                        addr0 = quote(1) // Assume all are from same row?
-                                        quote(row(0))
-                                      case _ =>
-                                        addr0 = quote(row(0)) // Assume all are from same row?
-                                        quote(row(1))
-                                      }
+                          }
+                emit(s"""//all readers share column. vectorized """)
+                emit(s"""${pre} ${quote(sym)} = ${bram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}); //7""")
+              } else if (quote(a(0)) == quote(b(0))) {
+                var addr0 = ""
+                val addr1 = inds.map { row =>
+                              row.length match {
+                                case 1 =>
+                                  addr0 = quote(1) // Assume all are from same row?
+                                  quote(row(0))
+                                case _ =>
+                                  addr0 = quote(row(0)) // Assume all are from same row?
+                                  quote(row(1))
                                 }
+                          }
 
-                      emit(s"""//all readers share row. vectorized""")
-                      emit(s"""${pre} ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")}))); //11""")
-                    }
-                  }
-
+                emit(s"""//all readers share row. vectorized""")
+                emit(s"""${pre} ${quote(sym)} = ${bram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")}))); //8""")
+              } else {
+                throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
               }
-            } else {
-
-              inds.length match {
-                case 1 =>
-                  val addr0 = inds(0)(0)
-                  if (par) {
-                    emit(s"""$pre ${quote(sym)} = new DFEVectorType<DFEVar>(${quote(bram)}_${b_i}.type, 1).newInstance(this, Arrays.asList(${quote(bram)}_${b_i}.connectRport(${quote(addr0)}))); //12""")
-                  } else {
-                    emit(s"""$pre ${quote(sym)} = ${quote(bram)}_${b_i}.connectRport(${quote(addr0)}); //13""")
-                  }
-
-                case _ =>
-                  var addr0 = ""
-                  val addr1 = inds.map { row =>
-                                row.length match {
-                                  case 1 =>
-                                    addr0 = quote(1) // Assume all are from same row?
-                                    quote(row(0))
-                                  case _ =>
-                                    addr0 = quote(row(0)) // Assume all are from same row?
-                                    quote(row(1))
-                                  }
-                            }
-                  emit(s"""//DFEVector<DFEVar> vectorized""")
-                  emit(s"""${pre} ${quote(sym)} = ${quote(bram)}_${b_i}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")}))); //14""")
-                }
             }
-        case _ => throw new Exception(s"Can't generate this reader! $sym")
-
+          case _ =>
+            throw new Exception("Cannot handle more than 2D bram!")
       }
+
     }
 
     brams += bram.asInstanceOf[Sym[BRAM[Any]]]
@@ -483,9 +442,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
     val bram = if (bram_redloop_map.contains(bram_in)) {bram_redloop_map(bram_in)} else {bram_in}
     val dataStr = quote(value)
     val dups = duplicatesOf(bram)
+    val writers = writersOf(bram)
+    val find_id = writers.map{case (_, _, s) => s}
+    val i = find_id.indexOf(sym)
+    val this_writer = writers(i)._1
+    val inds = parIndicesOf(writers(i)._3)
+
 
     if (isAccum(bram)) {
-      val writers = writersOf(bram)
 
       val offsetStr = quote(writersOf(bram).head._1) + "_offset"
       val parentPipe = parentOf(bram).getOrElse(throw new Exception(s"Bram ${quote(bram)} does not have a parent!"))
@@ -504,10 +468,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
           emit(s"""${quote(bram)}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
             stream.offset($dataStr, -$offsetStr), stream.offset(${quote(parentPipe)}_datapath_en, -1) & stream.offset(${quote(parentPipe)}_datapath_en, -$offsetStr)); //1""") 
         } else {
-          val choose_from = writers.map {
-            case (_,_,a) => a
-          }
-          val bank_num = choose_from.indexOf(sym)
+          val bank_num = i
           emit(s"""${quote(bram)}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
             stream.offset($dataStr, -$offsetStr), stream.offset(${quote(parentPipe)}_datapath_en, -1) & stream.offset(${quote(parentPipe)}_datapath_en, -$offsetStr)); //2""")
         }
@@ -519,38 +480,23 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
             dimzz.length match {
               case 1 =>
                 emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), stream.offset(${quote(parentPipe)}_datapath_en, -1) & stream.offset(${quote(parentPipe)}_datapath_en, -$offsetStr)); //3""")
+                  stream.offset($dataStr, -$offsetStr), stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)); //3""")
               case _ =>
-                val w = writersOf(bram)
-                val find_id = writers.map{case (_, _, s) => s}
-                val i = find_id.indexOf(sym)
-                val inds = parIndicesOf(writers(i)._3)
-                val this_writer = writers(i)._1
                 emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), stream.offset(${quote(parentPipe)}_datapath_en, -1) & stream.offset(${quote(parentPipe)}_datapath_en, -$offsetStr)); //4""")
-
+                  stream.offset($dataStr, -$offsetStr), stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)); //4""")
             }
-
           }
         } else {
-          val choose_from = writers.map {
-            case (_,_,a) => a
-          }
-          val bank_num = choose_from.indexOf(sym)
+          val bank_num = i
           dups.zipWithIndex.foreach {case (dd, ii) =>
             emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
               stream.offset($dataStr, -$offsetStr), stream.offset(${quote(parentPipe)}_datapath_en, -1) & stream.offset(${quote(parentPipe)}_datapath_en, -$offsetStr)); //5""") 
           }
         }
       }
-    } else {
+    } else { // Not accum
       // [TODO] Raghu: Current assumption is that this always returns the parent
       // writing to the BRAM. Is this always true? Confirm
-      val w = writersOf(bram)
-      val find_id = w.map{case (_, _, s) => s}
-      val i = find_id.indexOf(sym)
-      val inds = parIndicesOf(w(i)._3)
-      val this_writer = w(i)._1
       if (isDummy(bram)) {
         emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //6""")
       } else {
@@ -776,6 +722,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                     case p@Def(EatReflect(pipe:Pipe_foreach)) => 
                       throw new Exception(s"How do you have a foreach with an accumulator?")
                     case p@Def(EatReflect(pipe:Pipe_fold[_,_])) => 
+                      emit(s"// Pipe_fold accum")
                       val enstr = styleOf(p) match {
                         case InnerPipe => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_datapath_en & ${quote(writer)}_redLoop_done;""")
                         case _ => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_en & ${quote(writer)}_redLoop_done;""")
@@ -787,11 +734,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                             emit(s"""DFEVar ${quote(reg)}_hold = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
                             emit(s"""DFEVar ${quote(reg)} = ${quote(reg)}_hold;""")
                           case FltPtSum =>
-                            emit(s"""DFEVar ${reg} = FloatingPointAccumulator.accumulateWithReset(${pipe.rV}, ${quote(reg)}_en, $rstStr);""")
+                            emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                         }
                         emit(s"""${quote(reg)}_1_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")
                       }
                     case p@Def(EatReflect(pipe:ParPipeReduce[_,_])) => 
+                      emit(s"// ParPipeReduce accum")
                       val enstr = styleOf(p) match {
                         case InnerPipe => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_datapath_en & ${quote(writer)}_redLoop_done;""")
                         case _ => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_en & ${quote(writer)}_redLoop_done;""")
@@ -803,11 +751,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                             emit(s"""DFEVar ${quote(reg)}_hold = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
                             emit(s"""DFEVar ${quote(reg)} = ${quote(reg)}_hold;""")
                           case FltPtSum =>
-                            emit(s"""DFEVar ${reg} = FloatingPointAccumulator.accumulateWithReset(${pipe.rV}, ${quote(reg)}_en, $rstStr);""")
+                            emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                         }
                         emit(s"""${quote(reg)}_1_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")
                       }
                     case p@Def(EatReflect(Unit_pipe(func))) =>
+                      emit(s"// Unit_pipe accum")
                       val enstr = styleOf(p) match {
                         case InnerPipe => emit(s"""DFEVar ${quote(reg)}_en = ${quote(writer)}_rst_en;""")
                         case _ => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_en & ${quote(writer)}_redLoop_done;""")
@@ -815,11 +764,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                       reduceType(reg) match {
                         case Some(fps: ReduceFunction) => fps match {
                           case FixPtSum =>
-                            emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
+                            emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr} & constant.var(false) /* TODO: Not sure if disabling rst is correct */).withEnable(${quote(reg)}_en);""")
                             emit(s"""DFEVar ${quote(reg)}_hold = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
                             emit(s"""DFEVar ${quote(reg)} = ${quote(reg)}_hold;""")
                           case FltPtSum =>
-                            emit(s"""DFEVar ${reg} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr);""")
+                            emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr & constant.var(false) /* TODO: Not sure if disabling rst is correct */, true);""")
                         }
                         emit(s"""${quote(reg)}_1_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")
                       }

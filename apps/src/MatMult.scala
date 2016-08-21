@@ -4,15 +4,15 @@ import spatial.shared._
 
 object MatMult extends SpatialAppCompiler with MatMultApp
 trait MatMultApp extends SpatialApp {
-  type T = Flt //FixPt[Signed,B16,B16]
+  type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
 
-  val tileSizeM = 192
-  val tileSizeN = 192
-  val tileSizeP = 384
-  val innerPar = 2
-  val midPar = 2
-  val outerPar = 2
+  val tileSizeM = 2
+  val tileSizeN = 96
+  val tileSizeP = 96
+  val innerPar = 1
+  val midPar = 1
+  val outerPar = 1
 
   def matmult(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
     val M = ArgIn[SInt]
@@ -71,8 +71,10 @@ trait MatMultApp extends SpatialApp {
     val N = args(1).to[SInt]
     val P = args(2).to[SInt]
 
-    val a = Array.fill(M){ Array.fill(P){random[T](100)} }
-    val b = Array.fill(P){ Array.fill(N){random[T](100)} }
+    val a = Array.fill(M){ Array.fill(P){1} }
+    val b = Array.fill(P){ Array.fill(N){1} }
+    // val a = Array.fill(M){ Array.fill(P){random[T](100)} }
+    // val b = Array.fill(P){ Array.fill(N){random[T](100)} }
 
     val result = matmult(a.flatten, b.flatten, M, N, P)
 

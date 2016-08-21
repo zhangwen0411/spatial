@@ -138,6 +138,17 @@ trait MaxJPreCodegen extends Traversal  {
 					}
 			}
 
+    case e@Counter_new(start,end,step,par) => 
+      withStream(newStream("counter_" + quote(sym))) {
+        emitCtrSM(quote(sym), List(parOf(sym)), 0, 1)
+      }
+    case e@Counterchain_new(counters) => 
+      val pars = counters.map { ctr => parOf(ctr) }
+      val gaps = counters.map { ctr => 0 }
+      withStream(newStream("counter_" + quote(sym))) {
+        emitCtrSM(quote(sym), pars, 0, counters.length)
+      }
+
 		case e:Argin_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
     case e:Argout_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
 
@@ -172,6 +183,237 @@ trait MaxJPreCodegen extends Traversal  {
 			//println("tp:" + sym.tp.erasure.getSimpleName() + "rhs:" + rhs)
 		}
 	}
+
+  def emitCtrSM(name: String, par: List[Int], gap: Int, numCtrs: Int) = {
+    stream.println("""
+package engine;
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v2.statemachine.DFEsmInput;
+import com.maxeler.maxcompiler.v2.statemachine.DFEsmOutput;
+import com.maxeler.maxcompiler.v2.statemachine.DFEsmStateEnum;
+import com.maxeler.maxcompiler.v2.statemachine.DFEsmStateValue;
+import com.maxeler.maxcompiler.v2.statemachine.kernel.KernelStateMachine;
+import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
+
+  val smName = name
+  stream.println(s"""class ${smName}_CtrSM extends KernelStateMachine {""")
+
+  stream.println(s"""// ** VISUALIZATION FOR COUNTER **""")
+  par.zipWithIndex.map { case (p, i) => 
+    stream.println(s"""//    ctr${i}: ${(0 until p).map{_ => "o"}.mkString(" ")}""")
+  }
+
+
+  stream.println(s"""
+    // States
+    enum States {
+      COUNT,
+      SATURATED
+    }
+
+    // State IO
+    private final DFEsmOutput[] count;""")
+  // TODO: Not tested for parallelism in higher level counters
+  for (i <- 0 until par.size){
+    if (par(i) > 1){
+      stream.println(s"""    private final DFEsmOutput[] counter${i}_extension;""")
+    }
+  }
+  stream.println(s"""
+    private final DFEsmOutput saturated;
+    private final DFEsmOutput done;
+    private final DFEsmInput en;
+    private final DFEsmInput reset;
+    private final DFEsmInput[] max;
+    private final int[] strides;
+    // Gap between the end of one array of count to the start of the next. 
+    //   This is useful for padding non-powerof2-banked BRAMs to the next highest pwr of 2 banks
+    // i.e- gap = 32, stride = 1, par = 96 would do this:
+    // cycle1: count = [0, 1, ..., 94, 95]
+    // cycle2: count = [128, 129, ..., 222, 223]
+    private final int gap; 
+    private final int[] ff_extensions;
+
+    // State storage
+    private final DFEsmStateValue[] countFF;""")
+  if (numCtrs > 1) {stream.println(s"""    private final DFEsmStateValue[] gapBumpFF;""")}
+  stream.println(s"""    private final DFEsmStateEnum<States> stateFF;
+    """)
+
+  stream.println(s"""
+    // Initialize state machine in constructor
+    // NOTE: strides is a constructor argument and max is an io.input
+    //       because old DHDL specifies max as CombNodes and strides as
+    //       ints so this was the easiest way to make this CtrSM
+    public ${smName}_CtrSM(KernelLib owner, int[] s) {
+      super(owner);
+      // Declare all types required to wire the state machine together
+      DFEsmValueType numberType = dfeInt(32);
+      DFEsmValueType wireType = dfeBool();
+
+      strides = s;
+      gap = ${gap};
+      ff_extensions = new int[${par.size}];
+      // Define state machine IO
+      count = new DFEsmOutput[${numCtrs}];
+      max = new DFEsmInput[${numCtrs}];
+      for (int i = 0; i < ${numCtrs}; i++) {
+        count[i] = io.output("counter" + i, numberType);
+        max[i] = io.input("max" + i, numberType);
+      }""")
+  for (j <- 0 until par.size){
+    if (par(j) > 1){
+      stream.println(s"""      // Par extension for ${j}
+      ff_extensions[${j}] = ${par(j)-1} * strides[${j}];
+      counter${j}_extension = new DFEsmOutput[${par(j)-1}];
+      for (int i = 0; i < ${par(j)-1}; i++) {
+        counter${j}_extension[i] = io.output("counter${j}_extension" + i, numberType);
+      }""")
+    } else {
+      stream.println(s"""      ff_extensions[${j}] = 0;""")
+    }
+  }
+
+  stream.println(s"""
+      saturated = io.output("saturated", wireType);
+      done = io.output("done", wireType);
+      en = io.input("en", wireType);
+      reset = io.input("reset", wireType);
+
+      // Define state storage elements and initial state
+      stateFF = state.enumerated(States.class, States.COUNT);
+      countFF = new DFEsmStateValue[${numCtrs}];
+      for (int i = 0; i < ${numCtrs}; i++) {
+        countFF[i] = state.value(numberType, 0);
+      }""")
+  if (numCtrs > 1) {
+    stream.println(s"""      gapBumpFF = new DFEsmStateValue[${numCtrs-1}];
+      for (int i = 0; i < ${numCtrs-1}; i++) {
+        gapBumpFF[i] = state.value(numberType, ${par(par.size-1)});
+      }""")
+  }
+  stream.println(s"""    }
+  """)
+
+  stream.println(s"""
+    @Override
+    protected void nextState() {
+      IF (reset) {""")
+
+  for(i <- 0 until numCtrs) {
+    stream.println(s"""        countFF[${i}].next <== 0;""")
+  }
+
+  stream.println(s"""        stateFF.next <== States.COUNT;
+      } ELSE {
+          SWITCH(stateFF) {
+            CASE(States.COUNT) {
+              IF(en) {
+                IF (""")
+
+  // Generate saturated case
+  for(i <- 0 until numCtrs) {
+    if(i == numCtrs - 1){
+      stream.println(s"""                  (countFF[${i}] + ff_extensions[${i}] >= max[${i}] - strides[${i}])) {""")
+    } else {
+      stream.println(s"""                  (countFF[${i}] + ff_extensions[${i}] >= max[${i}] - strides[${i}]) &""")
+    }
+  }
+
+  stream.println(s"""                stateFF.next <== States.SATURATED;""")
+
+  // Generated wrap cases
+  for(i <- 1 to numCtrs-1) {
+    stream.println(s"""                } ELSE { IF (""")
+    for(j <- numCtrs-1 to i by -1){
+      if (j == i){
+        stream.println(s"""                  (countFF[${j}] + ff_extensions[${j}] >= max[${j}] - strides[${i}])) {""")
+      } else {
+        stream.println(s"""                  (countFF[${j}] + ff_extensions[${j}] >= max[${j}] - strides[${i}]) &""")
+      }
+    }
+    for(j <- numCtrs-1 to i by -1){
+      stream.println(s"""                countFF[${j}].next <== 0;""")
+    }
+    stream.println(s"""                IF (countFF[${i-1}] + ff_extensions[${i-1}] === gapBumpFF[${i-1}] - strides[${i-1}]) {
+                  countFF[${i-1}].next <== countFF[${i-1}] + ${par(i-1)} * strides[${i-1}] + gap;
+                  gapBumpFF[${i-1}].next <== gapBumpFF[${i-1}] + gap + ${par(par.size-1)};
+                } ELSE {
+                  countFF[${i-1}].next <== countFF[${i-1}] + ${par(i-1)} * strides[${i-1}];
+                }""")
+  }
+  stream.println(s"""                } ELSE { // innermost ctr
+                countFF[${numCtrs-1}].next <== countFF[${numCtrs-1}] + ${par(numCtrs-1)} * strides[${numCtrs-1}] + gap;""")
+  for(j <- 0 until numCtrs){
+    stream.print(s"""}""")
+  }
+  stream.println(s"""           } ELSE {
+              stateFF.next <== States.COUNT;
+            }
+          }""")
+
+  stream.println(s"""          CASE(States.SATURATED) {
+            stateFF.next <== States.SATURATED;
+          }
+        }
+      }
+    }
+
+  @Override
+    protected void outputFunction() {
+        """)
+
+  for(i <- 0 until numCtrs) {
+    stream.println(s"""      count[${i}] <== countFF[${i}];""")
+  }
+  for (j <- 0 until par.size){
+    if (par(j) > 1){
+      stream.println(s"""      for (int i = 0; i < ${par(j)-1}; i++) {
+        counter${j}_extension[i] <== countFF[${j}] + strides[${j}] * (i+1);
+      }""")
+    }
+  }
+
+
+  stream.println(s"""
+      saturated <== 0;
+      done <== 0;
+      SWITCH(stateFF){
+        CASE(States.COUNT){
+          IF(en) {
+
+            IF (""")
+
+  for(i <- 0 until numCtrs) {
+    if(i == numCtrs - 1){
+      stream.println(s"""               (countFF[${i}] + ff_extensions[${i}] >= max[${i}] - strides[${i}])) {""")
+    } else {
+      stream.println(s"""               (countFF[${i}] + ff_extensions[${i}] >= max[${i}] - strides[${i}]) &""")
+    }
+  }
+
+  stream.println(s"""             saturated <== 1;
+             done <== 1;
+            }
+          }
+        }
+        CASE(States.SATURATED){
+          IF (en) {
+            done <== 1;
+          }
+          saturated <== 1;
+        }
+      }
+    }
+}""")
+
+
+
+
+
+
+
+  }
 
   def emitDblBufSM(name: String, numReaders: Int) = {
   stream.println(s"""

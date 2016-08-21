@@ -666,12 +666,14 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
             if (writesToAccumRam) {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
-              emitMaxJCounterChain(cchain, Some(ctrEn),
+              val rstStr = s"${quote(sym)}_done"
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr),
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
-              emitMaxJCounterChain(cchain, Some(ctrEn))
+              val rstStr = s"${quote(sym)}_done"
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
             }
 
 
@@ -684,12 +686,14 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
             if (writesToAccumRam) {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
-              emitMaxJCounterChain(cchain, Some(ctrEn),
+              val rstStr = s"${quote(sym)}_done"
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), 
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
-              emitMaxJCounterChain(cchain, Some(ctrEn))
+              val rstStr = s"${quote(sym)}_done"
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
             }
 
           case n@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
@@ -699,7 +703,8 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
             emit(s"""DFEVar ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
             val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
             emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
-            emitMaxJCounterChain(cchain, Some(ctrEn))
+            val rstStr = s"${quote(sym)}_done"
+            emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
 
 
           case n:Pipe_fold[_,_] =>
@@ -717,7 +722,8 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
             if (specializeReduce) {
               val ctrEn = s"${quote(sym)}_datapath_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
-              emitMaxJCounterChain(cchain, Some(ctrEn))
+              val rstStr = s"${quote(sym)}_done"
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
             } else {
               emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(8));""")
               emit(s"""CounterChain ${quote(sym)}_redLoopChain =
@@ -726,18 +732,108 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
               emit(s"""DFEVar ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
               val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
-              emitMaxJCounterChain(cchain, Some(ctrEn))
+              val rstStr = s"${quote(sym)}_done"
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
             }
         }
       case CoarsePipe =>
         val ctrEn = s"${quote(childrenOf(sym).head)}_done"
         emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
-        emitMaxJCounterChain(cchain, Some(ctrEn))
+        val rstStr = s"${quote(sym)}_done"
+        emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
       case SequentialPipe =>
         val ctrEn = s"${quote(childrenOf(sym).last)}_done"
         emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
-		    emitMaxJCounterChain(cchain, Some(ctrEn))
+        val rstStr = s"${quote(sym)}_done"
+		    emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
     }
+
+  }
+
+  def emitCustomCounterChain(cchain: Exp[CounterChain], en: Option[String], rstStr: Option[String], done: Option[String]=None) = {
+    val sym = cchain
+    emitComment("CustomCounterChain {") 
+    if (!enDeclaredSet.contains(sym)) {
+      emit(s"""DFEVar ${quote(sym)}_en = ${en.get};""")
+      enDeclaredSet += sym
+    }
+
+
+
+    // For Pipes, max must be derived from PipeSM
+    // For everyone else, max is as mentioned in the ctr
+    val Deff(Counterchain_new(counters)) = cchain
+
+    // Connect maxes
+    val maxes = counters.zipWithIndex.map { case (ctr, i) =>
+      val Def(EatReflect(Counter_new(start, end, step, _))) = ctr
+      parentOf(cchain.asInstanceOf[Rep[CounterChain]]) match {
+        case Some(s) =>
+          s.tp.erasure.getSimpleName match {  // <- There's got to be a better way
+          case "Pipeline" => s"${quote(ctr)}_max_$i"
+          case "SpatialPipeline" => s"${quote(ctr)}_max_$i"
+          case _ => quote(end)
+        }
+        case None => quote(end)
+      }
+    }
+    emit(s"""DFEVar[] ${quote(sym)}_max = {${maxes.map(m=>s"${quote(m)}").mkString(",")}};""")
+
+    // Connect strides
+    val strides = counters.zipWithIndex.map { case (ctr, i) =>
+      val Def(EatReflect(Counter_new(start, end, step, _))) = ctr
+      val Def(d) = step
+      d match {
+        case n@ConstFix(value) => value
+        case n@Tpes_Int_to_fix(v) => v match {
+          case c@Const(value) => value
+          case c@Param(value) => value
+          case _ => throw new Exception(s"""Step is of unhandled node $n, $v""")
+        }
+        case _ => throw new Exception(s"""Step is of unhandled node $d""")
+      }
+    }
+    emit(s"""int[] ${quote(sym)}_strides = {${strides.map(s=>s"${quote(s)}").mkString(",")}};""")
+
+    val gap = 0 // Power-of-2 upcasting not supported yet
+
+    emit(s"""SMIO ${quote(sym)} = addStateMachine("${quote(sym)}_sm", new ${quote(sym)}_CtrSM(owner, ${quote(sym)}_strides)); // gap = ${gap}""")
+    emit(s"""${quote(sym)}.connectInput("en", ${quote(sym)}_en);
+${quote(sym)}.connectInput("reset", ${rstStr.get});
+DFEVar ${quote(sym)}_maxed = ${quote(sym)}.getOutput("saturated");""")
+
+    val doneStr = if (!done.isDefined) {
+      s"""stream.offset(${quote(sym)}.getOutput("done"), -1)"""
+    } else {
+      done.get
+    }
+
+    if (!doneDeclaredSet.contains(sym)) {
+      emit(s"""DFEVar ${quote(sym)}_done = $doneStr;""")
+      doneDeclaredSet += sym
+    } else {
+      emit(s"""${quote(sym)}_done <== $doneStr;""")
+    }
+
+    emit(s"""OffsetExpr ${quote(sym)}_offset = stream.makeOffsetAutoLoop(\"${quote(sym)}_offset\");""")
+    emit(s"""OffsetExpr ${quote(sym)}_additionalOffset = new OffsetExpr();""")
+    counters.zipWithIndex.map { case (ctr, i) =>
+      emit(s"""${quote(sym)}.connectInput("max${i}", ${quote(sym)}_max[${i}]);""")
+      if (parOf(ctr) == 1) {
+        emit(s"""DFEVar ${quote(ctr)} = ${quote(sym)}.getOutput("counter${i}");""")
+        // cast(n.ctrs(i)) // Cast if necessary
+      } else {
+        emit(s"""DFEVector<DFEVar> ${quote(ctr)} = new DFEVectorType<DFEVar>(dfeInt(32), ${parOf(ctr)}).newInstance(this);
+${quote(ctr)}[0] <== ${quote(sym)}.getOutput("counter${i}");
+for (int i = 0; i < ${parOf(ctr)-1}; i++) {
+  ${quote(ctr)}[i+1] <== ${quote(sym)}.getOutput("counter${i}_extension" + i);  
+}""")
+        // (0 until n.par(i)) map {k =>
+        //     cast(n.ctrs(i)) // Cast if necessary
+        // }
+      }
+    }
+    emitComment("} CustomCounterChain")
 
   }
 
