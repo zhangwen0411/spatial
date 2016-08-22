@@ -395,7 +395,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                                   addr1 = quote(1)
                                   quote(row(0))
                                 case _ =>
-                                  addr1 = quote(row(0))
+                                  addr1 = quote(row(1))
                                   quote(row(0))
                                 }
                           }
@@ -447,6 +447,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
     val i = find_id.indexOf(sym)
     val this_writer = writers(i)._1
     val inds = parIndicesOf(writers(i)._3)
+    val num_dims = dimsOf(bram).length
+
 
 
     if (isAccum(bram)) {
@@ -476,8 +478,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
         if (writers.length == 1) {
           dups.zipWithIndex.foreach {case (dd, ii) =>
             // I KNOW THERE ARE MORE CASES TO ADD IN THIS ACCUM SECTION!!!!
-            val dimzz = dimsOf(bram)
-            dimzz.length match {
+            num_dims match {
               case 1 =>
                 emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
                   stream.offset($dataStr, -$offsetStr), stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)); //3""")
@@ -490,7 +491,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
           val bank_num = i
           dups.zipWithIndex.foreach {case (dd, ii) =>
             emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
-              stream.offset($dataStr, -$offsetStr), stream.offset(${quote(parentPipe)}_datapath_en, -1) & stream.offset(${quote(parentPipe)}_datapath_en, -$offsetStr)); //5""") 
+              stream.offset($dataStr, -$offsetStr), stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)); //5""") 
           }
         }
       }
@@ -500,12 +501,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       if (isDummy(bram)) {
         emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //6""")
       } else {
-        val dimzz = dimsOf(bram)
         inds.length match {
           case 0 =>
             throw new Exception("What?!")
           case 1 =>
-            if (dimzz.length == 1) {
+            if (num_dims == 1) {
               if (dups.length == 1) {
                 emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //7""") 
               } else {
