@@ -63,14 +63,18 @@ object ArgInOut extends SpatialAppCompiler with ArgInOutApp
       val x = ArgIn[SInt]
       val y = ArgOut[SInt]
       val N = args(0).to[SInt]
+
       // Connect SW vals to HW vals
       setArg(x, N)
+
       // Create HW accelerator
       Accel {
         Pipe { y := x + 4 }
       }
+
       // Extract results from accelerator
       val result = getArg(y)
+      
       // Create validation checks and debug code
       val gold = N + 4
       println("expected: " + gold)
@@ -111,22 +115,20 @@ Targetting MaxJ will let you generate a MaxJ app that you can either simulate th
 
 Run the following commands to make your app:
     
-    cd $SPATIAL_HOME
-    make
-    bin/spatial ArgInOut --maxj --cpp
+    cd ${SPATIAL_HOME}/published/Spatial && bin/spatial ArgInOut --maxj --cpp
 
-This will create the directory `out/` in `$SPATIAL_HOME/published` that contains the generated code.  You must have the --cpp flag on even to generate MaxJ because this causes Delite to generate all of the necessary host code for the app. 
+This will create the directory `out/` in `$SPATIAL_HOME/published/Spatial` that contains the generated code.  You must have the --cpp flag on even to generate MaxJ because this causes Delite to generate all of the necessary host code for the app. 
 
 In order to test the MaxJ app, you must copy this `out/` directory to a machine with MaxCompiler 2014.1 or later.  If you want to test the code for functionality, you can force MaxCompiler to generate a CPP simulation of the app.  If you want to generate a bitstream to test the app on a Stratix V, you can get MaxCompiler to synthesize the entire design.  A build for simulation will take time on the order of minutes, while a build for synthesis will take time on the order of hours.  A simulation will ensure functionality but not runtime.
 
-To build for simulation, run the following in the `out/` directory on a MaxCompiler machine:
+To build for simulation, run the following:
     
-    make clean sim
+    cd ${SPATIAL_HOME}/published/Spatial/out && make clean sim
     bash run.sh <arguments>
     
 To build for synthesis, run the following:
     
-    make clean dfe
+    cd ${SPATIAL_HOME}/published/Spatial/out && make clean dfe
     bash run_fpga.sh <arguments>
 
 
