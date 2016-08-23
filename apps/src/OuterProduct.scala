@@ -4,13 +4,17 @@ import spatial.shared._
 
 object OuterProduct extends SpatialAppCompiler with OuterProductApp
 trait OuterProductApp extends SpatialApp {
-  type T = Flt
+  type T = SInt
+  val tileSize1 = 96
+  val tileSize2 = 96
+  val op = 1
+  val ip = 1
 
   def outerproduct(a: Rep[ForgeArray[T]], b: Rep[ForgeArray[T]]) = {
-    val tileSizeA = param(96);  domainOf(tileSizeA) = (96, 38400, 96)
-    val tileSizeB = param(96);  domainOf(tileSizeB) = (96, 38400, 96)
-    val outerPar  = param(1);  domainOf(outerPar) = (1, 4, 1)
-    val innerPar  = param(1);  domainOf(innerPar) = (1, 38400, 1)
+    val tileSizeA = param(tileSize1);  domainOf(tileSizeA) = (96, 38400, 96)
+    val tileSizeB = param(tileSize2);  domainOf(tileSizeB) = (96, 38400, 96)
+    val outerPar  = param(op);  domainOf(outerPar) = (1, 4, 1)
+    val innerPar  = param(ip);  domainOf(innerPar) = (1, 38400, 1)
 
     val M = a.length;  bound(M) = 38400
     val N = b.length;  bound(N) = 38400
@@ -47,14 +51,16 @@ trait OuterProductApp extends SpatialApp {
   def main() = {
     val M = args(0).to[SInt]
     val N = args(1).to[SInt]
-    val a = Array.fill(M)(random[T](100))
-    val b = Array.fill(N)(random[T](100))
+    // val a = Array.fill(M)(random[T](100))
+    // val b = Array.fill(N)(random[T](100))
+    val a = Array.tabulate(M) { i => i }
+    val b = Array.fill(N)(1)
 
     val result = outerproduct(a, b)
 
     val gold = Array.tabulate(M){i => Array.tabulate(N){j => a(i) * b(j) }}.flatten
-    //println("expected: " + gold.mkString(", "))
-    //println("result:   " + result.mkString(", "))
+    println("expected cksum: " + gold.map(a => a).reduce{_+_})
+    println("result cksum:   " + result.map(a => a).reduce{_+_})
     (0 until M*N) foreach { i => assert(result(i) == gold(i)) }
     assert( result == gold )
   }

@@ -265,10 +265,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
           dups.length match {
             case 1 =>
               if (isDblBuf(b)) {
-                readersOf(b).foreach { r =>
-                  val reader = r._1
-                  emit(s"""${quote(b)}.connectRdone(${quote(reader)}_done);""")
-                }
+                val reader = topReadersOf(b).last._1 // CRITICAL TODO: What to do with actual multiple readers?
+                emit(s"""${quote(b)}.connectRdone(${quote(reader)}_done);""")
                 if (writersOf(b).isEmpty) throw new Exception(s"Bram ${quote(b)} has no writer!")
                 val topWriter = topWritersOf(b).head
                 topWriter match {
@@ -282,7 +280,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
             case _ =>
               dups.zipWithIndex.foreach { case (d, i) =>
                 if (d.depth > 1) {
-                  readersOf(b).foreach { r =>
+                  topReadersOf(b).foreach { r =>
                     if (instanceIndexOf(r._3, b) == i) {
                       val reader = r._1
                       emit(s"""${quote(b)}_${i}.connectRdone(${quote(reader)}_done);""")
@@ -761,6 +759,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                         case InnerPipe => emit(s"""DFEVar ${quote(reg)}_en = ${quote(writer)}_rst_en;""")
                         case _ => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_en & ${quote(writer)}_redLoop_done;""")
                       }
+                      Console.println(s"reg $reg in $p has no reduceType")
                       reduceType(reg) match {
                         case Some(fps: ReduceFunction) => fps match {
                           case FixPtSum =>
@@ -769,6 +768,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                             emit(s"""DFEVar ${quote(reg)} = ${quote(reg)}_hold;""")
                           case FltPtSum =>
                             emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr & constant.var(false) /* TODO: Not sure if disabling rst is correct */, true);""")
+                          case _ =>
+                            throw new Exception(s"Reduce type of reg $reg, pipe $p, not implemented!")
                         }
                         emit(s"""${quote(reg)}_1_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")
                       }

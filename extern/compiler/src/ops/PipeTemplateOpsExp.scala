@@ -435,6 +435,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
          }
       }
 			emitComment(" End Hwblock dependencies }")
+      Console.println(s"this is the fucking list $quoteSuffix")
       emitComment(s"quoteSuffix = $quoteSuffix")
       emit(s"""DFEVar ${quote(sym)}_en = top_en;""")
       emitGlobalWire(s"""${quote(sym)}_done""")
