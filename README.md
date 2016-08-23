@@ -27,6 +27,7 @@ Set the following environment variables, requried for sbt and hyperdsl scripts:
     DELITE_HOME: Delite repository home directory
     FORGE_HOME: Forge repository home directory
     JAVA_HOME: JDK home directory
+    SPATIAL_HOME: Spatial repository home directory
 
 *init-env.sh* in hyperdsl sets the sensible defaults for all of these paths except `JAVA_HOME` for the current session. Add these variables to your login shell's startup script to avoid having to manually set these each session.
 
@@ -48,11 +49,35 @@ Introduction to Spatial
 =======================
 Now that you have cloned all of the code and set all of your environment variables, it is time to build and run your first Spatial app!  Because Spatial is a DSL for programming reconfigurable *hardware*, we will begin with the hardware equivalent of "Hello, World."   This app is known as ArgInOut and does exactly as the name implies; the hardware reads some numeric argument from an off-chip source and then echoes it back to an off-chip destination.
 
-You can find the source code for this app here:
+You can find the source code (shown in the next section for convenience) for this app here:
 
     $SPATIAL_HOME/apps/src/ArgInOutTest.scala
 
-### Spatial App Anatomy
+### a) Spatial App Structure
+
+```scala
+object ArgInOut extends SpatialAppCompiler with ArgInOutApp
+  trait ArgInOutApp extends SpatialApp {
+    def main() {
+      // Declare SW-HW interface vals
+      val x = ArgIn[SInt]
+      val y = ArgOut[SInt]
+      val N = args(0).to[SInt]
+      // Connect SW vals to HW vals
+      setArg(x, N)
+      // Create HW accelerator
+      Accel {
+        Pipe { y := x + 4 }
+      }
+      // Extract results from accelerator
+      val result = getArg(y)
+      // Create validation checks and debug code
+      val gold = N + 4
+      println("expected: " + gold)
+      println("result: " + result)
+    }
+  }
+  ```
 Spatial apps are divided into two parts: the portion of code that runs on the host CPU and the portion of code that gets generated as an accelerator.  The entirety of the app exists inside of `Main()`, and the subset of code inside of the `Accel{}` block is the hardware part of the app.  
 
 In ArgInOut, we start with three declarations above the `Accel{}` block.  First, we declare x to be an `ArgIn` of type `SInt`.  Then, we declare y to be an `ArgOut` of type `SInt`.  Finally, we declare `N` to be one of the command-line input arguments at run-time by setting it equal to `args(0)`.  We must also explicitly cast this argument to a Spatial type by appending `.as[SInt]`.  In addition to ArgIns and ArgOuts, there is a type, `OffChipMem`, which represents a 1-D or 2-D array that the accelerator can read from and write to.
@@ -65,11 +90,24 @@ After the `Accel{}` block, we return to the host code section of an app that wil
 
 Finally, we add any debug and validation code to check if the accelerator is performing as expected.  In this example, we compute the result we expect the hardware to give, and then println both this number and the number we actually got.
 
-### Compiling, Synthesizing, and Testing
+### b) Compiling, Synthesizing, and Testing
 
-Now that you have a complete Spatial app, you will want to compile and run it.  Currently, there are three available targets; Scala, Dot, and MaxJ.  This will show you how to build for MaxJ.
+Now that you have a complete Spatial app, you will want to compile and run it.  Currently, there are three available targets; Scala, Dot, and MaxJ.  
 
-**NOTE: Any time you change an app, you must remake Spatial.**
+**NOTE: Any time you change an app, you must remake Spatial with:**
+
+    cd ${SPATIAL_HOME} && make
+
+#### i) Scala
+Targetting Scala is the quickest way to simulate your app and test for accuracy.  
+**Ask David**
+
+#### ii) Dot
+Targetting Dot is a good way to create a dataflow graph of your accelerator in GraphViz format.
+**Ask Yaqi**
+
+#### iii) MaxJ
+Targetting MaxJ will let you generate a MaxJ app that you can either simulate through Maxeler's framework or synthesize and run on a real FPGA.
 
 Run the following commands to make your app:
     
@@ -95,9 +133,11 @@ To build for synthesis, run the following:
 The Spatial Programming Model
 =============================
 Coming Soon!
+**Raghu**
 
 
 Design Space Exploration with Spatial
 =====================================
 Coming Soon!
+**David**
 
