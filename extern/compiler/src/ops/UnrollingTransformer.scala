@@ -20,8 +20,15 @@ trait UnrollingTransformExp extends ReductionAnalysisExp with LoweredPipeOpsExp 
   case class ReduceStarter(isIt: Boolean) extends Metadata
   object isReduceStarter {
     def update(e: Exp[Any], isIt: Boolean) { setMetadata(e, ReduceStarter(isIt)) }
-    def apply(e: Exp[Any]) = meta[UnrolledResult](e).map(_.isIt).getOrElse(false)
+    def apply(e: Exp[Any]) = meta[ReduceStarter](e).map(_.isIt).getOrElse(false)
   }
+
+  case class PartOfTree(node: Exp[Any]) extends Metadata
+  object rTreeMap {
+    def update(e: Exp[Any], node: Exp[Any]) { setMetadata(e, PartOfTree(node)) }
+    def apply(e: Exp[Any]) = meta[PartOfTree](e).map(_.node).getOrElse(Nil)
+  }
+
 
 }
 
@@ -242,6 +249,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
     newPipe
   }
 
+
+
   // TODO: General (more expensive) case for when no zero is given
   def unrollReduce[A:Manifest:Num](node: Exp[Any], accum: Exp[Any], inputs: List[Exp[A]], valids: List[Exp[Bit]], zero: Option[Exp[A]], rFunc: Block[A], newIdx: Exp[Index], ld: Block[A], st: Block[Unit], idx: Exp[Index], res: Exp[A], rV: (Sym[A],Sym[A])) = {
     def reduce(x: Exp[A], y: Exp[A]) = withSubstScope(rV._1 -> x, rV._2 -> y){ inlineBlock(rFunc) }
@@ -262,7 +271,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
     }
     val newRes = reduce(treeResult, accumLoad)
     isReduceResult(newRes) = true
-    isReduceStarter(accumLoad) = true // TODO: Why is this accumLoad not real?
+    isReduceStarter(accumLoad) = true 
 
     duringClone{e => if (SpatialConfig.genCGRA) reduceType(e) = None }{
       withSubstScope(res -> newRes, idx -> newIdx){ inlineBlock(st) }
@@ -292,6 +301,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       }
     }
     val newPipe = reflectEffect(ParPipeReduce(cchain, accum, blk, rFunc, inds2, acc, rV)(ctx,mT,mC))
+
     isInnerAccum(accum) = true
     isInnerAccum(acc) = true
     aliasOf(acc) = accum

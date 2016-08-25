@@ -3,6 +3,7 @@ package spatial.compiler.ops
 import scala.virtualization.lms.common.{ScalaGenEffect, DotGenEffect, MaxJGenEffect}
 import scala.reflect.{Manifest,SourceContext}
 import ppl.delite.framework.transform.{DeliteTransform}
+import java.io.{File, PrintWriter}
 
 import spatial.compiler._
 import spatial.compiler.ops._
@@ -96,7 +97,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
   val IR: LoweredPipeOpsExp with ControllerTemplateOpsExp with TpesOpsExp with ParallelOpsExp
           with PipeOpsExp with OffChipMemOpsExp with RegOpsExp with ExternCounterOpsExp
           with SpatialCodegenOps with NosynthOpsExp with MemoryAnalysisExp
-          with DeliteTransform
+          with DeliteTransform with VectorOpsExp with SpatialExp with UnrollingTransformExp
   import IR._
 
   def emitParallelizedLoop(iters: List[List[Sym[FixPt[Signed,B32,B0]]]], cchain: Exp[CounterChain]) = {
@@ -111,6 +112,14 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
         }
       }
     }
+  }
+
+
+  def newStream(fileName:String):PrintWriter = {
+    val buildDir = damn_build_dir
+    val path = buildDir + java.io.File.separator + fileName + ".maxj"
+    val pw = new PrintWriter(path)
+    pw
   }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
@@ -150,11 +159,36 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       duplicatesOf(acc) = duplicatesOf(accum)
       readersOf(acc) = readersOf(accum)
       val Def(EatReflect(writer)) = writersOf(acc).head._3 //(wr controller, accum bool, st node of type bram_store)
-      emitNode(acc, d)
+      emitNode(acc, d) 
 
       emitController(sym, Some(cchain))
       emitParallelizedLoop(inds, cchain)
+
+      var inputArgs = Set[Sym[Any]]()
+      var treeResult = ""
+      focusBlock(func){ // Send reduce tree to separate file
+        focusExactScope(func){ stms =>
+          stms.foreach { case TP(s,d) =>
+            val Deff(dd) = s
+            dd match {
+              case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>  
+                if (isReduceResult(s)) {
+                  val ts = tpstr(1)(s.tp, implicitly[SourceContext])
+                  emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
+                  treeResult = quote(s)
+                }
+              case input @ (Par_bram_load(_, _)) =>
+                inputArgs += s
+              case _ =>
+            }
+          }
+        }
+      }
+
       emitBlock(func)
+      val inputArgsStr = inputArgs.map {a => quote(a)}.mkString(",")
+
+      emit(s"new ${quote(sym)}_reduce_kernel(owner, $inputArgsStr, $treeResult); // Reduce kernel")
 
       val Def(EatReflect(dp)) = accum
       dp match {

@@ -227,7 +227,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
   val IR: LoweredPipeOpsExp with ControllerTemplateOpsExp with TpesOpsExp with ParallelOpsExp
           with PipeOpsExp with OffChipMemOpsExp with RegOpsExp with ExternCounterOpsExp
           with ExternPrimitiveOpsExp with SpatialCodegenOps with NosynthOpsExp with MemoryAnalysisExp with FIFOOpsExp with VectorOpsExp
-          with DeliteTransform with ReductionAnalysisExp
+          with DeliteTransform with ReductionAnalysisExp with UnrollingTransformExp
   import IR.{println=>_,_}
 
   override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
@@ -258,15 +258,27 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
   val regs = Set[(Exp[Reg[Any]], Int)]()
   override def emitFileFooter() = {
     emit(s"""// rdone signals for BRAMs go here""")
-    brams.foreach { b =>
+    brams.foreach { bb =>
+      val b = aliasOf(bb)
+
       b match { // Only generate for non-bound syms
         case Def(exist) =>
           val dups = duplicatesOf(b)
           dups.length match {
             case 1 =>
               if (isDblBuf(b)) {
-                val reader = topReadersOf(b).last._1 // CRITICAL TODO: What to do with actual multiple readers?
-                emit(s"""${quote(b)}.connectRdone(${quote(reader)}_done);""")
+                // val reader = topReadersOf(b).last._1 // CRITICAL TODO: What to do with actual multiple readers?
+                val trs = topReadersOf(b).map { r => r._3 }.toList
+                val rs = readersOf(b).map { r => r._3 }.toList
+                val ids = trs.intersect(rs).map { r => trs.indexOf(r)}
+                Console.println(s"trs ${topReadersOf(b)}, rs ${readersOf(b)}, ids $ids good = 1529, bad = 2091")
+                ids.foreach { this_id =>
+                  val list = topReadersOf(b).map{r => r}
+                  val r = list(this_id)
+                  Console.println(s"thisId $this_id, grabbed $r")
+                  val reader = r._1
+                  emit(s"""${quote(b)}.connectRdone(${quote(reader)}_done);""")
+                }
                 if (writersOf(b).isEmpty) throw new Exception(s"Bram ${quote(b)} has no writer!")
                 val topWriter = topWritersOf(b).head
                 topWriter match {
@@ -280,7 +292,15 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
             case _ =>
               dups.zipWithIndex.foreach { case (d, i) =>
                 if (d.depth > 1) {
-                  topReadersOf(b).foreach { r =>
+                  // No idea if intersection is correct thing to do, but
+                  //   only using topReadersOf breaks MatMult and only using
+                  //   readersOf produces incorrect results in MatMult and OuterProd
+                  val trs = topReadersOf(b).map { r => r._3 }.toList
+                  val rs = readersOf(b).map { r => r._3 }.toList
+                  val ids = trs.intersect(rs).map { r => rs.toList.indexOf(r)}
+                  ids.foreach { this_id =>
+                    val list = readersOf(b).map{r => r}
+                    val r = list(this_id)
                     if (instanceIndexOf(r._3, b) == i) {
                       val reader = r._1
                       emit(s"""${quote(b)}_${i}.connectRdone(${quote(reader)}_done);""")
@@ -658,7 +678,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
     case Argout_new(init) => //emitted in reg_write
 
     case e@Reg_read(reg) =>
-      if (! bram_redloop_map.contains(reg)) { // Hack to check if this is reduction read
+      if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
+        rTreeMap(sym) match {
+          case Nil =>
+          case m => Console.println(s"LOAD METADATA on $sym -> $m")
+        }
+
         val pre = maxJPre(sym)
         val regIdx = if (readersOf(reg).map{_._3}.indexOf(sym) > duplicatesOf(reg).length - 1) {
           duplicatesOf(reg).length - 1
@@ -960,7 +985,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}_rdata[0];""")
 
     case Vec_apply(vec, idx) =>
-      emit(s"""DFEVar ${quote(sym)} = ${quote(vec)}[${quote(idx)}];""")
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""DFEVar ${quote(sym)} = ${quote(vec)}[${quote(idx)}];""")
+        case m => 
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
 
     case Vector_from_list(elems) =>
       val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])

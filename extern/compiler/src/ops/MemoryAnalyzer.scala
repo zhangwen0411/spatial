@@ -16,6 +16,7 @@ import spatial.compiler.ops._
 trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnalysisExp {
   this: SpatialExp =>
 
+  var damn_build_dir = ""
   var bram_redloop_map = HashMap[Exp[Any],Exp[Any]]()
 
   // TODO
@@ -143,7 +144,10 @@ trait BankingBase extends Traversal {
 
   // TODO: How to express "tapped" block FIFO? What information is needed here?
   def coalesceDuplicates(mem: Exp[Any], reads: List[Exp[Any]], insts: List[MemInstance]) = {
-    reads.zipWithIndex.foreach{case (read, idx) => instanceIndexOf(read, mem) = idx }
+    reads.zipWithIndex.foreach{case (read, idx) => 
+      Console.println(s"[instanceIndexOf] Set $read, $mem, $idx")
+      instanceIndexOf(read, mem) = idx 
+    }
     insts
   }
 
@@ -324,7 +328,10 @@ trait BRAMBanking extends BankingBase {
         val allocReads = allocatedReads.map{read => s"$read (${memoryIndexOf(read._3)})"}
         debug(s"Write: $write, Reads: $unallocatedReads")
         debug(s"(Leaving out preallocated reads $allocReads)")
-        allocatedReads.foreach{read => instanceIndexOf(read._3, mem) = memoryIndexOf(read._3) }
+        allocatedReads.foreach{read => 
+          Console.println(s"[instanceIndexOf] Set $read._3, $mem, ${memoryIndexOf(read._3)}")
+          instanceIndexOf(read._3, mem) = memoryIndexOf(read._3) 
+        }
         val dups = unallocatedReads.map(read => pairedAccess(mem, write, read))
         coalesceDuplicates(mem, unallocatedReads.map(_._3), dups)
     }
@@ -359,11 +366,13 @@ trait FIFOBanking extends BankingBase {
       case (None,None)         => Nil
       case (Some(write), None) => List(MemInstance(1, 1, List(StridedBanking(1, accessPar(mem,write._3))) ))
       case (None, Some(read)) =>
+        Console.println(s"[instanceIndexOf] Set $read._3, $mem, 0")
         instanceIndexOf(read._3, mem) = 0
         List(MemInstance(1, 1, List(StridedBanking(1, accessPar(mem,read._3))) ))
       case (Some(write),Some(read)) =>
         debug(s"Write: $write, Read: $read")
         val banks = Math.max(accessPar(mem,write._3), accessPar(mem,read._3))
+        Console.println(s"[instanceIndexOf] Set $read._3, $mem, 0")
         instanceIndexOf(read._3, mem) = 0
         List(MemInstance(1, 1, List(StridedBanking(1, banks)) ))
     }

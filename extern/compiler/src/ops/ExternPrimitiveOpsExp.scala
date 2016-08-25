@@ -152,6 +152,13 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
 
   import IR.{infix_until => _, looprange_until => _, println => _, _}
 
+  def hackyNewStream(fileName:String):PrintWriter = {
+    val buildDir = damn_build_dir
+    val path = buildDir + java.io.File.separator + fileName + ".maxj"
+    val pw = new PrintWriter(path)
+    pw
+  }
+
 	var traversals: List[Traversal{val IR: MaxJGenExternPrimitiveOps.this.IR.type}] = Nil
 
   lazy val preCodegen = new MaxJPreCodegen {
@@ -159,6 +166,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
   }
 
   override def initializeGenerator(bd:String): Unit = {
+    damn_build_dir = bd
     preCodegen.buildDir = bd
 		traversals = IR.traversals
     super.initializeGenerator(bd)
@@ -195,18 +203,48 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
       }
     case FixPt_Add(a,b) =>
       val pre = maxJPre(sym)
-      if (isReduceResult(sym)) {
-        emit(s"""$pre ${quote(sym)} = ${quote(a)}; // Is result of tree, ignore ${quote(b)}""")
-      } else {
-        emit(s"""$pre ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
+      rTreeMap(a) match {
+        case Nil =>
+          if (!isReduceResult(sym)) {
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
+          } else {
+            emit(s"""$pre ${quote(sym)} = ${quote(a)}; // ignore ${quote(b)} b/c accumulator""")
+          }
+        case m => 
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
+
     case FltPt_Add(a,b) =>
       val pre = maxJPre(sym)
-      if (isReduceResult(sym)) {
-        emit(s"""$pre ${quote(sym)} = ${quote(a)}; // Is result of tree, ignore ${quote(b)}""")
-      } else {
-        emit(s"""$pre ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
+      rTreeMap(a) match {
+        case Nil =>
+          if (!isReduceResult(sym)) {
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
+          } else {
+            emit(s"""$pre ${quote(sym)} = ${quote(a)}; // ignore ${quote(b)} b/c accumulator""")
+          }
+        case m => 
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
+
+    case FixPt_Mul(a,b) =>
+      val pre = maxJPre(sym)
+      rTreeMap(a) match {
+        case Nil =>
+          emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
+        case m => 
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
+    case FltPt_Mul(a,b) =>
+      val pre = maxJPre(sym)
+      rTreeMap(a) match {
+        case Nil =>
+          emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
+        case m => 
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
     case Tpes_Int_to_fix(x) =>  // Emit this node in MaxJ only if x is a const
       val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
       x match {

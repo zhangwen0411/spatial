@@ -15,7 +15,7 @@ import scala.collection.mutable.Set
 import ppl.delite.framework.DeliteApplication
 
 trait MaxJPreCodegen extends Traversal  {
-	val IR:SpatialExp with MemoryAnalysisExp
+	val IR:SpatialExp with MemoryAnalysisExp with UnrollingTransformExp with ExternPrimitiveOpsExp
 	import IR.{infix_until => _, looprange_until => _, println => _, _}
 
 	var buildDir:String = _
@@ -123,6 +123,9 @@ trait MaxJPreCodegen extends Traversal  {
 			}
     case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
       // quoteSuffix += c.asInstanceOf[Sym[Any]] -> localSuffixMap
+      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+        emitReduction(sym, rhs)
+      }
       bram_redloop_map += acc -> accum // acc is alias for accum
 
     case e@Unit_pipe(func) =>
@@ -183,6 +186,103 @@ trait MaxJPreCodegen extends Traversal  {
 			//println("tp:" + sym.tp.erasure.getSimpleName() + "rhs:" + rhs)
 		}
 	}
+
+  def emitReduction(sym: Sym[Any], rhs: Def[Any]) = rhs match {
+    case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+
+    var inputArgs = Set[Sym[Any]]()
+    var treeResult = ""
+    var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
+    val treeStringPre = focusBlock(func){ // Send reduce tree to separate file
+      focusExactScope(func){ stms =>
+        stms.zipWithIndex.map { case (TP(s,d), ii) =>
+          val Deff(dd) = s
+          Console.println(s"Unroll $sym precodegen for $s $dd")
+          dd match {
+            case Reg_read(_) =>
+              first_reg_read = first_reg_read :+ ii
+              s""
+            case tag @ Vec_apply(vec,idx) =>  
+              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+              s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
+            case tag @ FltPt_Add(a,b) =>
+              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+              val pre = maxJPre(s)
+              if (isReduceResult(s)) {
+                treeResult = quote(s)
+                s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+              } else {
+                s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
+              }
+            case tag @ FixPt_Add(a,b) =>
+              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+              val pre = maxJPre(s)
+              if (isReduceResult(s)) {
+                treeResult = quote(s)
+                s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+              } else {
+                s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
+              }
+            case tag @ FltPt_Mul(a,b) =>
+              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+              val pre = maxJPre(s)
+              s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
+            case tag @ FixPt_Mul(a,b) =>
+              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+              val pre = maxJPre(s)
+              s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
+            case input @ (Par_bram_load(_, _)) =>
+              inputArgs += s
+              ""
+            case _ =>
+              ""
+          }
+        }
+      }
+    }
+    val treeString = treeStringPre.zipWithIndex.filter{ 
+      case (entry: String, ii: Int) => ii > first_reg_read(1)
+    }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
+
+    Console.println(s"pre tree: $treeStringPre, tree: $treeString, reglist ids: $first_reg_read")
+
+    val krnl_input_args = inputArgs.map(quote(_)).mkString(", DFEVector<DFEVar> ")
+    emit(s"""package engine;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.CounterChain;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.WrapMode;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Params;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.memory.Memory;
+import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.maxcompiler.v2.utils.MathUtils;
+import com.maxeler.maxcompiler.v2.utils.Bits;
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.KernelMath;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Stream.OffsetExpr;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Reductions;
+import com.maxeler.maxcompiler.v2.kernelcompiler.SMIO;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Accumulator;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVector;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
+import java.util.Arrays;
+class ${quote(sym)}_reduce_kernel extends KernelLib {
+void common(DFEVector<DFEVar> ${krnl_input_args}, DFEVar ${treeResult}) {
+$treeString
+}
+
+${quote(sym)}_reduce_kernel(KernelLib owner, DFEVector<DFEVar> ${krnl_input_args}, DFEVar ${treeResult}) {
+  super(owner);
+  common(${inputArgs.map(quote(_)).mkString(",")}, ${treeResult});
+}
+}""")
+
+  }
 
   def emitCtrSM(name: String, par: List[Int], gap: Int, numCtrs: Int) = {
     stream.println("""
