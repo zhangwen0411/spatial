@@ -187,8 +187,8 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
 
       emitBlock(func)
       val inputArgsStr = inputArgs.map {a => quote(a)}.mkString(",")
-
-      emit(s"new ${quote(sym)}_reduce_kernel(owner, $inputArgsStr, $treeResult); // Reduce kernel")
+      val should_comma = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
+      emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma $inputArgsStr $should_comma $treeResult); // Reduce kernel")
 
       val Def(EatReflect(dp)) = accum
       dp match {

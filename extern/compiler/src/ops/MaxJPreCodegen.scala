@@ -381,13 +381,18 @@ trait MaxJPreCodegen extends Traversal  {
         }
       }
     }
-    val treeString = treeStringPre.zipWithIndex.filter{ 
-      case (entry: String, ii: Int) => ii > first_reg_read(1)
-    }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
 
-    Console.println(s"pre tree: $treeStringPre, tree: $treeString, reglist ids: $first_reg_read")
+    val treeString = if (first_reg_read.length > 1) {
+      treeStringPre.zipWithIndex.filter{ 
+        case (entry: String, ii: Int) => ii > first_reg_read(1)
+      }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
+    } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
 
-    val krnl_input_args = inputArgs.map(quote(_)).mkString(", DFEVector<DFEVar> ")
+    val krnl_input_args = if (treeResult != "") { 
+      inputArgs.map(quote(_)).mkString("DFEVector<DFEVar> ",", DFEVector<DFEVar> ", "") + s", DFEVar ${treeResult}"
+    } else {""}
+    val first_comma = if (treeResult != "") { "," } else {""} 
+
     // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
     //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
     // } else { "" }
@@ -431,16 +436,16 @@ import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
 import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
 import java.util.Arrays;
 class ${quote(sym)}_reduce_kernel extends KernelLib {
-void common(DFEVector<DFEVar> ${krnl_input_args}, DFEVar ${treeResult}) {
+void common(${krnl_input_args}) {
 // For now, I just regenerate constants because java is being annoying about class extensions 
 $cst_genStr
 
 $treeString
 }
 
-${quote(sym)}_reduce_kernel(KernelLib owner, DFEVector<DFEVar> ${krnl_input_args}, DFEVar ${treeResult}) {
+${quote(sym)}_reduce_kernel(KernelLib owner ${first_comma} ${krnl_input_args}) {
   super(owner);
-  common(${inputArgs.map(quote(_)).mkString(",")}, ${treeResult});
+  common(${inputArgs.map(quote(_)).mkString(",")} ${first_comma} ${treeResult});
 }
 }""")
 

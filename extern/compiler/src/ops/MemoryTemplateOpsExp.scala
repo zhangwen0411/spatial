@@ -296,9 +296,9 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                   //   readersOf produces incorrect results in MatMult and OuterProd
                   val trs = topReadersOf(b).map { r => r._3 }.toList
                   val rs = readersOf(b).map { r => r._3 }.toList
-                  val ids = trs.intersect(rs).map { r => rs.toList.indexOf(r)}
+                  val ids = trs.intersect(rs).map { r => trs.indexOf(r)}
                   ids.foreach { this_id =>
-                    val list = readersOf(b).map{r => r}
+                    val list = topReadersOf(b).map{r => r}
                     val r = list(this_id)
                     if (instanceIndexOf(r._3, b) == i) {
                       val reader = r._1
@@ -307,6 +307,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                   }
                   if (writersOf(b).isEmpty) throw new Exception(s"Bram ${quote(b)} has no writer!")
                   val topWriter = topWritersOf(b).head
+                  Console.println(s"these are topwriters ${topWritersOf(b)}\nthese are writers ${writersOf(b)}")
                   topWriter match {
                     case (writer, _, _) =>
                       emit(s"""${quote(b)}_${i}.connectWdone(${quote(writer)}_done);""")
@@ -482,6 +483,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
         }
         case p => throw new Exception(s"Unknown parent type ${p}!")
       }
+      
+      val accEn = parentCtr match {
+        case Def(EatReflect(Counter_new(start, end, step, par))) =>  s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr)"
+        case _ =>  s"stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)"
+      }
+
       if (dups.length == 1) {
         if (writers.length == 1) {
           emit(s"""${quote(bram)}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
@@ -498,17 +505,17 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
             num_dims match {
               case 1 =>
                 emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)); //3""")
+                  stream.offset($dataStr, -$offsetStr), $accEn); //3""")
               case _ =>
                 emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)); //4""")
+                  stream.offset($dataStr, -$offsetStr), $accEn); //4""")
             }
           }
         } else {
           val bank_num = i
           dups.zipWithIndex.foreach {case (dd, ii) =>
             emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
-              stream.offset($dataStr, -$offsetStr), stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)); //5""") 
+              stream.offset($dataStr, -$offsetStr), $accEn); //5""") 
           }
         }
       }
