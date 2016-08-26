@@ -296,6 +296,8 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
           s"argin_" + s.tp.erasure.getSimpleName() + n
         case Def(ConstFix(value)) =>
           s"const${value}_" + s.tp.erasure.getSimpleName() + n
+        case Def(ConstFlt(value)) =>
+          s"const${value}_" + s.tp.erasure.getSimpleName() + n
         case _ =>
     			val tstr = s.tp.erasure.getSimpleName()
                       .replace("Spatial","")

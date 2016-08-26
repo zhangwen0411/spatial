@@ -141,6 +141,7 @@ trait BlackScholesApp extends SpatialApp {
 
     val out = getMem(optprice)
 
+    println("result: " + out.map(a => a).reduce{_+_})
     // printArr(sstrike, "sstrike:")
     // printArr(out, "result:")
   }

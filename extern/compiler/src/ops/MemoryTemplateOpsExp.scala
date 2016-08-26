@@ -271,7 +271,6 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                 val trs = topReadersOf(b).map { r => r._3 }.toList
                 val rs = readersOf(b).map { r => r._3 }.toList
                 val ids = trs.intersect(rs).map { r => trs.indexOf(r)}
-                Console.println(s"trs ${topReadersOf(b)}, rs ${readersOf(b)}, ids $ids good = 1529, bad = 2091")
                 ids.foreach { this_id =>
                   val list = topReadersOf(b).map{r => r}
                   val r = list(this_id)
