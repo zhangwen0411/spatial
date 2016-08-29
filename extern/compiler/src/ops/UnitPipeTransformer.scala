@@ -49,24 +49,23 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
         focusExactScope(blk){ stms =>
 
           class Stage(val isControl: Boolean) {
-             val allocs: ArrayBuffer[Stm] = ArrayBuffer.empty
-             val nodes: ArrayBuffer[Stm] = ArrayBuffer.empty
-             val regReads: ArrayBuffer[Stm] = ArrayBuffer.empty
+            val allocs: ArrayBuffer[Stm] = ArrayBuffer.empty
+            val nodes: ArrayBuffer[Stm] = ArrayBuffer.empty
+            val regReads: ArrayBuffer[Stm] = ArrayBuffer.empty
 
-             def allocDeps = allocs.flatMap{case TP(s,d) => (syms(d) ++ readSyms(d)) }.toSet
+            def allocDeps = allocs.flatMap{case TP(s,d) => (syms(d) ++ readSyms(d)) }.toSet
+            def deps = nodes.flatMap{case TP(s,d) => (syms(d) ++ readSyms(d)) }.toSet ++ allocDeps
 
-             def deps = nodes.flatMap{case TP(s,d) => (syms(d) ++ readSyms(d)) }.toSet ++ allocDeps
-
-             def dumpStage(i: Int) {
-                if (isControl) debugs(s"$i. Control Stage")
-                else           debugs(s"$i. Primitive Stage")
-                debugs(s"Allocations: ")
-                allocs.foreach{case TP(s,d) => debugs(s"..$s = $d") }
-                debugs(s"Nodes:")
-                nodes.foreach{case TP(s,d) => debugs(s"..$s = $d") }
-                debugs(s"Register reads:")
-                regReads.foreach{case TP(s,d) => debugs(s"..$s = $d") }
-             }
+            def dumpStage(i: Int) {
+              if (isControl) debugs(s"$i. Control Stage")
+              else           debugs(s"$i. Primitive Stage")
+              debugs(s"Allocations: ")
+              allocs.foreach{case TP(s,d) => debugs(s"..$s = $d") }
+              debugs(s"Nodes:")
+              nodes.foreach{case TP(s,d) => debugs(s"..$s = $d") }
+              debugs(s"Register reads:")
+              regReads.foreach{case TP(s,d) => debugs(s"..$s = $d") }
+            }
           }
 
           // Imperative version (functional version caused ugly scalac crash :( )
