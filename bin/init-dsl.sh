@@ -33,6 +33,7 @@ ln -sf -T "$SPATIAL_HOME/apps"   "$FORGE_APPS/$dsl"
 
 DEST="$SPATIAL_HOME/published/"
 APPS="$DEST/$dsl/apps"
+TEST="$DEST/$dsl/tests"
 DSL_RUNNER=ppl.dsl.forge.dsls.${lcdsl}.${dsl}DSLRunner
 
 cd $HYPER_HOME
@@ -44,17 +45,25 @@ $FORGE_HOME/bin/forge $DSL_RUNNER
 echo publish $dsl --no-apps --dest $DEST 
 $FORGE_HOME/bin/publish $dsl --no-apps --dest $DEST
 
+### Hack: add symlink to apps and tests directories
 cd "$DEST/$dsl"
 if ! [ -L $APPS ]; then
 	ln -sf -T "$SPATIAL_HOME/apps" $APPS
 fi 
 
+if [ -d "$TEST" ]; then 
+  if ! [ -L "$TEST" ]; then
+		rmdir $TEST
+	fi
+fi
+ln -sf -T "$SPATIAL_HOME/tests" $TEST
+
 echo "sbt compile"
 sbt compile
 
-hasSphinx=which sphinx
-
-if [ "hasSphinx" != "" ]; then
+## Fun hack for checking if program exists
+## http://stackoverflow.com/questions/592620/check-if-a-program-exists-from-a-bash-script
+if hash sphinx-build 2>/dev/null; then
 	pushd .
 	echo "cd sphinx"
 	cd "sphinx"
