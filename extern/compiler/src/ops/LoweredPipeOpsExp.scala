@@ -161,8 +161,13 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       val Def(EatReflect(writer)) = writersOf(acc).head._3 //(wr controller, accum bool, st node of type bram_store)
       emitNode(acc, d) 
 
+      emitComment(s"""ParPipeReduce ${quote(sym)} controller {""")
       emitController(sym, Some(cchain))
+      emitComment(s"""} ${quote(sym)} controller""")
+
+      emitComment(s"""ParPipeReduce ${quote(sym)} par loop {""")
       emitParallelizedLoop(inds, cchain)
+      emitComment(s"""} ${quote(sym)} par loop""")
 
       var inputArgs = Set[Sym[Any]]()
       var treeResult = ""
@@ -185,7 +190,9 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
         }
       }
 
+      emitComment(s"""ParPipeReduce ${quote(sym)} func block {""")
       emitBlock(func)
+      emitComment(s"""} ${quote(sym)} func block""")
       val inputArgsStr = inputArgs.map {a => quote(a)}.mkString(",")
       val should_comma = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
       emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma $inputArgsStr $should_comma $treeResult); // Reduce kernel")

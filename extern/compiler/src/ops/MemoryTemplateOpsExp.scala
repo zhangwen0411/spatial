@@ -484,8 +484,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
         case p => throw new Exception(s"Unknown parent type ${p}!")
       }
       
+      val Def(rhss) = parentCtr
+      Console.println(s"the parent counter for $sym $bram is $parentCtr from $parentPipe, def $rhss")
       val accEn = parentCtr match {
         case Def(EatReflect(Counter_new(start, end, step, par))) =>  s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr)"
+        case Def(EatReflect(Counterchain_new(ctrs))) => s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr)"
         case _ =>  s"stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)"
       }
 
@@ -612,14 +615,27 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
         emitComment(s""" Offchip_new(${quote(size)}) }""")
 
     case Offchip_load_cmd(mem, fifo, ofs, len, par) =>
-      emit(s"""// ${quote(sym)}: Offchip_load_cmd(${quote(mem)},${quote(fifo)}, ${quote(ofs)}, ${quote(len)}, ${quote(par)})""")
-      emit(s"""MemoryCmdGenLib ${quote(sym)} = new MemoryCmdGenLib(
-          this,
-          ${quote(sym)}_en, ${quote(sym)}_done,
-          ${quote(mem)}, ${quote(ofs)},
-          "${quote(mem)}_${quote(sym)}_in",
-          ${quote(len)},
-          ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
+      withStream(baseStream) {
+        emit(s"""DFEVar ${quote(fifo)}_trashEn = dfeBool().newInstance(this); // Send stream to trash for when read is not burst-aligned""")
+      }
+      len match {
+        case ConstFix(length) =>
+          emit(s"""MemoryCmdGenLib ${quote(sym)} = new MemoryCmdGenLib(
+              this,
+              ${quote(sym)}_en, ${quote(sym)}_done,
+              ${quote(mem)}, ${quote(ofs)},
+              "${quote(mem)}_${quote(sym)}_in",
+              ${length},
+              ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
+        case _ =>
+          emit(s"""MemoryCmdGenLib ${quote(sym)} = new MemoryCmdGenLib(
+              this,
+              ${quote(sym)}_en, ${quote(sym)}_done,
+              ${quote(mem)}, ${quote(ofs)},
+              "${quote(mem)}_${quote(sym)}_in",
+              ${quote(len)},
+              ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
+      }
       emit(s"""${quote(fifo)}_writeEn <== ${quote(sym)}_en;""")
       emit(s"""${quote(fifo)}_wdata <== ${quote(fifo)}_rdata;""")
 

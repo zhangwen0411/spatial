@@ -224,7 +224,6 @@ trait MaxJPreCodegen extends Traversal  {
       focusExactScope(func){ stms =>
         stms.zipWithIndex.map { case (TP(s,d), ii) =>
           val Deff(dd) = s
-          Console.println(s"Unroll $sym precodegen for $s $dd")
           dd match {
             case Reg_read(_) =>
               first_reg_read = first_reg_read :+ ii
