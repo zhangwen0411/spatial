@@ -23,6 +23,11 @@ trait SpatialPrinter extends IRPrinterPlus {
   verboseMode = SpatialConfig.verbose
 }
 
+trait SpatialPrinterLast extends IRPrinterPlus {
+  import IR._
+  debugMode = SpatialConfig.debugginglast
+}
+
 trait DotIRPrinter extends Traversal with QuotingExp {
 	val IR: SpatialExp with MemoryAnalysisExp
 	import IR.{infix_until => _, looprange_until => _, println => _, _}
