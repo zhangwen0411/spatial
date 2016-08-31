@@ -154,6 +154,9 @@ trait GEMMApp extends SpatialApp {
     val a = OffChipMem[T](M, P) 
     val b = OffChipMem[T](P, N) 
     val c = OffChipMem[T](M, N)
+    levelOf(a) = 0
+    levelOf(b) = 0
+    levelOf(c) = 0
 
 // lets solve  A(480x96)x B(96x480)= C (480x480)
 
@@ -181,6 +184,8 @@ trait GEMMApp extends SpatialApp {
       Pipe(P by k_c) { k =>
         val tileA = BRAM[T](M, k_c)
         val tileB = BRAM[T](k_c, N)
+        levelOf(tileA) = 1
+        levelOf(tileB) = 1
         Parallel {
           tileA := a(0::M, k::k+k_c, param(1))
           tileB := b(k::k+k_c, 0::N, param(1))
@@ -214,7 +219,8 @@ trait GEMMApp extends SpatialApp {
               // DATA MOVEMENT
               Pipe(n_r by 1, n_r by 1) { (copy_m, copy_n) => 
                 // TODO: Use tileC_acc as accumulator, which doesn't work now because multiple writers to it...
-                tileC_prev(copy_m, copy_n) = tileC(local_m + accum_m + copy_m, local_n + copy_n) }
+                tileC_acc(copy_m, copy_n) = tileC(local_m + accum_m + copy_m, local_n + copy_n) }
+                // tileC_prev(copy_m, copy_n) = tileC(local_m + accum_m + copy_m, local_n + copy_n) }
                 // TODO: Handle corner cases if triple buffered
 
 
