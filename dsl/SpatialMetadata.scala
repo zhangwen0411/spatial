@@ -35,6 +35,13 @@ trait SpatialMetadata {
     static (isDummy) ("apply", Nil, (MAny) :: SBoolean) implements
       composite ${ meta[DummyMem]($0).map(_.isDummy).getOrElse(false) }
 
+    val MemLevel = metadata("MemLevel", "levelOf" -> SInt)
+    val levelOf = metadata("levelOf")
+    static (levelOf) ("update", Nil, (MAny, SInt) :: MUnit, effect = simple) implements
+      composite ${ setMetadata($0, MemLevel($1)) }
+    static (levelOf) ("apply", Nil, (MAny) :: SInt) implements
+      composite ${ meta[MemLevel]($0).map(_.levelOf).getOrElse(-1) }
+
     val UserInstanceIndex = metadata("UserInstanceIndex", "idx" -> SInt)
     val userIdxOps = metadata("memoryIndexOf")
     static (userIdxOps) ("update", Nil, (MAny, SInt) :: MUnit, effect = simple) implements
