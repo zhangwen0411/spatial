@@ -56,6 +56,9 @@ trait ReductionAnalyzer extends Traversal with SpatialTraversalTools {
       reduceType(a) = funcType
       reduceType(acc) = funcType
       reduceType(lhs) = funcType
+      Console.println(s"acc $acc to $funcType in $lhs")
+      Console.println(s"a $a to $funcType in $lhs")
+
 
 
     case Accum_fold(c1,c2,a,z,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV) =>
@@ -67,6 +70,7 @@ trait ReductionAnalyzer extends Traversal with SpatialTraversalTools {
       reduceType(a) = funcType
       reduceType(acc) = funcType
       reduceType(lhs) = funcType
+
 
     case _ => super.traverse(lhs, rhs)
   }

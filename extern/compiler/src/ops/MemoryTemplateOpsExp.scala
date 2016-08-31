@@ -1,6 +1,6 @@
 package spatial.compiler.ops
-
 import java.io.{File,FileWriter,PrintWriter}
+
 import scala.virtualization.lms.common.{BaseExp, EffectExp, ScalaGenEffect, CGenEffect, DotGenEffect, MaxJGenEffect, MaxJGenFat, Record}
 import scala.virtualization.lms.internal.{Traversal}
 import scala.reflect.{Manifest,SourceContext}
@@ -138,6 +138,7 @@ trait CGenMemoryTemplateOps extends CGenEffect {
 //    if (bits <= 32) "float"
 //    else "double"
 //  }
+
 
   override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
     case "BlockRAM" => remapWithRef(m.typeArguments(0))
@@ -280,6 +281,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                 }
                 if (writersOf(b).isEmpty) throw new Exception(s"Bram ${quote(b)} has no writer!")
                 val topWriter = topWritersOf(b).head
+                Console.println(s"these are topwriters ${topWritersOf(b)}\nthese are writers ${writersOf(b)}")
+
                 topWriter match {
                   case (writer, _, _) =>
                     emit(s"""${quote(b)}.connectWdone(${quote(writer)}_done);""")
@@ -335,6 +338,36 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       }
     }
     super.emitFileFooter()
+  }
+
+  def getBanking(bram: MemInstance) = {
+    val bnks = bram.banking.map { a =>
+      a match {
+        case DiagonalBanking(_, banks) => banks
+        case StridedBanking(_, banks) => banks
+        case _ => 1
+      }
+    }
+    bram.banking.length match {
+      case 1 => bnks(0)
+      case 2 => bnks.mkString("new int[] {", ",", "}")
+      case _ => throw new Exception(s"Can't handle ${bram.banking.length}-D memory!")
+    }
+  }
+  def getStride(bram: MemInstance) = {
+    val strds = bram.banking.map { a =>
+        a match {
+          case DiagonalBanking(strides, _) => throw new Exception(s"Can't handle Diagonal banking yet")
+          case StridedBanking(stride, _) => stride
+          case _ => 1
+        }
+      }
+    bram.banking.length match {
+      case 1 => strds(0)
+      case 2 => strds.mkString("new int[] {", ",", "}")
+      case _ => throw new Exception(s"Can't handle ${bram.banking.length}-D memory!")
+    }
+  
   }
 
   def bramLoad(sym: Sym[Any], bram_in: Exp[BRAM[Any]], addr: Exp[Any], par: Boolean = false) {
@@ -463,6 +496,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
     val writers = writersOf(bram)
     val find_id = writers.map{case (_, _, s) => s}
     val i = find_id.indexOf(sym)
+    Console.println(s"bram $bram, writers $writers, matching this $sym")
     val this_writer = writers(i)._1
     val inds = parIndicesOf(writers(i)._3)
     val num_dims = dimsOf(bram).length
@@ -667,6 +701,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
               case Regular =>
                 (reduceType(sym), i) match {
                   case (Some(fps: ReduceFunction), 0) =>
+                    Console.println(s"[WARNING] Why is duplicate 0 the reduce function accum?")
                     // Assume only duplicate 1 needs reg_lib if this is reducetype
                   case _ =>
                     val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
@@ -776,12 +811,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                         case Some(fps: ReduceFunction) => fps match {
                           case FixPtSum =>
                             emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
-                            emit(s"""DFEVar ${quote(reg)}_hold = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
-                            emit(s"""DFEVar ${quote(reg)} = ${quote(reg)}_hold;""")
+                            emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
                           case FltPtSum =>
                             emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                         }
-                        emit(s"""${quote(reg)}_1_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")
+                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
                       }
                     case p@Def(EatReflect(pipe:ParPipeReduce[_,_])) => 
                       emit(s"// ParPipeReduce accum")
@@ -793,12 +827,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                         case Some(fps: ReduceFunction) => fps match {
                           case FixPtSum =>
                             emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
-                            emit(s"""DFEVar ${quote(reg)}_hold = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
-                            emit(s"""DFEVar ${quote(reg)} = ${quote(reg)}_hold;""")
+                            emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
                           case FltPtSum =>
                             emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                         }
-                        emit(s"""${quote(reg)}_1_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")
+                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
                       }
                     case p@Def(EatReflect(Unit_pipe(func))) =>
                       emit(s"// Unit_pipe accum")
@@ -818,7 +851,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                           case _ =>
                             throw new Exception(s"Reduce type of reg $reg, pipe $p, not implemented!")
                         }
-                        emit(s"""${quote(reg)}_1_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")
+                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
                       }
 
                     case _ =>
@@ -870,32 +903,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
           val dups = duplicatesOf(sym)
           dups.length match {
             case 1 =>
-              val banks = {
-                val bnks = dups(0).banking.map { a =>
-                  a match {
-                    case DiagonalBanking(_, banks) => banks
-                    case StridedBanking(_, banks) => banks
-                    case _ => 1
-                    }}
-                dups(0).banking.length match {
-                  case 1 => bnks(0)
-                  case 2 => bnks.mkString("new int[] {", ",", "}")
-                  case _ => throw new Exception(s"Can't handle ${dups(0).banking.length}-D memory!")
-                }
-              }
-              val strides = {
-                val strds = dups(0).banking.map { a =>
-                  a match {
-                    case DiagonalBanking(strides, _) => throw new Exception(s"Can't handle Diagonal banking yet")
-                    case StridedBanking(stride, _) => stride
-                    case _ => 1
-                    }}
-                dups(0).banking.length match {
-                  case 1 => strds(0)
-                  case 2 => strds.mkString("new int[] {", ",", "}")
-                  case _ => throw new Exception(s"Can't handle ${dups(0).banking.length}-D memory!")
-                }
-              }
+              val banks = getBanking(dups(0))
+              val strides = getStride(dups(0))
               if (isDblBuf(sym)) { // TODO: Are these three actually mutually exclusive?
                     emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${quote(sym)}_DblBufSM(this));""")
                     emit(s"""DblBufKernelLib ${quote(sym)} = new DblBufKernelLib(this, ${quote(sym)}_sm,
@@ -907,33 +916,9 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
               }
             case _ => // multiple readers
               dups.zipWithIndex.foreach { case (r, i) =>
-                val banks = {
-                  val bnks = r.banking.map { a =>
-                    a match {
-                      case DiagonalBanking(_, banks) => banks
-                      case StridedBanking(_, banks) => banks
-                      case _ => 1
-                      }}
-                  r.banking.length match {
-                    case 1 => bnks(0)
-                    case 2 => bnks.mkString("new int[] {", ",", "}")
-                    case _ => throw new Exception(s"Can't handle ${dups(0).banking.length}-D memory!")
-                  }
-                }
-                val strides = {
-                  val strds = r.banking.map { a =>
-                    a match {
-                      case DiagonalBanking(strides, _) => throw new Exception(s"Can't handle Diagonal banking yet")
-                      case StridedBanking(stride, _) => stride
-                      case _ => 1
-                      }}
-                  r.banking.length match {
-                    case 1 => strds(0)
-                    case 2 => strds.mkString("new int[] {", ",", "}")
-                    case _ => throw new Exception(s"Can't handle ${dups(0).banking.length}-D memory!")
-                  }
-                }
-
+                Console.println(s"emitting bram $sym - $i, instance $r")
+                val banks = getBanking(r)
+                val strides = getStride(r)
                 if (isDummy(sym)) {
                   emit(s"""DummyMemLib ${quote(sym)}_${i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""") 
                 } else {
@@ -946,6 +931,10 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                     emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
                     emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
                       ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
+                  } else {
+                    // val countlist = readersOf(sym)
+                    // val numReaders_for_this_duplicate = countlist.map{q => q}.filter{ q => (instanceIndexOf(q._3, sym) = i)}.length
+                    emit(s"""CANNOT EMIT ${r.depth}-buffered mem yet!!""")
                   }
                 }
               }

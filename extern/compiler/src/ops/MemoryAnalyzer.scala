@@ -19,16 +19,6 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
   var damn_build_dir = ""
   var bram_redloop_map = HashMap[Exp[Any],Exp[Any]]()
 
-  // TODO
-  def isDblBuf(e: Exp[Any]) = duplicatesOf(e).headOption match {
-    case Some(meminst) => meminst.depth == 2
-    case _ => false
-  }
-  def banks(e: Exp[Any]) = duplicatesOf(e).headOption match {
-    case Some(meminst) => meminst.banking.head.banks
-    case _ => 1
-  }
-
   sealed abstract class Banking(val banks: Int)
   object Banking {
     def unapply(x: Banking): Option[Int] = Some(x.banks)
@@ -144,9 +134,9 @@ trait BankingBase extends Traversal {
 
   // TODO: How to express "tapped" block FIFO? What information is needed here?
   def coalesceDuplicates(mem: Exp[Any], reads: List[Exp[Any]], insts: List[MemInstance]) = {
-    reads.zipWithIndex.foreach{case (read, idx) => 
+    reads.zipWithIndex.foreach{case (read, idx) =>
       Console.println(s"[instanceIndexOf] Set $read, $mem, $idx")
-      instanceIndexOf(read, mem) = idx 
+      instanceIndexOf(read, mem) = idx
     }
     insts
   }
@@ -328,9 +318,9 @@ trait BRAMBanking extends BankingBase {
         val allocReads = allocatedReads.map{read => s"$read (${memoryIndexOf(read._3)})"}
         debug(s"Write: $write, Reads: $unallocatedReads")
         debug(s"(Leaving out preallocated reads $allocReads)")
-        allocatedReads.foreach{read => 
+        allocatedReads.foreach{read =>
           Console.println(s"[instanceIndexOf] Set $read._3, $mem, ${memoryIndexOf(read._3)}")
-          instanceIndexOf(read._3, mem) = memoryIndexOf(read._3) 
+          instanceIndexOf(read._3, mem) = memoryIndexOf(read._3)
         }
         val dups = unallocatedReads.map(read => pairedAccess(mem, write, read))
         coalesceDuplicates(mem, unallocatedReads.map(_._3), dups)
