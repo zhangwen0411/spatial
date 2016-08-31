@@ -280,6 +280,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                 }
                 if (writersOf(b).isEmpty) throw new Exception(s"Bram ${quote(b)} has no writer!")
                 val topWriter = topWritersOf(b).head
+                Console.println(s"these are topwriters ${topWritersOf(b)}\nthese are writers ${writersOf(b)}")
+
                 topWriter match {
                   case (writer, _, _) =>
                     emit(s"""${quote(b)}.connectWdone(${quote(writer)}_done);""")

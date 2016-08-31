@@ -14,8 +14,9 @@ Installation
 
 Building Spatial requires the `spatial` branch of the hyperdsl (https://github.com/stanford-ppl/hyperdsl) project. Hyperdsl is itself composed of three submodules: Forge, Delite, and LMS, all of which also have a `spatial` branch.
 
-To setup hyperdsl after cloning:
+To setup hyperdsl, do the following:
 
+    git clone https://github.com/stanford-ppl/hyperdsl.git
     cd hyperdsl
     git checkout spatial
     git submodule update --init
@@ -31,8 +32,9 @@ Set the following environment variables, requried for sbt and hyperdsl scripts:
 
 *init-env.sh* in hyperdsl sets the sensible defaults for all of these paths except `JAVA_HOME` for the current session. Add these variables to your login shell's startup script to avoid having to manually set these each session.
 
-Now, clone Spatial to the directory of your choice and type:
+Now, clone Spatial into hyperdsl as follows:
 
+    https://github.com/stanford-ppl/spatial.git
     cd spatial && make
 
 The setup script will prompt you for the `SPATIAL_HOME` environment variable. Press enter to use the current directory. To skip this message in the future, set this variable in your login shell's startup script.
@@ -119,7 +121,11 @@ Run the following commands to make your app:
 
 This will create the directory `out/` in `$SPATIAL_HOME/published/Spatial` that contains the generated code.  You must have the --cpp flag on even to generate MaxJ because this causes Delite to generate all of the necessary host code for the app. 
 
-In order to test the MaxJ app, you must copy this `out/` directory to a machine with MaxCompiler 2014.1 or later.  If you want to test the code for functionality, you can force MaxCompiler to generate a CPP simulation of the app.  If you want to generate a bitstream to test the app on a Stratix V, you can get MaxCompiler to synthesize the entire design.  A build for simulation will take time on the order of minutes, while a build for synthesis will take time on the order of hours.  A simulation will ensure functionality but not runtime.
+In order to test the MaxJ app, you must copy this `out/` directory to a machine with MaxCompiler 2014.1 or later:
+
+    cp -r $SPATIAL_HOME/published/Spatial/out <maxcompiler_server>
+
+If you want to test the code for functionality, you can force MaxCompiler to generate a CPP simulation of the app.  If you want to generate a bitstream to test the app on a Stratix V, you can get MaxCompiler to synthesize the entire design.  A build for simulation will take time on the order of minutes, while a build for synthesis will take time on the order of hours.  A simulation will ensure functionality but not runtime.
 
 To build for simulation, run the following:
     
