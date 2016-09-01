@@ -45,47 +45,10 @@ trait LatencyAnalyzer extends ModelingTraversal {
     pipe_diagram.write(s"Latency: ${cycs}</TD></TR>")
 
   }
-  def emit_pipe_diagram(diagram: List[(Int,Sym[Any],List[Long],String,Long)] ) {
-    val layers = diagram.map{case (l, s, c, n, its) => l}
-    val syms = diagram.map{case (l, s, c, n, its) => l}
-    val show_iters = 3
-    val max_layer:Int = layers.max
-    pipe_diagram.write(s"""Diagram to print: <p>${diagram.mkString("<p>")}<p><p>""")
-
-//     val hierarchical_html = layers.distinct.sorted.filter{ i => i > 0 }.map { cur_layer =>
-//       val layer = diagram.filter{case (l,_,_,_,_) => l == cur_layer}
-//       val table = layer.zipWithIndex.map { case (this_layer,l) =>
-//         this_layer._3.zipWithIndex.map { case (cyc, i) =>
-//           var ans = s"""<TR>"""
-//           ans += s"""<TD></TD>"""*l*show_iters // Stage delay
-//           ans += s"""<TD></TD>"""*i // Pipeline delay
-//           ans += s"""<TD> Niters:${this_layer._5}<p>
-// ${this_layer._4}_$i - $cyc cycles<p>
-// expand</TD>"""*(show_iters-i)
-//           ans += s"""<TD>...</TD>"""
-//           ans += s"""</TR>
-//     """
-//           ans
-//         }.mkString(" ")
-//       }.mkString(" ")
-
-//       val layer_html = s"""Level: $cur_layer
-// <TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">""" + table + """
-//   </TABLE>"""
-
-//       layer_html
-//     }
-
-//     hierarchical_html.foreach{ case a => 
-//       // pipe_diagram.write(s"""$a""")
-//     }
-
-  }
 
   var cycleScope: List[Long] = Nil
   var totalCycles: Long = 0L
   var scopeLevel: Int = 0
-  var diagram: List[(Int, Sym[Any], List[Long], String, Long)] = List()
 
   def debugs(x: => Any) = debug(".."*scopeLevel + x)
 
@@ -103,7 +66,8 @@ trait LatencyAnalyzer extends ModelingTraversal {
     scopeLevel += 1
     //traverseBlock(b) -- can cause us to see things like counters as "stages"
     getControlNodes(b).zipWithIndex.foreach{ case (n, i) =>
-      indent = if (!par_mask) {i} else {0}
+      // indent = if (!par_mask) {i} else {0}
+      indent = i
       n match {
         case s@Def(d) => traverse(s.asInstanceOf[Sym[Any]], d)
         case _ =>
@@ -123,14 +87,12 @@ trait LatencyAnalyzer extends ModelingTraversal {
         val body = latencyOfBlock(blk).sum
         save(blk)
         // print_diagram(lhs, List(body), "hwblock")
-        diagram = diagram :+ ((scopeLevel, lhs, List(body), "hwblock", 1))
         inHwScope = false
         body
 
       case EatReflect(Pipe_parallel(func)) =>
         debugs(s"Parallel $lhs: ")
         print_stage_prefix(s"parallel $lhs", 0)
-
         val blks = latencyOfBlock(func, true)
         print_stage_suffix(blks.max  + latencyOf(lhs))
         if (debugMode) blks.reverse.zipWithIndex.foreach{case (s,i) => debugs(s"- $i. $s")}
@@ -141,8 +103,8 @@ trait LatencyAnalyzer extends ModelingTraversal {
       case EatReflect(Unit_pipe(func)) if isInnerPipe(lhs) =>
         debugs(s"Pipe $lhs: ")
         val pipe = latencyOfPipe(func)
-        pipe_diagram.write(s"""<TR>""" + """<TD></TD>"""*indent)
-        pipe_diagram.write(s"""<TD>inner_unit $lhs: <p> Cycles: ${pipe}</TD>""")
+        pipe_diagram.write(s"""<TR>""" + """<TD></TD>"""*indent*0)
+        pipe_diagram.write(s"""<TD>inner_unit stage${indent}: <p> Cycles: ${pipe}</TD>""")
         pipe_diagram.write(s"""<TR>""")
         debugs(s"- pipe = $pipe")
         pipe + latencyOf(lhs)
@@ -151,9 +113,9 @@ trait LatencyAnalyzer extends ModelingTraversal {
         val N = nIters(cchain)
         debugs(s"Foreach $lhs (N = $N):")
         val pipe = latencyOfPipe(func)
-        pipe_diagram.write(s"""<TR>""" + """<TD></TD>"""*indent)
-        pipe_diagram.write(s"""<TD>inner_foreach $lhs: <p> Cycles: ${pipe + latencyOf(lhs)}</TD>""")
-        if (N > 1) {pipe_diagram.write(s"""<TD> x${N} iters...</TD>""")}
+        pipe_diagram.write(s"""<TR>""" + """<TD></TD>"""*indent*0)
+        pipe_diagram.write(s"""<TD>inner_foreach stage${indent}: <p> Cycles: ${pipe + latencyOf(lhs)} <p> x${N} iters...</TD> """)
+        // if (N > 1) {pipe_diagram.write(s"""<TD> x${N} iters...</TD>""")}
         pipe_diagram.write(s"""<TR>""")
         debugs(s"- pipe = $pipe")
         pipe + N - 1 + latencyOf(lhs)
@@ -178,9 +140,9 @@ trait LatencyAnalyzer extends ModelingTraversal {
         debugs(s"- tree  = $internal")
         debugs(s"- cycle = $cycle")
 
-        pipe_diagram.write(s"""<TR>""" + """<TD></TD>"""*indent)
-        pipe_diagram.write(s"""<TD>inner_fold $lhs: <p> Cycles: ${cycle}</TD>""")
-        if (N > 1) {pipe_diagram.write(s"""<TD> x${N} iters...</TD>""")}
+        pipe_diagram.write(s"""<TR>""" + """<TD></TD>"""*indent*0)
+        pipe_diagram.write(s"""<TD>inner_fold stage${indent}: <p> Cycles: ${cycle} <p> x${N} iters...</TD>""")
+        // if (N > 1) {pipe_diagram.write(s"""<TD> x${N} iters...</TD>""")}
         pipe_diagram.write(s"""<TR>""")
 
         body + internal + N*cycle + latencyOf(lhs)
@@ -188,9 +150,11 @@ trait LatencyAnalyzer extends ModelingTraversal {
       // --- Sequential
       case EatReflect(Unit_pipe(func)) if isSequential(lhs) =>
         // print_diagram(lhs, List(1), "seq_unit_pipe")
-        diagram = diagram :+ ((scopeLevel, lhs, List(1), "seq_unit_pipe", 1))
         debugs(s"Outer Pipe $lhs:")
+
+        print_stage_prefix(s"unit_pipe $lhs", 0)
         val stages = latencyOfBlock(func)
+        print_stage_suffix(stages.sum)
         if (debugMode) stages.reverse.zipWithIndex.foreach{case (s,i) => debugs(s"- $i. $s")}
 
         stages.sum + latencyOf(lhs)
@@ -200,26 +164,29 @@ trait LatencyAnalyzer extends ModelingTraversal {
       case EatReflect(Pipe_foreach(cchain, func, _)) =>
         val N = nIters(cchain)
         debugs(s"Outer Foreach $lhs (N = $N):")
+        print_stage_prefix(s"foreach $lhs", 0)
         val stages = latencyOfBlock(func)
+        print_stage_suffix(stages.sum)
         if (debugMode) stages.reverse.zipWithIndex.foreach{case (s,i) => debugs(s"- $i. $s")}
         // print_diagram(lhs, List(1), "foreach")
-        diagram = diagram :+ ((scopeLevel, lhs, List(1), "foreach", 1))
 
         if (isMetaPipe(lhs)) { stages.max * (N - 1) + stages.sum + latencyOf(lhs) }
         else                 { stages.sum * N + latencyOf(lhs) }
 
       case EatReflect(Pipe_fold(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,_,_,_,_)) =>
         // print_diagram(lhs, List(1), "fold")
-        diagram = diagram :+ ((scopeLevel, lhs, List(1), "fold", 1))
         val N = nIters(cchain)
         val P = parsOf(cchain).reduce(_*_)
         debugs(s"Outer Reduce $lhs (N = $N):")
 
+        print_stage_prefix(s"pipe_fold_map $lhs", 0)
         val mapStages = latencyOfBlock(func)
+        print_stage_suffix(mapStages.sum)
         val internal = latencyOfPipe(rFunc) * reductionTreeHeight(P)
         val cycle = latencyOfCycle(iFunc) + latencyOfCycle(ld) + latencyOfCycle(rFunc) + latencyOfCycle(st)
 
         val reduceStage = internal + cycle
+        pipe_diagram.write(s"<TR><TD>pipe_fold_reduce $lhs <p> latency $reduceStage </TD></TR>")
         val stages = mapStages :+ reduceStage
 
         if (debugMode) stages.reverse.zipWithIndex.foreach{case (s,i) => debugs(s"- $i. $s")}
@@ -242,9 +209,8 @@ trait LatencyAnalyzer extends ModelingTraversal {
         val internal: Long = latencyOfPipe(iFunc) + latencyOfPipe(ld1) + latencyOfPipe(rFunc) * reductionTreeHeight(Pm)
         val accumulate: Long = latencyOfPipe(ld2) + latencyOfPipe(rFunc) + latencyOfPipe(st)
 
-        print_stage_prefix(s"accum_fold_reduce $lhs", 1)
         val reduceStage: Long = internal + accumulate + Nr - 1
-        print_stage_suffix(reduceStage)
+        pipe_diagram.write(s"<TR><TD>accum_fold_reduce $lhs <p> latency $reduceStage </TD></TR>")
         val stages = mapStages :+ reduceStage
 
         if (debugMode) stages.reverse.zipWithIndex.foreach{case (s,i) => debugs(s"- $i. $s")}
@@ -285,8 +251,8 @@ trait LatencyAnalyzer extends ModelingTraversal {
 
     report(s"Estimated cycles: $totalCycles")
     report(s"Estimated runtime (at " + "%.2f".format(IR.CLK) +"MHz): " + "%.8f".format(totalCycles/(IR.CLK*1000000f)) + "s")
-    emit_pipe_diagram(diagram)
-    pipe_diagram.write("""  </TABLE>
+    pipe_diagram.write(s"""  </TABLE>
+Estimated cycles: $totalCycles
 </body>
 </html>""")
     pipe_diagram.close
