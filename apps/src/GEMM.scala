@@ -219,9 +219,10 @@ trait GEMMApp extends SpatialApp {
               // DATA MOVEMENT
               Pipe(n_r by 1, n_r by 1) { (copy_m, copy_n) => 
                 // TODO: Use tileC_acc as accumulator, which doesn't work now because multiple writers to it...
-                tileC_acc(copy_m, copy_n) = tileC(local_m + accum_m + copy_m, local_n + copy_n) }
-                // tileC_prev(copy_m, copy_n) = tileC(local_m + accum_m + copy_m, local_n + copy_n) }
+                // tileC_acc(copy_m, copy_n) = tileC(local_m + accum_m + copy_m, local_n + copy_n) 
+                tileC_prev(copy_m, copy_n) = tileC(local_m + accum_m + copy_m, local_n + copy_n) 
                 // TODO: Handle corner cases if triple buffered
+              }
 
 
               Fold(k_c by 1)(tileC_acc, 0.as[T]) { compute_k =>
