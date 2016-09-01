@@ -496,6 +496,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
     val writers = writersOf(bram)
     val find_id = writers.map{case (_, _, s) => s}
     val i = find_id.indexOf(sym)
+    Console.println(s"bram $bram, writers $writers, matching this $sym")
     val this_writer = writers(i)._1
     val inds = parIndicesOf(writers(i)._3)
     val num_dims = dimsOf(bram).length
@@ -700,6 +701,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
               case Regular =>
                 (reduceType(sym), i) match {
                   case (Some(fps: ReduceFunction), 0) =>
+                    Console.println(s"[WARNING] Why is duplicate 0 the reduce function accum?")
                     // Assume only duplicate 1 needs reg_lib if this is reducetype
                   case _ =>
                     val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
@@ -809,12 +811,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                         case Some(fps: ReduceFunction) => fps match {
                           case FixPtSum =>
                             emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
-                            emit(s"""DFEVar ${quote(reg)}_hold = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
-                            emit(s"""DFEVar ${quote(reg)} = ${quote(reg)}_hold;""")
+                            emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
                           case FltPtSum =>
                             emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                         }
-                        emit(s"""${quote(reg)}_1_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")
+                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
                       }
                     case p@Def(EatReflect(pipe:ParPipeReduce[_,_])) => 
                       emit(s"// ParPipeReduce accum")
@@ -826,12 +827,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                         case Some(fps: ReduceFunction) => fps match {
                           case FixPtSum =>
                             emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
-                            emit(s"""DFEVar ${quote(reg)}_hold = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
-                            emit(s"""DFEVar ${quote(reg)} = ${quote(reg)}_hold;""")
+                            emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
                           case FltPtSum =>
                             emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                         }
-                        emit(s"""${quote(reg)}_1_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")
+                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
                       }
                     case p@Def(EatReflect(Unit_pipe(func))) =>
                       emit(s"// Unit_pipe accum")
@@ -851,7 +851,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                           case _ =>
                             throw new Exception(s"Reduce type of reg $reg, pipe $p, not implemented!")
                         }
-                        emit(s"""${quote(reg)}_1_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")
+                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
                       }
 
                     case _ =>
