@@ -115,13 +115,6 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
   }
 
 
-  def newStream(fileName:String):PrintWriter = {
-    val buildDir = damn_build_dir
-    val path = buildDir + java.io.File.separator + fileName + ".maxj"
-    val pw = new PrintWriter(path)
-    pw
-  }
-
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case e@ParPipeForeach(cchain, func, inds) =>
       controlNodeStack.push(sym)

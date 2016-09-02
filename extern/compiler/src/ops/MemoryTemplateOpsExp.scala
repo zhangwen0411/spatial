@@ -184,7 +184,7 @@ public:
 """)
     stream.close()
 
-    typesStream.println(s"""#include "maxjLmem.h"""")
+    typesStream.println(s"""#include "maxjLmem.h" """)
     typesStream.println(s"""#include <Top.h>""")
     typesStream.println(s"""extern max_engine_t *engine;""")
   }
@@ -377,10 +377,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       case Def(rhs) => false
       case _ => true
     }
-    // Console.println(s"cg: generating reader $sym on bram ${bram}x${duplicatesOf(bram).length}(bound ${bnd}) inst ${instanceIndexOf(sym, bram)}")
     if (isDummy(bram)) {
       val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
-      emit(s"""${pre} ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr)}); //1""")
+      bankOverride(sym) match {
+        case -1 => emit(s"""${pre} ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr)}); //1.0""")
+        case b => emit(s"""${pre} ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr)}, $b); //1.5""")
+
+      }
     } else {
       val dups = duplicatesOf(bram)
       val r = readersOf(bram)
@@ -538,7 +541,6 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       } else {
         if (writers.length == 1) {
           dups.zipWithIndex.foreach {case (dd, ii) =>
-            // I KNOW THERE ARE MORE CASES TO ADD IN THIS ACCUM SECTION!!!!
             num_dims match {
               case 1 =>
                 emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
@@ -597,7 +599,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                 }
               }
               case _ =>
-                if (quote(a(1)) == quote(b(1))) { // ugly hack
+                if (quote(a(1)) == quote(b(1))) { // ugly hack to check if same col
                   var addr1 = ""
                   val addr0 = inds.map {
                     case List(row, col) =>
@@ -615,17 +617,22 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                     }
                   }
 
-                } else {
+                } else { // same row
                   var addr0 = ""
                   val addr1 = inds.map {
                     case List(row, col) =>
-                      addr0 = quote(row) // Assume all are from same row?
+                      addr0 = quote(row)
                       quote(col)
                   }
                   emit(s"""// all have same row.  DFEVector<DFEVar> ${addr1(0)}_vectorized = new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")}));""")
                   if (dups.length == 1) {
-                    emit(s"""${quote(bram)}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})), 
-                    ${dataStr}, ${quote(this_writer)}_datapath_en); //14""")
+                    if (hardcodeEnsembles(bram)) { // Hack for bram characterization
+                      emit(s"""${quote(bram)}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})), 
+                      ${dataStr}, ${quote(this_writer)}_datapath_en, ${i}); //14""")                
+                    } else {
+                      emit(s"""${quote(bram)}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})), 
+                      ${dataStr}, ${quote(this_writer)}_datapath_en); //14""")                      
+                    }
                   } else {
                     dups.zipWithIndex.foreach {case (dd, ii) => 
                       emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})), 
@@ -815,7 +822,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                           case FltPtSum =>
                             emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                         }
-                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
+                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind+1}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
                       }
                     case p@Def(EatReflect(pipe:ParPipeReduce[_,_])) => 
                       emit(s"// ParPipeReduce accum")
@@ -831,7 +838,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                           case FltPtSum =>
                             emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                         }
-                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
+                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind+1}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
                       }
                     case p@Def(EatReflect(Unit_pipe(func))) =>
                       emit(s"// Unit_pipe accum")
@@ -851,7 +858,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                           case _ =>
                             throw new Exception(s"Reduce type of reg $reg, pipe $p, not implemented!")
                         }
-                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
+                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind+1}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
                       }
 
                     case _ =>

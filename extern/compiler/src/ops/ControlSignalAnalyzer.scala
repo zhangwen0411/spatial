@@ -149,9 +149,25 @@ trait ControlSignalAnalyzer extends Traversal {
   }
 
   def checkMultipleWriters(mem: Exp[Any], writer: Exp[Any]) {
-    // TODO: Multiple writers should be allowed for memory templates which have buffering support
     if (writersOf(mem).nonEmpty) {
-      stageError("Memory " + nameOf(mem).getOrElse("") + " defined here has multiple writers.")(mpos(mem.pos))
+      stageError("Memory " + nameOf(mem).getOrElse("") + s" defined here has multiple writers: $mem <- ${writersOf(mem)} ")(mpos(mem.pos))
+    }
+  }
+
+  def checkWritersSeq(mem: Exp[Any]) {
+    val top_writers = topWritersOf(mem).map { case (t,_,_) => t }
+    top_writers.foreach{ case t =>
+      if (isMetaPipe(t)) {
+        // TODO: Make this work
+        // Console.println(s"Memory " + nameOf(mem).getOrElse("") + s" has multiple writers at different stages of a metapipe, which is not yet supported! topwriters: ${topWritersOf(mem)}, writers: ${writersOf(mem)}")
+      }
+    }
+  }
+
+  def checkWritersConflict(mem: Exp[Any], writer: Exp[Any], ctrl: Exp[Any]) {
+    val current_ctrl = writersOf(mem).map { case (ct,_,_) => ct }
+    if (current_ctrl.contains(ctrl)) {
+      stageError("Memory " + nameOf(mem).getOrElse("") + s" has multiple writers with same parent: $mem <- ${writersOf(mem)} and $writer")(mpos(mem.pos))
     }
   }
 
@@ -163,11 +179,13 @@ trait ControlSignalAnalyzer extends Traversal {
 
   def appendWriter(ctrl: Exp[Any], isReduce: Boolean, writer: Exp[Any]) = writer match {
     case LocalWriter(writes) => writes.foreach{ case (mem,value,addr) =>
-      checkMultipleWriters(mem, writer)
+      // checkMultipleWriters(mem, writer)
+      checkWritersConflict(mem, writer, ctrl)
       val top = addr.map{a => getTopController(ctrl, isReduce, a)}.getOrElse( (ctrl, isReduce) )
 
       writersOf(mem) = writersOf(mem) :+ (ctrl, isReduce, writer)        // (5)
       topWritersOf(mem) = topWritersOf(mem) :+ (top._1, top._2, writer)  // (5.5)
+      checkWritersSeq(mem)
       writtenIn(ctrl) = writtenIn(ctrl) :+ mem                           // (10)
 
       // This memory is set as an accumulator if it's written value depends on the memory (some read node)
@@ -270,12 +288,14 @@ trait ControlSignalAnalyzer extends Traversal {
       traverseWith(lhs, isOuter, inds, cc)(rFunc)
 
       // TODO: Can these be generalized too?
-      checkMultipleWriters(a, lhs)
+      // checkMultipleWriters(a, lhs)
+      checkWritersConflict(a, lhs, lhs)
       checkMultipleReaders(a, lhs)
       readersOf(a) = readersOf(a) :+ (lhs, isOuter, lhs)  // (4)
       writersOf(a) = writersOf(a) :+ (lhs, isOuter, lhs)  // (5)
       topWritersOf(a) = topWritersOf(a) :+ (lhs, isOuter, lhs) // (5.5)
       topReadersOf(a) = topReadersOf(a) :+ (lhs, isOuter, lhs) // (5.6)
+      checkWritersSeq(a)
       isAccum(a) = true                                   // (6)
       writtenIn(lhs) = writtenIn(lhs) :+ a                // (10)
       parentOf(a) = lhs  // Reset accumulator with reduction
@@ -287,12 +307,14 @@ trait ControlSignalAnalyzer extends Traversal {
       val partial = getBlockResult(func)
       readersOf(partial) = readersOf(partial) :+ (lhs,true,lhs) // (4)
 
-      checkMultipleWriters(a, lhs)
+      // checkMultipleWriters(a, lhs)
+      checkWritersConflict(a, lhs, lhs)
       checkMultipleReaders(a, lhs)
       readersOf(a) = readersOf(a) :+ (lhs, true, lhs)     // (4)
       writersOf(a) = writersOf(a) :+ (lhs, true, lhs)     // (5)
       topWritersOf(a) = topWritersOf(a) :+ (lhs, true, lhs) // (5.5)
       topReadersOf(a) = topReadersOf(a) :+ (lhs, true, lhs) // (5.6)
+      checkWritersSeq(a)
       isAccum(a) = true                                   // (6)
       writtenIn(lhs) = writtenIn(lhs) :+ a                // (10)
       parentOf(a) = lhs  // Reset accumulator with reduction, not allocation

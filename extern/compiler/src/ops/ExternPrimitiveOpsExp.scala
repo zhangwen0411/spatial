@@ -152,13 +152,6 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
 
   import IR.{infix_until => _, looprange_until => _, println => _, _}
 
-  def hackyNewStream(fileName:String):PrintWriter = {
-    val buildDir = damn_build_dir
-    val path = buildDir + java.io.File.separator + fileName + ".maxj"
-    val pw = new PrintWriter(path)
-    pw
-  }
-
 	var traversals: List[Traversal{val IR: MaxJGenExternPrimitiveOps.this.IR.type}] = Nil
 
   lazy val preCodegen = new MaxJPreCodegen {
@@ -166,7 +159,6 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
   }
 
   override def initializeGenerator(bd:String): Unit = {
-    damn_build_dir = bd
     preCodegen.buildDir = bd
 		traversals = IR.traversals
     super.initializeGenerator(bd)

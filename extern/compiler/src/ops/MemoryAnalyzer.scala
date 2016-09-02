@@ -19,10 +19,16 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
   var damn_build_dir = ""
   var bram_redloop_map = HashMap[Exp[Any],Exp[Any]]()
 
-  // TODO
   def isDblBuf(e: Exp[Any]) = duplicatesOf(e).headOption match {
     case Some(meminst) => meminst.depth == 2
     case _ => false
+  }
+  def isNBuf(e: Exp[Any]) = {
+    false
+    // duplicatesOf(e).headOption match {
+    //   case Some(meminst) => meminst.depth > 2
+    //   case _ => false
+    // }
   }
   def banks(e: Exp[Any]) = duplicatesOf(e).headOption match {
     case Some(meminst) => meminst.banking.head.banks
@@ -76,6 +82,8 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
 
     def apply(reader: Exp[Any], mem: Exp[Any]) = meta[MemInstanceIndex](reader).get.mapping.apply(mem)
   }
+
+
 
   override def mirror[T<:Metadata](m: T, f: Transformer): T = m match {
     case MemInstanceIndex(map) =>
