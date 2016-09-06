@@ -28,6 +28,21 @@ trait SpatialMetadata {
     internal.static (aliasObj) ("unapply", Nil, (MAny) :: SOption(MAny)) implements composite ${ Some(aliasOf($0)) }
 
 
+
+    val BankOverrideId = metadata("BankOverrideId", "bankOverride" -> SInt)
+    val bankOverride = metadata("bankOverride")
+    static (bankOverride) ("update", Nil, (MAny, SInt) :: MUnit, effect = simple) implements
+      composite ${ setMetadata($0, BankOverrideId($1)) }
+    static (bankOverride) ("apply", Nil, (MAny) :: SInt) implements
+        composite ${ meta[BankOverrideId]($0).map(_.bankOverride).getOrElse(-1) }
+
+    val HardcodedEnsemble = metadata("HardcodedEnsemble", "hardcodeEnsembles" -> SBoolean)
+    val hardcodeEnsembles = metadata("hardcodeEnsembles")
+    static (hardcodeEnsembles) ("update", Nil, (MAny, SBoolean) :: MUnit, effect = simple) implements
+      composite ${ setMetadata($0, HardcodedEnsemble($1)) }
+    static (hardcodeEnsembles) ("apply", Nil, (MAny) :: SBoolean) implements
+        composite ${ meta[HardcodedEnsemble]($0).map(_.hardcodeEnsembles).getOrElse(false) }
+
     val DummyMem = metadata("DummyMem", "isDummy" -> SBoolean)
     val isDummy = metadata("isDummy")
     static (isDummy) ("update", Nil, (MAny, SBoolean) :: MUnit, effect = simple) implements
