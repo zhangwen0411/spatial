@@ -13,6 +13,32 @@ import spatial.shared.ops._
 import spatial.compiler._
 import spatial.compiler.ops._
 
+/**
+  A Spatial program is internally represented memory declarations, primitive operations, and nested state machines.
+  Primitive operations currently may only be defined within innermost state machines, with the exception of register reads.
+  Loop state machines have associated iterators which correspond to the loop counters.
+
+  Given memory M with set of accesses A, determine the [minimum?] duplication/banking/buffering scheme required to sustain throughput.
+
+  Two accesses a, b in A are concurrent if a != b and their least common ancestor is a pipelined state machine.
+  Two accesses a, b in A are sequential if a != b and their least common ancestor is a sequential state machine.
+
+  An access x in A is either a write to M or a read from M. Write accesses have associated data.
+  If M is an addressable memory, access x also has an associated multi-dimensional address.
+
+  Accesses with associated multi-dimensional addresses also have an associated access pattern for each dimension.
+  These patterns are defined in terms of loop iterators. Currently the only recognized pattern for a single dimension is
+  a * i + b
+  where a and b are both loop invariant expression (and may be zero).
+
+  (An expression is loop invariant if it can be statically determined to remain constant across all loop iterations)
+
+  ASSUMPTIONS:
+  1. Concurrent reads are always allowed.
+  2. Concurrent writes are disallowed unless they are to provably distinct addresses.
+  3. Time multiplexing sequential accesses is always cheaper than duplicating memories.
+ **/
+
 trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnalysisExp {
   this: SpatialExp =>
 
@@ -67,6 +93,8 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
     def apply(reader: Exp[Any], mem: Exp[Any]) = meta[MemInstanceIndex](reader).get.mapping.apply(mem)
   }
 
+
+
   override def mirror[T<:Metadata](m: T, f: Transformer): T = m match {
     case MemInstanceIndex(map) =>
       MemInstanceIndex(map.map{case (mem,idx) => f(mem) -> idx }).asInstanceOf[T]
@@ -102,7 +130,7 @@ trait BankingBase extends Traversal {
       debug("    read path: " + readPath.mkString(", "))
 
       if (lca.isDefined) {
-        if (isMetaPipe(lca.get)) {
+        if (isMetaPipe(lca.get) || isStreamPipe(lca.get)) {
           val parent = lca.get._1
           // FIXME: Reads and writes owned by the parent are assumed to occur at controller setup time
           if (write == lca && read != write) stageWarn("The parent of the write node here is the LCA - likely a bug")
@@ -140,6 +168,30 @@ trait BankingBase extends Traversal {
     }
     insts
   }
+
+  def checkMultipleWriters(mem: Exp[Any], writer: Exp[Any]) {
+    if (writersOf(mem).nonEmpty) {
+      stageError("Memory " + nameOf(mem).getOrElse("") + s" defined here has multiple writers: $mem <- ${writersOf(mem)} ")(mpos(mem.pos))
+    }
+  }
+
+  def checkWritersSeq(mem: Exp[Any]) {
+    val top_writers = topWritersOf(mem).map { case (t,_,_) => t }
+    top_writers.foreach{ case t =>
+      if (isMetaPipe(t)) {
+        // TODO: Make this work
+        // Console.println(s"Memory " + nameOf(mem).getOrElse("") + s" has multiple writers at different stages of a metapipe, which is not yet supported! topwriters: ${topWritersOf(mem)}, writers: ${writersOf(mem)}")
+      }
+    }
+  }
+
+  def checkWritersConflict(mem: Exp[Any], writer: Exp[Any], ctrl: Exp[Any]) {
+    val current_ctrl = writersOf(mem).map { case (ct,_,_) => ct }
+    if (current_ctrl.contains(ctrl)) {
+      stageError("Memory " + nameOf(mem).getOrElse("") + s" has multiple writers with same parent: $mem <- ${writersOf(mem)} and $writer")(mpos(mem.pos))
+    }
+  }
+
 
   def bank(mem: Exp[Any]): List[MemInstance] = stageError("Don't know how to bank memory of type " + mem.tp)
 }

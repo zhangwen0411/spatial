@@ -189,19 +189,29 @@ trait MaxJPreCodegen extends Traversal  {
       dups.length match {
         case 1 =>
           if (isDblBuf(sym)) {
-              withStream(newStream("bram_" + quote(sym))) {
-                emitDblBufSM(quote(sym), readersOf(sym).length)
-              }
+            withStream(newStream("bram_" + quote(sym))) {
+              emitDblBufSM(quote(sym), readersOf(sym).length)
             }
+          } else if (isNBuf(sym)) {
+            // withStream(newStream("bram_" + quote(sym))) {
+            //   emitNBufSM(quote(sym), readersOf(sym).length)              
+            // }
+          }
+
         case _ =>
           dups.zipWithIndex.foreach { case (d, i) =>
             val readers = readersOf(sym)
-            if (d.depth > 1) {
+            if (d.depth == 2) {
               val numReaders_for_this_duplicate = readers.map{r => r}.filter{ r => (instanceIndexOf(r._3, sym) == i)}.length
               withStream(newStream("bram_" + quote(sym) + "_" + i)) {
                 emitDblBufSM(quote(sym) + "_" + i, numReaders_for_this_duplicate)
               }
+            } else if (d.depth > 2) {
+              // withStream(newStream("bram_" + quote(sym) + "_" + i)) {
+              //   emitNBufSM(quote(sym) + "_" + i, d.depth)              
+              // }
             }
+
           }
       }
 
@@ -212,6 +222,145 @@ trait MaxJPreCodegen extends Traversal  {
 			//println("tp:" + sym.tp.erasure.getSimpleName() + "rhs:" + rhs)
 		}
 	}
+
+//   def emitNBufSM(name: String, bufs: Int) = {
+//   stream.println(s"""
+//   package engine;
+//   import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+//   import com.maxeler.maxcompiler.v2.statemachine.DFEsmInput;
+//   import com.maxeler.maxcompiler.v2.statemachine.DFEsmOutput;
+//   import com.maxeler.maxcompiler.v2.statemachine.DFEsmStateEnum;
+//   import com.maxeler.maxcompiler.v2.statemachine.DFEsmStateValue;
+//   import com.maxeler.maxcompiler.v2.statemachine.DFEsmValue;
+//   import com.maxeler.maxcompiler.v2.statemachine.kernel.KernelStateMachine;
+//   import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;
+
+//   class ${name}_${bufs}BufSM extends KernelStateMachine {
+
+//     // States
+//     enum States {
+//       ${(0 until Math.pow(2,bufs).toInt).map{
+//        i => "s" + printf ("%08d", i.toBinaryString.toInt)}
+//       }
+//       W, R, RW, SWAP
+//     }
+
+//     // State IO
+//     private final DFEsmInput w_done;
+//     private final DFEsmOutput curBuf;""");
+
+//     for(i <- 0 until numReaders) {
+//   stream.println(s"""
+//   private final DFEsmInput r_done_$i;
+//   """)
+//     }
+
+//   stream.println(s"""
+//     // State storage
+//     private final DFEsmStateEnum<States> stateFF;
+//     private final DFEsmStateValue curBufFF;
+
+//     private final DFEsmStateValue[] rdoneBitVectorFF;
+//     private final DFEsmValue allRdone;
+
+//     // Initialize state machine in constructor
+//     public ${name}_DblBufSM(KernelLib owner) {
+//       super(owner);
+
+//       // Declare all types required to wire the state machine together
+//       DFEsmValueType counterType = dfeUInt(32);
+//       DFEsmValueType wireType = dfeBool();
+
+//       // Define state machine IO
+//       w_done = io.input("w_done", wireType);
+//   """)
+
+//   for(i <- 0 until numReaders) {
+//       stream.println(s"""
+//         r_done_${i} = io.input("r_done_${i}", wireType);
+//       """)
+//     }
+
+
+//   stream.println(s"""
+//       curBuf = io.output("curBuf", wireType);
+
+//       // Define state storage elements and initial state
+//       stateFF = state.enumerated(States.class, States.W);
+//       curBufFF = state.value(wireType, 0);
+
+//       rdoneBitVectorFF = new DFEsmStateValue[$numReaders];
+//       for (int i = 0; i < $numReaders; i++) {
+//         rdoneBitVectorFF[i] = state.value(wireType, 0);
+//       }
+// """)
+
+//    stream.println(s"""allRdone = ${(0 until numReaders) map ("rdoneBitVectorFF["+_+"]") mkString(" & ")};""")
+
+
+//   stream.println(s"""
+//     }
+
+//     private void resetBitVector() {
+//       for (int i=0; i<$numReaders; i++) {
+//         rdoneBitVectorFF[i].next <== 0;
+//       }
+//     }
+
+
+
+//   @Override
+//   protected void nextState() {""")
+
+//   (0 until numReaders) map { i =>
+//     stream.println(s"""
+//       IF (r_done_$i) {
+//         rdoneBitVectorFF[$i].next <== 1;
+//       }""")
+//   }
+//   stream.println(s"""
+//     SWITCH(stateFF) {
+//       CASE(States.W) {
+//         IF (w_done) {
+//           stateFF.next <== States.SWAP;
+//         }
+//       }
+//       CASE(States.RW) {
+//         IF (allRdone & w_done) {
+//           stateFF.next <== States.SWAP;
+//         } ELSE {
+//           IF (allRdone) {
+//           stateFF.next <== States.W;
+//           } ELSE {
+//             IF (w_done) {
+//               stateFF.next <== States.R;
+//             }
+//           }
+//         }
+//       }
+//       CASE(States.R) {
+//         IF (allRdone) {
+//           stateFF.next <== States.SWAP;
+//         }
+//       }
+//       CASE(States.SWAP) {
+//         curBufFF.next <== ~curBufFF;
+//         stateFF.next <== States.RW;
+//         resetBitVector();
+//       }
+//       OTHERWISE {
+//         stateFF.next <== stateFF;
+//       }
+//     }
+//   }
+
+//   @Override
+//   protected void outputFunction() {
+//     curBuf <== curBufFF;
+//   }
+//   }
+//   """)
+//   }
 
   def emitReduction(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>

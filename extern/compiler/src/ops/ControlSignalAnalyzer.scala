@@ -148,13 +148,6 @@ trait ControlSignalAnalyzer extends Traversal {
       addPendingReader(reader)
   }
 
-  def checkMultipleWriters(mem: Exp[Any], writer: Exp[Any]) {
-    // TODO: Multiple writers should be allowed for memory templates which have buffering support
-    if (writersOf(mem).nonEmpty) {
-      stageError("Memory " + nameOf(mem).getOrElse("") + " defined here has multiple writers.")(mpos(mem.pos))
-    }
-  }
-
   def checkMultipleReaders(mem: Exp[Any], reader: Exp[Any]) {
     if (isFIFO(mem.tp) && readersOf(mem).nonEmpty) {
       stageError("FIFO " + nameOf(mem).getOrElse("") + " defined here has multiple readers.")(mpos(mem.pos))
@@ -163,7 +156,6 @@ trait ControlSignalAnalyzer extends Traversal {
 
   def appendWriter(ctrl: Exp[Any], isReduce: Boolean, writer: Exp[Any]) = writer match {
     case LocalWriter(writes) => writes.foreach{ case (mem,value,addr) =>
-      checkMultipleWriters(mem, writer)
       val top = addr.map{a => getTopController(ctrl, isReduce, a)}.getOrElse( (ctrl, isReduce) )
 
       writersOf(mem) = writersOf(mem) :+ (ctrl, isReduce, writer)        // (5)
@@ -270,12 +262,11 @@ trait ControlSignalAnalyzer extends Traversal {
       traverseWith(lhs, isOuter, inds, cc)(rFunc)
 
       // TODO: Can these be generalized too?
-      checkMultipleWriters(a, lhs)
-      checkMultipleReaders(a, lhs)
       readersOf(a) = readersOf(a) :+ (lhs, isOuter, lhs)  // (4)
       writersOf(a) = writersOf(a) :+ (lhs, isOuter, lhs)  // (5)
       topWritersOf(a) = topWritersOf(a) :+ (lhs, isOuter, lhs) // (5.5)
       topReadersOf(a) = topReadersOf(a) :+ (lhs, isOuter, lhs) // (5.6)
+      checkWritersSeq(a)
       isAccum(a) = true                                   // (6)
       writtenIn(lhs) = writtenIn(lhs) :+ a                // (10)
       parentOf(a) = lhs  // Reset accumulator with reduction
@@ -287,8 +278,6 @@ trait ControlSignalAnalyzer extends Traversal {
       val partial = getBlockResult(func)
       readersOf(partial) = readersOf(partial) :+ (lhs,true,lhs) // (4)
 
-      checkMultipleWriters(a, lhs)
-      checkMultipleReaders(a, lhs)
       readersOf(a) = readersOf(a) :+ (lhs, true, lhs)     // (4)
       writersOf(a) = writersOf(a) :+ (lhs, true, lhs)     // (5)
       topWritersOf(a) = topWritersOf(a) :+ (lhs, true, lhs) // (5.5)
@@ -310,10 +299,6 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
   import IR._
 
   override val name = "Control Signal Analyzer [Post-Unrolling]"
-
-  // All cases of multiple access are ok now (we banked for unrolled accesses already)
-  override def checkMultipleWriters(mem: Exp[Any], writer: Exp[Any]) { }
-  override def checkMultipleReaders(mem: Exp[Any], reader: Exp[Any]) { }
 
   var propagationPairs = List[(Exp[Any],Exp[Any])]()
 

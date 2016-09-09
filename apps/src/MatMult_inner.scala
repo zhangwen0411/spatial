@@ -10,9 +10,10 @@ trait MatMult_innerApp extends SpatialApp {
   val tileSizeM = 4
   val tileSizeN = 96
   val tileSizeP = 96
-  val innerPar = 1
-  val midPar = 1
-  val outerPar = 1
+  val innerPar = 2
+  val midPar = 2
+  val outerPar = 2
+  val storePar = 
 
   def MatMult_inner(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
     val M = ArgIn[SInt]
@@ -29,11 +30,16 @@ trait MatMult_innerApp extends SpatialApp {
     val bm        = param(tileSizeM);   domainOf(bm) = (1,1536,1)
     val bn        = param(tileSizeN);   domainOf(bn) = (96,1536,96)
     val bp        = param(tileSizeP);   domainOf(bp) = (96,1536,96)
-    val op  = param(outerPar);   domainOf(op)  = (1,6,1)
-    val mp = param(midPar);   domainOf(mp) = (1,96,1)
-    val ip  = param(innerPar);   domainOf(ip)  = (1,96,1)
-    val upMidPar  = param(1);   domainOf(upMidPar)  = (1,1,1)
-    val stPar     = param(1);   domainOf(stPar)     = (1,1,1)
+    val op  = param(2);   
+    val mp = param(2);   
+    val ip  = param(2);   
+    val upMidPar  = param(2);   
+    val stPar     = param(2);   
+    domainOf(op)  = (1,6,1)
+    domainOf(mp) = (1,96,1)
+    domainOf(ip)  = (1,96,1)
+    domainOf(upMidPar)  = (1,1,1)
+    domainOf(stPar)     = (1,1,1)
 
     setMem(a, A)
     setMem(b, B)

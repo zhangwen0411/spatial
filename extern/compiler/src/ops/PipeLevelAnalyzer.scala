@@ -14,7 +14,7 @@ trait PipeLevelAnalysisExp extends NodeMetadataOpsExp {this: SpatialExp => }
  * Analysis traversal - rectifies annotations on the "level" of each controller
  * Parallels are always ForkJoin. For all others, check if the pipe contains any other controllers
  * If it does, promote it to a CoarsePipe if it was annotated as an InnerPipe.
- * Annotate either as a Sequential or inner Pipe if no annotation previously existed
+ * Annotate either as a Sequential or InnerPipe if no annotation previously existed
  * NOTE: AccumFold always contains inner controllers
  *
  * Sanity checks:

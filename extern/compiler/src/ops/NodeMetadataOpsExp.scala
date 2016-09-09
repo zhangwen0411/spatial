@@ -165,17 +165,14 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case _ => false
   }
 
-  def isConstantExp(s: Exp[Any]): Boolean = s match {
-    case Deff(_:ConstFixPt[_,_,_,_]) => true
-    case Deff(_:ConstFltPt[_,_,_]) => true
-    case Deff(_:ConstBit) => true
-    case Const(_) => true
+  def isConstant(s: Exp[Any]): Boolean = s match {
+    case Fixed(_) => true
     case _ => false
   }
 
   def isPrimitiveNode(s: Exp[Any]): Boolean = s match {
     case Def(Reify(_,_,_)) => false
-    case _ => !isControlNode(s) && !isRegisterRead(s) && !isAllocation(s) && !isConstantExp(s) && !isGlobal(s)
+    case _ => !isControlNode(s) && !isRegisterRead(s) && !isAllocation(s) && !isConstant(s) && !isGlobal(s)
   }
 
   def isControlNode(s: Exp[Any]): Boolean = s match {
