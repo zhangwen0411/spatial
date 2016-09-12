@@ -114,6 +114,50 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
     }
   }
 
+  def isConstOrArgOrBnd(x: Exp[Any]) = x match {
+    case s@Sym(n) => {
+      s match {
+        case Deff(ConstFixPt(_,_,_,_)) => true
+        case Deff(ConstFltPt(_,_,_)) => true
+        case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
+          xx match {
+            case Deff(Argin_new(_)) => true
+            case _ =>  false 
+          }
+        case Deff(_) => false // None
+        case _ => true // Is bound
+      }
+    }
+  }
+
+  def addConstOrArgOrBnd(x: Exp[Any], set: Set[Exp[Any]]) = {
+    var ret = Set[Exp[Any]]()
+    val Deff(dd) = x
+    dd match {
+      case FltPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Lsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Rsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case Bit_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case Bit_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case Bit_Xor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case _ => Console.println(s"looking at $dd $x not matched")
+    }
+    set ++ ret
+  }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case e@ParPipeForeach(cchain, func, inds) =>
@@ -162,7 +206,8 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emitParallelizedLoop(inds, cchain)
       emitComment(s"""} ${quote(sym)} par loop""")
 
-      var inputArgs = Set[Sym[Any]]()
+      var inputVecs = Set[Sym[Any]]()
+      var consts_args_bnds_list = Set[Exp[Any]]()
       var treeResult = ""
       focusBlock(func){ // Send reduce tree to separate file
         focusExactScope(func){ stms =>
@@ -175,9 +220,11 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
                   emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
                   treeResult = quote(s)
                 }
-              case input @ (Par_bram_load(_, _)) =>
-                inputArgs += s
+                consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+              case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                inputVecs += s
               case _ =>
+                consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
             }
           }
         }
@@ -186,9 +233,12 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emitComment(s"""ParPipeReduce ${quote(sym)} func block {""")
       emitBlock(func)
       emitComment(s"""} ${quote(sym)} func block""")
-      val inputArgsStr = inputArgs.map {a => quote(a)}.mkString(",")
-      val should_comma = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-      emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma $inputArgsStr $should_comma $treeResult); // Reduce kernel")
+      val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
+      val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_<_).mkString(",")
+      val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+      val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
+      val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+      emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
 
       val Def(EatReflect(dp)) = accum
       dp match {

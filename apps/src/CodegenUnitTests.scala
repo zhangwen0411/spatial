@@ -3,7 +3,7 @@ import spatial.library._
 import spatial.shared._
 
 // 1
-object SimpleSequentialTest extends SpatialAppCompiler with SimpleSequential
+object SimpleSequentialTest extends SpatialAppCompiler with SimpleSequential // Args: 5 8
 trait SimpleSequential extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
@@ -37,13 +37,15 @@ trait SimpleSequential extends SpatialApp {
     val gold = b1(y)
     println("expected: " + gold)
     println("result:   " + result)
-    assert(result == gold)
+    val cksum = result == gold
+    println("PASS: " + cksum + " (SimpleSeq)")
+
   }
 }
 
 
 // 3
-object DeviceMemcpyTest extends SpatialAppCompiler with DeviceMemcpy
+object DeviceMemcpyTest extends SpatialAppCompiler with DeviceMemcpy // Args: 5
 trait DeviceMemcpy extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -72,13 +74,20 @@ trait DeviceMemcpy extends SpatialApp {
     (0 until arraySize) foreach { i => print(dst(i) + " ") }
     println("")
 
+    val cksum = dst.zip(src){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum  + " (DeviceMemcpy)")
+
+
+
+
+
 //    println("dst"); println(dst.mkString(" "))
   }
 
 }
 
 // 4
-object SimpleTileLoadStoreTest extends SpatialAppCompiler with SimpleTileLoadStore
+object SimpleTileLoadStoreTest extends SpatialAppCompiler with SimpleTileLoadStore // Args: 960 5
 trait SimpleTileLoadStore extends SpatialApp {
   type T = SInt
   val N = 192
@@ -126,11 +135,15 @@ trait SimpleTileLoadStore extends SpatialApp {
     (0 until arraySize) foreach { i => print(gold(i) + " ") }
     println("Got out: ")
     (0 until arraySize) foreach { i => print(dst(i) + " ") }
+    println("")
+
+    val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (SimpleTileLoadStore)")
   }
 }
 
 // 5
-object FifoLoadTest extends SpatialAppCompiler with FifoLoad
+object FifoLoadTest extends SpatialAppCompiler with FifoLoad // Args: 960
 trait FifoLoad extends SpatialApp {
   type T = SInt
 
@@ -172,11 +185,17 @@ trait FifoLoad extends SpatialApp {
     (0 until arraySize) foreach { i => print(gold(i) + " ") }
     println("Got out:")
     (0 until arraySize) foreach { i => print(dst(i) + " ") }
+    println("")
+
+    val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (FifoLoadTest)")
+
+
   }
 }
 
 // 6
-object ParFifoLoadTest extends SpatialAppCompiler with ParFifoLoad
+object ParFifoLoadTest extends SpatialAppCompiler with ParFifoLoad // Args: 960
 trait ParFifoLoad extends SpatialApp {
   type T = SInt
 
@@ -184,9 +203,9 @@ trait ParFifoLoad extends SpatialApp {
   def parFifoLoad(src1: Rep[Array[T]], src2: Rep[Array[T]], N: Rep[SInt]) = {
     val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
 
-    val src1FPGA = OffChipMem[T](N)
-    val src2FPGA = OffChipMem[T](N)
     val in = ArgIn[T]
+    val src1FPGA = OffChipMem[T](in)
+    val src2FPGA = OffChipMem[T](in)
     val out = ArgOut[T]
     setArg(in, N)
     setMem(src1FPGA, src1)
@@ -217,26 +236,32 @@ trait ParFifoLoad extends SpatialApp {
     val src2 = Array.tabulate[SInt](arraySize) { i => i*2 }
     val out = parFifoLoad(src1, src2, arraySize)
 
-//    val gold = ((arraySize - 96 until arraySize)) map { i => src1(i) * src2(i) }.reduce{_+_}
-//    println(s"out = " + out + ",gold = " + gold)
+    val sub1_for_check = Array.tabulate[SInt](arraySize-96) {i => i}
+    val sub2_for_check = Array.tabulate[SInt](arraySize-96) {i => i*2}
+
+    // val gold = src1.zip(src2){_*_}.zipWithIndex.filter( (a:Int, i:Int) => i > arraySize-96).reduce{_+_}
+    val gold = src1.zip(src2){_*_}.reduce{_+_} - sub1_for_check.zip(sub2_for_check){_*_}.reduce(_+_)
+	println(s"gold = " + gold)
     println(s"out = " + out)
 
-//    assert(out == gold)
+    val cksum = out == gold
+    println("PASS: " + cksum + " (ParFifoLoad)")
   }
 }
 
 // 7
-object FifoLoadStoreTest extends SpatialAppCompiler with FifoLoadStore
+object FifoLoadStoreTest extends SpatialAppCompiler with FifoLoadStore // Args: 
 trait FifoLoadStore extends SpatialApp {
   type T = SInt
   val N = 192
 
   type Array[T] = ForgeArray[T]
   def fifoLoadStore(srcHost: Rep[Array[T]]) = {
-    val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
+    val tileSize = N
 
     val srcFPGA = OffChipMem[SInt](N)
     val dstFPGA = OffChipMem[SInt](N)
+    val dummyOut = ArgOut[SInt]
     setMem(srcFPGA, srcHost)
 
     Accel {
@@ -246,7 +271,9 @@ trait FifoLoadStore extends SpatialApp {
           f1 := srcFPGA(0::tileSize)
           dstFPGA(0::tileSize) := f1
         }
-        Pipe(tileSize by 1) { i => }
+        Pipe(tileSize by 1) { i => 
+          dummyOut := i
+        }
       }
       ()
     }
@@ -261,16 +288,22 @@ trait FifoLoadStore extends SpatialApp {
 
     val gold = src.map { i => i }
 
+    println("gold:")
+    (0 until arraySize) foreach { i => print(gold(i) + " ") }
+    println("")
     println("dst:")
     (0 until arraySize) foreach { i => print(dst(i) + " ") }
     println("")
 
-    (0 until arraySize) foreach { i => assert(dst(i) == gold(i)) }
+
+    val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (FifoLoadStore)")
+
   }
 }
 
 // 8
-object SimpleReduceTest extends SpatialAppCompiler with SimpleReduce
+object SimpleReduceTest extends SpatialAppCompiler with SimpleReduce // Args: 72
 trait SimpleReduce extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -300,11 +333,13 @@ trait SimpleReduce extends SpatialApp {
     val gold = Array.tabulate[SInt](N){i => x * i}.reduce{_+_}
     println("expected: " + gold)
     println("result:   " + result)
-    assert(result == gold)
+
+    val cksum = gold == result
+    println("PASS: " + cksum + " (FifoLoadStore)")
   }
 }
 
-object SimpleUnitTest extends SpatialAppCompiler with SimpleUnit
+object SimpleUnitTest extends SpatialAppCompiler with SimpleUnit // Args: 
 trait SimpleUnit extends SpatialApp {
   val N = 96.as[SInt]
 
@@ -358,7 +393,7 @@ trait SimpleUnit extends SpatialApp {
 }
 
 // 9
-object NiterTest extends SpatialAppCompiler with Niter
+object NiterTest extends SpatialAppCompiler with Niter // Args: 9216
 trait Niter extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -404,7 +439,7 @@ trait Niter extends SpatialApp {
 }
 
 // 10
-object SimpleFoldTest extends SpatialAppCompiler with SimpleFold
+object SimpleFoldTest extends SpatialAppCompiler with SimpleFold // Args: 1920
 trait SimpleFold extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -456,7 +491,7 @@ trait SimpleFold extends SpatialApp {
 }
 
 // 11
-object Memcpy2DTest extends SpatialAppCompiler with Memcpy2D
+object Memcpy2DTest extends SpatialAppCompiler with Memcpy2D // Args: 
 trait Memcpy2D extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -506,7 +541,7 @@ trait Memcpy2D extends SpatialApp {
 }
 
 // 12
-object BlockReduce1DTest extends SpatialAppCompiler with BlockReduce1D
+object BlockReduce1DTest extends SpatialAppCompiler with BlockReduce1D // Args: 1920
 trait BlockReduce1D extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]

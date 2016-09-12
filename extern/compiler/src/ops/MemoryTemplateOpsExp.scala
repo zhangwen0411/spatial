@@ -681,6 +681,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       emit(s"""${quote(fifo)}_wdata <== ${quote(fifo)}_rdata;""")
 
     case Offchip_store_cmd(mem, fifo, ofs, len, par) =>
+      // TODO: Offchip stores with burst not aligned
       emit(s"""// ${quote(sym)}: Offchip_store_cmd(${quote(mem)},${quote(fifo)}, ${quote(ofs)}, ${quote(len)}, ${quote(par)})""")
       emit(s"""MemoryCmdStLib ${quote(sym)} = new MemoryCmdStLib(
           this,
