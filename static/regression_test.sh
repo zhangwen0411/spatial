@@ -1,9 +1,32 @@
 #!/bin/bash
 
 # Seconds to pause while waiting for apps to run
-delay=600
+delay=60
+TESTS_HOME=/home/mattfel/regression_tests
+SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
+PUB_HOME=${SPATIAL_HOME}/published/Spatial
+PATH=/opt/maxcompiler/bin:/opt/maxcompiler2016/bin:/opt/maxeler/bin:/opt/altera/quartus/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
 
-# Remake Spatial
+# Reclone
+rm -rf $TESTS_HOME && mkdir $TESTS_HOME && cd $TESTS_HOME
+git clone git@github.com:stanford-ppl/hyperdsl.git
+cd hyperdsl
+git submodule update --init
+git fetch
+git checkout spatial
+cd delite && git fetch && git checkout plasticine && git pull
+cd ../forge && git fetch && git checkout spatial && git pull
+cd ../virtualization-lms-core && git fetch && git checkout spatial && git pull
+cd ../
+git clone git@github.com:stanford-ppl/spatial.git
+cd spatial && git fetch && git checkout maxj
+cd ../
+/usr/local/bin/sbt compile > /dev/null
+cd spatial && make > /dev/null
+git clone git@github.com:stanford-ppl/spatial.wiki.git
+
+
+# Fast remake Spatial
 rm -rf ${SPATIAL_HOME}/regression_tests;mkdir ${SPATIAL_HOME}/regression_tests
 cd ${PUB_HOME}
 fastmake="cp -r ${SPATIAL_HOME}/extern/compiler/src/ops/* ${PUB_HOME}/compiler/src/spatial/compiler/ops;cd ${PUB_HOME}/;sbt compile 2>&1 | tee -a log"
@@ -15,7 +38,7 @@ if [ "$wc" -ne 1 ]; then
 	echo "-------------------------------" >> $result_file
 	echo "" >> $result_file
 	echo "" >> $result_file
-	echo "*Updated `date`*" >> $result_file
+	echo -e "*Updated `date`*" >> $result_file
 	echo "" >> $result_file
 	echo "Error building Spatial!  Could not validate anything!" >> $result_file
 	# git push
@@ -94,36 +117,7 @@ done
 
 # Run vulture
 cd ${SPATIAL_HOME}/regression_tests/dense/
-bash ${SPATIAL_HOME}/vulture.sh workers_for_dense
-
-# Wait 3 min and publish results
-sleep $delay
-cd results
-result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
-echo "Current Dense Apps' status on ${USER}'s local repo:" > $result_file
-echo "-------------------------------" >> $result_file
-echo "" >> $result_file
-echo "" >> $result_file
-echo "*Updated `date`*" >> $result_file
-echo "" >> $result_file
-echo "" >> $result_file
-progress=(`find . -type f -maxdepth 1 | sort`)
-for p in ${progress[@]}; do
-	if [[ $p == *"pass"* ]]; then
-		echo "**$p**  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"inprogress"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_spatial"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_maxj"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_validation"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	else
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	fi
-
-done
+bash ${SPATIAL_HOME}/static/vulture.sh workers_for_dense
 
 
 
@@ -195,17 +189,53 @@ done
 
 # Run vulture
 cd ${SPATIAL_HOME}/regression_tests/unit/
-bash ${SPATIAL_HOME}/vulture.sh workers_for_unit
+bash ${SPATIAL_HOME}/static/vulture.sh workers_for_unit
 
-# Wait 3 min and publish results
+
+#####################
+# COLLECT & PUBLISH #
+#####################
+
+# Wait and publish results
 sleep $delay
-cd results
+
+# Get git hash
+cd ${SPATIAL_HOME}
+hash=`git rev-parse HEAD`
+
+# Get results
+cd ${SPATIAL_HOME}/regression_tests/dense/results
 result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
-echo "Current CodegenUnitTests' status on ${USER}'s local repo:" >> $result_file
+echo -e "*Updated `date`* \n" >> $result_file
+echo "*hash: ${hash}*" >> $result_file
+echo "" >> $result_file
+echo "" >> $result_file
+
+echo "Current Dense Apps' status on ${USER}'s local repo:" > $result_file
 echo "-------------------------------" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
-echo "*Updated `date`*" >> $result_file
+progress=(`find . -type f -maxdepth 1 | sort`)
+for p in ${progress[@]}; do
+	if [[ $p == *"pass"* ]]; then
+		echo "**$p**  " | sed "s/\.\///g" >> $result_file
+	elif [[ $p == *"inprogress"* ]]; then
+		echo "$p  " | sed "s/\.\///g" >> $result_file
+	elif [[ $p == *"failed_spatial"* ]]; then
+		echo "$p  " | sed "s/\.\///g" >> $result_file
+	elif [[ $p == *"failed_maxj"* ]]; then
+		echo "$p  " | sed "s/\.\///g" >> $result_file
+	elif [[ $p == *"failed_validation"* ]]; then
+		echo "$p  " | sed "s/\.\///g" >> $result_file
+	else
+		echo "$p  " | sed "s/\.\///g" >> $result_file
+	fi
+
+done
+
+cd ${SPATIAL_HOME}/regression_tests/unit/results
+echo "Current CodegenUnitTests' status on ${USER}'s local repo:" >> $result_file
+echo "-------------------------------" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
 progress=(`find . -type f -maxdepth 1 | sort`)
