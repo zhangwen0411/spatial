@@ -2,9 +2,8 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-// 1
-object SimpleSequentialTest extends SpatialAppCompiler with SimpleSequential // Args: 5 8
-trait SimpleSequential extends SpatialApp {
+object SimpleSequential extends SpatialAppCompiler with SimpleSequentialApp // Args: 5 8
+trait SimpleSequentialApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   def simpleseq(xin: Rep[SInt], yin: Rep[SInt]) = {
@@ -45,8 +44,8 @@ trait SimpleSequential extends SpatialApp {
 
 
 // 3
-object DeviceMemcpyTest extends SpatialAppCompiler with DeviceMemcpy // Args: 5
-trait DeviceMemcpy extends SpatialApp {
+object DeviceMemcpy extends SpatialAppCompiler with DeviceMemcpyApp // Args: 5
+trait DeviceMemcpyApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
 
@@ -87,8 +86,8 @@ trait DeviceMemcpy extends SpatialApp {
 }
 
 // 4
-object SimpleTileLoadStoreTest extends SpatialAppCompiler with SimpleTileLoadStore // Args: 960 5
-trait SimpleTileLoadStore extends SpatialApp {
+object SimpleTileLoadStore extends SpatialAppCompiler with SimpleTileLoadStoreApp // Args: 960 5
+trait SimpleTileLoadStoreApp extends SpatialApp {
   type T = SInt
   val N = 192
   type Array[T] = ForgeArray[T]
@@ -143,8 +142,8 @@ trait SimpleTileLoadStore extends SpatialApp {
 }
 
 // 5
-object FifoLoadTest extends SpatialAppCompiler with FifoLoad // Args: 960
-trait FifoLoad extends SpatialApp {
+object FifoLoad extends SpatialAppCompiler with FifoLoadApp // Args: 960
+trait FifoLoadApp extends SpatialApp {
   type T = SInt
 
   type Array[T] = ForgeArray[T]
@@ -195,8 +194,8 @@ trait FifoLoad extends SpatialApp {
 }
 
 // 6
-object ParFifoLoadTest extends SpatialAppCompiler with ParFifoLoad // Args: 960
-trait ParFifoLoad extends SpatialApp {
+object ParFifoLoad extends SpatialAppCompiler with ParFifoLoadApp // Args: 960
+trait ParFifoLoadApp extends SpatialApp {
   type T = SInt
 
   type Array[T] = ForgeArray[T]
@@ -250,8 +249,8 @@ trait ParFifoLoad extends SpatialApp {
 }
 
 // 7
-object FifoLoadStoreTest extends SpatialAppCompiler with FifoLoadStore // Args: 
-trait FifoLoadStore extends SpatialApp {
+object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args: 
+trait FifoLoadStoreApp extends SpatialApp {
   type T = SInt
   val N = 192
 
@@ -303,8 +302,8 @@ trait FifoLoadStore extends SpatialApp {
 }
 
 // 8
-object SimpleReduceTest extends SpatialAppCompiler with SimpleReduce // Args: 72
-trait SimpleReduce extends SpatialApp {
+object SimpleReduce extends SpatialAppCompiler with SimpleReduceApp // Args: 72
+trait SimpleReduceApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
 
@@ -393,8 +392,8 @@ trait SimpleReduce extends SpatialApp {
 // }
 
 // 9
-object NiterTest extends SpatialAppCompiler with Niter // Args: 9216
-trait Niter extends SpatialApp {
+object Niter extends SpatialAppCompiler with NiterApp // Args: 9216
+trait NiterApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val constTileSize = 96
@@ -440,8 +439,8 @@ trait Niter extends SpatialApp {
   }
 }
 
-object SimpleFoldTest extends SpatialAppCompiler with SimpleFold // Args: 1920
-trait SimpleFold extends SpatialApp {
+object SimpleFold extends SpatialAppCompiler with SimpleFoldApp // Args: 1920
+trait SimpleFoldApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val constTileSize = 96
@@ -494,8 +493,8 @@ trait SimpleFold extends SpatialApp {
 }
 
 // 11
-object Memcpy2DTest extends SpatialAppCompiler with Memcpy2D // Args: 
-trait Memcpy2D extends SpatialApp {
+object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args: 
+trait Memcpy2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val R = 96
@@ -547,11 +546,11 @@ trait Memcpy2D extends SpatialApp {
 }
 
 // 12
-object BlockReduce1DTest extends SpatialAppCompiler with BlockReduce1D // Args: 1920
-trait BlockReduce1D extends SpatialApp {
+object BlockReduce1D extends SpatialAppCompiler with BlockReduce1DApp // Args: 1920
+trait BlockReduce1DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val N = 192
+  val N = 1920
 
   val tileSize = 96
 
@@ -583,7 +582,8 @@ trait BlockReduce1D extends SpatialApp {
   }
 
   def main() = {
-    val size = args(unit(0)).to[SInt]
+    // val size = args(unit(0)).to[SInt]
+    val size = N
     val src = Array.tabulate(size) { i => i }
 
     val dst = blockreduce_1d(src, size)
