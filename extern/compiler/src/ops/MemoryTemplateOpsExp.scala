@@ -857,8 +857,10 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                             emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr & constant.var(false) /* TODO: Not sure if disabling rst is correct */, true);""")
                           case _ =>
                             throw new Exception(s"Reduce type of reg $reg, pipe $p, not implemented!")
-                        }
-                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind+1}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
+                          }
+                          (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind+1}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
+                        case _ =>
+                          throw new Exception(s"Cannot recognize reduce type $reg inside $p unit pipe") 
                       }
 
                     case _ =>
@@ -923,7 +925,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
               }
             case _ => // multiple readers
               dups.zipWithIndex.foreach { case (r, i) =>
-                Console.println(s"emitting bram $sym - $i, instance $r")
+                // Console.println(s"emitting bram $sym - $i, instance $r")
                 val banks = getBanking(r)
                 val strides = getStride(r)
                 if (isDummy(sym)) {

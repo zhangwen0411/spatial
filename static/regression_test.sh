@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Seconds to pause while waiting for apps to run
-delay=60
+delay=600
 export TESTS_HOME=/home/mattfel/regression_tests
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
@@ -46,7 +46,7 @@ eval "$fastmake"
 wc=$(cat log | grep "success" | wc -l)
 if [ "$wc" -ne 1 ]; then
 	result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
-	echo "Current global status on ${USER}'s local repo:" > $result_file
+	echo "Current global status on maxj branch:" > $result_file
 	echo "-------------------------------" >> $result_file
 	echo "" >> $result_file
 	echo "" >> $result_file
@@ -226,7 +226,7 @@ echo "*hash: ${hash}*" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
 
-echo "Current Dense Apps' status on ${USER}'s local repo:" >> $result_file
+echo "Current Dense Apps' status on maxj branch:" >> $result_file
 echo "-------------------------------" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
@@ -249,7 +249,7 @@ for p in ${progress[@]}; do
 done
 
 cd ${SPATIAL_HOME}/regression_tests/unit/results
-echo "Current CodegenUnitTests' status on ${USER}'s local repo:" >> $result_file
+echo "Current CodegenUnitTests' status on maxj branch:" >> $result_file
 echo "-------------------------------" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
