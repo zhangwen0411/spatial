@@ -64,6 +64,10 @@ trait DotProductApp extends SpatialApp {
     val gold = a.zip(b){_*_}.reduce{_+_}
     println("expected: " + gold)
     println("result: " + result)
+
+    val cksum = gold == result
+    println("PASS: " + cksum + " (DotProduct)")
+
 //    assert(result == gold)
   }
 }
