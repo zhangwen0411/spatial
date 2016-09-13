@@ -2,14 +2,19 @@
 
 # Seconds to pause while waiting for apps to run
 delay=60
-TESTS_HOME=/home/mattfel/regression_tests
-SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
-PUB_HOME=${SPATIAL_HOME}/published/Spatial
-PATH=/opt/maxcompiler/bin:/opt/maxcompiler2016/bin:/opt/maxeler/bin:/opt/altera/quartus/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
+export TESTS_HOME=/home/mattfel/regression_tests
+export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
+export PUB_HOME=${SPATIAL_HOME}/published/Spatial
+export HYPER_HOME=${TESTS_HOME}/hyperdsl
+export PATH=/opt/maxcompiler/bin:/opt/maxcompiler2016/bin:/opt/maxeler/bin:/opt/altera/quartus/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
 
 # Reclone
 rm -rf $TESTS_HOME && mkdir $TESTS_HOME && cd $TESTS_HOME
 git clone git@github.com:stanford-ppl/hyperdsl.git
+if [ ! -d "./hyperdsl" ]; then
+  echo "hyperdsl directory does not exist!"
+  exit 1
+fi
 cd hyperdsl
 git submodule update --init
 git fetch
@@ -21,13 +26,20 @@ cd ../
 git clone git@github.com:stanford-ppl/spatial.git
 cd spatial && git fetch && git checkout maxj
 cd ../
-/usr/local/bin/sbt compile > /dev/null
+ls
+echo "Making hyperdsl..."
+sbt compile > /dev/null
+echo "Making spatial..."
 cd spatial && make > /dev/null
 git clone git@github.com:stanford-ppl/spatial.wiki.git
 
-
 # Fast remake Spatial
 rm -rf ${SPATIAL_HOME}/regression_tests;mkdir ${SPATIAL_HOME}/regression_tests
+if [ ! -d "${PUB_HOME}" ]; then
+  echo "$PUB_HOME directory does not exist!"
+  exit 1
+fi
+
 cd ${PUB_HOME}
 fastmake="cp -r ${SPATIAL_HOME}/extern/compiler/src/ops/* ${PUB_HOME}/compiler/src/spatial/compiler/ops;cd ${PUB_HOME}/;sbt compile 2>&1 | tee -a log"
 eval "$fastmake"
@@ -46,6 +58,7 @@ if [ "$wc" -ne 1 ]; then
 	git add MaxJ-Regression-Tests-Status.md
 	git commit -m "automated status update"
 	git push
+	exit 1
 fi
 rm log
 
@@ -55,8 +68,8 @@ rm log
 ##############
 
 # ADD APPS HERE
-test_list=("DotProduct" "MatMult_inner")
-args_list=("9600" "8 192 192")
+test_list=("DotProduct" "MatMult_inner" "TPCHQ6")
+args_list=("9600"       "8 192 192"     "1920"  )
 
 # Create vulture dir
 rm -rf ${SPATIAL_HOME}/regression_tests/dense;mkdir ${SPATIAL_HOME}/regression_tests/dense
@@ -80,8 +93,9 @@ do
 	# Compile and run commands
 
 	echo "#!/bin/bash" >> $cmd_file
+	echo 'export HYPER_HOME=${TESTS_HOME}/hyperdsl'
 	echo "cd ${PUB_HOME}" >> $cmd_file
-	echo "${PUB_HOME}/bin/spatial --outdir=../../regression_tests/dense/${i}_${test_list[i]}/out ${test_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
+	echo "${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/dense/${i}_${test_list[i]}/out ${test_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
 	echo '' >> $cmd_file
 	echo "sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${vulture_dir}/log" >> $cmd_file
 	echo '' >> $cmd_file
@@ -152,8 +166,9 @@ do
 	# Compile and run commands
 
 	echo "#!/bin/bash" >> $cmd_file
+	echo 'export HYPER_HOME=${TESTS_HOME}/hyperdsl'
 	echo "cd ${PUB_HOME}" >> $cmd_file
-	echo "${PUB_HOME}/bin/spatial --outdir=../../regression_tests/unit/${i}_${test_list[i]}/out ${test_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
+	echo "${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/unit/${i}_${test_list[i]}/out ${test_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
 	echo '' >> $cmd_file
 	echo "sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${vulture_dir}/log" >> $cmd_file
 	echo '' >> $cmd_file
@@ -206,12 +221,12 @@ hash=`git rev-parse HEAD`
 # Get results
 cd ${SPATIAL_HOME}/regression_tests/dense/results
 result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
-echo -e "*Updated `date`* \n" >> $result_file
+echo -e "*Updated `date`* \n" > $result_file
 echo "*hash: ${hash}*" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
 
-echo "Current Dense Apps' status on ${USER}'s local repo:" > $result_file
+echo "Current Dense Apps' status on ${USER}'s local repo:" >> $result_file
 echo "-------------------------------" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
