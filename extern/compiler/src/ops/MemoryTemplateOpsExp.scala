@@ -413,7 +413,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                 case _ =>
               }
               if (par) {
-                emit(s"""$pre ${quote(sym)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${quote(bram)}.connectRport(${quote(addr0)}))); //2""")
+                emit(s"""$pre ${quote(sym)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${bram_name}.connectRport(${quote(addr0)}))); //2""")
               } else {
                 emit(s"""${pre} ${quote(sym)} = ${bram_name}.connectRport(${quote(addr0)}); //3""")            
               }

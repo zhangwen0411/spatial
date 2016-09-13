@@ -339,58 +339,58 @@ trait SimpleReduce extends SpatialApp {
   }
 }
 
-object SimpleUnitTest extends SpatialAppCompiler with SimpleUnit // Args: 
-trait SimpleUnit extends SpatialApp {
-  val N = 96.as[SInt]
+// object SimpleUnitTest extends SpatialAppCompiler with SimpleUnit // Args: 
+// trait SimpleUnit extends SpatialApp {
+//   val N = 96.as[SInt]
 
-  final val inv_sqrt_2xPI = 0.39894228040143270286f
+//   final val inv_sqrt_2xPI = 0.39894228040143270286f
 
-  def CNDF(x: Rep[Flt]) = {
-    val ax = abs(x)
+//   def CNDF(x: Rep[Flt]) = {
+//     val ax = abs(x)
 
-    val xNPrimeofX = exp((ax ** 2) * -0.05f) * inv_sqrt_2xPI
-    val xK2 = 1.as[Flt] / ((ax * 0.2316419f) + 1.0f)
+//     val xNPrimeofX = exp((ax ** 2) * -0.05f) * inv_sqrt_2xPI
+//     val xK2 = 1.as[Flt] / ((ax * 0.2316419f) + 1.0f)
 
-    val xK2_2 = xK2 ** 2
-    val xK2_3 = xK2_2 * xK2
-    val xK2_4 = xK2_3 * xK2
-    val xK2_5 = xK2_4 * xK2
+//     val xK2_2 = xK2 ** 2
+//     val xK2_3 = xK2_2 * xK2
+//     val xK2_4 = xK2_3 * xK2
+//     val xK2_5 = xK2_4 * xK2
 
-    val xLocal_10 = xK2 * 0.319381530f
-    val xLocal_20 = xK2_2 * -0.356563782f
-    val xLocal_30 = xK2_3 * 1.781477937f
-    val xLocal_31 = xK2_4 * -1.821255978f
-    val xLocal_32 = xK2_5 * 1.330274429f
+//     val xLocal_10 = xK2 * 0.319381530f
+//     val xLocal_20 = xK2_2 * -0.356563782f
+//     val xLocal_30 = xK2_3 * 1.781477937f
+//     val xLocal_31 = xK2_4 * -1.821255978f
+//     val xLocal_32 = xK2_5 * 1.330274429f
 
-    val xLocal_21 = xLocal_20 + xLocal_30
-    val xLocal_22 = xLocal_21 + xLocal_31
-    val xLocal_23 = xLocal_22 + xLocal_32
-    val xLocal_1 = xLocal_23 + xLocal_10
+//     val xLocal_21 = xLocal_20 + xLocal_30
+//     val xLocal_22 = xLocal_21 + xLocal_31
+//     val xLocal_23 = xLocal_22 + xLocal_32
+//     val xLocal_1 = xLocal_23 + xLocal_10
 
-    val xLocal0 = xLocal_1 * xNPrimeofX
-    val xLocal  = -xLocal0 + 1.0f
+//     val xLocal0 = xLocal_1 * xNPrimeofX
+//     val xLocal  = -xLocal0 + 1.0f
 
-    mux(x < 0.0f, xLocal0, xLocal)
-  }
+//     mux(x < 0.0f, xLocal0, xLocal)
+//   }
 
-  def simpleUnit(xin: Rep[Flt]) = {
-    val x = ArgIn[Flt]
-    val out = ArgOut[Flt]
-    setArg(x, xin)
+//   def simpleUnit(xin: Rep[Flt]) = {
+//     val x = ArgIn[Flt]
+//     val out = ArgOut[Flt]
+//     setArg(x, xin)
 
-    Accel {
-      out := CNDF(x)
-    }
-    getArg(out)
-  }
+//     Accel {
+//       out := CNDF(x)
+//     }
+//     getArg(out)
+//   }
 
-  def main() {
-    val x = args(unit(0)).to[Flt]
+//   def main() {
+//     val x = args(unit(0)).to[Flt]
 
-    val result = simpleUnit(x)
-    println(result)
-  }
-}
+//     val result = simpleUnit(x)
+//     println(result)
+//   }
+// }
 
 // 9
 object NiterTest extends SpatialAppCompiler with Niter // Args: 9216
@@ -434,11 +434,12 @@ trait Niter extends SpatialApp {
     val gold = b1.reduce {_+_} - ((len-constTileSize) * (len-constTileSize-1))/2
     println("expected: " + gold)
     println("result:   " + result)
-    assert(result == gold)
+
+    val cksum = gold == result 
+    println("PASS: " + cksum + " (Niter)")
   }
 }
 
-// 10
 object SimpleFoldTest extends SpatialAppCompiler with SimpleFold // Args: 1920
 trait SimpleFold extends SpatialApp {
   type T = SInt
@@ -478,7 +479,7 @@ trait SimpleFold extends SpatialApp {
   }
 
   def main() {
-    val len = N
+    val len = args(unit(0)).to[SInt]
 
     val src = Array.tabulate[T](len) { i => i }
     val result = simple_fold(src)
@@ -486,7 +487,9 @@ trait SimpleFold extends SpatialApp {
     val gold = src.reduce {_+_}
     println("expected: " + gold)
     println("result:   " + result)
-    assert(result == gold)
+
+    val cksum = result == gold
+    println("PASS: " + cksum + " (SimpleFold)")
   }
 }
 
@@ -536,7 +539,10 @@ trait Memcpy2D extends SpatialApp {
 
     printArr(src, "src:")
     printArr(dst, "dst:")
-    (0 until rows*cols) foreach { i => assert(dst(i) == src(i)) }
+
+    val cksum = dst.zip(src){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (MemCpy2D)")
+
   }
 }
 
@@ -553,7 +559,7 @@ trait BlockReduce1D extends SpatialApp {
 
     val sizeIn = ArgIn[SInt]; setArg(sizeIn, size)
 
-    val srcFPGA = OffChipMem[T](size)
+    val srcFPGA = OffChipMem[T](sizeIn)
     val dstFPGA = OffChipMem[T](tileSize)
 
     setMem(srcFPGA, src)
@@ -577,18 +583,21 @@ trait BlockReduce1D extends SpatialApp {
   }
 
   def main() = {
-    val size = N
+    val size = args(unit(0)).to[SInt]
     val src = Array.tabulate(size) { i => i }
 
     val dst = blockreduce_1d(src, size)
 
-//    val gold = Array.tabulate(tileSize) { i =>
-////      {for(ii <- i until size by tileSize)  yield src(ii) }.reduce{_+_}
-//      (i until size by tileSize).map { ii => src(ii) }.reduce{_+_}
-//    }
+    val iters = size/tileSize
+    val first = tileSize*(iters*(iters-1))/2
 
-    printArr(src, "src:")
+    val gold = Array.tabulate(tileSize) { i => first + i*iters }
+
+    printArr(gold, "src:")
     printArr(dst, "dst:")
+    val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (BlockReduce1D)")
+
 //    (0 until tileSize) foreach { i => assert(dst(i) == gold(i)) }
   }
 }
