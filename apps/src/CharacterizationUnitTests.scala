@@ -286,9 +286,10 @@ trait CharBram extends SpatialApp {
     result.map{row =>
       row.foreach{println(_)}
     }
-    val check = result.map{row => row.map{a => a}}
+    val check = result.map{row => row.map{a => a}.reduce{_+_}}.reduce{_+_}
+    val gold = List.tabulate(innerPar*outerPar){ i => numin }.reduce{_+_}
 
-    val cksum = check.map{ a => a == numin}.reduce{_&&_}
+    val cksum = check == gold
     println("PASS: " + cksum + " (CharBramTest)")
 
   }

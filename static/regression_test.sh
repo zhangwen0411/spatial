@@ -120,7 +120,13 @@ function create_script {
 	if grep -q \"PASS: 1\" ${5}/log; then
 	  rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
 	  touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
+	elif grep -q \"PASS: true\" ${5}/log; then
+	  rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
+	  touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
 	elif grep -q \"PASS: 0\" ${5}/log; then
+	  rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
+	  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+	elif grep -q \"PASS: false\" ${5}/log; then
 	  rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
 	  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
 	else 
@@ -159,12 +165,23 @@ cd hyperdsl
 git submodule update --init > /dev/null
 git fetch > /dev/null
 git checkout spatial > /dev/null
-cd delite && git fetch > /dev/null && git checkout plasticine > /dev/null && git pull > /dev/null
-cd ../forge && git fetch > /dev/null && git checkout spatial > /dev/null && git pull > /dev/null
-cd ../virtualization-lms-core && git fetch > /dev/null && git checkout spatial > /dev/null && git pull > /dev/null
+cd delite 
+git fetch > /dev/null 
+git checkout plasticine > /dev/null 
+git pull > /dev/null
+cd ../forge 
+git fetch > /dev/null 
+git checkout spatial > /dev/null 
+git pull > /dev/null
+cd ../virtualization-lms-core 
+git fetch > /dev/null 
+git checkout spatial > /dev/null 
+git pull > /dev/null
 cd ../
 git clone git@github.com:stanford-ppl/spatial.git > /dev/null
-cd spatial && git fetch > /dev/null && git checkout maxj > /dev/null
+cd spatial 
+git fetch > /dev/null 
+git checkout maxj > /dev/null
 cd ../
 echo "[STATUS] `date`: Done cloning stuff!"
 echo "[STATUS] `date`: Making hyperdsl..."
