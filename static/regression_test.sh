@@ -64,17 +64,17 @@ function update_log {
 		if [[ $p == *"pass"* ]]; then
 			echo "**$p**  " | sed "s/\.\///g" >> $1
 		elif [[ $p == *"failed_did_not_finish"* ]]; then
-			echo "<------$p  " | sed "s/\.\///g" >> $1
-		elif [[ $p == *"failed_app_not_written"* ]]; then
 			echo "<------------$p  " | sed "s/\.\///g" >> $1
+		elif [[ $p == *"failed_app_not_written"* ]]; then
+			echo "<------------------------$p  " | sed "s/\.\///g" >> $1
 		elif [[ $p == *"failed_build_in_spatial"* ]]; then
-			echo "<----------$p  " | sed "s/\.\///g" >> $1
+			echo "<--------------------$p  " | sed "s/\.\///g" >> $1
 		elif [[ $p == *"failed_compile_maxj"* ]]; then
-			echo "<--------$p  " | sed "s/\.\///g" >> $1
+			echo "<----------------$p  " | sed "s/\.\///g" >> $1
 		elif [[ $p == *"failed_no_validation_check"* ]]; then
-			echo "<----$p  " | sed "s/\.\///g" >> $1
+			echo "<--------$p  " | sed "s/\.\///g" >> $1
 		elif [[ $p == *"failed_validation"* ]]; then
-			echo "<--$p  " | sed "s/\.\///g" >> $1
+			echo "<----$p  " | sed "s/\.\///g" >> $1
 		else
 			echo "Unknown result: $p  " | sed "s/\.\///g" >> $1
 		fi
@@ -320,7 +320,7 @@ result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
 echo -e "*Status updated on `date`* \n" > $result_file
 echo -e "Latest spatial commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
 echo -e "Latest delite commit (MaxJ templates): \n\`\`\`\n${dhash}\n\`\`\`" >> $result_file
-echo -e "\n\n\* <---- indicates relative work before app will **pass**" >> $result_file
+echo -e "\n\n\* <---- indicates relative amount of work needed before app will **pass**" >> $result_file
 
 for ac in ${app_classes[@]}; do
 	cd ${SPATIAL_HOME}/regression_tests/${ac}/results
