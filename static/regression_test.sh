@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Seconds to pause while waiting for apps to run
-delay=1200
+delay=600
 export TESTS_HOME=/home/mattfel/regression_tests
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
@@ -22,7 +22,7 @@ if [ ! -d "./hyperdsl" ]; then
   echo "" >> $result_file
   echo "Error cloning hyperdsl!  Could not validate anything!" >> $result_file
   # git push
-  cd ${SPATIAL_HOME}/spatial.wiki
+  cd /home/mattfel/hyperdsl/spatial/spatial.wiki
   git add MaxJ-Regression-Tests-Status.md
   git commit -m "automated status update"
   git push
@@ -59,7 +59,7 @@ if [ ! -d "${PUB_HOME}" ]; then
   echo "" >> $result_file
   echo "Error building Spatial!  Could not validate anything!" >> $result_file
   # git push
-  cd ${SPATIAL_HOME}/spatial.wiki
+  cd /home/mattfel/hyperdsl/spatial/spatial.wiki
   git add MaxJ-Regression-Tests-Status.md
   git commit -m "automated status update"
   git push
@@ -237,6 +237,7 @@ bash ${SPATIAL_HOME}/static/vulture.sh workers_for_unit
 #####################
 
 # Wait and publish results
+echo "Waiting $delay seconds..."
 sleep $delay
 
 # Get git hash
@@ -248,11 +249,11 @@ hash=`git log --stat --name-status HEAD^..HEAD`
 cd ${SPATIAL_HOME}/regression_tests/dense/results
 result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
 echo -e "*Status updated on `date`* \n" > $result_file
-echo -e "Latest commit: \n${hash}" >> $result_file
+echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
 
-echo "Current Dense Apps' statuses:" >> $result_file
+echo "Current Dense Apps statuses:" >> $result_file
 echo "-------------------------------" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
@@ -275,7 +276,9 @@ for p in ${progress[@]}; do
 done
 
 cd ${SPATIAL_HOME}/regression_tests/unit/results
-echo "Current CodegenUnitTests' statuses:" >> $result_file
+echo "" >> $result_file
+echo "" >> $result_file
+echo "Current CodegenUnitTests statuses:" >> $result_file
 echo "-------------------------------" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
@@ -301,6 +304,7 @@ echo "" >> $result_file
 echo "Comments" >> $result_file
 echo "--------" >> $result_file
 echo "* Expected FifoLoadStore to fail validation" >> $result_file
+echo "* Need to fix TPCHQ6 to mix SInts and Flts, currently uses SInts only" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
 echo "Branches Used" >> $result_file
@@ -315,5 +319,5 @@ echo "* spatial => maxj" >> $result_file
 # git push
 cd ${SPATIAL_HOME}/spatial.wiki
 git add MaxJ-Regression-Tests-Status.md
-git commit -m "automated status update"
+git commit -m "automated status update via cron"
 git push
