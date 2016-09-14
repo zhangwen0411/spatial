@@ -522,11 +522,15 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       }
       
       val Def(rhss) = parentCtr
-      val accEn = parentCtr match {
-        case Def(EatReflect(Counter_new(start, end, step, par))) =>  s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr) /* ctr $start to $end */"
-        // case Def(EatReflect(Counterchain_new(ctrs))) => s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr) /* ctr chain */"
-        case _ =>  s"stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)"
+      val accEn = this_writer match {
+        case Deff(_: Unit_pipe) => s"stream.offset(${quote(this_writer)}_done /* Not sure if this is right */, -$offsetStr)"
+        case _ => s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr)"
       }
+      // val accEn = parentCtr match {
+      //   case Def(EatReflect(Counter_new(start, end, step, par))) =>  s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr) /* ctr $start to $end */"
+      //   case Def(EatReflect(Counterchain_new(ctrs))) => s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr) /* ctr chain */"
+      //   case _ =>  s"stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)"
+      // }
 
       if (dups.length == 1) {
         if (writers.length == 1) {
@@ -543,17 +547,17 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
             num_dims match {
               case 1 =>
                 emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), $accEn); //3""")
+                  stream.offset($dataStr, -$offsetStr), $accEn); //w3""")
               case _ =>
                 emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), $accEn); //4""")
+                  stream.offset($dataStr, -$offsetStr), $accEn); //w4""")
             }
           }
         } else {
           val bank_num = i
           dups.zipWithIndex.foreach {case (dd, ii) =>
             emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
-              stream.offset($dataStr, -$offsetStr), $accEn); //5""") 
+              stream.offset($dataStr, -$offsetStr), $accEn); //w5""") 
           }
         }
       }
@@ -561,7 +565,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       // [TODO] Raghu: Current assumption is that this always returns the parent
       // writing to the BRAM. Is this always true? Confirm
       if (isDummy(bram)) {
-        emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //6""")
+        emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //w6""")
       } else {
         inds.length match {
           case 0 =>
@@ -569,10 +573,10 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
           case 1 =>
             if (num_dims == 1) {
               if (dups.length == 1) {
-                emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //7""") 
+                emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //w7""") 
               } else {
                 dups.zipWithIndex.foreach {case (dd, ii) =>
-                  emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //8""")
+                  emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //w8""")
                 }
               }
             } else {

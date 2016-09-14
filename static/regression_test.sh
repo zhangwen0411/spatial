@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Seconds to pause while waiting for apps to run
-delay=600
+delay=1200
 export TESTS_HOME=/home/mattfel/regression_tests
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
@@ -13,6 +13,19 @@ rm -rf $TESTS_HOME && mkdir $TESTS_HOME && cd $TESTS_HOME
 git clone git@github.com:stanford-ppl/hyperdsl.git
 if [ ! -d "./hyperdsl" ]; then
   echo "hyperdsl directory does not exist!"
+  result_file=/home/mattfel/hyperdsl/spatial/spatial.wiki/MaxJ-Regression-Tests-Status.md
+  echo "Current global status on maxj branch:" > $result_file
+  echo "-------------------------------" >> $result_file
+  echo "" >> $result_file
+  echo "" >> $result_file
+  echo -e "*Updated `date`*" >> $result_file
+  echo "" >> $result_file
+  echo "Error cloning hyperdsl!  Could not validate anything!" >> $result_file
+  # git push
+  cd ${SPATIAL_HOME}/spatial.wiki
+  git add MaxJ-Regression-Tests-Status.md
+  git commit -m "automated status update"
+  git push
   exit 1
 fi
 cd hyperdsl
@@ -37,6 +50,19 @@ git clone git@github.com:stanford-ppl/spatial.wiki.git
 rm -rf ${SPATIAL_HOME}/regression_tests;mkdir ${SPATIAL_HOME}/regression_tests
 if [ ! -d "${PUB_HOME}" ]; then
   echo "$PUB_HOME directory does not exist!"
+  result_file=/home/mattfel/hyperdsl/spatial/spatial.wiki/MaxJ-Regression-Tests-Status.md
+  echo "Current global status on maxj branch:" > $result_file
+  echo "-------------------------------" >> $result_file
+  echo "" >> $result_file
+  echo "" >> $result_file
+  echo -e "*Updated `date`*" >> $result_file
+  echo "" >> $result_file
+  echo "Error building Spatial!  Could not validate anything!" >> $result_file
+  # git push
+  cd ${SPATIAL_HOME}/spatial.wiki
+  git add MaxJ-Regression-Tests-Status.md
+  git commit -m "automated status update"
+  git push
   exit 1
 fi
 
@@ -68,8 +94,8 @@ rm log
 ##############
 
 # ADD APPS HERE
-test_list=("DotProduct" "MatMult_inner" "TPCHQ6")
-args_list=("9600"       "8 192 192"     "1920"  )
+test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" )
+args_list=("9600"       "8 192 192"     "1920"   "960"          )
 
 # Create vulture dir
 rm -rf ${SPATIAL_HOME}/regression_tests/dense;mkdir ${SPATIAL_HOME}/regression_tests/dense
@@ -93,7 +119,7 @@ do
 	# Compile and run commands
 
 	echo "#!/bin/bash" >> $cmd_file
-	echo 'export HYPER_HOME=${TESTS_HOME}/hyperdsl'
+	echo "export HYPER_HOME=${TESTS_HOME}/hyperdsl" >> $cmd_file
 	echo "cd ${PUB_HOME}" >> $cmd_file
 	echo "${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/dense/${i}_${test_list[i]}/out ${test_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
 	echo '' >> $cmd_file
@@ -164,9 +190,8 @@ do
 	cmd_file="${vulture_dir}/cmd"
 
 	# Compile and run commands
-
 	echo "#!/bin/bash" >> $cmd_file
-	echo 'export HYPER_HOME=${TESTS_HOME}/hyperdsl'
+	echo "export HYPER_HOME=${TESTS_HOME}/hyperdsl" >> $cmd_file
 	echo "cd ${PUB_HOME}" >> $cmd_file
 	echo "${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/unit/${i}_${test_list[i]}/out ${test_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
 	echo '' >> $cmd_file
@@ -216,17 +241,18 @@ sleep $delay
 
 # Get git hash
 cd ${SPATIAL_HOME}
-hash=`git rev-parse HEAD`
+# hash=`git rev-parse HEAD`
+hash=`git log --stat --name-status HEAD^..HEAD`
 
 # Get results
 cd ${SPATIAL_HOME}/regression_tests/dense/results
 result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
-echo -e "*Updated `date`* \n" > $result_file
-echo "*hash: ${hash}*" >> $result_file
+echo -e "*Status updated on `date`* \n" > $result_file
+echo -e "Latest commit: \n${hash}" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
 
-echo "Current Dense Apps' status on maxj branch:" >> $result_file
+echo "Current Dense Apps' statuses:" >> $result_file
 echo "-------------------------------" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
@@ -249,7 +275,7 @@ for p in ${progress[@]}; do
 done
 
 cd ${SPATIAL_HOME}/regression_tests/unit/results
-echo "Current CodegenUnitTests' status on maxj branch:" >> $result_file
+echo "Current CodegenUnitTests' statuses:" >> $result_file
 echo "-------------------------------" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
@@ -275,6 +301,15 @@ echo "" >> $result_file
 echo "Comments" >> $result_file
 echo "--------" >> $result_file
 echo "* Expected FifoLoadStore to fail validation" >> $result_file
+echo "" >> $result_file
+echo "" >> $result_file
+echo "Branches Used" >> $result_file
+echo "-------------" >> $result_file
+echo "* hyperdsl => spatial" >> $result_file
+echo "* delite => plasticine" >> $result_file
+echo "* virtualization-lms-core => spatial" >> $result_file
+echo "* forge => spatial" >> $result_file
+echo "* spatial => maxj" >> $result_file
 
 
 # git push

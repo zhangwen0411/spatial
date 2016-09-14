@@ -156,7 +156,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
       case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case _ => Console.println(s"looking at $dd $x not matched")
+      case _ => 
     }
     set ++ ret
   }
