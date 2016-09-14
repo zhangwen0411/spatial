@@ -19,7 +19,7 @@ import spatial.compiler._
      val b = OffChipMem[T](P, N) 
      val c = OffChipMem[T](M, N)
 
-     val bm        = param(2) 
+     val bm        = param(4) 
      val bn        = param(96) 
      val bp        = param(96) 
 
@@ -81,6 +81,7 @@ import spatial.compiler._
      println("expected cksum: " + gold.map(a => a).reduce{_+_})
      println("result cksum: " + result.map(a => a).reduce{_+_})
 
-     assert(gold == result)
+    val cksum = result.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (MatMult_outer)")
    }
  }

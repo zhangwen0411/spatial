@@ -553,7 +553,11 @@ trait SpatialMath {
     impl (sqrt_flt) (codegen($cala, ${ FloatPoint.sqrt($0) }))
 
     // --- C++ Backend
-    impl (log_flt) (codegen(cpp, ${ $0 }))  
+    impl (abs_fix) (codegen(cpp, ${ abs($0) }))
+    impl (abs_flt) (codegen(cpp, ${ abs($0) }))
+    impl (log_flt) (codegen(cpp, ${ log($0) }))  
+    impl (exp_flt) (codegen(cpp, ${ exp($0) }))
+    impl (sqrt_flt) (codegen(cpp, ${ sqrt($0) }))
 
 
     // --- MaxJ Backend
@@ -625,6 +629,9 @@ trait SpatialMath {
 		// 	@ val pre = maxJPre(sym)
 		// 	$pre $sym = $sel ? $a : $b ;
 		// }))
+
+    // --- C++ Backend
+    impl (mux) (codegen(cpp, ${ ($sel) ? $a : $b }))
 	}
 
   // Infix operations with a Scala type on the LHS or RHS

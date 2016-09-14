@@ -56,7 +56,7 @@ trait GDA_App extends SpatialApp {
         val xTile = BRAM[T](rTileSize, cols)
         Parallel {
           yTile := y(r::r+rTileSize, subLoopPar)
-          xTile := x(r::r+rTileSize, 0::C, subLoopPar)  // Load tile of x
+          xTile := x(r::r+rTileSize, 0::cols, subLoopPar)  // Load tile of x
         }
 
         val sigmaBlk = BRAM[T](cols, cols)

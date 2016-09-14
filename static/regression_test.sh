@@ -1,16 +1,143 @@
 #!/bin/bash
 
+##########
+# CONFIG #
+##########
+# App classes
+app_classes=("dense" "sparse" "unit" "characterization")
+
+# Apps for each class
+dense_test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" "MatMult_outer"
+	"Kmeans"  "GEMM"      "GDA"    "SGD"   "LogReg")
+dense_args_list=("9600"       "8 192 192"     "1920"   "960"          "8 192 192"    
+	"96 8 96" "8 192 192" "384 96" "96 96" "96")
+sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
+sparse_args_list=("960" "960"      "960"              "960"       "960"   )    
+
 # Seconds to pause while waiting for apps to run
 delay=600
+
+# Override env vars to point to a separate directory for this regression test
 export TESTS_HOME=/home/mattfel/regression_tests
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${TESTS_HOME}/hyperdsl
 export PATH=/opt/maxcompiler/bin:/opt/maxcompiler2016/bin:/opt/maxeler/bin:/opt/altera/quartus/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
 
-# Reclone
+#############
+# FUNCTIONS #
+#############
+
+
+function write_comments {
+	echo "
+
+Comments
+--------
+* Expected FifoLoadStore to fail validation
+* Expected GEMM to fail validation
+* Need to fix TPCHQ6 to mix SInts and Flts, currently uses SInts only
+	* TPCHQ6 also stalls with tileSize > 96 and seems to filter out all prices
+* Tighten validation margin on BlackScholes
+" >> $1
+}
+
+function write_branches {
+	echo "
+
+Branches Used
+-------------
+* hyperdsl => spatial
+* delite => plasticine
+* virtualization-lms-core => spatial
+* forge => spatial
+* spatial => maxj" >> $1
+
+} 
+
+
+function update_log {
+	echo "" >> $1
+	echo "" >> $1
+	progress=(`find . -type f -maxdepth 1 | sort -r`)
+	for p in ${progress[@]}; do
+		if [[ $p == *"pass"* ]]; then
+			echo "**$p**  " | sed "s/\.\///g" >> $1
+		elif [[ $p == *"failed_did_not_finish"* ]]; then
+			echo "<------$p  " | sed "s/\.\///g" >> $1
+		elif [[ $p == *"failed_app_not_written"* ]]; then
+			echo "<------------$p  " | sed "s/\.\///g" >> $1
+		elif [[ $p == *"failed_build_in_spatial"* ]]; then
+			echo "<----------$p  " | sed "s/\.\///g" >> $1
+		elif [[ $p == *"failed_compile_maxj"* ]]; then
+			echo "<--------$p  " | sed "s/\.\///g" >> $1
+		elif [[ $p == *"failed_no_validation_check"* ]]; then
+			echo "<----$p  " | sed "s/\.\///g" >> $1
+		elif [[ $p == *"failed_validation"* ]]; then
+			echo "<--$p  " | sed "s/\.\///g" >> $1
+		else
+			echo "Unknown result: $p  " | sed "s/\.\///g" >> $1
+		fi
+	done
+}
+
+function create_script {
+	echo "#!/bin/bash
+	export HYPER_HOME=${TESTS_HOME}/hyperdsl
+	cd ${PUB_HOME}
+	${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} 2>&1 | tee -a ${5}/log
+	
+	sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${5}/log
+	
+	wc=\$(cat ${5}/log | grep \"couldn't find DEG file\" | wc -l)
+	if [ \"\$wc\" -ne 0 ]; then
+		echo \"PASS: -1 (${4} Spatial Error)\"
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
+	    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_not_written.${3}_${4}
+		exit
+	fi
+
+	wc=\$(cat ${5}/log | grep \"error\" | wc -l)
+	if [ \"\$wc\" -ne 0 ]; then
+		echo \"PASS: -1 (${4} Spatial Error)\"
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
+	    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_spatial_compile.${3}_${4}
+		exit
+	fi
+	
+	cd ${5}/out
+	make clean sim 2>&1 | tee -a ${5}/log
+	wc=\$(cat ${5}/log | grep \"BUILD FAILED\\|Error 1\" | wc -l)
+	if [ \"\$wc\" -ne 1 ]; then
+		echo \"PASS: -1 (${4} Spatial Error)\"
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
+	    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_maxj_compile.${3}_${4}
+		exit
+	fi
+	
+	cd out
+	bash ${5}/out/run.sh ${args_list[i]} 2>&1 | tee -a ${5}/log
+	if grep -q \"PASS: 1\" ${5}/log; then
+	  rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
+	  touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
+	elif grep -q \"PASS: 0\" ${5}/log; then
+	  rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
+	  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+	else 
+	  rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
+	  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation_unwritten.${3}_${4}		
+	fi" >> $1
+}
+
+
+#################
+# CLONE & BUILD #
+#################
+
+echo "[STATUS] `date`: Making test directory"
 rm -rf $TESTS_HOME && mkdir $TESTS_HOME && cd $TESTS_HOME
-git clone git@github.com:stanford-ppl/hyperdsl.git
+echo "[STATUS] `date`: Cloning stuff..."
+git clone git@github.com:stanford-ppl/hyperdsl.git > /dev/null
 if [ ! -d "./hyperdsl" ]; then
   echo "hyperdsl directory does not exist!"
   result_file=/home/mattfel/hyperdsl/spatial/spatial.wiki/MaxJ-Regression-Tests-Status.md
@@ -29,49 +156,42 @@ if [ ! -d "./hyperdsl" ]; then
   exit 1
 fi
 cd hyperdsl
-git submodule update --init
-git fetch
-git checkout spatial
-cd delite && git fetch && git checkout plasticine && git pull
-cd ../forge && git fetch && git checkout spatial && git pull
-cd ../virtualization-lms-core && git fetch && git checkout spatial && git pull
+git submodule update --init > /dev/null
+git fetch > /dev/null
+git checkout spatial > /dev/null
+cd delite && git fetch > /dev/null && git checkout plasticine > /dev/null && git pull > /dev/null
+cd ../forge && git fetch > /dev/null && git checkout spatial > /dev/null && git pull > /dev/null
+cd ../virtualization-lms-core && git fetch > /dev/null && git checkout spatial > /dev/null && git pull > /dev/null
 cd ../
-git clone git@github.com:stanford-ppl/spatial.git
-cd spatial && git fetch && git checkout maxj
+git clone git@github.com:stanford-ppl/spatial.git > /dev/null
+cd spatial && git fetch > /dev/null && git checkout maxj > /dev/null
 cd ../
-ls
-echo "Making hyperdsl..."
-sbt compile > /dev/null
-echo "Making spatial..."
-cd spatial && make > /dev/null
+echo "[STATUS] `date`: Done cloning stuff!"
+echo "[STATUS] `date`: Making hyperdsl..."
+sbt compile > /dev/null 
+echo "[STATUS] `date`: hyperdsl done!"
+echo "[STATUS] `date`: Making spatial..."
+cd spatial
+make > /dev/null
+echo "[STATUS] `date`: spatial done!"
+echo "[STATUS] `date`: Cloning wiki..."
 git clone git@github.com:stanford-ppl/spatial.wiki.git
+echo "[STATUS] `date`: wiki clone done!"
 
-# Fast remake Spatial
+# Check if things are OK now
 rm -rf ${SPATIAL_HOME}/regression_tests;mkdir ${SPATIAL_HOME}/regression_tests
+echo "[STATUS] `date`: Checking if spatial made correctly..."
 if [ ! -d "${PUB_HOME}" ]; then
   echo "$PUB_HOME directory does not exist!"
-  result_file=/home/mattfel/hyperdsl/spatial/spatial.wiki/MaxJ-Regression-Tests-Status.md
-  echo "Current global status on maxj branch:" > $result_file
-  echo "-------------------------------" >> $result_file
-  echo "" >> $result_file
-  echo "" >> $result_file
-  echo -e "*Updated `date`*" >> $result_file
-  echo "" >> $result_file
-  echo "Error building Spatial!  Could not validate anything!" >> $result_file
-  # git push
-  cd /home/mattfel/hyperdsl/spatial/spatial.wiki
-  git add MaxJ-Regression-Tests-Status.md
-  git commit -m "automated status update"
-  git push
-  exit 1
-fi
-
-cd ${PUB_HOME}
-fastmake="cp -r ${SPATIAL_HOME}/extern/compiler/src/ops/* ${PUB_HOME}/compiler/src/spatial/compiler/ops;cd ${PUB_HOME}/;sbt compile 2>&1 | tee -a log"
-eval "$fastmake"
-wc=$(cat log | grep "success" | wc -l)
-if [ "$wc" -ne 1 ]; then
-	result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
+  # Use main repo's wiki for update
+  if [ ! -d "/home/mattfel/hyperdsl/spatial/spatial.wiki" ]; then
+  	echo "FATAL ERROR! No default wiki!"
+  	exit
+  else 
+  	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
+	git fetch
+	git reset --hard
+	result_file=/home/mattfel/hyperdsl/spatial/spatial.wiki/MaxJ-Regression-Tests-Status.md
 	echo "Current global status on maxj branch:" > $result_file
 	echo "-------------------------------" >> $result_file
 	echo "" >> $result_file
@@ -80,229 +200,104 @@ if [ "$wc" -ne 1 ]; then
 	echo "" >> $result_file
 	echo "Error building Spatial!  Could not validate anything!" >> $result_file
 	# git push
-	cd ${SPATIAL_HOME}/spatial.wiki
+	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
 	git add MaxJ-Regression-Tests-Status.md
 	git commit -m "automated status update"
 	git push
 	exit 1
+  fi
+fi
+
+# Check if compile worked
+cd ${PUB_HOME}
+echo "[STATUS] `date`: Making spatial again but faster because if it ain't broke, don't fix it..."
+fastmake="cp -r ${SPATIAL_HOME}/extern/compiler/src/ops/* ${PUB_HOME}/compiler/src/spatial/compiler/ops;cd ${PUB_HOME}/;sbt compile 2>&1 | tee -a log"
+eval "$fastmake"
+echo "[STATUS] `date`: Remake spatial done!"
+wc=$(cat log | grep "success" | wc -l)
+if [ "$wc" -ne 1 ]; then
+	if [ ! -d "${SPATIAL_HOME}/spatial.wiki" ]; then
+		echo "FATAL ERROR. No wiki dir"
+		exit 1
+	else 
+		cd $SPATIAL_HOME
+		hash=`git log --stat --name-status HEAD^..HEAD`
+		cd ${SPATIAL_HOME}/spatial.wiki
+		result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
+		echo "Current global status on maxj branch:" > $result_file
+		echo "-------------------------------" >> $result_file
+		echo "" >> $result_file
+		echo "" >> $result_file
+		echo -e "*Status updated on `date`* \n" > $result_file
+		echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
+		echo "" >> $result_file
+		echo "Error building Spatial!  Could not validate anything!" >> $result_file
+		# git push
+		git add MaxJ-Regression-Tests-Status.md
+		git commit -m "automated status update"
+		git push
+		exit 1
+	fi
 fi
 rm log
 
 
-##############
-# DENSE APPS #
-##############
+################
+# LAUNCH TESTS #
+################
 
-# ADD APPS HERE
-test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" "MatMult_outer"
-	"Kmeans"  "GEMM"      "GDA"    "SGD"   "LogReg")
-args_list=("9600"       "8 192 192"     "1920"   "960"          "8 192 192"    
-	"96 8 96" "8 192 192" "384 96" "96 96" "96")
-
-# Create vulture dir
-rm -rf ${SPATIAL_HOME}/regression_tests/dense;mkdir ${SPATIAL_HOME}/regression_tests/dense
-mkdir ${SPATIAL_HOME}/regression_tests/dense/results
-cd ${SPATIAL_HOME}/regression_tests/dense
-
-# Initialize results
-for i in `seq 0 $((${#test_list[@]}-1))`
-do
-	touch ${SPATIAL_HOME}/regression_tests/dense/results/inprogress.${i}_${test_list[i]}
-done
-
-# Create vulture commands
-for i in `seq 0 $((${#test_list[@]}-1))`
-do
-	# Make dir for this job
-	vulture_dir="${SPATIAL_HOME}/regression_tests/dense/${i}_${test_list[i]}"
-	rm -rf $vulture_dir;mkdir $vulture_dir
-	cmd_file="${vulture_dir}/cmd"
-
-	# Compile and run commands
-
-	echo "#!/bin/bash" >> $cmd_file
-	echo "export HYPER_HOME=${TESTS_HOME}/hyperdsl" >> $cmd_file
-	echo "cd ${PUB_HOME}" >> $cmd_file
-	echo "${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/dense/${i}_${test_list[i]}/out ${test_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
-	echo '' >> $cmd_file
-	echo "sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${vulture_dir}/log" >> $cmd_file
-	echo '' >> $cmd_file
-	echo "wc=\$(cat ${vulture_dir}/log | grep \"error\" | wc -l)" >> $cmd_file
-	echo 'if [ "$wc" -ne 0 ]; then' >> $cmd_file
-	echo "	echo \"PASS: -1 (${test_list[i]} Spatial Error)\"" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/dense/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/dense/results/failed_spatial_compile.${i}_${test_list[i]}" >> $cmd_file
-	echo '	exit' >> $cmd_file
-	echo 'fi' >> $cmd_file
-	echo '' >> $cmd_file
-	echo "cd ${vulture_dir}/out" >> $cmd_file
-	echo "make clean sim 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
-	echo "wc=\$(cat ${vulture_dir}/log | grep \"BUILD FAILED\\|Error 1\" | wc -l)" >> $cmd_file
-	echo 'if [ "$wc" -ne 1 ]; then' >> $cmd_file
-	echo "	echo \"PASS: -1 (${test_list[i]} Spatial Error)\"" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/dense/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/dense/results/failed_maxj_compile.${i}_${test_list[i]}" >> $cmd_file
-	echo '	exit' >> $cmd_file
-	echo 'fi' >> $cmd_file
-	echo '' >> $cmd_file
-	echo 'cd out' >> $cmd_file
-	echo "bash ${vulture_dir}/out/run.sh ${args_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
-	echo "if grep -q \"PASS: 1\" ${vulture_dir}/log; then" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/dense/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/dense/results/pass.${i}_${test_list[i]}" >> $cmd_file
-	echo "else" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/dense/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/dense/results/failed_validation.${i}_${test_list[i]}" >> $cmd_file
-	echo "fi" >> $cmd_file
-
-done
-
-# Run vulture
-cd ${SPATIAL_HOME}/regression_tests/dense/
-bash ${SPATIAL_HOME}/static/vulture.sh workers_for_dense
-
-
-###############
-# SPARSE APPS #
-###############
-
-# ADD APPS HERE
-test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
-args_list=("960" "960"      "960"              "960"       "960"   )    
-
-# Create vulture dir
-rm -rf ${SPATIAL_HOME}/regression_tests/sparse;mkdir ${SPATIAL_HOME}/regression_tests/sparse
-mkdir ${SPATIAL_HOME}/regression_tests/sparse/results
-cd ${SPATIAL_HOME}/regression_tests/sparse
-
-# Initialize results
-for i in `seq 0 $((${#test_list[@]}-1))`
-do
-	touch ${SPATIAL_HOME}/regression_tests/sparse/results/inprogress.${i}_${test_list[i]}
-done
-
-# Create vulture commands
-for i in `seq 0 $((${#test_list[@]}-1))`
-do
-	# Make dir for this job
-	vulture_dir="${SPATIAL_HOME}/regression_tests/sparse/${i}_${test_list[i]}"
-	rm -rf $vulture_dir;mkdir $vulture_dir
-	cmd_file="${vulture_dir}/cmd"
-
-	# Compile and run commands
-
-	echo "#!/bin/bash" >> $cmd_file
-	echo "export HYPER_HOME=${TESTS_HOME}/hyperdsl" >> $cmd_file
-	echo "cd ${PUB_HOME}" >> $cmd_file
-	echo "${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/sparse/${i}_${test_list[i]}/out ${test_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
-	echo '' >> $cmd_file
-	echo "sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${vulture_dir}/log" >> $cmd_file
-	echo '' >> $cmd_file
-	echo "wc=\$(cat ${vulture_dir}/log | grep \"error\" | wc -l)" >> $cmd_file
-	echo 'if [ "$wc" -ne 0 ]; then' >> $cmd_file
-	echo "	echo \"PASS: -1 (${test_list[i]} Spatial Error)\"" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/sparse/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/sparse/results/failed_spatial_compile.${i}_${test_list[i]}" >> $cmd_file
-	echo '	exit' >> $cmd_file
-	echo 'fi' >> $cmd_file
-	echo '' >> $cmd_file
-	echo "cd ${vulture_dir}/out" >> $cmd_file
-	echo "make clean sim 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
-	echo "wc=\$(cat ${vulture_dir}/log | grep \"BUILD FAILED\\|Error 1\" | wc -l)" >> $cmd_file
-	echo 'if [ "$wc" -ne 1 ]; then' >> $cmd_file
-	echo "	echo \"PASS: -1 (${test_list[i]} Spatial Error)\"" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/sparse/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/sparse/results/failed_maxj_compile.${i}_${test_list[i]}" >> $cmd_file
-	echo '	exit' >> $cmd_file
-	echo 'fi' >> $cmd_file
-	echo '' >> $cmd_file
-	echo 'cd out' >> $cmd_file
-	echo "bash ${vulture_dir}/out/run.sh ${args_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
-	echo "if grep -q \"PASS: 1\" ${vulture_dir}/log; then" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/sparse/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/sparse/results/pass.${i}_${test_list[i]}" >> $cmd_file
-	echo "else" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/sparse/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/sparse/results/failed_validation.${i}_${test_list[i]}" >> $cmd_file
-	echo "fi" >> $cmd_file
-
-done
-
-# Run vulture
-cd ${SPATIAL_HOME}/regression_tests/sparse/
-bash ${SPATIAL_HOME}/static/vulture.sh workers_for_sparse
-
-
-
-##############
-# UNIT TESTS #
-##############
-
-# Collect tests and their args from file
 IFS=$'\n'
-test_list=(`cat $SPATIAL_HOME/apps/src/CodegenUnitTests.scala | grep "^object .* extends .*" | sed "s/object//g" | sed "s/extends .*//g" | sed "s/ //g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
-args_list=(`cat $SPATIAL_HOME/apps/src/CodegenUnitTests.scala | grep "^object .* extends .*" | sed "s/object .* with .* \/\/ Args://g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
+# Unit test apps (Add more by editing CodegenUnitTests.scala)
+unit_test_list=(`cat $SPATIAL_HOME/apps/src/CodegenUnitTests.scala | grep "^object .* extends .*" | sed "s/object//g" | sed "s/extends .*//g" | sed "s/ //g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
+unit_args_list=(`cat $SPATIAL_HOME/apps/src/CodegenUnitTests.scala | grep "^object .* extends .*" | sed "s/object .* with .* \/\/ Args://g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
+# Characterization test apps (Add more by editing CharacterizationUnitTests.scala)
+characterization_test_list=(`cat $SPATIAL_HOME/apps/src/CharacterizationUnitTests.scala | grep "^object .* extends .*" | sed "s/object//g" | sed "s/extends .*//g" | sed "s/ //g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
+characterization_args_list=(`cat $SPATIAL_HOME/apps/src/CharacterizationUnitTests.scala | grep "^object .* extends .*" | sed "s/object .* with .* \/\/ Args://g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
 
-# Create vulture dir
-rm -rf ${SPATIAL_HOME}/regression_tests/unit;mkdir ${SPATIAL_HOME}/regression_tests/unit
-mkdir ${SPATIAL_HOME}/regression_tests/unit/results
-cd ${SPATIAL_HOME}/regression_tests/unit
 
-# Initialize results
-for i in `seq 0 $((${#test_list[@]}-1))`
-do
-	touch ${SPATIAL_HOME}/regression_tests/unit/results/inprogress.${i}_${test_list[i]}
+for ac in ${app_classes[@]}; do 
+	# Create vulture dir
+	rm -rf ${SPATIAL_HOME}/regression_tests/${ac};mkdir ${SPATIAL_HOME}/regression_tests/${ac}
+	mkdir ${SPATIAL_HOME}/regression_tests/${ac}/results
+	cd ${SPATIAL_HOME}/regression_tests/${ac}
+
+	# Get apps list
+	if [[ $ac == "dense" ]]; then
+		test_list=("${dense_test_list[@]}")
+		args_list=("${dense_args_list[@]}")
+	elif [[ $ac == "sparse" ]]; then
+		test_list=("${sparse_test_list[@]}")
+		args_list=("${sparse_args_list[@]}")
+	elif [[ $ac == "unit" ]]; then
+		test_list=("${unit_test_list[@]}")
+		args_list=("${unit_args_list[@]}")
+	elif [[ $ac == "characterization" ]]; then
+		test_list=("${characterization_test_list[@]}")
+		args_list=("${characterization_args_list[@]}")
+	fi
+
+	# Initialize results
+	for i in `seq 0 $((${#test_list[@]}-1))`
+	do
+		touch ${SPATIAL_HOME}/regression_tests/${ac}/results/did_not_finish.${i}_${test_list[i]}
+
+		# Make dir for this vulture job
+		vulture_dir="${SPATIAL_HOME}/regression_tests/${ac}/${i}_${test_list[i]}"
+		rm -rf $vulture_dir;mkdir $vulture_dir
+		cmd_file="${vulture_dir}/cmd"
+
+		# Create script
+		create_script $cmd_file ${ac} $i ${test_list[i]} ${vulture_dir}
+
+		# Run vulture
+		cd ${SPATIAL_HOME}/regression_tests/${ac}/
+		bash ${SPATIAL_HOME}/static/vulture.sh workers_for_${ac}
+
+	done
 done
 
-# Create vulture commands
-for i in `seq 0 $((${#test_list[@]}-1))`
-do
-	# Make dir for this job
-	vulture_dir="${SPATIAL_HOME}/regression_tests/unit/${i}_${test_list[i]}"
-	rm -rf $vulture_dir;mkdir $vulture_dir
-	cmd_file="${vulture_dir}/cmd"
 
-	# Compile and run commands
-	echo "#!/bin/bash" >> $cmd_file
-	echo "export HYPER_HOME=${TESTS_HOME}/hyperdsl" >> $cmd_file
-	echo "cd ${PUB_HOME}" >> $cmd_file
-	echo "${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/unit/${i}_${test_list[i]}/out ${test_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
-	echo '' >> $cmd_file
-	echo "sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${vulture_dir}/log" >> $cmd_file
-	echo '' >> $cmd_file
-	echo "wc=\$(cat ${vulture_dir}/log | grep \"error\" | wc -l)" >> $cmd_file
-	echo 'if [ "$wc" -ne 0 ]; then' >> $cmd_file
-	echo "	echo \"PASS: -1 (${test_list[i]} Spatial Error)\"" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/unit/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/unit/results/failed_spatial_compile.${i}_${test_list[i]}" >> $cmd_file
-	echo '	exit' >> $cmd_file
-	echo 'fi' >> $cmd_file
-	echo '' >> $cmd_file
-	echo "cd ${vulture_dir}/out" >> $cmd_file
-	echo "make clean sim 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
-	echo "wc=\$(cat ${vulture_dir}/log | grep \"BUILD FAILED\\|Error 1\" | wc -l)" >> $cmd_file
-	echo 'if [ "$wc" -ne 1 ]; then' >> $cmd_file
-	echo "	echo \"PASS: -1 (${test_list[i]} Spatial Error)\"" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/unit/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/unit/results/failed_maxj_compile.${i}_${test_list[i]}" >> $cmd_file
-	echo '	exit' >> $cmd_file
-	echo 'fi' >> $cmd_file
-	echo '' >> $cmd_file
-	echo 'cd out' >> $cmd_file
-	echo "bash ${vulture_dir}/out/run.sh ${args_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
-	echo "if grep -q \"PASS: 1\" ${vulture_dir}/log; then" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/unit/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/unit/results/pass.${i}_${test_list[i]}" >> $cmd_file
-	echo "else" >> $cmd_file
-	echo "  rm ${SPATIAL_HOME}/regression_tests/unit/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
-	echo "  touch ${SPATIAL_HOME}/regression_tests/unit/results/failed_validation.${i}_${test_list[i]}" >> $cmd_file
-	echo "fi" >> $cmd_file
 
-done
-
-# Run vulture
-cd ${SPATIAL_HOME}/regression_tests/unit/
-bash ${SPATIAL_HOME}/static/vulture.sh workers_for_unit
 
 
 #####################
@@ -310,107 +305,35 @@ bash ${SPATIAL_HOME}/static/vulture.sh workers_for_unit
 #####################
 
 # Wait and publish results
-echo "Waiting $delay seconds..."
+echo "[STATUS] `date`: Waiting $delay seconds..."
 sleep $delay
 
-# Get git hash
+# Get git hashes
+cd ${HYPER_HOME}/delite
+dhash=`git log --stat --name-status HEAD^..HEAD`
 cd ${SPATIAL_HOME}
 # hash=`git rev-parse HEAD`
 hash=`git log --stat --name-status HEAD^..HEAD`
 
-# Get results
-cd ${SPATIAL_HOME}/regression_tests/dense/results
+# Write header
 result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
 echo -e "*Status updated on `date`* \n" > $result_file
-echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
-echo "" >> $result_file
-echo "" >> $result_file
+echo -e "Latest spatial commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
+echo -e "Latest delite commit (MaxJ templates): \n\`\`\`\n${dhash}\n\`\`\`" >> $result_file
+echo -e "\n\n\* <---- indicates relative work before app will **pass**" >> $result_file
 
-echo "Current Dense Apps statuses:" >> $result_file
-echo "-------------------------------" >> $result_file
-echo "" >> $result_file
-echo "" >> $result_file
-progress=(`find . -type f -maxdepth 1 | sort`)
-for p in ${progress[@]}; do
-	if [[ $p == *"pass"* ]]; then
-		echo "**$p**  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"inprogress"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_spatial"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_maxj"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_validation"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	else
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	fi
+for ac in ${app_classes[@]}; do
+	cd ${SPATIAL_HOME}/regression_tests/${ac}/results
+	echo "
+
+Current ${ac} apps statuses:
+-------------------------------" >> $result_file
+	update_log $result_file
 done
 
-cd ${SPATIAL_HOME}/regression_tests/sparse/results
-echo "" >> $result_file
-echo "" >> $result_file
-echo "Current Sparse Apps statuses:" >> $result_file
-echo "-------------------------------" >> $result_file
-echo "" >> $result_file
-echo "" >> $result_file
-progress=(`find . -type f -maxdepth 1 | sort`)
-for p in ${progress[@]}; do
-	if [[ $p == *"pass"* ]]; then
-		echo "**$p**  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"inprogress"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_spatial"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_maxj"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_validation"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	else
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	fi
-done
 
-cd ${SPATIAL_HOME}/regression_tests/unit/results
-echo "" >> $result_file
-echo "" >> $result_file
-echo "Current CodegenUnitTests statuses:" >> $result_file
-echo "-------------------------------" >> $result_file
-echo "" >> $result_file
-echo "" >> $result_file
-progress=(`find . -type f -maxdepth 1 | sort`)
-for p in ${progress[@]}; do
-	if [[ $p == *"pass"* ]]; then
-		echo "**$p**  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"inprogress"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_spatial"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_maxj"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	elif [[ $p == *"failed_validation"* ]]; then
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	else
-		echo "$p  " | sed "s/\.\///g" >> $result_file
-	fi
-done
-
-echo "" >> $result_file
-echo "" >> $result_file
-echo "Comments" >> $result_file
-echo "--------" >> $result_file
-echo "* Expected FifoLoadStore to fail validation" >> $result_file
-echo "* Need to fix TPCHQ6 to mix SInts and Flts, currently uses SInts only" >> $result_file
-echo "** TPCHQ6 also stalls with tileSize > 96 and seems to filter out all prices" >> $result_file
-echo "" >> $result_file
-echo "" >> $result_file
-echo "Branches Used" >> $result_file
-echo "-------------" >> $result_file
-echo "* hyperdsl => spatial" >> $result_file
-echo "* delite => plasticine" >> $result_file
-echo "* virtualization-lms-core => spatial" >> $result_file
-echo "* forge => spatial" >> $result_file
-echo "* spatial => maxj" >> $result_file
+write_comments $result_file
+write_branches $result_file
 
 
 # git push

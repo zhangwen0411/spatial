@@ -11,6 +11,7 @@ import spatial.shared._
   # CharLoadTest #
   ################
 
+  Do this for N iterations:
 
  (outerPar tiles)           offchip ←|→ onchip
           (innerPar ldPar)
@@ -33,6 +34,7 @@ import spatial.shared._
   # CharStoreTest #
   #################
 
+ Do this for N iterations: 
 
  (outerPar tiles)
            Dummy Memories     onchip ←|→ offchip
@@ -77,7 +79,7 @@ import spatial.shared._
                                        
 
 */
-object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp
+object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp // Args: 5
 trait CharLoadTestApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -140,13 +142,21 @@ trait CharLoadTestApp extends SpatialApp {
     val src = Array.tabulate[T](dim0*dim1*outerPar) { i => i }
     val result = CharLoad(src, iters)
 
-    val gold = src(0)
-    println("expected " + outerPar*innerPar + " things in increments of something like " + dim0 + "*" + dim1 + " : ")
+    val gold = Array.tabulate(outerPar) { i => 
+      Array.tabulate[T](innerPar) { j =>
+        j
+      }
+    }
     result.map{row => row.foreach{println(_)}}
+    gold.map{row => row.map{println(_)}}
+
+    // val cksum = result.flatten.zip(gold){_ == _}.reduce{_&&_}
+    // println("PASS: " + cksum  + " (CharLoadTest)")
+
   }
 }
 
-object CharStoreTest extends SpatialAppCompiler with CharStore
+object CharStoreTest extends SpatialAppCompiler with CharStore // Args: 5 3
 trait CharStore extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -214,7 +224,7 @@ trait CharStore extends SpatialApp {
 }
 
 
-object CharBramTest extends SpatialAppCompiler with CharBram
+object CharBramTest extends SpatialAppCompiler with CharBram // Args: 5
 trait CharBram extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
