@@ -94,8 +94,10 @@ rm log
 ##############
 
 # ADD APPS HERE
-test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" )
-args_list=("9600"       "8 192 192"     "1920"   "960"          )
+test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" "MatMult_outer"
+	"Kmeans"  "GEMM"      "GDA"    "SGD"   "LogReg")
+args_list=("9600"       "8 192 192"     "1920"   "960"          "8 192 192"    
+	"96 8 96" "8 192 192" "384 96" "96 96" "96")
 
 # Create vulture dir
 rm -rf ${SPATIAL_HOME}/regression_tests/dense;mkdir ${SPATIAL_HOME}/regression_tests/dense
@@ -158,6 +160,77 @@ done
 # Run vulture
 cd ${SPATIAL_HOME}/regression_tests/dense/
 bash ${SPATIAL_HOME}/static/vulture.sh workers_for_dense
+
+
+###############
+# SPARSE APPS #
+###############
+
+# ADD APPS HERE
+test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
+args_list=("960" "960"      "960"              "960"       "960"   )    
+
+# Create vulture dir
+rm -rf ${SPATIAL_HOME}/regression_tests/sparse;mkdir ${SPATIAL_HOME}/regression_tests/sparse
+mkdir ${SPATIAL_HOME}/regression_tests/sparse/results
+cd ${SPATIAL_HOME}/regression_tests/sparse
+
+# Initialize results
+for i in `seq 0 $((${#test_list[@]}-1))`
+do
+	touch ${SPATIAL_HOME}/regression_tests/sparse/results/inprogress.${i}_${test_list[i]}
+done
+
+# Create vulture commands
+for i in `seq 0 $((${#test_list[@]}-1))`
+do
+	# Make dir for this job
+	vulture_dir="${SPATIAL_HOME}/regression_tests/sparse/${i}_${test_list[i]}"
+	rm -rf $vulture_dir;mkdir $vulture_dir
+	cmd_file="${vulture_dir}/cmd"
+
+	# Compile and run commands
+
+	echo "#!/bin/bash" >> $cmd_file
+	echo "export HYPER_HOME=${TESTS_HOME}/hyperdsl" >> $cmd_file
+	echo "cd ${PUB_HOME}" >> $cmd_file
+	echo "${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/sparse/${i}_${test_list[i]}/out ${test_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
+	echo '' >> $cmd_file
+	echo "sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${vulture_dir}/log" >> $cmd_file
+	echo '' >> $cmd_file
+	echo "wc=\$(cat ${vulture_dir}/log | grep \"error\" | wc -l)" >> $cmd_file
+	echo 'if [ "$wc" -ne 0 ]; then' >> $cmd_file
+	echo "	echo \"PASS: -1 (${test_list[i]} Spatial Error)\"" >> $cmd_file
+	echo "  rm ${SPATIAL_HOME}/regression_tests/sparse/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
+	echo "  touch ${SPATIAL_HOME}/regression_tests/sparse/results/failed_spatial_compile.${i}_${test_list[i]}" >> $cmd_file
+	echo '	exit' >> $cmd_file
+	echo 'fi' >> $cmd_file
+	echo '' >> $cmd_file
+	echo "cd ${vulture_dir}/out" >> $cmd_file
+	echo "make clean sim 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
+	echo "wc=\$(cat ${vulture_dir}/log | grep \"BUILD FAILED\\|Error 1\" | wc -l)" >> $cmd_file
+	echo 'if [ "$wc" -ne 1 ]; then' >> $cmd_file
+	echo "	echo \"PASS: -1 (${test_list[i]} Spatial Error)\"" >> $cmd_file
+	echo "  rm ${SPATIAL_HOME}/regression_tests/sparse/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
+	echo "  touch ${SPATIAL_HOME}/regression_tests/sparse/results/failed_maxj_compile.${i}_${test_list[i]}" >> $cmd_file
+	echo '	exit' >> $cmd_file
+	echo 'fi' >> $cmd_file
+	echo '' >> $cmd_file
+	echo 'cd out' >> $cmd_file
+	echo "bash ${vulture_dir}/out/run.sh ${args_list[i]} 2>&1 | tee -a ${vulture_dir}/log" >> $cmd_file
+	echo "if grep -q \"PASS: 1\" ${vulture_dir}/log; then" >> $cmd_file
+	echo "  rm ${SPATIAL_HOME}/regression_tests/sparse/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
+	echo "  touch ${SPATIAL_HOME}/regression_tests/sparse/results/pass.${i}_${test_list[i]}" >> $cmd_file
+	echo "else" >> $cmd_file
+	echo "  rm ${SPATIAL_HOME}/regression_tests/sparse/results/inprogress.${i}_${test_list[i]}" >> $cmd_file
+	echo "  touch ${SPATIAL_HOME}/regression_tests/sparse/results/failed_validation.${i}_${test_list[i]}" >> $cmd_file
+	echo "fi" >> $cmd_file
+
+done
+
+# Run vulture
+cd ${SPATIAL_HOME}/regression_tests/sparse/
+bash ${SPATIAL_HOME}/static/vulture.sh workers_for_sparse
 
 
 
@@ -272,7 +345,30 @@ for p in ${progress[@]}; do
 	else
 		echo "$p  " | sed "s/\.\///g" >> $result_file
 	fi
+done
 
+cd ${SPATIAL_HOME}/regression_tests/sparse/results
+echo "" >> $result_file
+echo "" >> $result_file
+echo "Current Sparse Apps statuses:" >> $result_file
+echo "-------------------------------" >> $result_file
+echo "" >> $result_file
+echo "" >> $result_file
+progress=(`find . -type f -maxdepth 1 | sort`)
+for p in ${progress[@]}; do
+	if [[ $p == *"pass"* ]]; then
+		echo "**$p**  " | sed "s/\.\///g" >> $result_file
+	elif [[ $p == *"inprogress"* ]]; then
+		echo "$p  " | sed "s/\.\///g" >> $result_file
+	elif [[ $p == *"failed_spatial"* ]]; then
+		echo "$p  " | sed "s/\.\///g" >> $result_file
+	elif [[ $p == *"failed_maxj"* ]]; then
+		echo "$p  " | sed "s/\.\///g" >> $result_file
+	elif [[ $p == *"failed_validation"* ]]; then
+		echo "$p  " | sed "s/\.\///g" >> $result_file
+	else
+		echo "$p  " | sed "s/\.\///g" >> $result_file
+	fi
 done
 
 cd ${SPATIAL_HOME}/regression_tests/unit/results
@@ -297,14 +393,15 @@ for p in ${progress[@]}; do
 	else
 		echo "$p  " | sed "s/\.\///g" >> $result_file
 	fi
-
 done
+
 echo "" >> $result_file
 echo "" >> $result_file
 echo "Comments" >> $result_file
 echo "--------" >> $result_file
 echo "* Expected FifoLoadStore to fail validation" >> $result_file
 echo "* Need to fix TPCHQ6 to mix SInts and Flts, currently uses SInts only" >> $result_file
+echo "** TPCHQ6 also stalls with tileSize > 96 and seems to filter out all prices" >> $result_file
 echo "" >> $result_file
 echo "" >> $result_file
 echo "Branches Used" >> $result_file

@@ -552,6 +552,10 @@ trait SpatialMath {
     impl (exp_flt) (codegen($cala, ${ FloatPoint.exp($0) }))
     impl (sqrt_flt) (codegen($cala, ${ FloatPoint.sqrt($0) }))
 
+    // --- C++ Backend
+    impl (log_flt) (codegen(cpp, ${ $0 }))  
+
+
     // --- MaxJ Backend
     impl (abs_fix) (codegen(maxj,  ${
 			//TODO: parallelized virsion
