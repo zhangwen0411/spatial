@@ -15,7 +15,7 @@ sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
 sparse_args_list=("960" "960"      "960"              "960"       "960"   )    
 
 # Seconds to pause while waiting for apps to run
-delay=600
+delay=900
 
 # Override env vars to point to a separate directory for this regression test
 export TESTS_HOME=/home/mattfel/regression_tests
@@ -63,7 +63,7 @@ function update_log {
 	for p in ${progress[@]}; do
 		if [[ $p == *"pass"* ]]; then
 			echo "**$p**  " | sed "s/\.\///g" >> $1
-		elif [[ $p == *"failed_did_not_finish"* ]]; then
+		elif [[ $p == *"did_not_finish"* ]]; then
 			echo "<------------$p  " | sed "s/\.\///g" >> $1
 		elif [[ $p == *"failed_app_not_written"* ]]; then
 			echo "<------------------------$p  " | sed "s/\.\///g" >> $1
@@ -101,7 +101,7 @@ function create_script {
 	if [ \"\$wc\" -ne 0 ]; then
 		echo \"PASS: -1 (${4} Spatial Error)\"
 	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
-	    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_spatial_compile.${3}_${4}
+	    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
 		exit
 	fi
 	
@@ -111,7 +111,7 @@ function create_script {
 	if [ \"\$wc\" -ne 1 ]; then
 		echo \"PASS: -1 (${4} Spatial Error)\"
 	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
-	    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_maxj_compile.${3}_${4}
+	    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_maxj.${3}_${4}
 		exit
 	fi
 	
@@ -131,7 +131,7 @@ function create_script {
 	  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
 	else 
 	  rm ${SPATIAL_HOME}/regression_tests/${2}/results/did_not_finish.${3}_${4}
-	  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation_unwritten.${3}_${4}		
+	  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_no_validation_check.${3}_${4}		
 	fi" >> $1
 }
 
@@ -321,6 +321,9 @@ done
 # COLLECT & PUBLISH #
 #####################
 
+result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
+courtesy_email=${SPATIAL_HOME}/spatial.wiki/courtesy_email.txt
+
 # Wait and publish results
 echo "[STATUS] `date`: Waiting $delay seconds..."
 sleep $delay
@@ -332,12 +335,18 @@ cd ${SPATIAL_HOME}
 # hash=`git rev-parse HEAD`
 hash=`git log --stat --name-status HEAD^..HEAD`
 
-# Write header
-result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
-echo -e "*Status updated on `date`* \n" > $result_file
-echo -e "Latest spatial commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
-echo -e "Latest delite commit (MaxJ templates): \n\`\`\`\n${dhash}\n\`\`\`" >> $result_file
-echo -e "\n\n\* <---- indicates relative amount of work needed before app will **pass**" >> $result_file
+# Get list of previous passed tests and previous commit
+old_pass=(`cat ${result_file} | grep "^\*\*pass" | sed "s/\*\*//g" | sed "s/pass\.[0-9]\+\_//g" | sort`)
+old_commit=(`sed '/Latest spatial commit/,/REPORT/!d' ${result_file}`)
+
+# Begin write to file
+rm $result_file
+echo -e "
+
+REPORT
+------
+
+* <---- indicates relative amount of work needed before app will **pass**" > $result_file
 
 for ac in ${app_classes[@]}; do
 	cd ${SPATIAL_HOME}/regression_tests/${ac}/results
@@ -350,8 +359,28 @@ done
 
 
 write_comments $result_file
+
+# Write commit info
+echo -e "*Status updated on `date`* \n" >> $result_file
+echo -e "Latest spatial commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
+echo -e "Latest delite commit (MaxJ templates): \n\`\`\`\n${dhash}\n\`\`\`" >> $result_file
+
 write_branches $result_file
 
+# Get list of current failed tests
+new_fail=(`cat ${result_file} | grep "failed_\|did_not_finish" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sort`)
+new_commit=(`sed '/Latest spatial commit/,/REPORT/!d' ${result_file}`)
+emails=(`cat ${result_file} | grep "<.*>" | sed 's/Author.*<//g' | sed 's/>//g'`)
+csvemails=(`echo ${email[@]} | sed 's/ /,/g'`)
+
+# Check for intersection and send notice
+diff=($(comm -12 <(for X in "${new_fail[@]}"; do echo "${X}"; done|sort)  <(for X in "${old_pass[@]}"; do echo "${X}"; done|sort)))
+if [ ! -z "$diff" ]; then 
+	for m in ${emails[@]}; do
+		tmp=(`cat ${courtesy_email} | sed 's/APPS_LIST/${diff[@]}/g' | sed 's/OLD_COMMITS/${old_commit}/g' | sed 's/NEW_COMMITS/${new_commit}/g'`)
+		echo $tmp | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@whitehouse.gov
+	done
+fi
 
 # git push
 cd ${SPATIAL_HOME}/spatial.wiki
