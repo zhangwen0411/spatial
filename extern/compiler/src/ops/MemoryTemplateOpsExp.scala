@@ -59,6 +59,7 @@ trait MemoryTemplateTypesExp extends MemoryTemplateTypes with BaseExp {
 trait MemoryTemplateOpsExp extends MemoryTemplateTypesExp with ExternPrimitiveOpsExp with EffectExp with BRAMOpsExp {
   this: SpatialExp =>
 
+  val stream_offset_guess = 3
   // --- Nodes
   case class Vector_from_list[T](elems: List[Exp[T]])(implicit val mT: Manifest[T], val ctx: SourceContext) extends Def[Vector[T]]
 
@@ -557,18 +558,17 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
         case _ => s"${quote(this_writer)}_datapath_en"
       }
 
-      val stream_offset_guess = -20 // TODO: random guess at what accum delay should be
       // val accEn = parentCtr match {
       //   case Def(EatReflect(Counter_new(start, end, step, par))) =>  s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr) /* ctr $start to $end */"
       //   case Def(EatReflect(Counterchain_new(ctrs))) => s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr) /* ctr chain */"
       //   case _ =>  s"stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)"
       // }
-      val is_one_elem = if (inds.length == 1) "[0]" else ""
 
       if (dups.length == 1) {
         if (writers.length == 1) {
-          emit(s"""${quote(bram)}_rwport <== ${quote(bram)}.connectAport(stream.offset(${quote(addr)}, $stream_offset_guess),
-            stream.offset($dataStr, $stream_offset_guess), stream.offset(${quote(parentPipe)}_datapath_en, $stream_offset_guess))${is_one_elem}; //1""") 
+          val is_one_elem = if (inds.length == 1) "[0]" else ""
+          emit(s"""${quote(bram)}_rwport <== ${quote(bram)}.connectAport(stream.offset(${quote(addr)}, -$stream_offset_guess),
+            stream.offset($dataStr, -$stream_offset_guess), stream.offset(${quote(parentPipe)}_datapath_en, -$stream_offset_guess))${is_one_elem}; //1""") 
         } else {
           val bank_num = i
           emit(s"""${quote(bram)}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
@@ -579,13 +579,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
           dups.zipWithIndex.foreach {case (dd, ii) =>
             val A_or_W = if (ii == 0) "A" else "W"
             val connector = if (ii == 0) s"${quote(bram)}_rwport <== " else ""
+            val is_one_elem = if (inds.length == 1 & ii == 0) "[0]" else ""
             num_dims match {
               case 1 =>
-                emit(s"""${connector}${quote(bram)}_${ii}.connect${A_or_W}port(stream.offset(${quote(addr)}, ${stream_offset_guess}),
-                  stream.offset($dataStr, ${stream_offset_guess}), stream.offset($accEn, ${stream_offset_guess}))${is_one_elem}; //w3""")
+                emit(s"""${connector}${quote(bram)}_${ii}.connect${A_or_W}port(stream.offset(${quote(addr)}, -$stream_offset_guess),
+                  stream.offset($dataStr, -$stream_offset_guess), stream.offset($accEn, -$stream_offset_guess))${is_one_elem}; //w3""")
               case _ =>
-                emit(s"""${connector}${quote(bram)}_${ii}.connect${A_or_W}port(stream.offset(${quote(inds(0)(0))}, ${stream_offset_guess}), stream.offset(${quote(inds(0)(1))}, ${stream_offset_guess}),
-                  stream.offset($dataStr, ${stream_offset_guess}), stream.offset($accEn, ${stream_offset_guess}))${is_one_elem}; //w4""")
+                emit(s"""${connector}${quote(bram)}_${ii}.connect${A_or_W}port(stream.offset(${quote(inds(0)(0))}, -$stream_offset_guess), stream.offset(${quote(inds(0)(1))}, -$stream_offset_guess),
+                  stream.offset($dataStr, -$stream_offset_guess), stream.offset($accEn, -$stream_offset_guess))${is_one_elem}; //w4""")
             }
           }
         } else {

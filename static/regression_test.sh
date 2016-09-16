@@ -365,9 +365,6 @@ old_commit=(`sed '/Latest spatial commit/,/REPORT/!d' ${result_file}`)
 rm $result_file
 echo -e "
 
-REPORT
-------
-
 *Status updated on `date`*
 
 * <---- indicates relative amount of work needed before app will **pass**" > $result_file
@@ -376,8 +373,8 @@ for ac in ${app_classes[@]}; do
 	cd ${SPATIAL_HOME}/regression_tests/${ac}/results
 	echo "
 
-${ac} apps:
--------------------------------" >> $result_file
+# ${ac} apps:
+" >> $result_file
 	update_log $result_file
 done
 
