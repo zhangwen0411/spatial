@@ -290,7 +290,9 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
   // code generators
 	var quoteSuffix = HashMap[Sym[Any],HashMap[Sym[Any], String]]()
   override def quote(x: Exp[Any]) = x match {
-		case s@Sym(n) => {
+		case ss@Sym(nn) => {
+      val s = if (rwPortAlias.contains(ss)) rwPortAlias(ss) else ss
+      val Sym(n) = s
       s match {
         case Def(Argin_new(init)) =>
           s"argin_" + s.tp.erasure.getSimpleName() + n
@@ -331,7 +333,8 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
               ""
             }
           }.reduce{_+_}
-			    customStr + n + suffix
+          val rw_suffix = if (rwPortAlias.contains(ss)) "_rwport" else ""
+			    customStr + n + suffix + rw_suffix
         }
 		  }
     case _ => super.quote(x)
@@ -701,8 +704,9 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
           case n@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
             emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(8));""")
+            val redloop_delay_guess = 2
             emit(s"""CounterChain ${quote(sym)}_redLoopChain = control.count.makeCounterChain(${quote(sym)}_datapath_en);""")
-            emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
+            emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter($redloop_delay_guess, 1);""")
             emit(s"""DFEVar ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
             val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
             emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
@@ -729,9 +733,10 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
             } else {
               emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(8));""")
+              val redloop_delay_guess = 2
               emit(s"""CounterChain ${quote(sym)}_redLoopChain =
 		        		control.count.makeCounterChain(${quote(sym)}_datapath_en);""")
-              emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
+              emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter($redloop_delay_guess, 1);""")
               emit(s"""DFEVar ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
               val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")

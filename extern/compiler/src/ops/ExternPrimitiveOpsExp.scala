@@ -6,6 +6,8 @@ import scala.virtualization.lms.common.{BaseExp, EffectExp, ScalaGenEffect, DotG
 import ppl.delite.framework.transform.{DeliteTransform}
 import scala.reflect.{Manifest,SourceContext}
 
+import scala.collection.mutable.HashMap
+
 import spatial.shared._
 import spatial.shared.ops._
 import spatial.compiler._
@@ -33,6 +35,8 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
   with SpatialMetadataOpsExp with FixPtOpsExp {
 
   this: SpatialExp =>
+
+  var rwPortAlias = HashMap[Exp[Any],Exp[Any]]()
 
   case class Min2[T](a: Rep[T],b:Rep[T])(implicit val mT: Manifest[T], val oT: Order[T], val nT: Num[T], val ctx: SourceContext) extends Def[T]
   case class Max2[T](a: Rep[T],b:Rep[T])(implicit val mT: Manifest[T], val oT: Order[T], val nT: Num[T], val ctx: SourceContext) extends Def[T]
@@ -184,249 +188,250 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
     super.preProcess(body)
   }
 
-  override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case Min2(a, b) =>
-      emit(s"""DFEVar ${quote(sym)} = KernelMath.min(${quote(a)}, ${quote(b)});""")
-    case Max2(a, b) =>
-      emit(s"""DFEVar ${quote(sym)} = KernelMath.max(${quote(a)}, ${quote(b)});""")
-    case ConstFixPt(x,_,_,_) =>
-      if (!emitted_consts.contains((sym, rhs))) {
-        emitted_consts += ((sym, rhs))
-      }
-    case ConstFltPt(x,_,_) =>
-      if (!emitted_consts.contains((sym, rhs))) {
-        emitted_consts += ((sym, rhs))
-      }
-
-    case FixPt_Add(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          if (!isReduceResult(sym)) {
-            emit(s"""$pre ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
-          } else {
-            emit(s"""$pre ${quote(sym)} = ${quote(a)}; // ignore ${quote(b)} b/c accumulator""")
-          }
-        case m => 
-          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
-      }
-
-    case FltPt_Add(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          if (!isReduceResult(sym)) {
-            emit(s"""$pre ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
-          } else {
-            emit(s"""$pre ${quote(sym)} = ${quote(a)}; // ignore ${quote(b)} b/c accumulator""")
-          }
-        case m => 
-          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
-      }
-
-    case FixPt_Mul(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
-        case m => 
-          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
-      }
-
-    case FltPt_Mul(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
-        case m => 
-          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
-      }
-
-    case FixPt_Lt(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} < ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case FixPt_Leq(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} <= ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case FixPt_Neq(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} !== {quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case FixPt_Eql(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} === ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case FixPt_And(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case FixPt_Or(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} | ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case FixPt_Lsh(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} << ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case FixPt_Rsh(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} >> ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case FltPt_Lt(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} < ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case FltPt_Leq(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} <= ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case FltPt_Neq(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} !== ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case FltPt_Eql(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} === ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-
-    case Bit_Not(a) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ~( ${quote(a)} );""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case Bit_And(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case Bit_Or(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} | ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case Bit_Xor(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} ^ ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case Bit_Xnor(a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ~ ( ${quote(a)} ^ ${quote(b)} ) ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case Mux2(sel,a,b) =>
-      val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
-    case Tpes_Int_to_fix(x) =>  // Emit this node in MaxJ only if x is a const
-      val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
-      x match {
-        case _:Const[_] | _:Param[_] =>
-          withStream(baseStream) {
-            emit(s"""DFEVar ${quote(sym)} = constant.var($ts, ${quote(x)});""")
-          }
-        case _ =>
-          withStream(baseStream) {
-            emit(s"""// DFEVar $sym = ${quote(x)}.cast($ts)""")
-          }
+  override def emitNode(sym: Sym[Any], rhs: Def[Any]) = {
+    rhs match {
+      case Min2(a, b) =>
+        emit(s"""DFEVar ${quote(sym)} = KernelMath.min(${quote(a)}, ${quote(b)});""")
+      case Max2(a, b) =>
+        emit(s"""DFEVar ${quote(sym)} = KernelMath.max(${quote(a)}, ${quote(b)});""")
+      case ConstFixPt(x,_,_,_) =>
+        if (!emitted_consts.contains((sym, rhs))) {
+          emitted_consts += ((sym, rhs))
         }
-    case _ => super.emitNode(sym, rhs)
+      case ConstFltPt(x,_,_) =>
+        if (!emitted_consts.contains((sym, rhs))) {
+          emitted_consts += ((sym, rhs))
+        }
 
+      case FixPt_Add(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            if (!isReduceResult(sym)) {
+              emit(s"""$pre ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
+            } else {
+              emit(s"""$pre ${quote(sym)} = ${quote(a)}; // ignore ${quote(b)} b/c accumulator""")
+            }
+          case m => 
+            emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+        }
+
+      case FltPt_Add(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            if (!isReduceResult(sym)) {
+              emit(s"""$pre ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
+            } else {
+              emit(s"""$pre ${quote(sym)} = ${quote(a)}; // ignore ${quote(b)} b/c accumulator""")
+            }
+          case m => 
+            emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+        }
+
+      case FixPt_Mul(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
+          case m => 
+            emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+        }
+
+      case FltPt_Mul(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
+          case m => 
+            emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+        }
+
+      case FixPt_Lt(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
+            emit(s"""${quote(sym)} <== ${quote(a)} < ${quote(b)};""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case FixPt_Leq(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
+            emit(s"""${quote(sym)} <== ${quote(a)} <= ${quote(b)};""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case FixPt_Neq(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
+            emit(s"""${quote(sym)} <== ${quote(a)} !== {quote(b)};""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case FixPt_Eql(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
+            emit(s"""${quote(sym)} <== ${quote(a)} === ${quote(b)};""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case FixPt_And(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case FixPt_Or(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} | ${quote(b)} ;""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case FixPt_Lsh(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} << ${quote(b)} ;""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case FixPt_Rsh(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} >> ${quote(b)} ;""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case FltPt_Lt(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
+            emit(s"""${quote(sym)} <== ${quote(a)} < ${quote(b)};""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case FltPt_Leq(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
+            emit(s"""${quote(sym)} <== ${quote(a)} <= ${quote(b)};""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case FltPt_Neq(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
+            emit(s"""${quote(sym)} <== ${quote(a)} !== ${quote(b)};""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case FltPt_Eql(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
+            emit(s"""${quote(sym)} <== ${quote(a)} === ${quote(b)};""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+
+      case Bit_Not(a) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ~( ${quote(a)} );""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case Bit_And(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case Bit_Or(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} | ${quote(b)} ;""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case Bit_Xor(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} ^ ${quote(b)} ;""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case Bit_Xnor(a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ~ ( ${quote(a)} ^ ${quote(b)} ) ;""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case Mux2(sel,a,b) =>
+        val pre = maxJPre(sym)
+        rTreeMap(sym) match {
+          case Nil =>
+            emit(s"""$pre ${quote(sym)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;""")
+          case m =>
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+        }
+
+      case Tpes_Int_to_fix(x) =>  // Emit this node in MaxJ only if x is a const
+        val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
+        x match {
+          case _:Const[_] | _:Param[_] =>
+            withStream(baseStream) {
+              emit(s"""DFEVar ${quote(sym)} = constant.var($ts, ${quote(x)});""")
+            }
+          case _ =>
+            withStream(baseStream) {
+              emit(s"""// DFEVar $sym = ${quote(x)}.cast($ts)""")
+            }
+          }
+      case _ => super.emitNode(sym, rhs)
+    }
   }
 
   override def emitFileFooter() = {
