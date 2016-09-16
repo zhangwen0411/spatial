@@ -84,7 +84,7 @@ trait Regs {
       infix ("value") (Nil :: T) implements redirect ${ readReg($self) }
       /** Creates a writer to this Reg. Note that Regs and ArgOuts can only have one writer, while ArgIns cannot have any **/
       infix (":=") (("x",T) :: MUnit, effect = write(0)) implements composite ${
-        if (regType($self) == ArgumentIn) stageError("Writing to an input argument is disallowed")
+        if (regType($self) == ArgumentIn) throw ArgInWriteException($self)
         reg_write($self, $1)
       }
       /** @nodoc - User register reset is not yet well-defined **/

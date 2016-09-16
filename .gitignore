@@ -1,5 +1,10 @@
 *.class
 *.log
+*.deg
+*.dot
+generated/
+pipe_diagram.html
+plasticene_pipe_diagram.html
 
 # sbt specific
 .cache

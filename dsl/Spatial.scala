@@ -239,12 +239,12 @@ trait SpatialDSL extends ForgeApplication
     val ReductionAnalyzer = analyzer("Reduction", isExtern=true)
 
     val ConstantFolding = traversal("ConstantFolding", isExtern=true)
-    val RegisterFolding = traversal("RegisterFolding", isExtern=true)
+    //val RegisterFolding = traversal("RegisterFolding", isExtern=true)
+    //val MetaPipeRegInsertion = traversal("MetaPipeRegInsertion",isExtern=true)
 
     val OffChipAnalyzer = traversal("OffChipAnalyzer", isExtern=true)
 
     val ParameterAnalyzer = analyzer("Parameter",isExtern=true)
-    val MetaPipeRegInsertion = traversal("MetaPipeRegInsertion",isExtern=true)
 
     val Unrolling = transformer("Unrolling", isExtern=true)
 
@@ -331,6 +331,7 @@ trait SpatialDSL extends ForgeApplication
     extern(metadata("NodeMetadata"), targets = Nil, withTypes = true)
     extern(grp("LoweredPipe"), targets = List($cala, maxj))
     extern(metadata("Name"), targets = Nil, withTypes = true)
+    extern(metadata("SpatialExceptions"), targets = Nil)
 		()
 	}
 }

@@ -93,10 +93,6 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
 
     // TODO: Not a function of number of banks?
     case Bram_load(ram, _) => 1
-      // FIXME: Not defined in reduction functions/ ld blocks
-      /*val instIndex = instanceIndexOf(s, ram)
-      val instance = duplicatesOf(ram).apply(instIndex)
-      instance.depth // ???*/
 
     case Bram_store(ram, _, _) => 1 // TODO
 
@@ -222,7 +218,7 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     case Offchip_store_cmd(mem,stream,ofs,len,par) =>
       val c = contentionOf(s)
       val p = bound(par).get
-      val size = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip store"); 96.0}
+      val size = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip store")(mpos(s.pos)); 96.0}
 
       val baseCycles = size / p.toDouble
 
@@ -235,7 +231,7 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
 
     case Offchip_load_cmd(mem,stream,ofs,len,par) =>
       val c = contentionOf(s)
-      val ts = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip load"); 96.0}
+      val ts = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip load")(mpos(s.pos)); 96.0}
       val b = ts  // TODO - max of this and max command size
       val r = 1.0 // TODO - number of commands needed (probably 1)
       val p = bound(par).get

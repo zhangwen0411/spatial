@@ -34,7 +34,7 @@ trait FIFOs {
      * @param size
      **/
     static (FIFO) ("apply", T, (Idx) :: FIFO(T), TNum(T)) implements composite ${
-      if (!isStaticSize($0)) stageError("Only constants and DSE parameters are allowed as size of FIFO")
+      if (!isStaticSize($0)) InvalidMemoryDimensionException($0)
       val fifo = fifo_new[T]($0, zero[T])
       dimsOf(fifo) = List($0)
       fifo

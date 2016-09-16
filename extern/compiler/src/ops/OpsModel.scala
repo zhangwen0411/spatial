@@ -118,12 +118,12 @@ trait OpsModel extends NodeMetadataOpsExp {
 
     case e@Offchip_store_cmd(mem,stream,ofs,len,p) =>
       val bits = nbits(e._mT)
-      val size = bound(len).getOrElse{stageError(s"Cannot resolve bound of tile vector store size $len")}
+      val size = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip load")(mpos(s.pos)); 96.0}
       AppStatistics(dataOut=bits*size.toLong)
 
     case e@Offchip_load_cmd(mem,stream,ofs,len,p) =>
       val bits = nbits(e._mT)
-      val size = bound(len).getOrElse{stageError(s"Cannot resolve bound of tile vector load size $len")}
+      val size = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip store")(mpos(s.pos)); 96.0}
       AppStatistics(dataIn=bits*size.toLong)
 
     case Reflect(d,_,_) => opsInNode(s, d)

@@ -31,7 +31,7 @@ trait OffChip {
 
     // --- Internal
     val offchip_create = internal (OffChip) ("offchip_create", T, SList(Idx) :: OffChip(T), TNum(T)) implements composite ${
-      if ($0.length < 1) stageError("Cannot create an OffChipMem with zero dimensions")
+      if ($0.length < 1) throw ZeroDimensionsException("OffChipMem")
       val offchip = offchip_new[T](productTree($0.toList))
       dimsOf(offchip) = $0.toList
       offchip
@@ -184,7 +184,7 @@ trait OffChip {
     data(Tile, ("_target", OffChip(T)))
     internal (Tile) ("tile_new", T, OffChip(T) :: Tile(T)) implements allocates(Tile, ${$0})
     internal (Tile) ("tile_create", T, (OffChip(T), SList(Range)) :: Tile(T)) implements composite ${
-      if (dimsOf($0).length != $1.length) stageError("Attempting to access " + dimsOf($0).length + "D memory with " + $1.length + " indices")
+      if (dimsOf($0).length != $1.length) throw DimensionMismatchException($0, dimsOf($0).length, $1)
       val tile = tile_new($0)
       rangesOf(tile) = $1
       tile
@@ -296,7 +296,7 @@ trait OffChip {
     data(SparseTile, ("_target", OffChip(T)), ("_addrs", BRAM(Idx)), ("_len", Idx))
     internal (SparseTile) ("stile_new", T, (OffChip(T), BRAM(Idx), Idx) :: SparseTile(T)) implements allocates(SparseTile, ${$0}, ${$1}, ${$2})
     internal (SparseTile) ("stile_create", T, (OffChip(T), BRAM(Idx), Idx) :: SparseTile(T)) implements composite ${
-      if (dimsOf($1).length!=1) stageError("Must provide flattened addresses for scatter and gather. Dimensions of address BRAM is " + dimsOf($1))
+      if (dimsOf($1).length != 1) throw UnsupportedSparseDimensionalityException($1, dimsOf($1).length)
       val stile = stile_new($0, $1, $2)
       stile
     }

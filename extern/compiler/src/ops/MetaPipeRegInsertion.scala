@@ -1,4 +1,4 @@
-package spatial.compiler.ops
+/*package spatial.compiler.ops
 
 import scala.reflect.{Manifest,SourceContext}
 import ppl.delite.framework.transform.SinglePassTransformer
@@ -89,4 +89,4 @@ trait MetaPipeRegInsertion extends SinglePassTransformer with SpatialTraversalTo
       Some(newPipe)
     case _ => None
   }
-}
+}*/

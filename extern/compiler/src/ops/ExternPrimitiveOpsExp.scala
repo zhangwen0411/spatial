@@ -152,6 +152,13 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
 
   import IR.{infix_until => _, looprange_until => _, println => _, _}
 
+  var emitted_consts: Set[(Exp[Any], Def[Any])] = Set.empty
+  def addEmittedConsts(xs: Exp[Any]*) = xs.foreach {
+    case lhs@Def(rhs) => if (!emitted_consts.contains((lhs, rhs))) { emitted_consts += ((lhs, rhs)) }
+    case _ =>
+  }
+
+
 	var traversals: List[Traversal{val IR: MaxJGenExternPrimitiveOps.this.IR.type}] = Nil
 
   lazy val preCodegen = new MaxJPreCodegen {
@@ -207,7 +214,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           } else {
             emit(s"""$pre ${quote(sym)} = ${quote(a)}; // ignore ${quote(b)} b/c accumulator""")
           }
-        case m => 
+        case m =>
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 
@@ -220,7 +227,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           } else {
             emit(s"""$pre ${quote(sym)} = ${quote(a)}; // ignore ${quote(b)} b/c accumulator""")
           }
-        case m => 
+        case m =>
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 
@@ -229,7 +236,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
-        case m => 
+        case m =>
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 
@@ -238,7 +245,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
-        case m => 
+        case m =>
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 

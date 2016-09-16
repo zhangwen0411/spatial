@@ -224,12 +224,11 @@ public:
   }
 }
 
-trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGenControllerTemplateOps {
-  val IR: LoweredPipeOpsExp with ControllerTemplateOpsExp with TpesOpsExp with ParallelOpsExp
-          with PipeOpsExp with OffChipMemOpsExp with RegOpsExp with ExternCounterOpsExp
-          with ExternPrimitiveOpsExp with SpatialCodegenOps with NosynthOpsExp with MemoryAnalysisExp with FIFOOpsExp with VectorOpsExp
-          with DeliteTransform with ReductionAnalysisExp with UnrollingTransformExp
-  import IR.{println=>_,_}
+trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with MaxJGenControllerTemplateOps {
+  val IR: UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DeliteTransform
+          with LoweredPipeOpsExp with ControllerTemplateOpsExp with ExternPrimitiveOpsExp with ReductionAnalysisExp
+
+  import IR.{println => _, assert => _, _}
 
   override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
     case "SpatialVector" => "DFEVector<DFEVar>"
@@ -256,98 +255,59 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
   }
 
   val brams = Set[Exp[BRAM[Any]]]()
-  val regs = Set[(Exp[Reg[Any]], Int)]()
+  val regs = Set[Exp[Reg[Any]]]()
+
+  def emitBufferControlSignals() {
+    emit(s"""// rdone signals for N-Buffers go here""")
+
+    // Quote duplicate
+    // TODO: Change to common "quote duplicate" method?
+    def quoteDuplicate(mem: Exp[Any], i: Int): String = {
+      if      (isBRAM(mem.tp))     s"""${quote(mem)}_${i}"""
+      else if (isRegister(mem.tp)) s"""${quote(mem)}_${i}_lib"""
+      else throw new Exception("Cannot double buffer type " + mem.tp)
+    }
+
+    val nonBoundMemories = (brams ++ regs).map(aliasOf(_)).filter{case Def(_) => true; case _ => false}
+
+    nonBoundMemories.foreach{mem =>
+      val buffers = duplicatesOf(mem).zipWithIndex.filter{case (d,i) => d.depth > 1}
+      val readers = readersOf(mem)
+      val writers = writersOf(mem)
+
+      buffers.foreach{ case (d, i) =>
+        val readsByPort = readers.filter{reader => instanceIndicesOf(reader.access, mem).contains(i) }.groupBy{a => portOf(a.access, mem, i) }
+        val writesByPort = writers.filter{writer => instanceIndicesOf(writer.access, mem).contains(i) }.groupBy{a => portOf(a.access, mem, i) }
+
+        if (readsByPort.isEmpty) throw new Exception(s"Memory ${quote(mem)} duplicate #$i has no reader")
+        if (writesByPort.isEmpty) throw new Exception(s"Memory ${quote(mem)} duplicate #$i has no writer")
+
+        readsByPort.foreach{ case (port, readers) =>
+          val controllers = readers.flatMap{reader => topControllerOf(reader.access, mem, i) }.distinct
+          assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple read done control signals")
+          // TODO: Syntax for port-specific read done?
+          if (controllers.nonEmpty)
+            emit(s"""${quoteDuplicate(mem, i)}.connectRdone(${quote(controllers.head)}_done, $port);""")
+        }
+        writesByPort.foreach{ case (port, writers) =>
+          val controllers = writers.flatMap{writer => topControllerOf(writer.access, mem, i) }.distinct
+          assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple write done control signals")
+          // TODO: Syntax for port-specific write done?
+          if (controllers.nonEmpty)
+            emit(s"""${quoteDuplicate(mem, i)}.connectWdone(${quote(controllers.head)}_done, $port);""")
+        }
+      }
+    }
+
+  }
+
   override def emitFileFooter() = {
-    emit(s"""// rdone signals for BRAMs go here""")
-    brams.foreach { bb =>
-      val b = aliasOf(bb)
-
-      b match { // Only generate for non-bound syms
-        case Def(exist) =>
-          val dups = duplicatesOf(b)
-          dups.length match {
-            case 1 =>
-              if (isDblBuf(b)) {
-                // val reader = topReadersOf(b).last._1 // CRITICAL TODO: What to do with actual multiple readers?
-                val trs = topReadersOf(b).map { r => r._3 }.toList
-                val rs = readersOf(b).map { r => r._3 }.toList
-                val ids = trs.intersect(rs).map { r => trs.indexOf(r)}
-                ids.foreach { this_id =>
-                  val list = topReadersOf(b).map{r => r}
-                  val r = list(this_id)
-                  Console.println(s"thisId $this_id, grabbed $r")
-                  val reader = r._1
-                  emit(s"""${quote(b)}.connectRdone(${quote(reader)}_done);""")
-                }
-                if (writersOf(b).isEmpty) throw new Exception(s"Bram ${quote(b)} has no writer!")
-                val topWriter = topWritersOf(b).head
-                Console.println(s"these are topwriters ${topWritersOf(b)}\nthese are writers ${writersOf(b)}")
-
-                topWriter match {
-                  case (writer, _, _) =>
-                    emit(s"""${quote(b)}.connectWdone(${quote(writer)}_done);""")
-                  case _ =>
-                    val writer = writersOf(b).head._1
-                    emit(s"""${quote(b)}.connectWdone(${quote(writer)}_done);""")
-                }
-              }
-            case _ =>
-              dups.zipWithIndex.foreach { case (d, i) =>
-                if (d.depth > 1) {
-                  // No idea if intersection is correct thing to do, but
-                  //   only using topReadersOf breaks MatMult and only using
-                  //   readersOf produces incorrect results in MatMult and OuterProd
-                  val trs = topReadersOf(b).map { r => r._3 }.toList
-                  val rs = readersOf(b).map { r => r._3 }.toList
-                  val ids = trs.intersect(rs).map { r => trs.indexOf(r)}
-                  ids.foreach { this_id =>
-                    val list = topReadersOf(b).map{r => r}
-                    val r = list(this_id)
-                    if (instanceIndexOf(r._3, b) == i) {
-                      val reader = r._1
-                      emit(s"""${quote(b)}_${i}.connectRdone(${quote(reader)}_done);""")
-                    }
-                  }
-                  if (writersOf(b).isEmpty) throw new Exception(s"Bram ${quote(b)} has no writer!")
-                  val topWriter = topWritersOf(b).head
-                  Console.println(s"these are topwriters ${topWritersOf(b)}\nthese are writers ${writersOf(b)}")
-                  topWriter match {
-                    case (writer, _, _) =>
-                      emit(s"""${quote(b)}_${i}.connectWdone(${quote(writer)}_done);""")
-                    case _ =>
-                      val writer = writersOf(b).head._1
-                      emit(s"""${quote(b)}_${i}.connectWdone(${quote(writer)}_done);""")
-                  }
-
-                }
-              }
-          }
-        case _ => //do nothing
-      }
-
-    }
-    regs.foreach { case (b, i) =>
-      val meminst = duplicatesOf(b)(i)
-      if (meminst.depth > 1) {
-        val readers = readersOf(b)
-        val reader = readers(i)._1
-        emit(s"""${quote(b)}_${i}_lib.connectRdone(${quote(reader)}_done);""")
-        if (writersOf(b).isEmpty) throw new Exception(s"Reg ${quote(b)} has no writer!")
-        val writer = writersOf(b).head._1
-        emit(s"""${quote(b)}_${i}_lib.connectWdone(${quote(writer)}_done);""")
-      }
-    }
+    emitBufferControlSignals()
     super.emitFileFooter()
   }
 
   def getBanking(bram: MemInstance) = {
-    val bnks = bram.banking.map { a =>
-      a match {
-        case DiagonalBanking(_, banks) => banks
-        case StridedBanking(_, banks) => banks
-        case _ => 1
-      }
-    }
+    val bnks = bram.banking.map(_.banks)
     bram.banking.length match {
       case 1 => bnks(0)
       case 2 => bnks.mkString("new int[] {", ",", "}")
@@ -355,129 +315,96 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
     }
   }
   def getStride(bram: MemInstance) = {
-    val strds = bram.banking.map { a =>
-        a match {
-          case DiagonalBanking(strides, _) => throw new Exception(s"Can't handle Diagonal banking yet")
-          case StridedBanking(stride, _) => stride
-          case _ => 1
-        }
-      }
+    val strds = bram.banking.map{
+      case DiagonalBanking(strides, _) => throw new Exception(s"Can't handle Diagonal banking yet")
+      case StridedBanking(stride, _) => stride
+      case _ => 1
+    }
     bram.banking.length match {
       case 1 => strds(0)
       case 2 => strds.mkString("new int[] {", ",", "}")
       case _ => throw new Exception(s"Can't handle ${bram.banking.length}-D memory!")
     }
-  
+
   }
 
-  def bramLoad(sym: Sym[Any], bram_in: Exp[BRAM[Any]], addr: Exp[Any], par: Boolean = false) {
-    val bram = if (bram_redloop_map.contains(bram_in)) {bram_redloop_map(bram_in)} else {bram_in}
+  def bramLoad(read: Sym[Any], bram: Exp[BRAM[Any]], addr: Exp[Any], par: Boolean = false) {
     emitComment("Bram_load {")
-    val bnd = bram match {
-      case Def(rhs) => false
-      case _ => true
-    }
     if (isDummy(bram)) {
       val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
-      bankOverride(sym) match {
-        case -1 => emit(s"""${pre} ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr)}); //1.0""")
-        case b => emit(s"""${pre} ${quote(sym)} = ${quote(bram)}.connectRport(${quote(addr)}, $b); //1.5""")
+      bankOverride(read) match {
+        case -1 => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}); //1.0""")
+        case b => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}, $b); //1.5""")
 
       }
     } else {
       val dups = duplicatesOf(bram)
-      val r = readersOf(bram)
-      val choose_from = r.map { case (_,_,a) => a }
-      val i = choose_from.indexOf(sym)
-      val b_i = instanceIndexOf(sym, bram)
-      val bram_name = if (dups.length == 1) { s"${quote(bram)}" } else {s"${quote(bram)}_${b_i}"}
+      val readers = readersOf(bram)
+      val reader = readers.find{_.access == read}.get // Corresponding reader for this read node
+      val b_i = instanceIndicesOf(read, bram).head    // Instance indices should have exactly one index for reads
+
+      val bram_name = s"${quote(bram)}_${b_i}"
       val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
       val num_dims = dimsOf(bram).length
 
-      val inds = parIndicesOf(r(i)._3) match {
-        case Nil => List(accessIndicesOf(r(i)._3))
-        case _ => parIndicesOf(r(i)._3)
-      }
-      
+      val inds = parIndicesOf(read)
+      assert(inds.nonEmpty, s"Empty par access indices for read $read of $bram")
+
       num_dims match {
         case 1 => // 1D bram
-          inds.length match {
-            case 1 => // One address
-              // Spit out DFEVar if not already done
-              val addr0 = inds(0)(0)
-              addr0 match {
-                case Def(rhs0) =>
-                  if (!emitted_consts.contains((addr0, rhs0))) {
-                    emitted_consts += ((addr0, rhs0))
-                  }
-                case _ =>
-              }
-              if (par) {
-                emit(s"""$pre ${quote(sym)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${quote(bram)}.connectRport(${quote(addr0)}))); //2""")
-              } else {
-                emit(s"""${pre} ${quote(sym)} = ${bram_name}.connectRport(${quote(addr0)}); //3""")            
-              }
-            case _ => // Many address
-              emit(s"""${pre} ${quote(sym)} = ${bram_name}.connectRport(${quote(addr)}); //4""")
+          if (inds.length == 1) {
+            // One address
+            // Spit out DFEVar if not already done
+            val addr0 = inds(0)(0)
+            addEmittedConsts(addr0)
+
+            if (par)
+              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${quote(bram)}.connectRport(${quote(addr0)}))); //2""")
+            else
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}); //3""")
+          }
+          else {
+            // Many addresses
+            emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr)}); //4""")
           }
         case 2 => // 2D bram
-          inds.length match {
-            case 1 => // One address
-              val addr0 = inds(0)(0)
-              val addr1 = inds(0)(1)
-              addr0 match {
-                case Def(rhs0) => if (!emitted_consts.contains((addr0, rhs0))) { emitted_consts += ((addr0, rhs0)) }
-                case _ =>
-              }
-              addr1 match {
-                case Def(rhs1) => if (!emitted_consts.contains((addr1, rhs1))) { emitted_consts += ((addr1, rhs1)) }
-                case _ =>
-              }
-              if (par) {
-                emit(s"""$pre ${quote(sym)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}))); //5""")
-              } else {
-                emit(s"""$pre ${quote(sym)} = ${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}); //6""")
-              }
-            case _ =>
-              val a = inds(0)
-              val b = inds(1)
-              if (quote(a(1)) == quote(b(1))) { // TODO: Check if stride = dim, rather than if quote(first_colAddr) = quote(second_colAddr)
-                var addr1 = ""
-                val addr0 = inds.map { row =>
-                              row.length match {
-                                case 1 =>
-                                  addr1 = quote(1)
-                                  quote(row(0))
-                                case _ =>
-                                  addr1 = quote(row(1))
-                                  quote(row(0))
-                                }
-                          }
-                emit(s"""//all readers share column. vectorized """)
-                emit(s"""${pre} ${quote(sym)} = ${bram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}); //7""")
-              } else if (quote(a(0)) == quote(b(0))) {
-                var addr0 = ""
-                val addr1 = inds.map { row =>
-                              row.length match {
-                                case 1 =>
-                                  addr0 = quote(1) // Assume all are from same row?
-                                  quote(row(0))
-                                case _ =>
-                                  addr0 = quote(row(0)) // Assume all are from same row?
-                                  quote(row(1))
-                                }
-                          }
+          if (inds.length == 1) {
+            // One address
+            val addr0 = inds(0)(0)
+            val addr1 = inds(0)(1)
+            addEmittedConsts(addr0, addr1)
 
-                emit(s"""//all readers share row. vectorized""")
-                emit(s"""${pre} ${quote(sym)} = ${bram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")}))); //8""")
-              } else {
-                throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
-              }
+            if (par)
+              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}))); //5""")
+            else
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}); //6""")
+
+          }
+          else {
+            // TODO: This may not quite be right
+            def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
+            // Many addresses
+            // Same columns?
+            if (inds.map{ind => quote2D(ind, 1)}.distinct.length == 1) {
+              val addr0 = inds.map{ind => quote2D(ind,0) }
+              val addr1 = quote2D(inds(0), 1)
+              emit(s"""// All readers share column. vectorized """)
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}); //7""")
             }
-          case _ =>
-            throw new Exception("Cannot handle more than 2D bram!")
+            // Same rows?
+            else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
+              val addr0 = quote2D(inds(0), 0)
+              val addr1 = inds.map{ind => quote2D(ind, 0) }
+              emit(s"""// All readers share row. vectorized""")
+              emit(s"""${pre} ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")}))); //8""")
+            }
+            else {
+              throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
+            }
+          }
+        case _ =>
+          throw new Exception("MaxJ generation of more than 2D BRAMs is currently unsupported.")
       }
-
     }
 
     brams += bram.asInstanceOf[Sym[BRAM[Any]]]
@@ -486,164 +413,112 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
     //  val v = t._1
     //  val idx = t._2
     //  visitNode(v)
-    //  emit(s"""${quote(v)} <== ${quote(sym)}[$idx];""")
+    //  emit(s"""${quote(v)} <== ${quote(read)}[$idx];""")
     //}
     emitComment("} Bram_load")
   }
 
-  def bramStore(sym: Sym[Any], bram_in: Exp[BRAM[Any]], addr: Exp[Any], value: Exp[Any]) {
+  def bramStore(write: Sym[Any], bram: Exp[BRAM[Any]], addr: Exp[Any], value: Exp[Any]) {
     emitComment("Bram_store {")
-    val bram = if (bram_redloop_map.contains(bram_in)) {bram_redloop_map(bram_in)} else {bram_in}
     val dataStr = quote(value)
-    val dups = duplicatesOf(bram)
+    val allDups = duplicatesOf(bram)
     val writers = writersOf(bram)
-    val find_id = writers.map{case (_, _, s) => s}
-    val i = find_id.indexOf(sym)
-    Console.println(s"bram $bram, writers $writers, matching this $sym")
-    val this_writer = writers(i)._1
-    val inds = parIndicesOf(writers(i)._3)
+    val writer = writers.find{_.access == write}.get
+    val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(write,bram).contains(dup._2) }
+
+    Console.println(s"bram $bram, writers $writers, matching this $write")
+    val writeCtrl = writer.controlNode
+    val inds = parIndicesOf(write)
     val num_dims = dimsOf(bram).length
 
-
+    assert(inds.nonEmpty, s"Empty par access indices for write $write of $bram")
 
     if (isAccum(bram)) {
-
-      val offsetStr = quote(writersOf(bram).head._1) + "_offset"
+      val offsetStr = quote(writersOf(bram).head.controlNode) + "_offset"
       val parentPipe = parentOf(bram).getOrElse(throw new Exception(s"Bram ${quote(bram)} does not have a parent!"))
       val parentCtr = parentPipe match {
-        case Def(EatReflect(d)) => d match {
-          case d:Pipe_fold[_,_] => d.cchain
-          case d:Pipe_foreach => d.cchain
-          case d:ParPipeReduce[_,_] => d.cc
-          case d:ParPipeForeach => d.cc
-          case _ => throw new Exception(s"Unknown parent ${d}!")
-        }
-        case p => throw new Exception(s"Unknown parent type ${p}!")
-      }
-      
-      val Def(rhss) = parentCtr
-      Console.println(s"the parent counter for $sym $bram is $parentCtr from $parentPipe, def $rhss")
-      val accEn = parentCtr match {
-        case Def(EatReflect(Counter_new(start, end, step, par))) =>  s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr)"
-        case Def(EatReflect(Counterchain_new(ctrs))) => s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr)"
-        case _ =>  s"stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)"
+        case Deff(d:Pipe_fold[_,_]) => d.cchain
+        case Deff(d:Pipe_foreach) => d.cchain
+        case Deff(d:ParPipeReduce[_,_]) => d.cc
+        case Deff(d:ParPipeForeach) => d.cc
+        case p => throw new Exception(s"Unknown accumulator parent type $p!")
       }
 
-      if (dups.length == 1) {
-        if (writers.length == 1) {
-          emit(s"""${quote(bram)}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-            stream.offset($dataStr, -$offsetStr), stream.offset(${quote(parentPipe)}_datapath_en, -1) & stream.offset(${quote(parentPipe)}_datapath_en, -$offsetStr)); //1""") 
-        } else {
-          val bank_num = i
-          emit(s"""${quote(bram)}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
-            stream.offset($dataStr, -$offsetStr), stream.offset(${quote(parentPipe)}_datapath_en, -1) & stream.offset(${quote(parentPipe)}_datapath_en, -$offsetStr)); //2""")
-        }
-      } else {
-        if (writers.length == 1) {
-          dups.zipWithIndex.foreach {case (dd, ii) =>
-            num_dims match {
-              case 1 =>
-                emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), $accEn); //3""")
-              case _ =>
-                emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), $accEn); //4""")
-            }
-          }
-        } else {
-          val bank_num = i
-          dups.zipWithIndex.foreach {case (dd, ii) =>
-            emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
-              stream.offset($dataStr, -$offsetStr), $accEn); //5""") 
-          }
-        }
+      val Def(rhss) = parentCtr
+      Console.println(s"the parent counter for $write $bram is $parentCtr from $parentPipe, def $rhss")
+      val accEn = parentCtr match {
+        case Deff(Counter_new(start, end, step, par)) => s"stream.offset(${quote(writeCtrl)}_datapath_en, -$offsetStr)"
+        case Deff(Counterchain_new(ctrs))             => s"stream.offset(${quote(writeCtrl)}_datapath_en, -$offsetStr)"
+        case _ =>  s"stream.offset(${quote(writeCtrl)}_done /* Not sure why this sig works, but it does */, -$offsetStr)"
       }
-    } else { // Not accum
+
+      if (writers.length == 1) {
+        dups.foreach {case (dd, ii) =>
+          num_dims match {
+            case 1 =>
+              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
+                stream.offset($dataStr, -$offsetStr), $accEn); //3""")
+            case _ =>
+              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
+                stream.offset($dataStr, -$offsetStr), $accEn); //4""")
+          }
+        }
+      } /*else {
+        val bank_num = i
+        dups.foreach {case (dd, ii) =>
+          emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
+            stream.offset($dataStr, -$offsetStr), $accEn); //5""")
+        }
+      }*/
+    }
+    else { // Not accum
       // [TODO] Raghu: Current assumption is that this always returns the parent
       // writing to the BRAM. Is this always true? Confirm
       if (isDummy(bram)) {
-        emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //6""")
-      } else {
-        inds.length match {
-          case 0 =>
-            throw new Exception("What?!")
-          case 1 =>
-            if (num_dims == 1) {
-              if (dups.length == 1) {
-                emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //7""") 
-              } else {
-                dups.zipWithIndex.foreach {case (dd, ii) =>
-                  emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(this_writer)}_datapath_en); //8""")
-                }
-              }
-            } else {
-              val addrs = inds(0)
-              if (dups.length == 1) {
-                emit(s"""${quote(bram)}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(this_writer)}_datapath_en); //9""")
-              } else {
-                dups.zipWithIndex.foreach {case (dd, ii) =>
-                  emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(this_writer)}_datapath_en); //10""")
-                }
-              }              
+        emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //6""")
+      }
+      else num_dims match {
+        case 1 =>
+          dups.foreach {case (dd, ii) =>
+            emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //8""")
+          }
+        case 2 =>
+          if (inds.length == 1) {
+            val addrs = inds(0)
+            dups.foreach {case (dd, ii) =>
+              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10""")
             }
-          case _ =>
-            val a = inds(0)
-            val b = inds(1)
-            a.length match {
-              case 1 => 
-              if (dups.length == 1) {
-                emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${quote(value)}, ${quote(this_writer)}_datapath_en); //11""")                
-              } else {
-                dups.zipWithIndex.foreach {case (dd, ii) => 
-                  emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${quote(value)}, ${quote(this_writer)}_datapath_en); //11""")                
-                }
+          }
+          else {
+            // TODO: This may not quite be right
+            def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
+            // Many addresses
+            // Same columns?
+            if (inds.map{ind => quote2D(ind, 1)}.distinct.length == 1) {
+              val addr0 = inds.map{ind => quote2D(ind,0) }
+              val addr1 = quote2D(inds(0), 1)
+              emit(s"""// All readers share column. vectorized """)
+              dups.foreach {case (dd, ii) =>
+                emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                ${dataStr}, ${quote(writeCtrl)}_datapath_en); //13""")
               }
-              case _ =>
-                if (quote(a(1)) == quote(b(1))) { // ugly hack to check if same col
-                  var addr1 = ""
-                  val addr0 = inds.map {
-                    case List(row, col) =>
-                      addr1 = quote(col) 
-                      quote(row)
-                  }
-                  emit(s"""// all have same column.  """)
-                  if (dups.length == 1) {
-                    emit(s"""${quote(bram)}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                    ${dataStr}, ${quote(this_writer)}_datapath_en); //12""")
-                  } else {
-                    dups.zipWithIndex.foreach {case (dd, ii) => 
-                      emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})), ${addr1}, 
-                      ${dataStr}, ${quote(this_writer)}_datapath_en); //13""") 
-                    }
-                  }
-
-                } else { // same row
-                  var addr0 = ""
-                  val addr1 = inds.map {
-                    case List(row, col) =>
-                      addr0 = quote(row)
-                      quote(col)
-                  }
-                  emit(s"""// all have same row.  DFEVector<DFEVar> ${addr1(0)}_vectorized = new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")}));""")
-                  if (dups.length == 1) {
-                    if (hardcodeEnsembles(bram)) { // Hack for bram characterization
-                      emit(s"""${quote(bram)}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})), 
-                      ${dataStr}, ${quote(this_writer)}_datapath_en, ${i}); //14""")                
-                    } else {
-                      emit(s"""${quote(bram)}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})), 
-                      ${dataStr}, ${quote(this_writer)}_datapath_en); //14""")                      
-                    }
-                  } else {
-                    dups.zipWithIndex.foreach {case (dd, ii) => 
-                      emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})), 
-                      ${dataStr}, ${quote(this_writer)}_datapath_en); // 15""") 
-                    }
-                  }
-                }
             }
-
-        }
-
+            // Same rows?
+            else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
+              val addr0 = quote2D(inds(0), 0)
+              val addr1 = inds.map{ind => quote2D(ind, 0) }
+              emit(s"""// All readers share row. vectorized""")
+              dups.foreach {case (dd, ii) =>
+                emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                ${dataStr}, ${quote(writeCtrl)}_datapath_en); // 15""")
+              }
+            }
+            else {
+              throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
+            }
+          }
+        case _ =>
+          throw new Exception("MaxJ generation of more than 2D BRAMs is currently unsupported.")
       }
     }
     emitComment("} Bram_store")
@@ -694,42 +569,41 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
 //      emitComment("Offchip store from fifo")
 
     case Reg_new(init) =>
-      if (!bram_redloop_map.contains(sym)) {
-        withStream(baseStream) {
-          emitComment("Reg_new {")
-          val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-          val duplicates = duplicatesOf(sym)
-          val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
-            case ConstFix(rv) => rv
-            case ConstFlt(rv) => rv
-          }
-          duplicates.zipWithIndex.foreach { case (d, i) =>
-            regType(sym) match {
-              case Regular =>
-                (reduceType(sym), i) match {
-                  case (Some(fps: ReduceFunction), 0) =>
-                    Console.println(s"[WARNING] Why is duplicate 0 the reduce function accum?")
-                    // Assume only duplicate 1 needs reg_lib if this is reducetype
-                  case _ =>
-                    val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
-                    if (d.depth > 1) {
-                      emit(s"""DblBufReg ${quote(sym)}_${i}_lib = new DblBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
-                      val readstr = if (parOf(sym)>1) "readv" else "read"
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
-                      regs += ((sym.asInstanceOf[Sym[Reg[Any]]], i))
-                    } else {
-                      emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
-                      val readstr = if (parOf(sym) > 1) "readv" else "read"
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
-                    }
-                }
-              case _ => throw new Exception(s"""Unknown reg type ${regType(sym)}""")
-            }
-          }
-          emitComment("Reg_new }")
+      regs += sym.asInstanceOf[Sym[Reg[Any]]]
+
+      withStream(baseStream) {
+        emitComment("Reg_new {")
+        val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+        val duplicates = duplicatesOf(sym)
+        val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
+          case ConstFix(rv) => rv
+          case ConstFlt(rv) => rv
         }
+        duplicates.zipWithIndex.foreach { case (d, i) =>
+          regType(sym) match {
+            case Regular =>
+              (reduceType(sym), i) match {
+                case (Some(fps: ReduceFunction), 0) =>
+                  Console.println(s"[WARNING] Why is duplicate 0 the reduce function accum?")
+                  // Assume only duplicate 1 needs reg_lib if this is reducetype
+                case _ =>
+                  val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
+                  if (d.depth > 1) {
+                    emit(s"""DblBufReg ${quote(sym)}_${i}_lib = new DblBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
+                    val readstr = if (parOf(sym)>1) "readv" else "read"
+                    emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
+                    emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
+                  } else {
+                    emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
+                    val readstr = if (parOf(sym) > 1) "readv" else "read"
+                    emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
+                    emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
+                  }
+              }
+            case _ => throw new Exception(s"""Unknown reg type ${regType(sym)}""")
+          }
+        }
+        emitComment("Reg_new }")
       }
 
     case Argin_new(init) =>
@@ -749,227 +623,147 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
         }
 
         val pre = maxJPre(sym)
-        val regIdx = if (readersOf(reg).map{_._3}.indexOf(sym) > duplicatesOf(reg).length - 1) {
-          duplicatesOf(reg).length - 1
-        } else {
-          readersOf(reg).map{_._3}.indexOf(sym)
-        }
-        // val regIdx = instanceIndexOf(sym, reg)
+        val inst = instanceIndicesOf(sym, reg).head // Reads should only have one index
+
         val regStr = regType(reg) match {
           case Regular =>
-            val suffix = if (!controlNodeStack.isEmpty) {
-              val Def(EatReflect(curPipe)) = controlNodeStack.top
-              curPipe match {
-                  case n: ParPipeReduce[_,_] => if (n.acc == reg) "_delayed" else ""   // Use the delayed (stream-offset) version inside reduce
-                  case Unit_pipe(_) => if (isAccum(reg) && writtenIn(controlNodeStack.top).contains(reg)) "_delayed" else ""   // Use the delayed (stream-offset) version inside reduce
-                  case _ => ""
+            val suffix = {
+              if (!controlNodeStack.isEmpty) controlNodeStack.top match {
+                case Deff(n: ParPipeReduce[_,_]) => if (n.acc == reg) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
+                case top@Deff(Unit_pipe(_)) => if (isAccum(reg) && writtenIn(top).contains(reg)) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
+                case _ => ""
               }
-            } else {
-              ""
+              else ""
             }
-            quote(reg) + s"_${regIdx}" + suffix
+            quote(reg) + "_" + inst + suffix
           case _ =>
             quote(reg)
         }
-        regType(reg) match {
-          case Regular =>
-            regIdx match {
-              case -1 =>
-                emit(s"""//Cannot write ${quote(sym)} = $regStr""")
-              case _ =>
-                if (!(isAccum(reg) & instanceIndexOf(sym, reg) == 0)) {emit(s"""$pre ${quote(sym)} = $regStr;""")}
-            }
-          case _ =>
-            emit(s"""$pre ${quote(sym)} = $regStr;""")        
-        }
-        } else {
-          emit(s"""// ${quote(sym)} is just a register read""")
-        }
 
-    case e@Reg_write(pre_reg, value) =>
-      val reg = aliasOf(pre_reg)
-      if (!bram_redloop_map.contains(reg)) {
-        emitComment("Reg_write {")
-        if (writersOf(reg).isEmpty)
-            throw new Exception(s"Reg ${quote(reg)} is not written by a controller, which is not supported at the moment")
-        val writer = writersOf(reg).head._1  // Regs have unique writer which also drives reset
-        val ts = tpstr(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])
-        val duplicates = duplicatesOf(reg)
-        val numDuplicates = duplicatesOf(reg).length
-        regType(reg) match {
-          case ArgumentOut =>
-            val controlStr = if (parentOf(reg).isEmpty) s"top_done" else quote(parentOf(reg).get) + "_done"
-            emit(s"""io.scalarOutput("${quote(reg)}", ${quote(value)}, $ts, $controlStr);""")
-          case _ =>
-            if (isAccum(reg)) {
-              regType(reg) match {
-                case Regular =>
-                  val rstStr = quote(parentOf(reg).get) + "_rst_en"
-                  writer match {
-                    case p@Def(EatReflect(pipe:Pipe_foreach)) => 
-                      throw new Exception(s"How do you have a foreach with an accumulator?")
-                    case p@Def(EatReflect(pipe:Pipe_fold[_,_])) => 
-                      emit(s"// Pipe_fold accum")
-                      val enstr = styleOf(p) match {
-                        case InnerPipe => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_datapath_en & ${quote(writer)}_redLoop_done;""")
-                        case _ => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_en & ${quote(writer)}_redLoop_done;""")
-                      }
-                      reduceType(reg) match {
-                        case Some(fps: ReduceFunction) => fps match {
-                          case FixPtSum =>
-                            emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
-                            emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
-                          case FltPtSum =>
-                            emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
-                        }
-                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind+1}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
-                      }
-                    case p@Def(EatReflect(pipe:ParPipeReduce[_,_])) => 
-                      emit(s"// ParPipeReduce accum")
-                      val enstr = styleOf(p) match {
-                        case InnerPipe => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_datapath_en & ${quote(writer)}_redLoop_done;""")
-                        case _ => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_en & ${quote(writer)}_redLoop_done;""")
-                      }
-                      reduceType(reg) match {
-                        case Some(fps: ReduceFunction) => fps match {
-                          case FixPtSum =>
-                            emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
-                            emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
-                          case FltPtSum =>
-                            emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
-                        }
-                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind+1}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
-                      }
-                    case p@Def(EatReflect(Unit_pipe(func))) =>
-                      emit(s"// Unit_pipe accum")
-                      val enstr = styleOf(p) match {
-                        case InnerPipe => emit(s"""DFEVar ${quote(reg)}_en = ${quote(writer)}_rst_en;""")
-                        case _ => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_en & ${quote(writer)}_redLoop_done;""")
-                      }
-                      Console.println(s"reg $reg in $p has no reduceType")
-                      reduceType(reg) match {
-                        case Some(fps: ReduceFunction) => fps match {
-                          case FixPtSum =>
-                            emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr} & constant.var(false) /* TODO: Not sure if disabling rst is correct */).withEnable(${quote(reg)}_en);""")
-                            emit(s"""DFEVar ${quote(reg)}_hold = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
-                            emit(s"""DFEVar ${quote(reg)} = ${quote(reg)}_hold;""")
-                          case FltPtSum =>
-                            emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr & constant.var(false) /* TODO: Not sure if disabling rst is correct */, true);""")
-                          case _ =>
-                            throw new Exception(s"Reduce type of reg $reg, pipe $p, not implemented!")
-                        }
-                        (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind+1}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
-                      }
-
-                    case _ =>
-                        emit(s"DFEVar ${quote(reg)}_en = constant.var(true)")
-                  }
-                case ArgumentIn => new Exception("Cannot write to ArgIn " + quote(reg) + "!")
-                case ArgumentOut => throw new Exception(s"""ArgOut (${quote(reg)}) cannot be used as an accumulator!""")
-              }
-            } else { // Non-accumulator registers
-              (0 until numDuplicates) foreach { ii =>
-                val regname = s"${quote(reg)}_${ii}"
-                regType(reg) match {
-                  case ArgumentIn => new Exception("Cannot write to ArgIn " + quote(reg) + "!")
-                  case Regular =>
-                    val rstStr = quote(parentOf(reg).get) + "_rst_en"
-  //                  emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
-                    if (duplicates(ii).depth > 1) {
-                      emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writer)}_done, constant.var(false));""")
-                    } else {
-                      // Using an enable signal instead of "always true" is causing an illegal loop.
-                      // Using a reset signal instead of "always false" is causing an illegal loop.
-                      // These signals don't matter for pass-through registers anyways.
-                      emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), constant.var(false));""")
-                    }
-                }
-              }
-            }
-        }
-        emitComment(s"} Reg_write // regType ${regType(reg)}, numDuplicates = $numDuplicates")
+        // Specialized reductions (regular accumulators with a reduction type) just use sym directly
+        if (regType(reg) != Regular || !isAccum(reg) || !reduceType(reg).map{t => t != OtherReduction}.getOrElse(false) )
+          emit(s"""$pre ${quote(sym)} = $regStr;""")
       }
+      else {
+        emit(s"""// ${quote(sym)} is just a register read""")
+      }
+
+    case e@Reg_write(EatAlias(reg), value) =>
+      emitComment("Reg_write {")
+
+      assert(writersOf(reg).nonEmpty, s"Register ${quote(reg)} is not written by a controller")
+
+      val writeCtrl = writersOf(reg).head.controlNode  // Regs have unique writer which also drives reset
+      val ts = tpstr(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])
+      val allDups = duplicatesOf(reg).zipWithIndex
+      val dups = allDups.filter{case (dup, i) => instanceIndicesOf(sym, reg).contains(i) }
+
+      regType(reg) match {
+        case ArgumentIn => throw new Exception("Cannot write to ArgIn " + quote(reg) + "!")
+        case ArgumentOut =>
+          if (isAccum(reg)) throw new Exception(s"""ArgOut (${quote(reg)}) cannot be used as an accumulator!""")
+
+          val controlStr = if (parentOf(reg).isEmpty) s"top_done" else quote(parentOf(reg).get) + "_done"
+          emit(s"""io.scalarOutput("${quote(reg)}", ${quote(value)}, $ts, $controlStr);""")
+
+        case _ =>
+          if (isAccum(reg)) {
+            val rstStr = quote(parentOf(reg).get) + "_rst_en"
+            writeCtrl match {
+              case p@Def(EatReflect(_:Pipe_foreach | _:ParPipeForeach)) =>
+                throw new Exception(s"Foreaches may not have accumulators ($reg in $p)")
+
+              case p@Deff(_:Pipe_fold[_,_] | _:ParPipeReduce[_,_] | _:Unit_pipe) =>
+                emit(s"// Write to accumulator register")
+                val enstr = styleOf(p) match {
+                  case InnerPipe => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_datapath_en & ${quote(writeCtrl)}_redLoop_done;""")
+                  case _ => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_en & ${quote(writeCtrl)}_redLoop_done;""")
+                }
+                reduceType(reg) match {
+                  case Some(fps: ReduceFunction) => fps match {
+                    case FixPtSum =>
+                      emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
+                      emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
+                    case FltPtSum =>
+                      emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
+                  }
+                  dups.foreach { case (dup, ii) => emit(s"""${quote(reg)}_${ii+1}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false));""")}
+                }
+              case _ =>
+                emit(s"DFEVar ${quote(reg)}_en = constant.var(true)")
+            }
+          }
+          else { // Non-accumulator registers
+            dups.foreach{case (dup, ii) =>
+              val regname = s"${quote(reg)}_${ii}"
+              regType(reg) match {
+                case _ =>
+                  val rstStr = quote(parentOf(reg).get) + "_rst_en"
+                  // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
+                  if (dup.depth > 1) {
+                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false));""")
+                  }
+                  else {
+                    // Using an enable signal instead of "always true" is causing an illegal loop.
+                    // Using a reset signal instead of "always false" is causing an illegal loop.
+                    // These signals don't matter for pass-through registers anyways.
+                    emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), constant.var(false));""")
+                  }
+              }
+            }
+          } // End non-accumulator case
+      }
+      emitComment(s"} Reg_write // regType ${regType(reg)}, numDuplicates = ${allDups.length}")
 
     case Bram_new(size, zero) =>
       withStream(baseStream) {
-        if (!bram_redloop_map.contains(sym)) { // Only emit for non-bound syms
-          emitComment("Bram_new {")
-          val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-          //TODO: does templete assume bram has 2 dimension?
-          val dims = dimsOf(sym)
-          val Def(d0) = dims(0)
-          val sizes = dims.map { case dim => 
-            bound(dim).get.toInt
-          }
-          val size0 = sizes(0) 
-          val size1 = sizes.size match {
-            case 1 => 1
-            case 2 => sizes(1) 
-            case _ => 1
-          }
-          val dups = duplicatesOf(sym)
-          dups.length match {
-            case 1 =>
-              val banks = getBanking(dups(0))
-              val strides = getStride(dups(0))
-              if (isDblBuf(sym)) { // TODO: Are these three actually mutually exclusive?
-                    emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${quote(sym)}_DblBufSM(this));""")
-                    emit(s"""DblBufKernelLib ${quote(sym)} = new DblBufKernelLib(this, ${quote(sym)}_sm,
-                      ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${readersOf(sym).size});""")
-              } else if (isDummy(sym)) {
-                emit(s"""DummyMemLib ${quote(sym)} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""") 
-              } else {
-                emit(s"""BramLib ${quote(sym)} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides});""") // [TODO] Raghu: Stride from metadata
-              }
-            case _ => // multiple readers
-              dups.zipWithIndex.foreach { case (r, i) =>
-                Console.println(s"emitting bram $sym - $i, instance $r")
-                val banks = getBanking(r)
-                val strides = getStride(r)
-                if (isDummy(sym)) {
-                  emit(s"""DummyMemLib ${quote(sym)}_${i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""") 
-                } else {
-                  if (r.depth == 1) {
-                    emit(s"""BramLib ${quote(sym)}_${i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides});""") // [TODO] Raghu: Stride from metadata
-                  } else if (r.depth == 2) {
-                    val countlist = readersOf(sym)
-                    val numReaders_for_this_duplicate = countlist.map{q => q}.filter{ q => (instanceIndexOf(q._3, sym) == i)}.length
-
-                    emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
-                    emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
-                      ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
-                  } else {
-                    // val countlist = readersOf(sym)
-                    // val numReaders_for_this_duplicate = countlist.map{q => q}.filter{ q => (instanceIndexOf(q._3, sym) = i)}.length
-                    emit(s"""CANNOT EMIT ${r.depth}-buffered mem yet!!""")
-                  }
-                }
-              }
-
-          }
-          emitComment("} Bram_new")
+        emitComment("Bram_new {")
+        val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+        //TODO: does templete assume bram has 2 dimension?
+        val dims = dimsOf(sym)
+        val sizes = dims.map{dim => bound(dim).get.toInt}
+        val size0 = sizes(0)
+        val size1 = sizes.size match {
+          case 1 => 1
+          case 2 => sizes(1)
+          case _ => throw new Exception("MaxJ generation does not yet support BRAMs with more than 2 dimensions.")
         }
+        val dups = duplicatesOf(sym)
+        dups.zipWithIndex.foreach { case (r, i) =>
+          Console.println(s"emitting bram $sym - $i, instance $r")
+          val banks = getBanking(r)
+          val strides = getStride(r)
+          if (isDummy(sym)) {
+            emit(s"""DummyMemLib ${quote(sym)}_${i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""")
+          } else {
+            if (r.depth == 1) {
+              emit(s"""BramLib ${quote(sym)}_${i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides});""") // [TODO] Raghu: Stride from metadata
+            }
+            else if (r.depth == 2) {
+              val numReaders_for_this_duplicate = readersOf(sym).filter{q => instanceIndicesOf(q.access, sym).contains(i)}.length
+
+              emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
+              emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
+                ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
+            } else {
+              emit(s"""CANNOT EMIT ${r.depth}-buffered mem yet!!""")
+            }
+          }
+        }
+        emitComment("} Bram_new")
       }
 
-    case Bram_load(bram, addr) =>
-      bramLoad(sym, bram, addr)
+    case Bram_load(EatAlias(bram), addr) =>
+      bramLoad(sym, bram.asInstanceOf[Exp[BRAM[Any]]], addr)
 
-    case Par_bram_load(bram, addr) =>
-      bramLoad(sym, bram, addr, true)
+    case Par_bram_load(EatAlias(bram), addr) =>
+      bramLoad(sym, bram.asInstanceOf[Exp[BRAM[Any]]], addr, true)
 
-    case Bram_store(bram, addr, value) =>
-      sym match {
-        case Def(_) => // weed out mysterious Bram bound syms that pretend to be writers 
-          bramStore(sym, bram, addr, value)
-        case _ =>
-      }
+    case Bram_store(EatAlias(bram), addr, value) =>
+      bramStore(sym, bram.asInstanceOf[Exp[BRAM[Any]]], addr, value)
 
-    case Par_bram_store(bram, addr, value) =>
-      sym match {
-        case Def(_) => // weed out mysterious Bram bound syms that pretend to be writers  
-          bramStore(sym, bram, addr, value)
-        case _ =>
-      }
+    case Par_bram_store(EatAlias(bram), addr, value) =>
+      bramStore(sym, bram.asInstanceOf[Exp[BRAM[Any]]], addr, value)
 
     case Fifo_new(size, zero) =>  // FIFO is always parallel
       val duplicates = duplicatesOf(sym)
@@ -985,20 +779,20 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
 
     case Par_push_fifo(fifo, value, en, shuffle) =>
       emit(s"""// Par_push_fifo(${quote(fifo)}, ${quote(value)}, ${quote(en)}, ${quote(shuffle)});""")
-      val writer = quote(writersOf(fifo).head._1)  // Not using 'en' or 'shuffle'
+      val writer = quote(writersOf(fifo).head.controlNode)  // Not using 'en' or 'shuffle'
       emit(s"""${quote(fifo)}_writeEn <== ${writer}_ctr_en;""")
       emit(s"""${quote(fifo)}_wdata <== ${quote(value)};""")
 
 
     case Par_pop_fifo(fifo, par) =>
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, ${quote(par)});""")
-      val reader = quote(readersOf(fifo).head._1)  // Assuming that each fifo has a unique reader
+      val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       emit(s"""${quote(fifo)}_readEn <== ${reader}_ctr_en;""")
       emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
 
     case Pop_fifo(fifo) =>
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, 1);""")
-      val reader = quote(readersOf(fifo).head._1)  // Assuming that each fifo has a unique reader
+      val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       emit(s"""${quote(fifo)}_readEn <== ${reader}_ctr_en;""")
       emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}_rdata[0];""")
 
@@ -1006,7 +800,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""DFEVar ${quote(sym)} = ${quote(vec)}[${quote(idx)}];""")
-        case m => 
+        case m =>
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 

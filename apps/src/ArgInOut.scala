@@ -20,6 +20,7 @@ trait ArgInOutApp extends SpatialApp {
       Pipe { y := x + 4 }
     }
 
+
     // Extract results from accelerator
     val result = getArg(y)
 

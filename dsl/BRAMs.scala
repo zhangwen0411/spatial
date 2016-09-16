@@ -27,7 +27,7 @@ trait BRAMs {
     // --- Internals
     /** @nodoc -- only used for Mem typeclass instance **/
     direct (BRAM) ("bram_load_nd", T, (BRAM(T), SList(Idx)) :: T) implements composite ${
-      if ($1.length < 1) stageError("Cannot load from zero indices")
+      if ($1.length < 1) throw ZeroIndicesException($0)
       val addr = calcAddress($1, dimsOf($0))
       val ld = bram_load($0, addr)
 
@@ -39,7 +39,7 @@ trait BRAMs {
     }
     /** @nodoc -- only used for Mem typeclass instance **/
     direct (BRAM) ("bram_store_nd", T, (BRAM(T), SList(Idx), T) :: MUnit, effect = write(0)) implements composite ${
-      if ($1.length < 1) stageError("Cannot store to zero indices")
+      if ($1.length < 1) throw ZeroIndicesException($0)
       val addr = calcAddress($1, dimsOf($0))
       val st = bram_store($0, addr, $2)
 
@@ -82,8 +82,8 @@ trait BRAMs {
      * @param dims
      **/
     static (BRAM) ("apply", T, (varArgs(Idx)) :: BRAM(T), TNum(T)) implements composite ${
-      if ($0.length < 1) stageError("Cannot create a BRAM with no dimensions")
-      $0.foreach{dim => if (!isStaticSize(dim)) stageError("Only constants and DSE parameters are allowed as dimensions of BRAM") }
+      if ($0.length < 1) throw ZeroDimensionsException("BRAM")
+      $0.foreach{dim => if (!isStaticSize(dim)) throw InvalidMemoryDimensionException(dim) }
 
       val bram = bram_new[T](productTree($0.toList), zero[T])
       dimsOf(bram) = $0.toList

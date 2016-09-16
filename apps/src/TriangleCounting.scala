@@ -56,13 +56,12 @@ trait TriangleCountingApp extends SpatialApp {
             val neB = BRAM[Index](maxNumEdgeX2)   // edgeList of v's neighbors
             val nbrpt = Reg[Index]                // ptr to neighbor's edgelist
             val nbrsize = Reg[Index]              // number of edges of neighbor
-            val cntCommon = Reg[Index]
             Pipe {
               nbrpt := nvB(ie*2)
               nbrsize := nvB(ie*2+1)
             }
             neB := edgeList(nbrpt::nbrpt+nbrsize)
-            Pipe.reduce(vsize by 1, nbrsize by 1)(cntCommon){ (ixv, ixn) =>
+            Pipe.reduce(vsize by 1, nbrsize by 1)(0.as[Index]){ (ixv, ixn) =>
               mux(eB(ixv)==neB(ixn), 1.as[Index], 0.as[Index])
             }{_+_} // Sum for one neighbor
           }{_+_} // Sum across all node's neighbors

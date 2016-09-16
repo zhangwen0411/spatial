@@ -148,11 +148,12 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
 
       // The body of ParPipeReduce uses 'acc' to refer to the accumulator
       // The rest of the world uses 'accum'. Make sure their metadata matches up here
+      // FIXME: This should be unnecessary in codegen
       val Def(d) = accum  // CHEATING!
       duplicatesOf(acc) = duplicatesOf(accum)
       readersOf(acc) = readersOf(accum)
-      val Def(EatReflect(writer)) = writersOf(acc).head._3 //(wr controller, accum bool, st node of type bram_store)
-      emitNode(acc, d) 
+      val Deff(writer) = writersOf(acc).head.access //(wr controller, accum bool, st node of type bram_store)
+      emitNode(acc, d)
 
       emitComment(s"""ParPipeReduce ${quote(sym)} controller {""")
       emitController(sym, Some(cchain))
@@ -169,7 +170,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
           stms.foreach { case TP(s,d) =>
             val Deff(dd) = s
             dd match {
-              case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>  
+              case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
                 if (isReduceResult(s)) {
                   val ts = tpstr(1)(s.tp, implicitly[SourceContext])
                   emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")

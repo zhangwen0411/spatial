@@ -19,7 +19,7 @@ trait SubstQuotingExp extends QuotingExp  {
 
 trait PIRCommon extends SubstQuotingExp with Traversal {
   val IR: PIRScheduleAnalysisExp with SpatialExp
-  import IR._
+  import IR.{assert => _, _}
 
   val globals = HashSet[GlobalMem]()
 
@@ -48,7 +48,7 @@ trait PIRCommon extends SubstQuotingExp with Traversal {
     def mem(mem: Exp[Any], reader: Exp[Any]) = allocateMem(mem, reader, cu)
 
     // A CU can have multiple SRAMs for a given mem symbol, one for each local read
-    def memories(mem: Exp[Any]) = readersOf(mem).filter(_._1 == pipe).map{read => allocateMem(mem, read._3, cu) }
+    def memories(mem: Exp[Any]) = readersOf(mem).filter(_.controlNode == pipe).map{read => allocateMem(mem, read.access, cu) }
 
     def addReg(x: Exp[Any], reg: LocalMem) { cu.addReg(x, reg) }
     def addRef(x: Exp[Any], ref: LocalRef) { refs += x -> ref }
@@ -257,15 +257,23 @@ trait PIRCommon extends SubstQuotingExp with Traversal {
 
     val mem = aliasOf(mem_in)
 
-    val writer = writersOf(mem).headOption
+    val instIndex = instanceIndicesOf(reader, mem).head
+    val instance = duplicatesOf(mem).apply(instIndex)
+
+    // First writer corresponding to this reader
+    val writers = writersOf(mem).filter{writer => instanceIndicesOf(writer.access, mem).contains(instIndex) }
+    assert(writers.length <= 1, "PIR cannot currently handle multiple writers")
+    val writer = writers.headOption
     debug(s"Creating SRAM for memory $mem, reader $reader, writer: $writer, cu $cu")
 
-    val writerCU = writer.map{writer => allocateCU(writer._1) }
-    val swapWriteCU = topWritersOf(mem).headOption.map{writer => allocateCU(writer._1) }
-    val swapReadCU = topReadersOf(mem).find(_._3 == reader).map{read => allocateCU(read._1) }
+    val writerCU = writer.map{writer => allocateCU(writer.controlNode) }
+    val swapWriteCU = writer.flatMap{writer => topControllerOf(writer.access, mem, instIndex) }.map{ctrl => allocateCU(ctrl.node) }
+    val swapReadCU = topControllerOf(reader, mem, instIndex).map{ctrl => allocateCU(ctrl.node) }
 
     debug(s"  readerCU: $cu")
     debug(s"  writerCU: $writerCU")
+    debug(s"  swapWriteCU: $swapWriteCU")
+    debug(s"  swapReadCU: $swapReadCU")
 
     // ASSUMPTION: Each CU originally only instantiates only one counterchain
     val remoteWriteCtrl = writerCU.flatMap{cu => cu.cchains.find{case _:UnitCounterChain | _:CounterChainInstance => true; case _ => false }}
@@ -284,7 +292,7 @@ trait PIRCommon extends SubstQuotingExp with Traversal {
     debug(s"  writeIter: $writeIter")
 
     val readBanking = bank(mem, reader, readIter)
-    val writeBanking = writer.map{writer => bank(mem, writer._3, writeIter) }.getOrElse(NoBanks)
+    val writeBanking = writer.map{writer => bank(mem, writer.access, writeIter) }.getOrElse(NoBanks)
 
     debug(s"  read banking: $readBanking")
     debug(s"  write banking: $writeBanking")
@@ -296,8 +304,6 @@ trait PIRCommon extends SubstQuotingExp with Traversal {
     sram.swapRead = swapRead
     sram.banking = Some(banking)
 
-    val instIndex = instanceIndexOf(reader, mem)
-    val instance = duplicatesOf(mem).apply(instIndex)
     if (instance.depth == 1) sram.isDoubleBuffer = false
     else if (instance.depth == 2) sram.isDoubleBuffer = true
     else
@@ -382,15 +388,15 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   case class LocalRef(stage: Int, reg: LocalMem)
 
   def isReadOutsidePipe(x: Exp[Any], pipe: Exp[Any], reader: Option[Exp[Any]] = None) = {
-    isArgOut(x) || readersOf(x).exists{read => reader.map{filt => read._3 == filt}.getOrElse(true) && read._1 != pipe }
+    isArgOut(x) || readersOf(x).exists{read => reader.map{filt => read.access == filt}.getOrElse(true) && read.controlNode != pipe }
   }
   // (A) reader exists in this pipe or there are no readers
   def isReadInPipe(x: Exp[Any], pipe: Exp[Any], reader: Option[Exp[Any]] = None) = {
-    readersOf(x).isEmpty || readersOf(x).exists{read => reader.map{filt => read._3 == filt}.getOrElse(true) && read._1 == pipe }
+    readersOf(x).isEmpty || readersOf(x).exists{read => reader.map{filt => read.access == filt}.getOrElse(true) && read.controlNode == pipe }
   }
   // Not an input argument, (a) writer exists in this pipe or there are no writers
   def isWrittenInPipe(x: Exp[Any], pipe: Exp[Any], writer: Option[Exp[Any]] = None) = {
-    !isArgIn(x) && (writersOf(x).isEmpty || writersOf(x).exists{write => writer.map{filt => write._3 == filt}.getOrElse(true) && write._1 == pipe })
+    !isArgIn(x) && (writersOf(x).isEmpty || writersOf(x).exists{write => writer.map{filt => write.access == filt}.getOrElse(true) && write.controlNode == pipe })
   }
 
   // TODO: This is VERY redundant with PIR

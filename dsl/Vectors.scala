@@ -35,7 +35,7 @@ trait Vectors {
      **/
     static (Vector) ("apply", T, varArgs(T) :: Vector(T)) implements composite ${
       val elems = $0.toList
-      if (elems.length < 1) stageError("Cannot create empty Vector")
+      if (elems.length < 1) throw EmptyVectorException()
       vector_create_from_list(elems)
     }
 
@@ -52,13 +52,13 @@ trait Vectors {
 
 
     // --- Rewrite rules
-    rewrite (vector_slice) using pattern((${Def(EatReflect(Vector_from_list(elems)))},${start},${end}) -> ${
-      if (start >= end) stageError("Cannot create empty Vector")
-      if (end >= elems.length) stageError("Vector slice exceeds length of original Vector")
+    rewrite (vector_slice) using pattern((${vec@Def(EatReflect(Vector_from_list(elems)))},${start},${end}) -> ${
+      if (start >= end) throw EmptyVectorException()
+      if (end >= elems.length) throw InvalidVectorSliceException(vec)
       vector_create_from_list(elems.slice(start, end)).asInstanceOf[Rep[Vector[T]]]
     })
-    rewrite (vector_apply) using pattern((${Def(EatReflect(Vector_from_list(elems)))}, ${i}) -> ${
-      if (i < 0 && i >= elems.length) stageError("Invalid Vector apply: " + i)
+    rewrite (vector_apply) using pattern((${vec@Def(EatReflect(Vector_from_list(elems)))}, ${i}) -> ${
+      if (i < 0 && i >= elems.length) throw InvalidVectorApplyException(vec, i)
       elems(i).asInstanceOf[Rep[T]]
     })
 

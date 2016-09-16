@@ -150,7 +150,8 @@ trait DSE extends Traversal {
 
     debug(s"Total space size is $spaceSize")
 
-    val size = if (spaceSize < Int.MaxValue) spaceSize.toInt else stageError("Spaces over 2^32 currently unsupported.")
+    if (spaceSize > Int.MaxValue) throw new Exception("Spaces over 2^32 currently unsupported.")
+    val size = spaceSize.toInt
 
     // --- Find all legal points
     // FIXME: This could take a long time if space size is really large

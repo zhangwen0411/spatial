@@ -58,7 +58,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
     case mT if isFixPtType(mT) => canFixPtNum(mT.typeArguments(0),mT.typeArguments(1),mT.typeArguments(2)).zero.asInstanceOf[Exp[T]]
     case mT if isFltPtType(mT) => canFltPtNum(mT.typeArguments(0),mT.typeArguments(1)).zero.asInstanceOf[Exp[T]]
     case mT if isBitType(mT) => canBitNum.zero.asInstanceOf[Exp[T]]
-    case _ => stageError("Primitive expressions with unrecognized type: " + mT.toString)(ctx)
+    case _ => throw UnknownZeroException(mT)
   }
 
   def wrapPrimitives[T:Manifest](blk: Block[T])(implicit ctx: SourceContext): Block[T] = {

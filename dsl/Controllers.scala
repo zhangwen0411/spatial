@@ -69,7 +69,12 @@ trait Controllers {
     val descriptions = List("pipelined, parallelizable", "sequential", "pipelined, parallelizable")
     val execStyles = List("pipelined", "sequential", "streaming")
 
-    (controllers, styles, objects, descriptions, execStyles).zipped.foreach{case (ctrl, style, obj, desc, exec) =>
+    (0 to 2).foreach{i =>
+      val ctrl  = controllers(i)
+      val style = styles(i)
+      val obj   = objects(i)
+      val desc  = descriptions(i)
+      val exec  = execStyles(i)
       /** Creates a $desc state machine which iterates through the ND domain defined by the supplied counterchain,
        * executing the specified function every iteration. If the function contains other state machines, this is executed
        * as an outer loop with each inner state machine run as a stage in a $exec fashion.
@@ -220,7 +225,7 @@ trait Controllers {
        * @param reduce: associative reduction function
        * @return a register containing the result of this reduction
        **/
-      static (ctrl) ("reduce", T, CurriedMethodSignature(List(List(Counter,Counter,Counter), List(T), List((Idx,Idx,Idx) ==> T), List((T,T) ==> T)), C(T)), TNum(T)) implements composite ${
+      static (ctrl) ("reduce", T, CurriedMethodSignature(List(List(Counter,Counter,Counter), List(T), List((Idx,Idx,Idx) ==> T), List((T,T) ==> T)), Reg(T)), TNum(T)) implements composite ${
         \$obj.reduce(CounterChain($0,$1,$2))($3){inds => $4(inds(0),inds(1),inds(2))}($5)
       }
 

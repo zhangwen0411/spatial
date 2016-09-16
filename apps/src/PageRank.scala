@@ -83,8 +83,7 @@ trait PageRankApp extends SpatialApp {
             //printBram(idxB)
             eprB := pageRank(idxB, numEdge)
             //printBram(eprB)
-            val sum = Reg[Elem]
-            Pipe.reduce(numEdge by 1)(sum){ ie =>
+            val sum = Pipe.reduce(numEdge by 1)(0.as[Elem]){ ie =>
               eprB(ie) / oB(ie).to[Elem]
             }{_+_}
             //println("sum:" + sum.value)

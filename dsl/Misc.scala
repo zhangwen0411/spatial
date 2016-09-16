@@ -29,10 +29,9 @@ trait SpatialMisc {
       val ctx = topContext(__pos)
       System.out.println("[\u001B[33mwarn\u001B[0m] " + ctx.fileName + ":" + ctx.line + ": " + $0)
     }
-    internal (Misc) ("stageError", Nil, SAny :: SNothing, effect = simple) implements composite ${
+    internal (Misc) ("stageError", Nil, SAny :: SUnit, effect = simple) implements composite ${
       val ctx = topContext(__pos)
       System.out.println("[\u001B[31merror\u001B[0m] " + ctx.fileName + ":" + ctx.line + ": " + $0)
-      sys.exit(-1)
     }
 
     internal (Misc) ("stageInfo", Nil, SAny :: SUnit, effect = simple) implements composite ${
@@ -179,7 +178,7 @@ trait SpatialMisc {
         case mA if isFltPtType(mA) =>
           randomFltPt($0)(manifest[A], mA.typeArguments(0), mA.typeArguments(1), implicitly[SourceContext]).asInstanceOf[Rep[A]]
 
-        case mA => stageError("No random implementation for type " + mA.runtimeClass.getSimpleName)
+        case mA => throw UnsupportedRandomException(mA)
       }
     }
     UnstagedNumerics.foreach{ (T, _) =>
@@ -199,7 +198,7 @@ trait SpatialMisc {
         case mA if isBitType(mA) =>
           rand_bit.asInstanceOf[Rep[A]]
 
-        case mA => stageError("No random implementation for type " + mA.runtimeClass.getSimpleName)
+        case mA => throw UnsupportedRandomException(mA)
       }
     }
 
@@ -307,7 +306,7 @@ trait SpatialMisc {
       arr // could call unsafeImmutable here if desired
     }
     direct (Tst) ("setArg", T, (Reg(T), T) :: MUnit, effect = write(0)) implements composite ${
-      if (regType($0) != ArgumentIn) stageError("Can only set value of ArgIn registers")
+      if (regType($0) != ArgumentIn) throw InvalidSetArgRegisterException($0)
       set_arg($0, $1)
     }
     UnstagedNumerics.foreach{(ST,_) =>
@@ -315,7 +314,7 @@ trait SpatialMisc {
     }
 
     direct (Tst) ("getArg", T, Reg(T) :: T) implements composite ${
-      if (regType($0) != ArgumentOut) stageError("Can only get value of ArgOut registers")
+      if (regType($0) != ArgumentOut) throw InvalidGetArgRegisterException($0)
       get_arg($0)
     }
 

@@ -132,8 +132,6 @@ trait MaxJPreCodegen extends Traversal  {
     				emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
 					}
 			}
-      bram_redloop_map += acc -> accum // acc is alias for accum
-
 
     case e@ParPipeForeach(cc, func, inds) =>
 			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
@@ -152,7 +150,6 @@ trait MaxJPreCodegen extends Traversal  {
       withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
         emitReduction(sym, rhs)
       }
-      bram_redloop_map += acc -> accum // acc is alias for accum
 
     case e@Unit_pipe(func) =>
 			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
@@ -167,11 +164,11 @@ trait MaxJPreCodegen extends Traversal  {
 					}
 			}
 
-    case e@Counter_new(start,end,step,par) => 
+    case e@Counter_new(start,end,step,par) =>
       withStream(newStream("counter_" + quote(sym))) {
         emitCtrSM(quote(sym), List(parOf(sym)), 0, 1)
       }
-    case e@Counterchain_new(counters) => 
+    case e@Counterchain_new(counters) =>
       val pars = counters.map { ctr => parOf(ctr) }
       val gaps = counters.map { ctr => 0 }
       withStream(newStream("counter_" + quote(sym))) {
@@ -184,35 +181,20 @@ trait MaxJPreCodegen extends Traversal  {
     case _:Offchip_store_cmd[_] => memStreams += sym
     case _:Offchip_load_cmd[_] => memStreams += sym
 
-    case e@EatReflect(Bram_new(size, zero)) =>
+    case Bram_new(size, zero) =>
       val dups = duplicatesOf(sym)
-      dups.length match {
-        case 1 =>
-          if (isDblBuf(sym)) {
-            withStream(newStream("bram_" + quote(sym))) {
-              emitDblBufSM(quote(sym), readersOf(sym).length)
-            }
-          } else if (isNBuf(sym)) {
-            // withStream(newStream("bram_" + quote(sym))) {
-            //   emitNBufSM(quote(sym), readersOf(sym).length)              
-            // }
+      dups.zipWithIndex.foreach { case (d, i) =>
+        val readers = readersOf(sym)
+        if (d.depth == 2) {
+          val numReaders_for_this_duplicate = readers.filter{r => instanceIndicesOf(r.access, sym).contains(i) }.length
+          withStream(newStream("bram_" + quote(sym) + "_" + i)) {
+            emitDblBufSM(quote(sym) + "_" + i, numReaders_for_this_duplicate)
           }
-
-        case _ =>
-          dups.zipWithIndex.foreach { case (d, i) =>
-            val readers = readersOf(sym)
-            if (d.depth == 2) {
-              val numReaders_for_this_duplicate = readers.map{r => r}.filter{ r => (instanceIndexOf(r._3, sym) == i)}.length
-              withStream(newStream("bram_" + quote(sym) + "_" + i)) {
-                emitDblBufSM(quote(sym) + "_" + i, numReaders_for_this_duplicate)
-              }
-            } else if (d.depth > 2) {
-              // withStream(newStream("bram_" + quote(sym) + "_" + i)) {
-              //   emitNBufSM(quote(sym) + "_" + i, d.depth)              
-              // }
-            }
-
-          }
+        } else if (d.depth > 2) {
+          // withStream(newStream("bram_" + quote(sym) + "_" + i)) {
+          //   emitNBufSM(quote(sym) + "_" + i, d.depth)
+          // }
+        }
       }
 
     case Reflect(s, u, effects) =>
@@ -377,7 +359,7 @@ trait MaxJPreCodegen extends Traversal  {
             case Reg_read(_) =>
               first_reg_read = first_reg_read :+ ii
               s""
-            case tag @ Vec_apply(vec,idx) =>  
+            case tag @ Vec_apply(vec,idx) =>
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
             case tag @ FltPt_Add(a,b) =>
@@ -531,15 +513,15 @@ trait MaxJPreCodegen extends Traversal  {
     }
 
     val treeString = if (first_reg_read.length > 1) {
-      treeStringPre.zipWithIndex.filter{ 
+      treeStringPre.zipWithIndex.filter{
         case (entry: String, ii: Int) => ii > first_reg_read(1)
       }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
     } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
 
-    val krnl_input_args = if (treeResult != "") { 
+    val krnl_input_args = if (treeResult != "") {
       inputArgs.map(quote(_)).mkString("DFEVector<DFEVar> ",", DFEVector<DFEVar> ", "") + s", DFEVar ${treeResult}"
     } else {""}
-    val first_comma = if (treeResult != "") { "," } else {""} 
+    val first_comma = if (treeResult != "") { "," } else {""}
 
     // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
     //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
@@ -585,7 +567,7 @@ import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
 import java.util.Arrays;
 class ${quote(sym)}_reduce_kernel extends KernelLib {
 void common(${krnl_input_args}) {
-// For now, I just regenerate constants because java is being annoying about class extensions 
+// For now, I just regenerate constants because java is being annoying about class extensions
 $cst_genStr
 
 $treeString
@@ -614,7 +596,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
   stream.println(s"""class ${smName}_CtrSM extends KernelStateMachine {""")
 
   stream.println(s"""// ** VISUALIZATION FOR COUNTER **""")
-  par.zipWithIndex.map { case (p, i) => 
+  par.zipWithIndex.map { case (p, i) =>
     stream.println(s"""//    ctr${i}: ${(0 until p).map{_ => "o"}.mkString(" ")}""")
   }
 
@@ -641,12 +623,12 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
     private final DFEsmInput reset;
     private final DFEsmInput[] max;
     private final int[] strides;
-    // Gap between the end of one array of count to the start of the next. 
+    // Gap between the end of one array of count to the start of the next.
     //   This is useful for padding non-powerof2-banked BRAMs to the next highest pwr of 2 banks
     // i.e- gap = 32, stride = 1, par = 96 would do this:
     // cycle1: count = [0, 1, ..., 94, 95]
     // cycle2: count = [128, 129, ..., 222, 223]
-    private final int gap; 
+    private final int gap;
     private final int[] ff_extensions;
 
     // State storage

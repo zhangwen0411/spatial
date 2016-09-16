@@ -43,37 +43,12 @@ trait ExternCounterOpsExp extends ExternCounterTypesExp with CounterOpsExp with 
         p
       case p: Param[_] => p.asInstanceOf[Param[Int]]
 
-      case _ => stageError("Counter parallelization factor must be a parameter or a constant")
+      case _ => throw InvalidParFactorException(par)
     }
     reflectEffect[Counter](Counter_new(start,end,step,truePar)(ctx))
   }
 
-  private def counterSplit(x: Rep[Counter]): (Rep[Idx],Rep[Idx],Rep[Idx],Param[Int]) = x match {
-    case Def(EatReflect(Counter_new(start,end,step,par))) => (start,end,step,par)
-    case _ => throw new Exception("Could not find def for counter")
-  }
-
   def counterchain_new(counters: List[Rep[Counter]])(implicit ctx: SourceContext): Rep[CounterChain] = {
-    val ctrSplit = counters.map{ctr => counterSplit(ctr)}
-    val starts: List[Rep[Idx]] = ctrSplit.map(_._1)
-    val ends:   List[Rep[Idx]] = ctrSplit.map(_._2)
-    val steps:  List[Rep[Idx]] = ctrSplit.map(_._3)
-    val pars:   List[Rep[Idx]] = ctrSplit.map(_._4).map(int_to_fix[Signed,B32](_)) // HACK: Convert Int param to fixed point
-
-    /*val nIter = {
-      // TODO: These should be more general rewrite rules
-      val lens: List[Rep[Idx]] = starts.zip(ends).map{
-        case (ConstFix(x: Int),ConstFix(y: Int)) => (y - x).as[Idx]
-        case (ConstFix(0), end) => end
-        case (start, end) => sub(end, start)
-      }
-      val total: List[Rep[Idx]] = (lens,steps,pars).zipped.map {
-        case (len, ConstFix(1), par) => div(len, par) // Should round correctly here
-        case (len, step, par) => div(len, mul(step, par))
-      }
-      productTree(total)
-    }*/
-
     // HACK: Not actually mutable, but isn't being scheduled properly otherwise
     reflectMutable(Counterchain_new(counters)(ctx))
   }
