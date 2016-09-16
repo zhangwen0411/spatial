@@ -563,11 +563,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       //   case Def(EatReflect(Counterchain_new(ctrs))) => s"stream.offset(${quote(this_writer)}_datapath_en, -$offsetStr) /* ctr chain */"
       //   case _ =>  s"stream.offset(${quote(this_writer)}_done /* Not sure why this sig works, but it does */, -$offsetStr)"
       // }
+      val is_one_elem = if (inds.length == 1) "[0]" else ""
 
       if (dups.length == 1) {
         if (writers.length == 1) {
           emit(s"""${quote(bram)}_rwport <== ${quote(bram)}.connectAport(stream.offset(${quote(addr)}, $stream_offset_guess),
-            stream.offset($dataStr, $stream_offset_guess), stream.offset(${quote(parentPipe)}_datapath_en, $stream_offset_guess)); //1""") 
+            stream.offset($dataStr, $stream_offset_guess), stream.offset(${quote(parentPipe)}_datapath_en, $stream_offset_guess))${is_one_elem}; //1""") 
         } else {
           val bank_num = i
           emit(s"""${quote(bram)}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
@@ -578,14 +579,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
           dups.zipWithIndex.foreach {case (dd, ii) =>
             val A_or_W = if (ii == 0) "A" else "W"
             val connector = if (ii == 0) s"${quote(bram)}_rwport <== " else ""
-
             num_dims match {
               case 1 =>
                 emit(s"""${connector}${quote(bram)}_${ii}.connect${A_or_W}port(stream.offset(${quote(addr)}, ${stream_offset_guess}),
-                  stream.offset($dataStr, ${stream_offset_guess}), stream.offset($accEn, ${stream_offset_guess})); //w3""")
+                  stream.offset($dataStr, ${stream_offset_guess}), stream.offset($accEn, ${stream_offset_guess}))${is_one_elem}; //w3""")
               case _ =>
                 emit(s"""${connector}${quote(bram)}_${ii}.connect${A_or_W}port(stream.offset(${quote(inds(0)(0))}, ${stream_offset_guess}), stream.offset(${quote(inds(0)(1))}, ${stream_offset_guess}),
-                  stream.offset($dataStr, ${stream_offset_guess}), stream.offset($accEn, ${stream_offset_guess})); //w4""")
+                  stream.offset($dataStr, ${stream_offset_guess}), stream.offset($accEn, ${stream_offset_guess}))${is_one_elem}; //w4""")
             }
           }
         } else {
