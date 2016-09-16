@@ -88,7 +88,7 @@ trait MatMult_innerApp extends SpatialApp {
       val aRow = a(i)
       Array.tabulate(N){j =>
         val bCol = b.map{row => row(j)}
-        aRow.zip(bCol){_*_}.reduce{_+_+1}
+        aRow.zip(bCol){_*_}.reduce{_+_}
       }
     }.flatten
 
