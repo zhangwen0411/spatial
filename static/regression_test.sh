@@ -109,7 +109,7 @@ if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -1 (${4} Spatial Error)\"
     rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_not_written.${3}_${4}
-	exit
+	exit 1
 fi
 
 wc=\$(cat ${5}/log | grep \"error\" | wc -l)
@@ -117,7 +117,7 @@ if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -1 (${4} Spatial Error)\"
     rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
-	exit
+	exit 1
 fi
 
 cd ${5}/out
@@ -127,7 +127,7 @@ if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -1 (${4} Spatial Error)\"
     rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_maxj.${3}_${4}
-	exit
+	exit 1
 fi
 
 cd out
@@ -218,7 +218,7 @@ if [ ! -d "${PUB_HOME}" ]; then
   # Use main repo's wiki for update
   if [ ! -d "/home/mattfel/hyperdsl/spatial/spatial.wiki" ]; then
   	echo "FATAL ERROR! No default wiki!"
-  	exit
+  	exit 1
   else 
   	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
 	git fetch
@@ -402,6 +402,7 @@ if [ ! -z "$diff" ]; then
 			tmp=(`echo $courtesy_email | sed 's/APPS_LIST/${diff[@]}/g' | sed 's/OLD_COMMITS/${old_commit}/g' | sed 's/NEW_COMMITS/${new_commit}/g'`)
 			echo -e ${tmp[@]} | mail $m -s "[SPATIAL NOTICE] You done messed up - " -r AppTsar@whitehouse.gov
 		fi
+		echo "[EMAIL] Sent ${tmp[@]} to $m"
 		last_m=$m
 	done
 fi

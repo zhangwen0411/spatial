@@ -571,7 +571,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
             stream.offset($dataStr, -$stream_offset_guess), stream.offset(${quote(parentPipe)}_datapath_en, -$stream_offset_guess))${is_one_elem}; //1""") 
         } else {
           val bank_num = i
-          emit(s"""${quote(bram)}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
+          emit(s"""${quote(bram)}_rwport <== ${quote(bram)}.connectBankAport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
             stream.offset($dataStr, -$offsetStr), stream.offset(${quote(parentPipe)}_datapath_en, -1) & stream.offset(${quote(parentPipe)}_datapath_en, -$offsetStr)); //2""")
         }
       } else {
@@ -597,8 +597,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
           }
 
           dups.zipWithIndex.foreach {case (dd, ii) =>
-            emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
-              stream.offset($dataStr, -$offsetStr), $defaultAccEn); //w5""") 
+            val A_or_W = if (ii == 0) "A" else "W"
+            val connector = if (ii == 0) s"${quote(bram)}_rwport <== " else ""
+            val is_one_elem = if (inds.length == 1 & ii == 0) "[0]" else ""
+            emit(s"""${connector}${quote(bram)}_${ii}.connectBank${A_or_W}port(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
+              stream.offset($dataStr, -$offsetStr), $defaultAccEn)${is_one_elem}; //w5""") 
           }
         }
       }
