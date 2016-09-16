@@ -1,8 +1,0 @@
-The following apps went from pass to fail
-APPS_LIST
-
-when going from commits: 
-OLD_COMMITS
-
-to commits:
-NEW_COMMITS
