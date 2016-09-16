@@ -887,6 +887,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
                             emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                         }
                         (0 until numDuplicates-1).foreach { ind => emit(s"""${quote(reg)}_${ind+1}_lib.write(${quote(reg)}, ${quote(writer)}_done, constant.var(false));""")}
+                        case _ =>
+                          throw new Exception(s"Cannot emit $reg write???")
                       }
                     case p@Def(EatReflect(Unit_pipe(func))) =>
                       emit(s"// Unit_pipe accum")
