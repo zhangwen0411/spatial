@@ -373,8 +373,8 @@ for ac in ${app_classes[@]}; do
 	cd ${SPATIAL_HOME}/regression_tests/${ac}/results
 	echo "
 
-# ${ac} apps:
-" >> $result_file
+# ${ac}:
+" | awk '{print toupper($0)}' >> $result_file
 	update_log $result_file
 done
 

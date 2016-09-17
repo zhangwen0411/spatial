@@ -376,9 +376,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
     val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
 
     emitComment("Bram_load {")
-    if (isAccum(bram) && instanceIndexOf(sym, bram) == 0 ) { // If this is accum, we use rw port so no need to 
-      // TODO: Safe to assume duplicate 0 is inside accum bram?
-      val suf = if (duplicatesOf(bram).length == 1) "" else "_0"  
+    // Figure out if this reader is tied to the accum writer
+    val read_indices = parIndicesOf(sym)
+    val wr_indices = parIndicesOf(writersOf(bram).head._3) // TODO: Assumes only one writer-reader pair
+    Console.println(s"the read and wr indices for this read are $read_indices $wr_indices ")
+    if (isAccum(bram) && read_indices(0)(0) == wr_indices(0)(0) ) { // If this is accum, we use rw port so no need to load
+      val suf = if (duplicatesOf(bram).length == 1) "" else s"_${instanceIndexOf(sym, bram)}"  
       rwPortAlias += sym -> bram
       val r = readersOf(bram)
       val choose_from = r.map { case (_,_,a) => a }
@@ -530,7 +533,6 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
     val writers = writersOf(bram)
     val find_id = writers.map{case (_, _, s) => s}
     val i = find_id.indexOf(sym)
-    Console.println(s"bram $bram, writers $writers, matching this $sym")
     val this_writer = writers(i)._1
     val inds = parIndicesOf(writers(i)._3)
     val num_dims = dimsOf(bram).length
@@ -577,9 +579,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       } else {
         if (writers.length == 1) {
           dups.zipWithIndex.foreach {case (dd, ii) =>
-            val A_or_W = if (ii == 0) "A" else "W"
-            val connector = if (ii == 0) s"${quote(bram)}_rwport <== " else ""
-            val is_one_elem = if (inds.length == 1 & ii == 0) "[0]" else ""
+            val r_indices = readersOf(bram).map{ case (_,_,a) => parIndicesOf(a) }
+            val matching_dup = r_indices.indexOf(parIndicesOf(sym)) // Figure out which dup is the inner BRAM
+            val A_or_W = if (ii == matching_dup) "A" else "W"
+            val connector = if (ii == matching_dup) s"${quote(bram)}_rwport <== " else ""
+            val is_one_elem = if (inds.length == 1 & ii == matching_dup) "[0]" else ""
             num_dims match {
               case 1 =>
                 emit(s"""${connector}${quote(bram)}_${ii}.connect${A_or_W}port(stream.offset(${quote(addr)}, -$stream_offset_guess),
