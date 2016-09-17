@@ -59,7 +59,7 @@ trait MemoryTemplateTypesExp extends MemoryTemplateTypes with BaseExp {
 trait MemoryTemplateOpsExp extends MemoryTemplateTypesExp with ExternPrimitiveOpsExp with EffectExp with BRAMOpsExp {
   this: SpatialExp =>
 
-  val stream_offset_guess = 3
+  val stream_offset_guess = 20
   // --- Nodes
   case class Vector_from_list[T](elems: List[Exp[T]])(implicit val mT: Manifest[T], val ctx: SourceContext) extends Def[Vector[T]]
 
