@@ -569,8 +569,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       if (dups.length == 1) {
         if (writers.length == 1) {
           val is_one_elem = if (inds.length == 1) "[0]" else ""
-          emit(s"""${quote(bram)}_rwport <== ${quote(bram)}.connectAport(stream.offset(${quote(addr)}, -$stream_offset_guess),
-            stream.offset($dataStr, -$stream_offset_guess), stream.offset(${quote(parentPipe)}_datapath_en, -$stream_offset_guess))${is_one_elem}; //1""") 
+          emit(s"""${quote(bram)}_rwport <== ${quote(bram)}.connectAport(stream.offset(${quote(addr)}, -$offsetStr /*$stream_offset_guess*/),
+            stream.offset($dataStr, -$offsetStr /*$stream_offset_guess*/), stream.offset(${quote(parentPipe)}_datapath_en, -$offsetStr /*$stream_offset_guess*/))${is_one_elem}; //1""") 
         } else {
           val bank_num = i
           emit(s"""${quote(bram)}_rwport <== ${quote(bram)}.connectBankAport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
@@ -586,11 +586,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
             val is_one_elem = if (inds.length == 1 & ii == matching_dup) "[0]" else ""
             num_dims match {
               case 1 =>
-                emit(s"""${connector}${quote(bram)}_${ii}.connect${A_or_W}port(stream.offset(${quote(addr)}, -$stream_offset_guess),
-                  stream.offset($dataStr, -$stream_offset_guess), stream.offset($accEn, -$stream_offset_guess))${is_one_elem}; //w3""")
+                emit(s"""${connector}${quote(bram)}_${ii}.connect${A_or_W}port(stream.offset(${quote(addr)}, -$offsetStr /*$stream_offset_guess*/),
+                  stream.offset($dataStr, -$offsetStr /*$stream_offset_guess*/), stream.offset($accEn, -$offsetStr /*$stream_offset_guess*/))${is_one_elem}; //w3""")
               case _ =>
-                emit(s"""${connector}${quote(bram)}_${ii}.connect${A_or_W}port(stream.offset(${quote(inds(0)(0))}, -$stream_offset_guess), stream.offset(${quote(inds(0)(1))}, -$stream_offset_guess),
-                  stream.offset($dataStr, -$stream_offset_guess), stream.offset($accEn, -$stream_offset_guess))${is_one_elem}; //w4""")
+                emit(s"""${connector}${quote(bram)}_${ii}.connect${A_or_W}port(stream.offset(${quote(inds(0)(0))}, -$offsetStr /*$stream_offset_guess*/), stream.offset(${quote(inds(0)(1))}, -$offsetStr /*$stream_offset_guess*/),
+                  stream.offset($dataStr, -$offsetStr /*$stream_offset_guess*/), stream.offset($accEn, -$offsetStr /*$stream_offset_guess*/))${is_one_elem}; //w4""")
             }
           }
         } else {

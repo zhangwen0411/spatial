@@ -7,6 +7,7 @@ trait GDA_App extends SpatialApp {
   type T = Flt
   type Array[T] = ForgeArray[T]
 
+  val margin = 1
   val innerPar = 1
   val outerPar = 1
   val maxCols = 96
@@ -106,7 +107,10 @@ trait GDA_App extends SpatialApp {
     // println("actual: " + gold.mkString(", "))
     //println("result: " + result.mkString(", "))
     // println("Sum of differences: " + gold.zip(result){_-_}.reduce{_+_})
-    val cksum = gold.zip(result){ _ == _ }.reduce{_&&_}
+    printArr(gold, "gold: ")
+    printArr(result, "result: ")
+
+    val cksum = gold.zip(result){ case (a,b) => a < b + margin && a > b - margin }.reduce{_&&_}
     println("PASS: " + cksum  + " (GDA)")
 
     // assert( result == gold )
