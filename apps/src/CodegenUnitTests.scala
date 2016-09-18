@@ -7,7 +7,7 @@ trait SimpleSequentialApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   def simpleseq(xin: Rep[SInt], yin: Rep[SInt]) = {
-    val innerPar = param(1); domainOf(innerPar) = (1, 1, 1)
+    val innerPar = param(4); domainOf(innerPar) = (1, 1, 1)
     val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
 
     val x = ArgIn[SInt]

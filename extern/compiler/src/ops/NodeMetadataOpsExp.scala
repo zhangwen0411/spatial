@@ -23,9 +23,78 @@ trait NodeMetadataTypesExp extends SpatialMetadataOpsExp {
 trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
   this: SpatialExp =>
 
-  // TODO: Type parameters?
   type LocalWrite = (Exp[Any], Option[Exp[Any]], Option[Exp[Any]]) // Memory, optional value, optional address
   type LocalRead  = (Exp[Any], Option[Exp[Any]])                   // Memory, optional address
+
+  /**
+   * Controller parent
+   * Defines the controller which controls the reset of the given node.
+   * Currently defined only for control nodes (readers/writers use WrittenMemsIn)
+   **/
+  case class Parent(parent: Exp[Any]) extends Metadata
+  object parentOf {
+    def update(child: Exp[Any], parent: Exp[Any]): Unit = setMetadata(child, Parent(parent))
+    def apply(child: Exp[Any]): Option[Exp[Any]] = meta[Parent](child).map(_.parent)
+    def apply(child: Controller): Option[Controller] = child.inReduce match {
+      case true => Some((child.node, false))
+      case false => parentOf(child.node).map{p => (p,false) }
+    }
+  }
+
+  /**
+   * List of writers for a given memory
+   **/
+  case class Writers(writers: List[Access]) extends Metadata
+  object writersOf {
+    def update(mem: Exp[Any], writers: List[Access]): Unit = setMetadata(mem, Writers(writers))
+    def apply(mem: Exp[Any]): List[Access] = meta[Writers](mem).map(_.writers).getOrElse(Nil)
+  }
+  /**
+   * List of readers for a given memory
+   **/
+  case class Readers(readers: List[Access]) extends Metadata
+  object readersOf {
+    def update(mem: Exp[Any], readers: List[Access]): Unit = setMetadata(mem, Readers(readers))
+    def apply(mem: Exp[Any]): List[Access] = meta[Readers](mem).map(_.readers).getOrElse(Nil)
+  }
+
+  /**
+   * List of memories written in a given controller
+   **/
+  case class WrittenMemsIn(memories: List[Exp[Any]]) extends Metadata
+  object writtenIn {
+    def update(ctrl: Exp[Any], memories: List[Exp[Any]]): Unit = setMetadata(ctrl, WrittenMemsIn(memories))
+    def update(ctrl: Controller, memories: List[Exp[Any]]): Unit = setMetadata(ctrl.node, WrittenMemsIn(memories))
+    def apply(ctrl: Exp[Any]) = meta[WrittenMemsIn](ctrl).map(_.memories).getOrElse(Nil)
+    def apply(ctrl: Controller) = meta[WrittenMemsIn](ctrl.node).map(_.memories).getOrElse(Nil)
+  }
+
+  /**
+   * Controller children
+   * A list of control nodes inside given (outer) control node.
+   **/
+  case class Children(children: List[Exp[Any]]) extends Metadata
+  object childrenOf {
+    def update(ctrl: Exp[Any], children: List[Exp[Any]]): Unit = setMetadata(ctrl, Children(children))
+    def apply(ctrl: Exp[Any]): List[Exp[Any]] = meta[Children](ctrl).map(_.children).getOrElse(Nil)
+    def apply(ctrl: Controller): List[Controller] = {
+      if (!ctrl.inReduce)
+        childrenOf(ctrl.node).map{x => (x,false)} :+ ((ctrl.node,true)) // Only include in special cases?
+      else
+        childrenOf(ctrl.node).map{x => (x,false)} // Shouldn't have children?
+    }
+  }
+
+  /** Metadata mirroring **/
+  override def mirror[T<:Metadata](m: T, f: Transformer): T = (m match {
+    case Parent(parent) => Parent(f(parent))
+    case Writers(writers) => Writers(writers.map{x => (f(x.access), (f(x.controlNode), x.inReduce)) })
+    case Readers(readers) => Readers(readers.map{x => (f(x.access), (f(x.controlNode), x.inReduce)) })
+    case WrittenMemsIn(written) => WrittenMemsIn(written.map{x => f(x)})
+    case Children(children) => Children(children.map{x => f(x)})
+    case _ => super.mirror(m,f)
+  }).asInstanceOf[T]
+
 
   // Returns written memory, optional value, optional address
   private def writerUnapply(d: Def[Any]): Option[List[LocalWrite]] = d match {
@@ -93,6 +162,11 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:Pipe_parallel) => true
     case _ => false
   }
+  def isParallel(s: Exp[Any]): Boolean = s match {
+    case Def(d) => isParallel(d)
+    case _ => false
+  }
+
   def isPipeline(d: Def[Any]): Boolean = d match {
     case EatReflect(_:Pipe_foreach)    => true
     case EatReflect(_:Pipe_fold[_,_])  => true
@@ -109,6 +183,10 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:Pipe_foreach)    => true
     case EatReflect(_:Pipe_fold[_,_])  => true
     case EatReflect(_:Accum_fold[_,_]) => true
+    case _ => false
+  }
+  def isLoop(e: Exp[Any]): Boolean = e match {
+    case Def(d) => isLoop(d)
     case _ => false
   }
 
@@ -165,17 +243,14 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case _ => false
   }
 
-  def isConstantExp(s: Exp[Any]): Boolean = s match {
-    case Deff(_:ConstFixPt[_,_,_,_]) => true
-    case Deff(_:ConstFltPt[_,_,_]) => true
-    case Deff(_:ConstBit) => true
-    case Const(_) => true
+  def isConstant(s: Exp[Any]): Boolean = s match {
+    case Fixed(_) => true
     case _ => false
   }
 
   def isPrimitiveNode(s: Exp[Any]): Boolean = s match {
     case Def(Reify(_,_,_)) => false
-    case _ => !isControlNode(s) && !isRegisterRead(s) && !isAllocation(s) && !isConstantExp(s) && !isGlobal(s)
+    case _ => !isControlNode(s) && !isRegisterRead(s) && !isAllocation(s) && !isConstant(s) && !isGlobal(s)
   }
 
   def isControlNode(s: Exp[Any]): Boolean = s match {
@@ -186,10 +261,13 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case Def(d) => isOuterPipeline(s) || isParallel(d)
     case _ => false
   }
+  def isOuterControl(s: Controller): Boolean = !s.inReduce && isOuterControl(s.node)
+
   def isInnerControl(s: Exp[Any]): Boolean = s match {
     case Def(d) => isInnerPipeline(s) || isOffChipTransfer(d)
     case _ => false
   }
+  def isInnerControl(s: Controller): Boolean = s.inReduce || isInnerControl(s.node)
 
   def isOuterPipeline(s: Exp[Any]): Boolean = s match {
     case Def(d) => isPipeline(d) && styleOf(s) != InnerPipe
@@ -199,6 +277,7 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case Def(d) => isPipeline(d) && styleOf(s) == InnerPipe
     case _ => false
   }
+  def isInnerPipeline(s: Controller): Boolean = s.inReduce || isInnerPipeline(s.node)
 
   def isOuterLoop(s: Exp[Any]): Boolean = s match {
     case Def(d) => isLoop(d) && styleOf(s) != InnerPipe
@@ -211,16 +290,16 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
   }
 
   def isInnerPipe(s: Exp[Any]): Boolean = isInnerControl(s)
-  def isInnerPipe(s: (Exp[Any],Boolean)): Boolean = s._2 || isInnerControl(s._1)
+  def isInnerPipe(s: Controller): Boolean = s.inReduce || isInnerControl(s.node)
 
   def isStreamPipe(s: Exp[Any]): Boolean = isOuterControl(s) && styleOf(s) == StreamPipe
-  def isStreamPipe(s: (Exp[Any],Boolean)): Boolean = !s._2 && isStreamPipe(s._1)
+  def isStreamPipe(s: Controller): Boolean = !s.inReduce && isStreamPipe(s.node)
 
   def isMetaPipe(s: Exp[Any]): Boolean = isOuterControl(s) && styleOf(s) == CoarsePipe
-  def isMetaPipe(s: (Exp[Any],Boolean)): Boolean = !s._2 && isMetaPipe(s._1)
+  def isMetaPipe(s: Controller): Boolean = !s.inReduce && isMetaPipe(s.node)
 
   def isSequential(s: Exp[Any]): Boolean = isOuterControl(s) && styleOf(s) == SequentialPipe
-  def isSequential(s: (Exp[Any],Boolean)): Boolean = !s._2 && isSequential(s._1)
+  def isSequential(s: Controller): Boolean = !s.inReduce && isSequential(s.node)
 
   def isParallelizableLoop(e: Exp[Any]) = {
     (isInnerPipe(e) || isMetaPipe(e) || isStreamPipe(e)) && !childrenOf(e).exists(isOffChipTransfer(_))

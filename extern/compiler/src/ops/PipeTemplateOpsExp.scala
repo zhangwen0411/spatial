@@ -489,7 +489,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
       emit(s"""// Unit pipe writtenIn(${quote(sym)}) = ${writtenIn(sym)}""")
       writtenIn(sym) foreach { s =>
         val Def(d) = s
-        emit(s"""// ${quote(s)} = $d, isAccum(${quote(s)}) = isAccum(${quote(s)})""")
+        emit(s"""//   ${quote(s)} = $d, isAccum(${quote(s)}) = ${isAccum(s)}""")
       }
       val writesToAccumReg = writtenIn(sym).exists {s => s match {
           case Def(EatReflect(Reg_new(_))) => isAccum(s)
@@ -693,7 +693,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
-              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), 
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr),
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
@@ -760,7 +760,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
   def emitCustomCounterChain(cchain: Exp[CounterChain], en: Option[String], rstStr: Option[String], done: Option[String]=None) = {
     val sym = cchain
-    emitComment("CustomCounterChain {") 
+    emitComment("CustomCounterChain {")
     if (!enDeclaredSet.contains(sym)) {
       emit(s"""DFEVar ${quote(sym)}_en = ${en.get};""")
       enDeclaredSet += sym
@@ -834,7 +834,7 @@ DFEVar ${quote(sym)}_maxed = ${quote(sym)}.getOutput("saturated");""")
         emit(s"""DFEVector<DFEVar> ${quote(ctr)} = new DFEVectorType<DFEVar>(dfeInt(32), ${parOf(ctr)}).newInstance(this);
 ${quote(ctr)}[0] <== ${quote(sym)}.getOutput("counter${i}");
 for (int i = 0; i < ${parOf(ctr)-1}; i++) {
-  ${quote(ctr)}[i+1] <== ${quote(sym)}.getOutput("counter${i}_extension" + i);  
+  ${quote(ctr)}[i+1] <== ${quote(sym)}.getOutput("counter${i}_extension" + i);
 }""")
         // (0 until n.par(i)) map {k =>
         //     cast(n.ctrs(i)) // Cast if necessary

@@ -55,6 +55,7 @@ trait Controllers {
     val ControlType = lookupTpe("ControlType", stage=compile)
     val Pipe = grp("Pipe")
     val Sequential = grp("Sequential")
+    val Stream = grp("Stream")
     val Parallel = grp("Parallel")
 
     // --- Nodes
@@ -62,14 +63,18 @@ trait Controllers {
     val pipe_parallel = internal (Parallel) ("pipe_parallel", Nil, ("func", MThunk(MUnit,cold)) :: MUnit, effect = simple)
     val unit_pipe = internal (Pipe) ("unit_pipe", Nil, ("func", MThunk(MUnit,cold)) :: MUnit, effect = simple)
 
-    val controllers = List(Pipe, Sequential)
-    val styles  = List("InnerPipe", "SequentialPipe")
-    val objects = List("Pipe", "Sequential")
+    val controllers = List(Pipe, Sequential, Stream)
+    val styles  = List("InnerPipe", "SequentialPipe", "StreamPipe")
+    val objects = List("Pipe", "Sequential", "Stream")
+    val descriptions = List("pipelined, parallelizable", "sequential", "pipelined, parallelizable")
+    val execStyles = List("pipelined", "sequential", "streaming")
 
-    (controllers, styles, objects).zipped.foreach{case (ctrl, style, obj) =>
-      val desc = if (style == "InnerPipe") "pipelined, parallelizable" else "sequential"
-      val exec = if (style == "InnerPipe") "pipelined" else "sequential"
-
+    (0 to 2).foreach{i =>
+      val ctrl  = controllers(i)
+      val style = styles(i)
+      val obj   = objects(i)
+      val desc  = descriptions(i)
+      val exec  = execStyles(i)
       /** Creates a $desc state machine which iterates through the ND domain defined by the supplied counterchain,
        * executing the specified function every iteration. If the function contains other state machines, this is executed
        * as an outer loop with each inner state machine run as a stage in a $exec fashion.
@@ -167,15 +172,16 @@ trait Controllers {
        * as an outer loop with each inner state machine run as a stage in a $exec fashion.
        * Note that this is the general form for N-dimensional domains. Use the specialized 1, 2, or 3D forms when possible.
        * @param cchain: counterchain determining index domain
-       * @param accum: scalar accumulator for holding intermediate reduction values
+       * @param zero: identity value for this reduction function
        * @param map: scalar map function
        * @param reduce: associative reduction function
-       * @return the accumulator used in this reduction (identical to *accum*)
+       * @return a register containing the result of this reduction
        **/
-      static (ctrl) ("reduce", (T,C), CurriedMethodSignature(List(List(CounterChain), List(C(T)), List(Indices ==> T), List((T,T) ==> T)), C(T)), (TMem(T,C(T)), TNum(T))) implements composite ${
-        val pipe = pipe_fold[T,C]($0, $1, None, $2, $3)
+      static (ctrl) ("reduce", T, CurriedMethodSignature(List(List(CounterChain), List(T), List(Indices ==> T), List((T,T) ==> T)), Reg(T)), TNum(T)) implements composite ${
+        val accumulator = Reg[T]
+        val pipe = pipe_fold($0, accumulator, Some($1), $2, $3)
         styleOf(pipe) = \$style
-        $1
+        accumulator
       }
       /** 1-dimensional scalar fused map-reduce.
        * Creates a state machine which iterates over the supplied 1D domain, reducing the scalar result of
@@ -183,12 +189,12 @@ trait Controllers {
        * contains other state machines, this is executed as an outer loop with each inner state machine
        * run as a stage in a $exec fashion.
        * @param c0: counter specifying the 1D index domain
-       * @param accum: scalar accumulator for holding intermediate reduction values
+       * @param zero: identity value for this reduction function
        * @param map: scalar map function
        * @param reduce: associative reduction function
-       * @return the accumulator used in this reduction (identical to *accum*)
+       * @return a register containing the result of this reduction
        **/
-      static (ctrl) ("reduce", (T,C), CurriedMethodSignature(List(List(Counter), List(C(T)), List(Idx ==> T), List((T,T) ==> T)), C(T)), (TMem(T,C(T)), TNum(T))) implements composite ${
+      static (ctrl) ("reduce", T, CurriedMethodSignature(List(List(Counter), List(T), List(Idx ==> T), List((T,T) ==> T)), Reg(T)), TNum(T)) implements composite ${
         \$obj.reduce(CounterChain($0))($1){inds => $2(inds(0))}($3)
       }
       /** 2-dimensional scalar fused map-reduce.
@@ -198,12 +204,12 @@ trait Controllers {
        * run as a stage in a $exec fashion.
        * @param c0: counter for the first dimension
        * @param c1: counter for the second dimension
-       * @param accum: scalar accumulator for holding intermediate reduction values
+       * @param zero: identity value for this reduction function
        * @param map: scalar map function
        * @param reduce: associative reduction function
        * @return the accumulator used in this reduction (identical to *accum*)
        **/
-      static (ctrl) ("reduce", (T,C), CurriedMethodSignature(List(List(Counter,Counter), List(C(T)), List((Idx,Idx) ==> T), List((T,T) ==> T)), C(T)), (TMem(T,C(T)), TNum(T))) implements composite ${
+      static (ctrl) ("reduce", T, CurriedMethodSignature(List(List(Counter,Counter), List(T), List((Idx,Idx) ==> T), List((T,T) ==> T)), Reg(T)), TNum(T)) implements composite ${
         \$obj.reduce(CounterChain($0,$1))($2){inds => $3(inds(0),inds(1))}($4)
       }
       /** 3-dimensional scalar fused map-reduce.
@@ -214,12 +220,12 @@ trait Controllers {
        * @param c0: counter for the first dimension
        * @param c1: counter for the second dimension
        * @param c2: counter for the third dimension
-       * @param accum: scalar accumulator for holding intermediate reduction values
+       * @param zero: identity value for this reduction function
        * @param map: scalar map function
        * @param reduce: associative reduction function
-       * @return the accumulator used in this reduction (identical to *accum*)
+       * @return a register containing the result of this reduction
        **/
-      static (ctrl) ("reduce", (T,C), CurriedMethodSignature(List(List(Counter,Counter,Counter), List(C(T)), List((Idx,Idx,Idx) ==> T), List((T,T) ==> T)), C(T)), (TMem(T,C(T)),TNum(T))) implements composite ${
+      static (ctrl) ("reduce", T, CurriedMethodSignature(List(List(Counter,Counter,Counter), List(T), List((Idx,Idx,Idx) ==> T), List((T,T) ==> T)), Reg(T)), TNum(T)) implements composite ${
         \$obj.reduce(CounterChain($0,$1,$2))($3){inds => $4(inds(0),inds(1),inds(2))}($5)
       }
 
@@ -231,7 +237,7 @@ trait Controllers {
        * run as an inner loop where the supplied associative reduction is used on each iteration.
        * Supported memory types are: Regs and BRAMs.
        * @param cchain: counterchain specifying the index domain
-       * @param accum: scalar accumulator for holding intermediate reduction values
+       * @param accum: accumulator for holding intermediate reduction values
        * @param map: map function
        * @param reduce: associative reduction function
        * @return the accumulator used in this reduction (identical to *accum*)
@@ -249,7 +255,7 @@ trait Controllers {
        * run as an inner loop where the supplied associative reduction is used on each iteration.
        * Supported memory types are: Regs and BRAMs.
        * @param c0: counter specifying the 1D index domain
-       * @param accum: scalar accumulator for holding intermediate reduction values
+       * @param accum: accumulator for holding intermediate reduction values
        * @param map: map function
        * @param reduce: associative reduction function
        * @return the accumulator used in this reduction (identical to *accum*)
@@ -265,7 +271,7 @@ trait Controllers {
        * Supported memory types are: Regs and BRAMs.
        * @param c0: counter for the first dimension
        * @param c1: counter for the second dimension
-       * @param accum: scalar accumulator for holding intermediate reduction values
+       * @param accum: accumulator for holding intermediate reduction values
        * @param map: map function
        * @param reduce: associative reduction function
        * @return the accumulator used in this reduction (identical to *accum*)
@@ -282,7 +288,7 @@ trait Controllers {
        * @param c0: counter for the first dimension
        * @param c1: counter for the second dimension
        * @param c2: counter for the third dimension
-       * @param accum: scalar accumulator for holding intermediate reduction values
+       * @param accum: accumulator for holding intermediate reduction values
        * @param map: map function
        * @param reduce: associative reduction function
        * @return the accumulator used in this reduction (identical to *accum*)

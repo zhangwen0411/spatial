@@ -22,7 +22,7 @@ trait PIRGen extends Traversal with PIRCommon {
   debugMode = SpatialConfig.debugging || SpatialConfig.pirdebug
   verboseMode = SpatialConfig.verbose || SpatialConfig.pirdebug
 
-  val dir = sys.env("PIR_HOME") + "/apps/"
+  lazy val dir = sys.env("PIR_HOME") + "/apps/"
   val app = Config.degFilename.take(Config.degFilename.length - 4)
   val filename = app + ".scala"
 
@@ -131,9 +131,9 @@ trait PIRGen extends Traversal with PIRCommon {
     val deps = cu.deps.map{dep => dep.name }.mkString("List(", ", ", ")")
     cu match {
       case cu: BasicComputeUnit if cu.isUnitCompute =>
-        s"""UnitComputeUnit(name ="${cu.name}", parent=$parent, deps=$deps)"""
+        s"""UnitPipeline(name ="${cu.name}", parent=$parent, deps=$deps)"""
       case cu: BasicComputeUnit =>
-        s"""ComputeUnit(name="${cu.name}", parent=$parent, tpe = ${quote(cu.tpe)}, deps=$deps)"""
+        s"""${quote(cu.tpe)}(name="${cu.name}", parent=$parent, deps=$deps)"""
       case cu: TileTransferUnit =>
         s"""TileTransfer(name="${cu.name}", parent=$parent, memctrl=${quote(cu.ctrl)}, mctpe=${cu.mode}, deps=$deps, vec=${quote(cu.vec)})"""
     }
@@ -254,7 +254,7 @@ trait PIRGen extends Traversal with PIRCommon {
   }
 
   def quote(tpe: ControlType) = tpe match {
-    case InnerPipe => "Pipe"
+    case InnerPipe => "Pipeline"
     case CoarsePipe => "MetaPipeline"
     case SequentialPipe => "Sequential"
     case StreamPipe => throw new Exception("Stream pipe not yet supported in PIR")

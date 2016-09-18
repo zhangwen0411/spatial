@@ -35,6 +35,7 @@ trait MatMult_innerApp extends SpatialApp {
     val ip  = param(2);   
     val upMidPar  = param(1);   
     val stPar     = param(1);   
+
     domainOf(op)  = (1,6,1)
     domainOf(mp) = (1,96,1)
     domainOf(ip)  = (1,96,1)

@@ -184,6 +184,8 @@ trait DotIRPrinter extends Traversal with QuotingExp {
 		case _ =>
 	}
 
+  private def isDblBuf(sym: Exp[Any]) = duplicatesOf(sym).exists{dup => dup.depth > 1}
+
   def emitVector(sym: Sym[Any]) = {
     if (isDblBuf(sym)) {
       emit(s"""${quote(sym)} [margin=0 rankdir="LR" label="{<st> | <ld>}" xlabel="${quote(sym)}"""")

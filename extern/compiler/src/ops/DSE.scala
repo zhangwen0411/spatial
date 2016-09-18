@@ -150,7 +150,8 @@ trait DSE extends Traversal {
 
     debug(s"Total space size is $spaceSize")
 
-    val size = if (spaceSize < Int.MaxValue) spaceSize.toInt else stageError("Spaces over 2^32 currently unsupported.")
+    if (spaceSize > Int.MaxValue) throw new Exception("Spaces over 2^32 currently unsupported.")
+    val size = spaceSize.toInt
 
     // --- Find all legal points
     // FIXME: This could take a long time if space size is really large
@@ -339,14 +340,20 @@ trait DSE extends Traversal {
     }
     ppw.close()
 
-    msg("DSE completed. Shutting down compiler.")
-    sys.exit()
+    msg("DSE completed.")
 
     // F. Show user results, pick point on pareto curve
     // TODO
+    // By default pick most performant pareto point
 
     // G. Set parameters
-    // TODO
-
+    if (pareto.nonEmpty) {
+      val paretoPt = pareto.reduce{(a,b) => if (a.cycles < b.cycles) a else b}
+      val pt = points(paretoPt.idx)
+      indexedSpace.foreach{case (domain,d) => domain.set( ((pt / prods(d)) % dims(d)).toInt ) }
+    }
+    else {
+      stageError("No valid points discovered for design space")
+    }
   }
 }

@@ -170,12 +170,12 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
   }
 
   def allocateWrittenSRAM(writer: Exp[Any], mem: Exp[Any], addr: Option[Exp[Any]], writerCU: ComputeUnit, stages: List[PseudoStage]) {
-    val srams = readersOf(mem).map{case (ctrl,_,reader) =>
-      val readerCU = allocateCU(ctrl)
+    val srams = readersOf(mem).map{reader =>
+      val readerCU = allocateCU(reader.controlNode)
       copyIterators(readerCU, writerCU)
       val isLocallyRead = readerCU == writerCU
 
-      val sram = allocateMem(mem, reader, readerCU)
+      val sram = allocateMem(mem, reader.access, readerCU)
       val vector = if (isLocallyRead) LocalVector else allocateGlobal(mem)
       sram.vector = Some(vector)
       (readerCU, sram)
@@ -211,7 +211,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
   def prescheduleRegisterRead(reg: Exp[Any], reader: Exp[Any], pipe: Option[Exp[Any]]) = {
     debug(s"  Register read: $reader")
     // Register reads may be used by more than one pipe
-    readersOf(reg).filter(_._3 == reader).map(_._1).foreach{readCtrl =>
+    readersOf(reg).filter(_.access == reader).map(_._1).foreach{readCtrl =>
       val isCurrentPipe = pipe.map(_ == readCtrl).getOrElse(false)
       val isLocallyWritten = isWrittenInPipe(reg, readCtrl)
 

@@ -23,8 +23,6 @@ trait UnrolledControlSignalAnalysisExp extends ControlSignalAnalysisExp {this: S
 // (3)  Sets children control nodes of controllers
 // (4)  Sets reader control nodes of locally read memories
 // (5)  Sets writer control nodes of locally written memories
-// (5.5) Sets top writer control nodes of locally written memories
-// (5.6) Sets top reader control nodes of locally read memories
 // (6)  Flags accumulators
 // (7)  Records list of local memories
 // (8)  Records set of metapipes
@@ -41,10 +39,10 @@ trait ControlSignalAnalyzer extends Traversal {
 
   // --- State
   var level = 0
-  var indsOwners: Map[Exp[Any], (Exp[Any], Boolean, Int)] = Map.empty // Used to identify the top-most controller for a given address
-  var controller: Option[(Exp[Any], Boolean)] = None                  // Parent controller for the current scope
-  var pendingReads: Map[Exp[Any],List[Exp[Any]]] = Map.empty          // Memory reads outside of inner pipes
-  var unrollFactors = List[Exp[Int]]()                                // Unrolling factors for the current scope
+  var controller: Option[Controller] = None                     // Parent controller for the current scope
+  var pendingReads: Map[Exp[Any],List[Exp[Any]]] = Map.empty    // Memory reads outside of inner pipes
+  var pendingExternalReads: Set[Exp[Any]] = Set.empty           // Memory reads outside the hardware block
+  var unrollFactors = List[Exp[Int]]()                          // Unrolling factors for the current scope
 
   // --- Output (to DSE)
   var localMems = List[Exp[Any]]()    // Local memories
@@ -57,31 +55,22 @@ trait ControlSignalAnalyzer extends Traversal {
     metapipes = Nil
     top = null
     controller = None
-    for ((s,p) <- metadata) {
-      if (meta[MReaders](s).isDefined) readersOf(s) = Nil
-      if (meta[MWritten](s).isDefined) writtenIn(s) = Nil
-      if (meta[MWriters](s).isDefined) writersOf(s) = Nil
-      if (meta[MChildren](s).isDefined) childrenOf(s) = Nil
-      if (meta[MTopWriters](s).isDefined) topWritersOf(s) = Nil
+    for ((s,p) <- metadata) { // TODO: Better way to clear stale data?
+      if (meta[Readers](s).isDefined) readersOf(s) = Nil
+      if (meta[WrittenMemsIn](s).isDefined) writtenIn(s) = Nil
+      if (meta[Writers](s).isDefined) writersOf(s) = Nil
+      if (meta[Children](s).isDefined) childrenOf(s) = Nil
     }
     super.preprocess(b)
   }
 
-  override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
-    for (mem <- localMems) {
-      if (writersOf(mem).isEmpty && !isArgIn(mem)) stageWarn("Memory " + nameOf(mem).getOrElse(s"$mem") + " defined here has no writer")(mpos(mem.pos))
-      if (readersOf(mem).isEmpty && !isArgOut(mem)) stageWarn("Memory " + nameOf(mem).getOrElse(s"$mem") + " defined here has no readers")(mpos(mem.pos))
-    }
-    b
-  }
-
   // Traverse the scope of the given controller
-  def traverseWith(owner: Exp[Any], isReduce: Boolean)(b: Block[Any]) {
+  def traverseWith(ctrl: Controller)(b: Block[Any]) {
     level += 1
     val prevCtrl = controller
     val prevReads = pendingReads
 
-    controller = Some((owner,isReduce))
+    controller = Some(ctrl)
     traverseBlock(b)
 
     controller = prevCtrl
@@ -89,10 +78,7 @@ trait ControlSignalAnalyzer extends Traversal {
     level -= 1
   }
   // Traverse the scope of the given iterative controller
-  def traverseWith(owner: Exp[Any], isReduce: Boolean, inds: List[Exp[Any]], cc: Rep[CounterChain])(b: Block[Any]) {
-    val prevOwners = indsOwners
-    inds.foreach{ind => indsOwners += ind -> (owner, isReduce, level) }
-
+  def traverseWith(ctrl: Controller, inds: List[Exp[Any]], cc: Rep[CounterChain])(b: Block[Any]) {
     val prevUnrollFactors = unrollFactors
     val factors = parFactorsOf(cc)
     inds.zip(factors).foreach{case (i,p) => parFactorOf(i) = p }
@@ -100,9 +86,8 @@ trait ControlSignalAnalyzer extends Traversal {
     // ASSUMPTION: Only parallelize by innermost loop currently
     unrollFactors ++= List(parFactors(cc).last) //unrollFactors ++= factors
 
-    traverseWith(owner, isReduce)(b)
+    traverseWith(ctrl)(b)
     unrollFactors = prevUnrollFactors
-    indsOwners = prevOwners
   }
 
   private def dfs(frontier: List[Exp[Any]]): List[Exp[Any]] = {
@@ -110,12 +95,6 @@ trait ControlSignalAnalyzer extends Traversal {
       case Def(d) => dfs(syms(d))
       case bnd => List(bnd)
     }
-  }
-
-  def getTopController(ctrl: Exp[Any], isReduce: Boolean, addr: Exp[Any]): (Exp[Any], Boolean) = {
-    val bnds = dfs(List(addr))
-    val top = bnds.flatMap{d => indsOwners.get(d)}.fold((ctrl,isReduce,level+1)){(a,b) => if (a._3 < b._3) a else b}
-    (top._1, top._2)
   }
 
   /**
@@ -127,107 +106,70 @@ trait ControlSignalAnalyzer extends Traversal {
    *
    * Note that this is required primarily for register reads, which cannot always be wrapped.
    **/
-  def appendReader(ctrl: Exp[Any], isReduce: Boolean, reader: Exp[Any]) = reader match {
-    case LocalReader(reads) => reads.foreach{ case (mem,addr) =>
-      checkMultipleReaders(mem, reader)
-
-      val top = addr.map{a => getTopController(ctrl, isReduce, a)}.getOrElse( (ctrl, isReduce) )
-      readersOf(mem) = readersOf(mem) :+ (ctrl, isReduce, reader)
-      topReadersOf(mem) = topReadersOf(mem) :+ (top._1, top._2, reader)
-    }
+  def appendReader(reader: Exp[Any], ctrl: Controller) = {
+    val LocalReader(reads) = reader
+    reads.foreach{ case (mem,addr) => readersOf(mem) = readersOf(mem) :+ (reader, ctrl) }
   }
   def addPendingReader(reader: Exp[Any]) {
     pendingReads += reader -> List(reader)
     debug(s"Added pending reader: $reader")
   }
+  def addPendingExternalReader(reader: Exp[Any]) {
+    pendingExternalReads += reader
+    debug(s"Added pending external reader: $reader")
+  }
 
-  def addReader(ctrl: Exp[Any], isReduce: Boolean, reader: Exp[Any]) {
-    if (isInnerPipe((ctrl,isReduce)))
-      appendReader(ctrl, isReduce, reader)
+  def addReader(reader: Exp[Any], ctrl: Controller) {
+    if (isInnerPipe(ctrl))
+      appendReader(reader, ctrl)
     else
       addPendingReader(reader)
   }
 
-  def checkMultipleWriters(mem: Exp[Any], writer: Exp[Any]) {
-    if (writersOf(mem).nonEmpty) {
-      stageError("Memory " + nameOf(mem).getOrElse("") + s" defined here has multiple writers: $mem <- ${writersOf(mem)} ")(mpos(mem.pos))
-    }
-  }
+  def appendWriter(writer: Exp[Any], ctrl: Controller) = {
+    val LocalWriter(writes) = writer
+    writes.foreach{ case (mem,value,addr) =>
 
-  def checkWritersSeq(mem: Exp[Any]) {
-    val top_writers = topWritersOf(mem).map { case (t,_,_) => t }
-    top_writers.foreach{ case t =>
-      if (isMetaPipe(t)) {
-        // TODO: Make this work
-        // Console.println(s"Memory " + nameOf(mem).getOrElse("") + s" has multiple writers at different stages of a metapipe, which is not yet supported! topwriters: ${topWritersOf(mem)}, writers: ${writersOf(mem)}")
-      }
-    }
-  }
-
-  def checkWritersConflict(mem: Exp[Any], writer: Exp[Any], ctrl: Exp[Any]) {
-    val current_ctrl = writersOf(mem).map { case (ct,_,_) => ct }
-    if (current_ctrl.contains(ctrl)) {
-      stageError("Memory " + nameOf(mem).getOrElse("") + s" has multiple writers with same parent: $mem <- ${writersOf(mem)} and $writer")(mpos(mem.pos))
-    }
-  }
-
-  def checkMultipleReaders(mem: Exp[Any], reader: Exp[Any]) {
-    if (isFIFO(mem.tp) && readersOf(mem).nonEmpty) {
-      stageError("FIFO " + nameOf(mem).getOrElse("") + " defined here has multiple readers.")(mpos(mem.pos))
-    }
-  }
-
-  def appendWriter(ctrl: Exp[Any], isReduce: Boolean, writer: Exp[Any]) = writer match {
-    case LocalWriter(writes) => writes.foreach{ case (mem,value,addr) =>
-      // checkMultipleWriters(mem, writer)
-      checkWritersConflict(mem, writer, ctrl)
-      val top = addr.map{a => getTopController(ctrl, isReduce, a)}.getOrElse( (ctrl, isReduce) )
-
-      writersOf(mem) = writersOf(mem) :+ (ctrl, isReduce, writer)        // (5)
-      topWritersOf(mem) = topWritersOf(mem) :+ (top._1, top._2, writer)  // (5.5)
-      checkWritersSeq(mem)
-      writtenIn(ctrl) = writtenIn(ctrl) :+ mem                           // (10)
-
+      writersOf(mem) = writersOf(mem) :+ (writer, ctrl)        // (5)
+      writtenIn(ctrl) = writtenIn(ctrl) :+ mem                 // (10)
       // This memory is set as an accumulator if it's written value depends on the memory (some read node)
       value.foreach{input => isAccum(mem) = hasDependency(input, mem) }  // (6)
     }
   }
 
-  def addWriter(ctrl: Exp[Any], isReduce: Boolean, writer: Exp[Any]) {
-    if (isInnerPipe((ctrl,isReduce)))
-      appendWriter(ctrl, isReduce, writer)
+  def addWriter(writer: Exp[Any], ctrl: Controller) {
+    if (isInnerPipe(ctrl))
+      appendWriter(writer, ctrl)
     else
-      stageError("Memory writers is defined outside inner pipe.")(mpos(writer.pos))
+      throw ExternalMemoryWriteException(writer, ctrl)
   }
 
   /**
    * Allocations
    **/
-  def addAllocation(ctrl: Exp[Any], alloc: Exp[Any]) {
+  def addAllocation(alloc: Exp[Any], ctrl: Exp[Any]) {
     parentOf(alloc) = ctrl // (1)
-
     if (isLocalMemory(alloc)) localMems ::= alloc // (7)
   }
 
   /**
    * Children/Parent Controllers
    **/
-  def addChild(ctrl: Exp[Any], child: Exp[Any]) {
+  def addChild(child: Exp[Any], ctrl: Exp[Any]) {
     parentOf(child) = ctrl                        // (2)
     childrenOf(ctrl) = childrenOf(ctrl) :+ child  // (3)
   }
 
-  // TODO: Name this function something else more descriptive
-  def addMemoryOps(lhs: Exp[Any], rhs: Def[Any]) {
+  def addCommonControlData(lhs: Exp[Any], rhs: Def[Any]) {
     // Set total unrolling factors of this node's scope + internal unrolling factors in this node
     unrollFactorsOf(lhs) = unrollFactors ++ parFactors(lhs) // (9)
 
     if (controller.isDefined) {
       // Add pending readers
       val ctrl = controller.get
-      val deps = readSyms(rhs)
       val parent = if (isControlNode(lhs)) (lhs,false) else ctrl
 
+      val deps = readSyms(rhs)
       val delayedReads = deps.filter(pendingReads.keySet contains _)
       val readers = delayedReads.flatMap{sym => pendingReads(sym)}
 
@@ -242,30 +184,36 @@ trait ControlSignalAnalyzer extends Traversal {
         }
         else {
           debug(s"""  Found true dep ($lhs) of pending readers (${readers.mkString(",")})""")
-          readers.foreach{reader => appendReader(parent._1, parent._2, reader) }
+          readers.foreach{reader => appendReader(reader, parent) }
         }
       }
 
-      if (isAllocation(lhs)) addAllocation(parent._1, lhs)        // (1,7)
-      if (isReader(lhs)) addReader(parent._1, parent._2, lhs)     // (4)
-      if (isWriter(lhs)) addWriter(parent._1, parent._2, lhs)     // (5,6,10)
+      if (isAllocation(lhs)) addAllocation(lhs, parent.node)    // (1,7)
+      if (isReader(lhs)) addReader(lhs, parent)                 // (4)
+      if (isWriter(lhs)) addWriter(lhs, parent)                 // (5,6,10)
     }
     else {
       // For input arguments read outside the hardware block
-      if (isReader(lhs)) addPendingReader(lhs)
-      if (isAllocation(lhs) && isArgOut(lhs)) localMems ::= lhs
+      if (isReader(lhs)) addPendingExternalReader(lhs)
+      if (isAllocation(lhs) && (isArgOut(lhs) || isArgIn(lhs))) localMems ::= lhs
     }
 
     if (isControlNode(lhs)) {
-      if (controller.isDefined) addChild(controller.get._1, lhs)  // (2,3)
-      else top = lhs                                              // (11)
+      if (controller.isDefined) addChild(lhs, controller.get.node)     // (2,3)
+      else {
+        top = lhs                                                      // (11)
 
-      if (isMetaPipe(lhs)) metapipes ::= lhs                      // (8)
+        if (pendingExternalReads.nonEmpty) {
+          pendingExternalReads.foreach{reader => appendReader(reader, (top,false)) }
+        }
+      }
+
+      if (isMetaPipe(lhs)) metapipes ::= lhs                           // (8)
     }
   }
 
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) {
-    addMemoryOps(lhs, rhs)
+    addCommonControlData(lhs, rhs)
 
     // Hack: usually would use EatReflect here
     rhs match {
@@ -275,48 +223,36 @@ trait ControlSignalAnalyzer extends Traversal {
   }
 
   def analyze(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
-    case Hwblock(blk)       => traverseWith(lhs, false)(blk)
-    case Pipe_parallel(blk) => traverseWith(lhs, false)(blk)
-    case Unit_pipe(blk)     => traverseWith(lhs, false)(blk)
+    case Hwblock(blk)       => traverseWith((lhs, false))(blk)
+    case Pipe_parallel(blk) => traverseWith((lhs, false))(blk)
+    case Unit_pipe(blk)     => traverseWith((lhs, false))(blk)
 
     case Pipe_foreach(cc,func,inds) =>
-      traverseWith(lhs, false, inds, cc)(func)
+      traverseWith((lhs, false), inds, cc)(func)
 
     case Pipe_fold(cc,a,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) =>
       val isOuter = !isInnerPipe(lhs)
-      traverseWith(lhs, false, inds, cc)(func)
-      traverseWith(lhs, isOuter, inds, cc)(rFunc)
+      traverseWith((lhs, false), inds, cc)(func)
+      traverseWith((lhs, false), inds, cc)(rFunc)
 
       // TODO: Can these be generalized too?
-      // checkMultipleWriters(a, lhs)
-      checkWritersConflict(a, lhs, lhs)
-      checkMultipleReaders(a, lhs)
-      readersOf(a) = readersOf(a) :+ (lhs, isOuter, lhs)  // (4)
-      writersOf(a) = writersOf(a) :+ (lhs, isOuter, lhs)  // (5)
-      topWritersOf(a) = topWritersOf(a) :+ (lhs, isOuter, lhs) // (5.5)
-      topReadersOf(a) = topReadersOf(a) :+ (lhs, isOuter, lhs) // (5.6)
-      checkWritersSeq(a)
+      readersOf(a) = readersOf(a) :+ (lhs, (lhs, false))  // (4)
+      writersOf(a) = writersOf(a) :+ (lhs, (lhs, false))  // (5)
       isAccum(a) = true                                   // (6)
       writtenIn(lhs) = writtenIn(lhs) :+ a                // (10)
       parentOf(a) = lhs  // Reset accumulator with reduction
 
     case Accum_fold(cc1,cc2,a,zero,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV) =>
-      traverseWith(lhs, false, inds1, cc1)(func)
-      traverseWith(lhs, true,  inds2, cc2)(rFunc)
+      traverseWith((lhs, false), inds1, cc1)(func)
+      traverseWith((lhs, true),  inds2, cc2)(rFunc)
 
       val partial = getBlockResult(func)
-      readersOf(partial) = readersOf(partial) :+ (lhs,true,lhs) // (4)
+      readersOf(partial) = readersOf(partial) :+ (lhs, (lhs,true)) // (4)
 
-      // checkMultipleWriters(a, lhs)
-      checkWritersConflict(a, lhs, lhs)
-      checkMultipleReaders(a, lhs)
-      readersOf(a) = readersOf(a) :+ (lhs, true, lhs)     // (4)
-      writersOf(a) = writersOf(a) :+ (lhs, true, lhs)     // (5)
-      topWritersOf(a) = topWritersOf(a) :+ (lhs, true, lhs) // (5.5)
-      topReadersOf(a) = topReadersOf(a) :+ (lhs, true, lhs) // (5.6)
-      checkWritersSeq(a)
-      isAccum(a) = true                                   // (6)
-      writtenIn(lhs) = writtenIn(lhs) :+ a                // (10)
+      readersOf(a) = readersOf(a) :+ (lhs, (lhs,true))     // (4)
+      writersOf(a) = writersOf(a) :+ (lhs, (lhs,true))     // (5)
+      isAccum(a) = true                                    // (6)
+      writtenIn(lhs) = writtenIn(lhs) :+ a                 // (10)
       parentOf(a) = lhs  // Reset accumulator with reduction, not allocation
 
     case _ => blocks(rhs).foreach{blk => traverseBlock(blk)}
@@ -333,32 +269,21 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
 
   override val name = "Control Signal Analyzer [Post-Unrolling]"
 
-  // All cases of multiple access are ok now (we banked for unrolled accesses already)
-  override def checkMultipleWriters(mem: Exp[Any], writer: Exp[Any]) { }
-  override def checkMultipleReaders(mem: Exp[Any], reader: Exp[Any]) { }
-
   var propagationPairs = List[(Exp[Any],Exp[Any])]()
 
-  def traverseUnrolled(owner: Exp[Any], isReduce: Boolean, inds: List[List[Exp[Any]]], cc: Rep[CounterChain])(b: Block[Any]) {
-    val prevOwners = indsOwners
-    inds.foreach{indSet => indSet.foreach{ind => indsOwners += ind -> (owner, isReduce, level) }}
-
-    traverseWith(owner, isReduce)(b)
-
-    indsOwners = prevOwners
+  def traverseUnrolled(ctrl: Exp[Any], inds: List[List[Exp[Any]]], cc: Rep[CounterChain])(b: Block[Any]) {
+    traverseWith((ctrl, false))(b)
   }
 
   override def analyze(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
     case ParPipeForeach(cc,func,inds) =>
-      traverseUnrolled(lhs, false, inds, cc)(func)
+      traverseUnrolled(lhs, inds, cc)(func)
 
     case ParPipeReduce(cc,accum,func,rFunc,inds,acc,rV) =>
-      traverseUnrolled(lhs, false, inds, cc)(func)
+      traverseUnrolled(lhs, inds, cc)(func)
       // rFunc isn't "real" anymore
       readersOf(accum) = readersOf(accum) ++ readersOf(acc) // (4)
       writersOf(accum) = writersOf(accum) ++ writersOf(acc) // (5)
-      topWritersOf(accum) = topWritersOf(accum) ++ topWritersOf(acc) // (5.5)
-      topReadersOf(accum) = topReadersOf(accum) ++ topReadersOf(acc) // (5.6)
       isAccum(accum) = true                                 // (6)
       writtenIn(lhs) = writtenIn(lhs) :+ accum              // (10)
       parentOf(accum) = lhs           // Reset accumulator with reduction, not allocation

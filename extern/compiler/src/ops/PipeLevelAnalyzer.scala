@@ -14,7 +14,7 @@ trait PipeLevelAnalysisExp extends NodeMetadataOpsExp {this: SpatialExp => }
  * Analysis traversal - rectifies annotations on the "level" of each controller
  * Parallels are always ForkJoin. For all others, check if the pipe contains any other controllers
  * If it does, promote it to a CoarsePipe if it was annotated as an InnerPipe.
- * Annotate either as a Sequential or inner Pipe if no annotation previously existed
+ * Annotate either as a Sequential or InnerPipe if no annotation previously existed
  * NOTE: AccumFold always contains inner controllers
  *
  * Sanity checks:
@@ -49,21 +49,19 @@ trait PipeLevelAnalyzer extends Traversal with SpatialTraversalTools {
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
     case Pipe_parallel(blk) =>
       styleOf(lhs) = ForkJoin
-      if (hasPrimitiveNodes(blk))
-        stageError("Parallel must not have any primitive nodes.")(mpos(lhs.pos))
-      if (!hasControlNodes(blk))
-        stageError("Parallel must have at least one control node.")(mpos(lhs.pos))
+      if (hasPrimitiveNodes(blk)) throw PrimitivesInParallelException(lhs)(mpos(lhs.pos))
+      if (!hasControlNodes(blk)) throw EmptyParallelException(lhs)(mpos(lhs.pos))
 
     case Hwblock(blk)      => annotatePipeStyle(lhs, blk)
     case Unit_pipe(func)   => annotatePipeStyle(lhs, func)
     case e:Pipe_foreach    => annotatePipeStyle(lhs, e.func)
     case e:Pipe_fold[_,_]  =>
       annotatePipeStyle(lhs, e.func)
-      if (hasControlNodes(e.rFunc)) stageError("Reduction controller defined here defines control nodes within the reduction function. This is currently disallowed")(e.ctx)
+      if (hasControlNodes(e.rFunc)) throw ControlInReductionException(lhs)(e.ctx)
 
     case e:Accum_fold[_,_] =>
       annotateAccumFold(lhs)
-      if (hasControlNodes(e.rFunc)) stageError("Reduction controller defined here defines control nodes within the reduction function. This is currently disallowed")(e.ctx)
+      if (hasControlNodes(e.rFunc)) throw ControlInReductionException(lhs)(e.ctx)
 
     case _ => super.traverse(lhs, rhs)
   }

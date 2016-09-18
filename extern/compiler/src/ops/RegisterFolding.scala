@@ -1,4 +1,4 @@
-package spatial.compiler.ops
+/*package spatial.compiler.ops
 
 import scala.reflect.{Manifest,SourceContext}
 import ppl.delite.framework.transform.MultiPassTransformer
@@ -48,4 +48,4 @@ trait RegisterFolding extends MultiPassTransformer {
     }
     Some(write)
   }
-}
+}*/

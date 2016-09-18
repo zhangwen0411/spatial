@@ -32,13 +32,33 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
     scope -= 1
   }
 
+  class Stage(val isControl: Boolean) {
+    val allocs: ArrayBuffer[Stm] = ArrayBuffer.empty
+    val nodes: ArrayBuffer[Stm] = ArrayBuffer.empty
+    val regReads: ArrayBuffer[Stm] = ArrayBuffer.empty
+
+    def allocDeps = allocs.flatMap{case TP(s,d) => (syms(d) ++ readSyms(d)) }.toSet
+    def deps = nodes.flatMap{case TP(s,d) => (syms(d) ++ readSyms(d)) }.toSet ++ allocDeps
+
+    def dumpStage(i: Int) {
+      if (isControl) debugs(s"$i. Control Stage")
+      else           debugs(s"$i. Primitive Stage")
+      debugs(s"Allocations: ")
+      allocs.foreach{case TP(s,d) => debugs(s"..$s = $d") }
+      debugs(s"Nodes:")
+      nodes.foreach{case TP(s,d) => debugs(s"..$s = $d") }
+      debugs(s"Register reads:")
+      regReads.foreach{case TP(s,d) => debugs(s"..$s = $d") }
+    }
+  }
+
   // HACK: Have to get a reset value for inserted registers for writing out of unit pipes
   // TODO: Tuples? Custom records?
   private def zeroHack[T](mT: Manifest[T])(implicit ctx: SourceContext): Exp[T] = mT match {
     case mT if isFixPtType(mT) => canFixPtNum(mT.typeArguments(0),mT.typeArguments(1),mT.typeArguments(2)).zero.asInstanceOf[Exp[T]]
     case mT if isFltPtType(mT) => canFltPtNum(mT.typeArguments(0),mT.typeArguments(1)).zero.asInstanceOf[Exp[T]]
     case mT if isBitType(mT) => canBitNum.zero.asInstanceOf[Exp[T]]
-    case _ => stageError("Primitive expressions with unrecognized type: " + mT.toString)(ctx)
+    case _ => throw UnknownZeroException(mT)
   }
 
   def wrapPrimitives[T:Manifest](blk: Block[T])(implicit ctx: SourceContext): Block[T] = {
@@ -47,27 +67,6 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
     val blk2 = reifyBlock {
       focusBlock(blk){
         focusExactScope(blk){ stms =>
-
-          class Stage(val isControl: Boolean) {
-             val allocs: ArrayBuffer[Stm] = ArrayBuffer.empty
-             val nodes: ArrayBuffer[Stm] = ArrayBuffer.empty
-             val regReads: ArrayBuffer[Stm] = ArrayBuffer.empty
-
-             def allocDeps = allocs.flatMap{case TP(s,d) => (syms(d) ++ readSyms(d)) }.toSet
-
-             def deps = nodes.flatMap{case TP(s,d) => (syms(d) ++ readSyms(d)) }.toSet ++ allocDeps
-
-             def dumpStage(i: Int) {
-                if (isControl) debugs(s"$i. Control Stage")
-                else           debugs(s"$i. Primitive Stage")
-                debugs(s"Allocations: ")
-                allocs.foreach{case TP(s,d) => debugs(s"..$s = $d") }
-                debugs(s"Nodes:")
-                nodes.foreach{case TP(s,d) => debugs(s"..$s = $d") }
-                debugs(s"Register reads:")
-                regReads.foreach{case TP(s,d) => debugs(s"..$s = $d") }
-             }
-          }
 
           // Imperative version (functional version caused ugly scalac crash :( )
           val stages: ArrayBuffer[Stage] = ArrayBuffer.empty
@@ -83,7 +82,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
               if (!curStage.isControl) curStage.nodes += stm
               curStage.regReads += stm
             }
-            else if (isAllocation(s) || isConstantExp(s) || isGlobal(s)) {
+            else if (isAllocation(s) || isConstant(s) || isGlobal(s)) {
               curStage.allocs += stm
             }
             else {

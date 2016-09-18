@@ -22,7 +22,7 @@ trait CAMs {
      * @param size
      **/
     static (CAM) ("apply", (K,V), (Idx) :: CAM(K,V), (TNum(K),TNum(V)) ) implements composite ${
-      if (!isStaticSize($0)) stageError("Only constants and DSE parameters are allowed as size of CAM")
+      if (!isStaticSize($0)) throw InvalidMemoryDimensionException($0)
       val cam = cam_new[K,V]($0, zero[V])
       dimsOf(cam) = List($0)
       cam

@@ -45,9 +45,8 @@ trait OffChipAnalyzer extends Traversal {
       val softDims = dimsOf(offchip).zipWithIndex.map{case (dim,i) => dim match {
         case Deff(Reg_read(reg)) if isArgIn(reg) && softValue.contains(reg) => softValue(reg)
         case dim@Exact(c) => dim
-        case _ =>
-          val name = nameOf(offchip).getOrElse("")
-          stageError(s"Unable to resolve OffChipMem $name dimension $i. Dimensions must be constants or input arguments.")(mpos(offchip.pos))
+        case _ => throw InvalidOffChipDimensionException(offchip, i)
+
       }}
       softDimsOf(offchip) = softDims.asInstanceOf[List[Exp[Index]]]
     }
