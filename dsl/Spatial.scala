@@ -254,7 +254,7 @@ trait SpatialDSL extends ForgeApplication
     val PlasticineLatency = traversal("PlasticineLatencyAnalyzer", isExtern=true)
 
     // --- Transformer ordering notes
-    // Controlle metadata doesn't dataflow order! Explicitly run control signal analyzer after transformers
+    // Controller metadata doesn't follow dataflow order! Explicitly run control signal analyzer after transformers
 
     importGlobalAnalysis()
     importBoundAnalysis()
