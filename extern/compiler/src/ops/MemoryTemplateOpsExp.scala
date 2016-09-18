@@ -334,8 +334,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     if (isDummy(bram)) {
       val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
       bankOverride(read) match {
-        case -1 => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}); //1.0""")
-        case b => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}, $b); //1.5""")
+        case -1 => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}); //r1.0""")
+        case b => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}, $b); //r1.5""")
 
       }
     } else {
@@ -360,13 +360,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             addEmittedConsts(addr0)
 
             if (par)
-              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${quote(bram)}.connectRport(${quote(addr0)}))); //2""")
+              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${quote(bram_name)}.connectRport(${quote(addr0)}))); //r2""")
             else
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}); //3""")
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}); //r3""")
           }
           else {
             // Many addresses
-            emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr)}); //4""")
+            emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr)}); //r4""")
           }
         case 2 => // 2D bram
           if (inds.length == 1) {
@@ -376,9 +376,9 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             addEmittedConsts(addr0, addr1)
 
             if (par)
-              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}))); //5""")
+              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}))); //r5""")
             else
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}); //6""")
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}); //r6""")
 
           }
           else {
@@ -390,14 +390,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val addr0 = inds.map{ind => quote2D(ind,0) }
               val addr1 = quote2D(inds(0), 1)
               emit(s"""// All readers share column. vectorized """)
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}); //7""")
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}); //r7""")
             }
             // Same rows?
             else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
               val addr0 = quote2D(inds(0), 0)
               val addr1 = inds.map{ind => quote2D(ind, 0) }
               emit(s"""// All readers share row. vectorized""")
-              emit(s"""${pre} ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")}))); //8""")
+              emit(s"""${pre} ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")}))); //r8""")
             }
             else {
               throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
