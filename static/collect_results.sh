@@ -9,7 +9,7 @@
 # CONFIG #
 ##########
 test_name="CharLoadTest" # Label for data to be scraped
-testname_as_prefix=true
+testname_as_prefix="false" # Flag indicating if test_name is a prefix (for printing to csv with multiple tests)
 base_dir="./${test_name}" # Move whatever maxj/ you want to scrape to this dir
 insertion_file="/home/mattfel/characterization/${test_name}.csv" # Specify file that holds current unpopulated table
 server="maxeler" # Specify server
@@ -151,17 +151,23 @@ for d in "${directories[@]}"; do
 	done
 
 	# Get tag
+	if [ "${server}" = "maxeler" ]; then
+		sserver="max"
+	else
+		sserver=$server
+	fi
 	num=(`echo "$d" | sed 's/maxj//g'`)
-	if [ testname_as_prefix ]; then
+	if [ "$testname_as_prefix" = "true" ]; then
 		if [[ "$server" = "maxeler" ]]; then
 			tag="${test_name}\/max.${num}"
 		fi
 	else
-		tag="${server}${num}"
+		tag="${sserver}${num}"
 	fi
 
 	# Pop in data
 	cmd="sed -i 's/,${tag},/,${data},,,,,,,,,,,,,,,,${tag}/g' ${fname}"
+	echo $cmd
 	eval ${cmd}
 
 done

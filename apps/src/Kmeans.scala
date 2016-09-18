@@ -5,6 +5,7 @@ import spatial.shared._
 object Kmeans extends SpatialAppCompiler with KmeansApp
 trait KmeansApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
+  type T = SInt
 
   lazy val MAXK = 96
   lazy val MAXD = 384
@@ -13,7 +14,7 @@ trait KmeansApp extends SpatialApp {
   val outerPar = 2
 
 
-  def reduceTree(x: List[(Rep[Flt], Rep[SInt])]): List[(Rep[Flt], Rep[SInt])] = {
+  def reduceTree(x: List[(Rep[SInt], Rep[SInt])]): List[(Rep[SInt], Rep[SInt])] = {
     if (x.length == 1) x
     else reduceTree(List.tabulate(x.length/2){i =>
       val (dist1,index1) = x(2*i)
@@ -25,7 +26,7 @@ trait KmeansApp extends SpatialApp {
     })
   }
 
-  def kmeans(points_in: Rep[Array[Flt]], numPoints: Rep[SInt], numCents: Rep[SInt], numDims: Rep[SInt]) = {
+  def kmeans(points_in: Rep[Array[SInt]], numPoints: Rep[SInt], numCents: Rep[SInt], numDims: Rep[SInt]) = {
     bound(numPoints) = 960000
     bound(numCents) = MAXK
     bound(numDims) = MAXD
@@ -52,54 +53,54 @@ trait KmeansApp extends SpatialApp {
     setArg(K, numCents)
     setArg(D, numDims)
 
-    val points = OffChipMem[Flt](N, D)    // Input points
-    val centroids = OffChipMem[Flt](K, D) // Output centroids
+    val points = OffChipMem[SInt](N, D)    // Input points
+    val centroids = OffChipMem[SInt](K, D) // Output centroids
     setMem(points, points_in)
 
     Accel {
-      val cts = BRAM[Flt](MAXK, MAXD)
+      val cts = BRAM[SInt](MAXK, MAXD)
 
       // Load initial centroids (from points)
       cts := points(0::K,0::D, P0)
 
       val DM1 = D.value - 1
 
-      val newCents = BRAM[Flt](MAXK,MAXD)
+      val newCents = BRAM[SInt](MAXK,MAXD)
       // For each set of points
-      Fold(N by BN par P1, PR)(newCents, 0.as[Flt]){i =>
-        val pts = BRAM[Flt](BN, BD)
+      Fold(N by BN par P1, PR)(newCents, 0.as[SInt]){i =>
+        val pts = BRAM[SInt](BN, BD)
         pts := points(i::i+BN, 0::BD, P0)
 
-        val centTile = BRAM[Flt](MAXK, MAXD)
+        val centTile = BRAM[SInt](MAXK, MAXD)
         // For each point in this set
-        Fold(BN par P3, PR)(centTile, 0.as[Flt]){pt =>
+        Fold(BN par P3, PR)(centTile, 0.as[SInt]){pt =>
           val minCent = Reg[SInt](0)  // Index of closest centroid
-          val minDist = Reg[Flt](-1)  // Distance to closest centroid
+          val minDist = Reg[SInt](-1)  // Distance to closest centroid
 
           // Find the index of the closest centroid
           Pipe(K par PX){ct =>
-            val dist = Reduce(D par P2)(0.as[Flt]){d => (pts(pt,d) - cts(ct,d)) ** 2 }{_+_}
+            val dist = Reduce(D par P2)(0.as[SInt]){d => (pts(pt,d) - cts(ct,d)) ** 2 }{_+_}
             Pipe {
-              minDist := min(dist.value, minDist.value)
+              minDist := min2(dist.value, minDist.value)
               minCent := mux(minDist.value == dist.value, ct, minCent.value)
             }
           }
 
           // Store this point to the set of accumulators
-          val localCent = BRAM[Flt](MAXK,MAXD)
+          val localCent = BRAM[SInt](MAXK,MAXD)
           Pipe(K by 1, D par P2){(ct,d) =>
-            val elem = mux(d == DM1, 1.as[Flt], pts(pt, d))
-            localCent(ct, d) = mux(ct == minCent.value, elem, 0.as[Flt])
+            val elem = mux(d == DM1, 1.as[SInt], pts(pt, d))
+            localCent(ct, d) = mux(ct == minCent.value, elem, 0.as[SInt])
           }
           localCent
         }{_+_} // Add the current point to the accumulators for this centroid
       }{_+_}
 
-      val centCount = BRAM[Flt](MAXK)
+      val centCount = BRAM[SInt](MAXK)
       Pipe(K by 1 par PX){ct => centCount(ct) = newCents(ct,DM1) }
 
       // Average each new centroid
-      val centsOut = BRAM[Flt](MAXK, MAXD)
+      val centsOut = BRAM[SInt](MAXK, MAXD)
       Pipe(K by 1, D par PX){(ct,d) =>
         centsOut(ct, d) = newCents(ct,d) / centCount(ct)
       }
@@ -115,7 +116,7 @@ trait KmeansApp extends SpatialApp {
     val K = MAXK.as[SInt];
     val D = MAXD.as[SInt];
 
-    val pts = Array.tabulate(N){i => Array.tabulate(D){d => random[Flt](10) }}
+    val pts = Array.tabulate(N){i => Array.tabulate(D){d => random[SInt](10) }}
 
     // println("points: ")
     // for (i <- 0 until N) { println(i.mkString + ": " + pts(i).mkString(", ")) }
@@ -124,14 +125,14 @@ trait KmeansApp extends SpatialApp {
 
     // val cts = Array.tabulate(K){i => pts(i) }
 
-    // val gold = Array.empty[ForgeArray[Flt]](K) // ew
+    // val gold = Array.empty[ForgeArray[SInt]](K) // ew
     // val counts = Array.empty[UInt](K)
     // for (i <- 0 until K) {
-    //   gold(i) = Array.fill(D)(0.as[Flt])  // TODO: Fix
+    //   gold(i) = Array.fill(D)(0.as[SInt])  // TODO: Fix
     // }
     // for (i <- 0 until K) { counts(i) = 0.as[UInt] }
     // // Really bad imperative version
-    // def dist(p1: Rep[ForgeArray[Flt]], p2: Rep[ForgeArray[Flt]]) = p1.zip(p2){(a,b) => (a - b)**2 }.reduce(_+_)
+    // def dist(p1: Rep[ForgeArray[SInt]], p2: Rep[ForgeArray[SInt]]) = p1.zip(p2){(a,b) => (a - b)**2 }.reduce(_+_)
     // for (i <- 0 until N) {
     //   val pt = pts(i)
     //   val distWithIndex = cts.map{ct => dist(pt, ct) }.zipWithIndex
@@ -145,14 +146,14 @@ trait KmeansApp extends SpatialApp {
     //   println(counts.mkString(", "))
     //   for (x <- 0 until K) { println(gold(x).mkString(", ")) }
     // }
-    // val actual = gold.zip(counts){(ct,n) => ct.map{p => p / n.to[Flt] }}.flatten
-    // println("gold:   " + actual.mkString(", "))
-    // println("result: " + result.mkString(", "))
+    // val actual = gold.zip(counts){(ct,n) => ct.map{p => p / n.to[SInt] }}.flatten
+    // println("gold:   " + actual.map(a => a).reduce{_+_})
+    println("result: " + result.map(a => a).reduce{_+_})
 
     //assert( actual == result )
   }
 
-  /*def kmeans_SLOW(points_in: Rep[Array[Flt]], numPoints: Rep[SInt], numCents: Rep[SInt], numDims: Rep[SInt]) = {
+  /*def kmeans_SLOW(points_in: Rep[Array[SInt]], numPoints: Rep[SInt], numCents: Rep[SInt], numDims: Rep[SInt]) = {
     bound(numPoints) = 960000
     bound(numCents) = MAXK
     bound(numDims) = MAXD
@@ -174,32 +175,32 @@ trait KmeansApp extends SpatialApp {
     setArg(K, numCents)
     setArg(D, numDims)
 
-    val points = OffChipMem[Flt](N, D)    // Input points
-    val centroids = OffChipMem[Flt](K, D) // Output centroids
+    val points = OffChipMem[SInt](N, D)    // Input points
+    val centroids = OffChipMem[SInt](K, D) // Output centroids
     setMem(points, points_in)
 
     Accel {
-      val cts = BRAM[Flt](MAXK, dTileSize)
-      val newCents = BRAM[Flt](MAXK, dTileSize)
+      val cts = BRAM[SInt](MAXK, dTileSize)
+      val newCents = BRAM[SInt](MAXK, dTileSize)
       val centCount = BRAM[UInt](MAXK)
-      val centsOut = BRAM[Flt](MAXK, dTileSize)
+      val centsOut = BRAM[SInt](MAXK, dTileSize)
 
       // Load initial centroids (from points)
       cts := points(0::K,0::dTileSize, P0)
 
       // For each set of points
       Pipe(N by BN par PX){i =>
-        val pts = BRAM[Flt](BN, BD)
+        val pts = BRAM[SInt](BN, BD)
         pts := points(i::i+BN, 0::BD, P0)
 
         // For each point in this set
         Pipe(BN par PX){pt =>
           val minCent = Reg[SInt](0)  // Index of closest centroid
-          val minDist = Reg[Flt](-1)  // Distance to closest centroid
+          val minDist = Reg[SInt](-1)  // Distance to closest centroid
 
           // Find the index of the closest centroid
           Pipe(K by 1 par PX){ct =>
-            val dist = Reduce(D par P2)(0.as[Flt]){d => (pts(pt,d) - cts(ct,d)) ** 2 }{_+_}
+            val dist = Reduce(D par P2)(0.as[SInt]){d => (pts(pt,d) - cts(ct,d)) ** 2 }{_+_}
 
             Pipe {
               minDist := min(dist.value, minDist.value)
@@ -216,7 +217,7 @@ trait KmeansApp extends SpatialApp {
       }
       // Average each new centroid
       Pipe(K by 1, D par P4){(ct,d) =>
-        centsOut(ct, d) = newCents(ct,d) / centCount(ct).to[Flt]
+        centsOut(ct, d) = newCents(ct,d) / centCount(ct).to[SInt]
       }
       // Store the centroids out
       centroids(0::K,0::D,P5) := centsOut

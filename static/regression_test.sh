@@ -109,6 +109,7 @@ wc=\$(cat ${5}/log | grep \"couldn't find DEG file\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -1 (${4} Spatial Error)\"
     rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    echo "[STATUS] Declaring failure app_not_written"
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_not_written.${3}_${4}
 	exit 1
 fi
@@ -117,6 +118,7 @@ wc=\$(cat ${5}/log | grep \"error\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -1 (${4} Spatial Error)\"
     rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    echo "[STATUS] Declaring failure build_in_spatial"
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
 	exit 1
 fi
@@ -127,6 +129,7 @@ wc=\$(cat ${5}/log | sed \"s/Error 1 (ignored)/ignore e r r o r/g\" | grep \"BUI
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -1 (${4} Spatial Error)\"
     rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    echo "[STATUS] Declaring failure compile_maxj"
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_maxj.${3}_${4}
 	exit 1
 fi
@@ -141,12 +144,15 @@ elif grep -q \"PASS: true\" ${5}/log; then
   touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
 elif grep -q \"PASS: 0\" ${5}/log; then
   rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  echo "[STATUS] Declaring failure validation"
   touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
 elif grep -q \"PASS: false\" ${5}/log; then
   rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  echo "[STATUS] Declaring failure validation"
   touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
 else 
   rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  echo "[STATUS] Declaring failure no_validation_check"
   touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_no_validation_check.${3}_${4}		
 fi" >> $1
 }
