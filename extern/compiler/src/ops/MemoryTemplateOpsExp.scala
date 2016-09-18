@@ -557,7 +557,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenEffect with MaxJGenFat with MaxJGe
       val Def(rhss) = parentCtr
       val accEn = this_writer match {
         case Deff(_: Unit_pipe) => s"${quote(this_writer)}_done /* Not sure if this is right */"
-        case _ => s"${quote(this_writer)}_datapath_en"
+        case _ => s"${quote(this_writer)}_redLoop_done"
       }
 
       // val accEn = parentCtr match {

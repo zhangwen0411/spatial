@@ -43,6 +43,7 @@ Comments
 * Need to fix TPCHQ6 to mix SInts and Flts, currently uses SInts only
 	* TPCHQ6 also stalls with tileSize > 96 and seems to filter out all prices
 * Tighten validation margin on BlackScholes
+* Make SGD work on more than 1 epoch
 " >> $1
 }
 
@@ -155,6 +156,13 @@ fi" >> $1
 # CLONE & BUILD #
 #################
 
+# Kill any maxcompilersims older than an hour
+stale_sims=(`ps axh -O user,etimes | grep mattfel | grep maxcompilersim  | awk '{if ($3 >= 1) print $1}'`)
+for job in ${stale_sims[@]}; do
+	kill -9 $job
+done
+
+# Clone and everything
 echo "[STATUS] `date`: Making test directory"
 rm -rf $TESTS_HOME && mkdir $TESTS_HOME && cd $TESTS_HOME
 echo "[STATUS] `date`: Cloning stuff..."
@@ -339,11 +347,11 @@ done
 result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
 courtesy_email="The following apps went from pass to fail
 APPS_LIST
-
-when going from commits: 
+\n
+when going from commits: \n
 OLD_COMMITS
-
-to commits:
+\n
+to\n
 NEW_COMMITS"
 
 # Wait and publish results
@@ -359,7 +367,7 @@ hash=`git log --stat --name-status HEAD^..HEAD`
 
 # Get list of previous passed tests and previous commit
 old_pass=(`cat ${result_file} | grep "^\*\*pass" | sed "s/\*\*//g" | sed "s/pass\.[0-9]\+\_//g" | sort`)
-old_commit=(`sed '/Latest spatial commit/,/REPORT/!d' ${result_file}`)
+old_commit=(`cat ${result_file} | grep "^commit" | awk '/commit/{i++}i==1'`)
 
 # Begin write to file
 rm $result_file
@@ -385,30 +393,40 @@ write_comments $result_file
 # Write commit info
 echo -e "Latest spatial commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
 echo -e "Latest delite commit (MaxJ templates): \n\`\`\`\n${dhash}\n\`\`\`" >> $result_file
-
+echo -e "\nHistory log: https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/Regression_Test_History.csv \n" >> $result_file
 write_branches $result_file
 
 # Get list of current failed tests
 new_fail=(`cat ${result_file} | grep "failed_\|failed_did_not_finish" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sort`)
-new_commit=(`sed '/Latest spatial commit/,/REPORT/!d' ${result_file}`)
+new_commit=(`cat ${result_file} | grep "^commit" | awk '/commit/{i++}i==1'`)
 emails=(`cat ${result_file} | grep "<.*>" | sed 's/Author.*<//g' | sed 's/>//g'`)
 csvemails=(`echo ${email[@]} | sed 's/ /,/g'`)
 
 # Check for intersection and send notice
 diff=($(comm -12 <(for X in "${new_fail[@]}"; do echo "${X}"; done|sort)  <(for X in "${old_pass[@]}"; do echo "${X}"; done|sort)))
+last_m=""
 if [ ! -z "$diff" ]; then 
 	for m in ${emails[@]}; do
-		if [ "$last_m" -ne "$m" ]; then 
-			tmp=(`echo $courtesy_email | sed 's/APPS_LIST/${diff[@]}/g' | sed 's/OLD_COMMITS/${old_commit}/g' | sed 's/NEW_COMMITS/${new_commit}/g'`)
-			echo -e ${tmp[@]} | mail $m -s "[SPATIAL NOTICE] You done messed up - " -r AppTsar@whitehouse.gov
+		if [[ ! "$last_m" = "$m" ]]; then 
+			tmp=(`echo $courtesy_email | sed "s/APPS_LIST/${diff[@]}/g" | sed "s/OLD_COMMITS/${old_commit}/g" | sed "s/NEW_COMMITS/${new_commit}/g"`)
+			echo -e ${tmp} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@whitehouse.gov
 		fi
-		echo "[EMAIL] Sent ${tmp[@]} to $m"
+		echo "[EMAIL] Sent ${tmp} to $m"
 		last_m=$m
 	done
 fi
 
+# Update history
+history_file=${SPATIAL_HOME}/spatial.wiki/Regression_Test_History.csv
+all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\*//g" | sort`)
+for a in ${all_apps[@]}; do
+	num=(`cat ${result_file} | grep "[0-9]\+\_$a" | grep -oh "\-\-\-\-" | wc -l`)
+	sed -i "/^${a}\,/ s/$/,$num/" ${history_file}
+done
+
 # git push
 cd ${SPATIAL_HOME}/spatial.wiki
 git add MaxJ-Regression-Tests-Status.md
+git add Regression_Test_History.csv
 git commit -m "automated status update via cron"
 git push

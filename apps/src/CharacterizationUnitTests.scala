@@ -83,9 +83,9 @@ object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp // Args: 5
 trait CharLoadTestApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 4;
+  val innerPar = 8;
   val outerPar = 4;
-  val dim0 = 192;
+  val dim0 = 19200;
   val dim1 = 96;
 
   def CharLoad(srcHost: Rep[Array[T]], iters: Rep[SInt]) = {
@@ -163,9 +163,9 @@ object CharStoreTest extends SpatialAppCompiler with CharStore // Args: 5 3
 trait CharStore extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 4;
-  val outerPar = 2;
-  val dim0 = 96;
+  val innerPar = 8;
+  val outerPar = 4;
+  val dim0 = 19200;
   val dim1 = 96;
   def CharStore(iters: Rep[T], numin: Rep[T]) = {
     val sinnerPar = param(innerPar);
@@ -234,9 +234,9 @@ object CharBramTest extends SpatialAppCompiler with CharBram // Args: 5
 trait CharBram extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 2;
-  val outerPar = 2;
-  val dim0 = 96;
+  val innerPar = 8;
+  val outerPar = 4;
+  val dim0 = 19200;
   val dim1 = 96;
   def CharBram(numin: Rep[T]) = {
     val tileDim0 = param(dim0);
@@ -294,3 +294,5 @@ trait CharBram extends SpatialApp {
 
   }
 }
+
+// NOTES: WHY DID 3 AND 7 FAIL FOR CHAR LOAD? - Sept 17 2016
