@@ -181,21 +181,22 @@ trait ParFifoLoad extends SpatialApp {
   type T = SInt
 
   type Array[T] = ForgeArray[T]
-  def parFifoLoad(src1: Rep[Array[T]], src2: Rep[Array[T]], N: Rep[SInt]) = {
+  def parFifoLoad(src1: Rep[Array[T]], src2: Rep[Array[T]], in: Rep[SInt]) = {
     val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
+
+    val N = ArgIn[T]
+    setArg(N, in)
 
     val src1FPGA = OffChipMem[T](N)
     val src2FPGA = OffChipMem[T](N)
-    val in = ArgIn[T]
     val out = ArgOut[T]
-    setArg(in, N)
     setMem(src1FPGA, src1)
     setMem(src2FPGA, src2)
 
     Accel {
       val f1 = FIFO[T](tileSize)
       val f2 = FIFO[T](tileSize)
-      Pipe (in by tileSize) { i =>
+      Pipe (N by tileSize) { i =>
         Parallel {
           f1 := src1FPGA(i::i+tileSize)
           f2 := src2FPGA(i::i+tileSize)

@@ -11,6 +11,7 @@ trait SpatialExceptionsCompilerOps extends SpatialExceptionsOps with NodeMetadat
 
   def name(x: Rep[Any]): String = nameOf(x).map(x => x + " ").getOrElse("") + s"($x)"
   def name(x: Manifest[_]): String = x.runtimeClass.getSimpleName match {
+    case "BlockRAM" => "BRAM"
     case tp => tp
   }
   def context(x: Rep[Any]) = implicitly[SourceContext]

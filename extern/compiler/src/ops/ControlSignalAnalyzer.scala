@@ -108,7 +108,9 @@ trait ControlSignalAnalyzer extends Traversal {
    **/
   def appendReader(reader: Exp[Any], ctrl: Controller) = {
     val LocalReader(reads) = reader
-    reads.foreach{ case (mem,addr) => readersOf(mem) = readersOf(mem) :+ (reader, ctrl) }
+    reads.foreach{ case (EatAlias(mem),addr) =>
+      readersOf(mem) = readersOf(mem) :+ (reader, ctrl)
+    }
   }
   def addPendingReader(reader: Exp[Any]) {
     pendingReads += reader -> List(reader)
@@ -128,7 +130,7 @@ trait ControlSignalAnalyzer extends Traversal {
 
   def appendWriter(writer: Exp[Any], ctrl: Controller) = {
     val LocalWriter(writes) = writer
-    writes.foreach{ case (mem,value,addr) =>
+    writes.foreach{ case (EatAlias(mem),value,addr) =>
 
       writersOf(mem) = writersOf(mem) :+ (writer, ctrl)        // (5)
       writtenIn(ctrl) = writtenIn(ctrl) :+ mem                 // (10)
@@ -231,28 +233,23 @@ trait ControlSignalAnalyzer extends Traversal {
       traverseWith((lhs, false), inds, cc)(func)
 
     case Pipe_fold(cc,a,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) =>
-      val isOuter = !isInnerPipe(lhs)
+      aliasOf(acc) = a
       traverseWith((lhs, false), inds, cc)(func)
       traverseWith((lhs, false), inds, cc)(rFunc)
-
-      // TODO: Can these be generalized too?
-      readersOf(a) = readersOf(a) :+ (lhs, (lhs, false))  // (4)
-      writersOf(a) = writersOf(a) :+ (lhs, (lhs, false))  // (5)
+      traverseWith((lhs, false), inds, cc)(ld)
+      traverseWith((lhs, false), inds, cc)(st)
       isAccum(a) = true                                   // (6)
-      writtenIn(lhs) = writtenIn(lhs) :+ a                // (10)
       parentOf(a) = lhs  // Reset accumulator with reduction
 
     case Accum_fold(cc1,cc2,a,zero,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV) =>
+      aliasOf(acc) = a
+      aliasOf(part) = getBlockResult(func)
       traverseWith((lhs, false), inds1, cc1)(func)
       traverseWith((lhs, true),  inds2, cc2)(rFunc)
-
-      val partial = getBlockResult(func)
-      readersOf(partial) = readersOf(partial) :+ (lhs, (lhs,true)) // (4)
-
-      readersOf(a) = readersOf(a) :+ (lhs, (lhs,true))     // (4)
-      writersOf(a) = writersOf(a) :+ (lhs, (lhs,true))     // (5)
+      traverseWith((lhs, true),  inds2, cc2)(ld1)
+      traverseWith((lhs, true),  inds2, cc2)(ld2)
+      traverseWith((lhs, true),  inds2, cc2)(st)
       isAccum(a) = true                                    // (6)
-      writtenIn(lhs) = writtenIn(lhs) :+ a                 // (10)
       parentOf(a) = lhs  // Reset accumulator with reduction, not allocation
 
     case _ => blocks(rhs).foreach{blk => traverseBlock(blk)}
@@ -280,16 +277,13 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
       traverseUnrolled(lhs, inds, cc)(func)
 
     case ParPipeReduce(cc,accum,func,rFunc,inds,acc,rV) =>
+      aliasOf(acc) = accum
       traverseUnrolled(lhs, inds, cc)(func)
       // rFunc isn't "real" anymore
-      readersOf(accum) = readersOf(accum) ++ readersOf(acc) // (4)
-      writersOf(accum) = writersOf(accum) ++ writersOf(acc) // (5)
       isAccum(accum) = true                                 // (6)
-      writtenIn(lhs) = writtenIn(lhs) :+ accum              // (10)
-      parentOf(accum) = lhs           // Reset accumulator with reduction, not allocation
+      parentOf(accum) = lhs // Reset accumulator with reduction, not allocation
 
       // TODO: Investigate why all metadata isn't copied properly
-      setProps(acc, getProps(accum))  // Reset value, etc.
       propagationPairs ::= (accum, acc)
 
     case _ => super.analyze(lhs, rhs)

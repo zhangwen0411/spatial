@@ -122,6 +122,14 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
       portMap.getOrElse(instIdx, throw NoPortsException(access, mem, instIdx))
     }
   }
+  object portsOf {
+    def update(access: Exp[Any], mem: Exp[Any], ports: Map[Int,Int]) {
+      ports.foreach{case (instIdx, port) => portOf(access, mem, instIdx) = port }
+    }
+    def apply(access: Exp[Any]): Map[Exp[Any], Map[Int,Int]] = {
+      meta[MemPortIndex](access).map(_.mapping).getOrElse(Map.empty)
+    }
+  }
 
   case class AccessTopController(mapping: Map[Exp[Any], Map[Int,Controller]]) extends Metadata
   object topControllerOf {

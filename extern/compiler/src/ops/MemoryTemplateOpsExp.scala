@@ -287,14 +287,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple read done control signals")
           // TODO: Syntax for port-specific read done?
           if (controllers.nonEmpty)
-            emit(s"""${quoteDuplicate(mem, i)}.connectRdone(${quote(controllers.head)}_done, $port);""")
+            emit(s"""${quoteDuplicate(mem, i)}.connectRdone(${quote(controllers.head.node)}_done, $port);""")
         }
         writesByPort.foreach{ case (port, writers) =>
           val controllers = writers.flatMap{writer => topControllerOf(writer.access, mem, i) }.distinct
           assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple write done control signals")
           // TODO: Syntax for port-specific write done?
           if (controllers.nonEmpty)
-            emit(s"""${quoteDuplicate(mem, i)}.connectWdone(${quote(controllers.head)}_done, $port);""")
+            emit(s"""${quoteDuplicate(mem, i)}.connectWdone(${quote(controllers.head.node)}_done, $port);""")
         }
       }
     }
