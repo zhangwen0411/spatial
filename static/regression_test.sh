@@ -426,11 +426,20 @@ fi
 history_file=${SPATIAL_HOME}/spatial.wiki/Regression_Test_History.csv
 all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\*//g" | sort`)
 for aa in ${all_apps[@]}; do
+	# Append status to line
 	a=(`echo $aa | sed "s/ //g"`)
 	num=(`cat ${result_file} | grep "[0-9]\+\_$a" | grep -oh "\-\-\-\-" | wc -l`)
 	cmd="sed -i \"/^${a},/ s/$/,$num/\" ${history_file}"
 	echo $cmd
 	eval "$cmd"
+
+	# Shave first if too long
+	numel=(`head -1 ${history_file} | grep -oh "\," | wc -l`)
+	if [ "$numel" -gt 48 ]; then
+		cmd="sed -i \"s/${a},,[0-9]\\+,/${a},,/g\" ${history_file}"
+		eval "$cmd"
+	fi
+	
 done
 
 # git push

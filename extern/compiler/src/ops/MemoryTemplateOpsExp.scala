@@ -573,40 +573,48 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 //      emitComment("Offchip store from fifo")
 
     case Reg_new(init) =>
-      regs += sym.asInstanceOf[Sym[Reg[Any]]]
+      val EatAlias(alias) = sym
+      // TODO: Is it safe to emit things for sym below, or should I emit for alias?
+      if (!regs.contains(alias.asInstanceOf[Sym[Reg[Any]]])) {
+        regs += alias.asInstanceOf[Sym[Reg[Any]]]
 
-      withStream(baseStream) {
-        emitComment("Reg_new {")
-        val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-        val duplicates = duplicatesOf(sym)
-        val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
-          case ConstFix(rv) => rv
-          case ConstFlt(rv) => rv
-        }
-        duplicates.zipWithIndex.foreach { case (d, i) =>
-          regType(sym) match {
-            case Regular =>
-              (reduceType(sym), i) match {
-                case (Some(fps: ReduceFunction), 0) =>
-                  Console.println(s"[WARNING] Assume duplicate 0 is the inside reduction register and do not emit lib")
-                case _ =>
-                  val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
-                  if (d.depth > 1) {
-                    emit(s"""DblBufReg ${quote(sym)}_${i}_lib = new DblBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
-                    val readstr = if (parOf(sym)>1) "readv" else "read"
-                    emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
-                    emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
-                  } else {
-                    emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
-                    val readstr = if (parOf(sym) > 1) "readv" else "read"
-                    emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
-                    emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
-                  }
-              }
-            case _ => throw new Exception(s"""Unknown reg type ${regType(sym)}""")
+        withStream(baseStream) {
+          emitComment("Reg_new {")
+          val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+          val duplicates = duplicatesOf(sym)
+          val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
+            case ConstFix(rv) => rv
+            case ConstFlt(rv) => rv
           }
+          duplicates.zipWithIndex.foreach { case (d, i) =>
+            regType(sym) match {
+              case Regular =>
+                (reduceType(sym), i) match {
+                  case (Some(fps: ReduceFunction), 0) =>
+                    Console.println(s"[WARNING] Assume duplicate 0 is the inside reduction register and do not emit lib")
+                  case _ =>
+                    val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
+                    if (d.depth > 1) {
+                      emit(s"""DblBufReg ${quote(sym)}_${i}_lib = new DblBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
+                      val readstr = if (parOf(sym)>1) "readv" else "read"
+                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
+                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
+                    } else {
+                      emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
+                      val readstr = if (parOf(sym) > 1) "readv" else "read"
+                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
+                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
+                    }
+                }
+              case _ => throw new Exception(s"""Unknown reg type ${regType(sym)}""")
+            }
+          }
+          emitComment("Reg_new }")
         }
-        emitComment("Reg_new }")
+      } else {
+        withStream(baseStream) {
+          emit(s"// Already emitted register $sym under alias $alias")          
+        }
       }
 
     case Argin_new(init) =>
@@ -619,6 +627,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     case Argout_new(init) => //emitted in reg_write
 
     case e@Reg_read(reg) =>
+      // TODO: Should I eat alias here?
       Console.println(s"Would like to read $reg $sym")
       if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
         rTreeMap(sym) match {
@@ -645,11 +654,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         }
 
         // Specialized reductions (regular accumulators with a reduction type) just use sym directly
-        if (regType(reg) != Regular || !isAccum(reg) || !reduceType(reg).map{t => t != OtherReduction}.getOrElse(false) ) {
-          emit(s"""$pre ${quote(sym)} = $regStr;""")
-        } else {
-          emit(s"""// Wanted to print $pre ${quote(sym)} = $regStr but ${regType(reg)} not Regular, or $reg not accum, or the third bool false""")
-        }
+        // TODO: Why was the statement below in the if statement?  Seems like we always want it printed...
+        // if (regType(reg) != Regular || !isAccum(reg) || !reduceType(reg).map{t => t != OtherReduction}.getOrElse(false) ) {
+        emit(s"""$pre ${quote(sym)} = $regStr;""")
+        // } else {
+        //   emit(s"""// Wanted to print $pre ${quote(sym)} = $regStr but ${regType(reg)} not Regular, or $reg not accum, or the third bool false""")
+        // }
       }
       else {
         emit(s"""// ${quote(sym)} is just a register read""")
