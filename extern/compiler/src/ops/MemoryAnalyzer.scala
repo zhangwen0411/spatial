@@ -103,9 +103,17 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
     }
   }
 
-  case class MemPortIndex(mapping: Map[Exp[Any], Map[Int,Int]]) extends Metadata
+  case class MemPortIndex(mapping: Map[Exp[Any], Map[Int,Set[Int]]]) extends Metadata
   object portOf {
-    def update(access: Exp[Any], mem: Exp[Any], instIdx: Int, idx: Int) = portOf.get(access) match {
+    def get(access: Exp[Any]) = meta[MemPortIndex](access).map(_.mapping)
+    def apply(access: Exp[Any], mem: Exp[Any], instIdx: Int): Set[Int] = {
+      val map = meta[MemPortIndex](access).map(_.mapping).getOrElse(throw NoPortsException(access, mem, instIdx))
+      val portMap = map.getOrElse(mem, throw NoPortsException(access, mem, instIdx))
+      portMap.getOrElse(instIdx, throw NoPortsException(access, mem, instIdx))
+    }
+  }
+  object portsOf {
+    def update(access: Exp[Any], mem: Exp[Any], instIdx: Int, idx: Set[Int]) = portOf.get(access) match {
       case Some(map) if map contains mem =>
         val newMap = map.filterKeys(_ != mem) + (mem -> (map(mem) + (instIdx -> idx)))
         setMetadata(access, MemPortIndex(newMap))
@@ -115,18 +123,10 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
       case None =>
         setMetadata(access, MemPortIndex(Map(mem -> Map(instIdx -> idx))))
     }
-    def get(access: Exp[Any]) = meta[MemPortIndex](access).map(_.mapping)
-    def apply(access: Exp[Any], mem: Exp[Any], instIdx: Int) = {
-      val map = meta[MemPortIndex](access).map(_.mapping).getOrElse(throw NoPortsException(access, mem, instIdx))
-      val portMap = map.getOrElse(mem, throw NoPortsException(access, mem, instIdx))
-      portMap.getOrElse(instIdx, throw NoPortsException(access, mem, instIdx))
+    def update(access: Exp[Any], mem: Exp[Any], ports: Map[Int,Set[Int]]) {
+      ports.foreach{case (instIdx, port) => portsOf(access, mem, instIdx) = port }
     }
-  }
-  object portsOf {
-    def update(access: Exp[Any], mem: Exp[Any], ports: Map[Int,Int]) {
-      ports.foreach{case (instIdx, port) => portOf(access, mem, instIdx) = port }
-    }
-    def apply(access: Exp[Any]): Map[Exp[Any], Map[Int,Int]] = {
+    def apply(access: Exp[Any]): Map[Exp[Any], Map[Int,Set[Int]]] = {
       meta[MemPortIndex](access).map(_.mapping).getOrElse(Map.empty)
     }
   }
@@ -357,7 +357,13 @@ trait BankingBase extends Traversal {
     banking
   }
 
-  case class InstanceGroup(top: Option[Controller], accesses: List[Access], instance: MemInstance, ports: Map[Access, Int])
+  case class InstanceGroup (
+    metapipe: Option[Controller],   // Controller if at least some accesses require n-buffering
+    accesses: List[Access],         // All accesses within this group
+    instance: MemInstance,          // Banking/buffering/duplication information
+    ports: Map[Access, Set[Int]],   // Set of ports each access is connected to
+    swaps: Map[Access, Controller]  // Swap controller for done signal for n-buffering
+  )
 
   def bankGroup(mem: Exp[Any], writers: List[Access], reader: Option[Access]): InstanceGroup = {
     debug(s"  Banking group:")
@@ -370,41 +376,67 @@ trait BankingBase extends Traversal {
     val banking = bankings.map(_._1).reduce{(a,b) => combineBankings(mem,a,b) }
     val duplicates = bankings.map(_._2).reduce{(a,b) => Math.max(a,b) }
 
-    val ports = {
-      if (writers.isEmpty) {
-        if (reader.isDefined) Map(reader.get -> 0)
-        else Map[Access,Int]()
+    val group = {
+      if (accesses.isEmpty) {
+        InstanceGroup(None, accesses, MemInstance(1, duplicates, banking), Map.empty, Map.empty)
+      }
+      else if (writers.isEmpty && reader.isDefined) {
+        InstanceGroup(None, accesses, MemInstance(1, duplicates, banking), Map(reader.get -> Set(0)), Map.empty)
       }
       else {
-        val anchor = if (reader.isDefined) reader.get else writers.head
+        val anchor = reader.getOrElse(writers.head)
         debug(s"  Anchor: $anchor")
         val lcas = accesses.map{access =>
           val (lca,dist) = lcaWithCoarseDistance(anchor, access)
           debug(s"  access: $access, LCA = $lca, distance = $dist")
           (lca,dist,access)
         }
-        // Hierarchical metapipelining is currently disallowed
+        // Find accesses which require n-buffering, group by their controller
         val metapipeLCAs = lcas.filter(_._2 > 0).groupBy(_._1).mapValues(_.map(_._3))
+
+        // Hierarchical metapipelining is currently disallowed
         if (metapipeLCAs.keys.size > 1) throw UnsupportedNBufferException(mem, metapipeLCAs)
 
+        val metapipe = metapipeLCAs.keys.headOption
+
         val minDist = lcas.map(_._2).min
-        Map(lcas.map{grp => grp._3 -> (grp._2 - minDist)}:_*) // Port of 0: First stage to write/read
-                                                              // Port of X: X stage(s) after first stage
+
+        // Port 0: First stage to write/read
+        // Port X: X stage(s) after first stage
+        val bufferPorts = Map(lcas.map{grp => grp._3 -> (grp._2 - minDist)}:_*)
+        val depth = bufferPorts.values.max + 1
+
+        metapipe match {
+          // Metapipelined case
+          case Some(ctrl) =>
+            // Partition accesses based on whether they're n-buffered or time multiplexed with the n-buffer
+            val (nbuf, tmux) = accesses.partition{access => lca(access.controller, ctrl) == ctrl}
+
+            val ports = Map((nbuf.map{a => a -> Set(bufferPorts(a)) } ++
+                             tmux.map{a => a -> List.tabulate(depth){i=>i}.toSet}
+                           ):_*)
+
+            val swaps = Map(nbuf.map{a => a -> childContaining(ctrl, a) }:_*)
+
+            InstanceGroup(metapipe, accesses, MemInstance(depth, duplicates, banking), ports, swaps)
+
+          // Purely time-multiplexed case
+          case None =>
+            val ports = bufferPorts.map{case (key, port) => key -> Set(port)}
+
+            InstanceGroup(None, accesses, MemInstance(depth, duplicates, banking), ports, Map.empty)
+        }
       }
     }
-    val depth = if (ports.isEmpty) 1 else ports.values.max + 1
-    val instance = MemInstance(depth, duplicates, banking)
 
-    val ctrl = if (accesses.isEmpty) None else Some(accesses.map(_.controller).reduce{(a,b) => lca(a,b).get })
-
-    debug(s"  Depth: $depth, Duplicates: $duplicates, Banking: " + banking.mkString(", "))
-    debug(s"  Top controller: $ctrl")
+    debug(s"  Depth: ${group.instance.depth}, Duplicates: $duplicates, Banking: " + banking.mkString(", "))
+    debug(s"  MetaPipe controller: ${group.metapipe}")
     debug(s"  Buffer Ports: ")
-    ports.toList.groupBy(_._2).mapValues(_.map(_._1)).foreach{case (port, accesses) =>
-      debug(s"  #$port: " + accesses.mkString(", "))
+    (0 until group.instance.depth).foreach{port =>
+      val portAccesses = accesses.filter{a => group.ports(a).contains(port) }
+      debug(s"  #$port: " + portAccesses.mkString(", "))
     }
-
-    InstanceGroup(ctrl, accesses, instance, ports)
+    group
   }
 
   def coalesceDuplicates(mem: Exp[Any], instances: List[InstanceGroup]) = instances
@@ -443,25 +475,24 @@ trait BankingBase extends Traversal {
     val coalescedInsts = coalesceDuplicates(mem, instanceGroups)
 
     debug("Instances inferred (after coalescing): ")
-    instanceGroups.zipWithIndex.foreach{case (InstanceGroup(ctrl, accesses, instance, ports), i) =>
+    instanceGroups.zipWithIndex.foreach{case (InstanceGroup(metapipe, accesses, instance, ports, swaps), i) =>
       debug(s"  #$i Depth: ${instance.depth}, Duplicates: ${instance.duplicates}, Banking: " + instance.banking.mkString(", "))
 
       accesses.foreach{a =>
         val access = a.access
         instanceIndicesOf.add(access, mem, i)
-        portOf(access, mem, i) = ports(a)
+        portsOf(access, mem, i) = ports(a)
 
-        // Top controllers for accesses to N-Buffers
-        if (ctrl.isDefined && instance.depth > 1) {
-          val swapCtrl = childContaining(ctrl.get, a)
-          topControllerOf(access, mem, i) = swapCtrl
-          debug(s"   - $a (port ${ports(a)}) [swap: $swapCtrl]")
-        }
-        else {
-          debug(s"   - $a (port ${ports(a)})")
+        swaps.get(a) match {
+          case Some(swap) =>
+            topControllerOf(access, mem, i) = swap
+            debug(s"""   - $a (ports: ${ports(a).mkString(", ")}) [swap: $swap]""")
+          case None =>
+            debug(s"""   - $a (ports: ${ports(a).mkString(", ")})""")
         }
       }
     }
+
     duplicatesOf(mem) = instanceGroups.map(_.instance)
   }
 
