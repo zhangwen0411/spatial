@@ -256,7 +256,7 @@ trait BankingBase extends Traversal {
       }
     }
   }
-  val allowConcurrentReaders = false
+  val allowConcurrentReaders = true
   val allowConcurrentWriters = false
   val allowPipelinedReaders  = true
   val allowPipelinedWriters  = true
