@@ -401,6 +401,7 @@ write_comments $result_file
 echo -e "Latest spatial commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
 echo -e "Latest delite commit (MaxJ templates): \n\`\`\`\n${dhash}\n\`\`\`" >> $result_file
 echo -e "\nHistory log: https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/Regression_Test_History.csv \n" >> $result_file
+echo -e "\nPrettier History log: https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/Pretty_Regression_Test_History.csv \n" >> $result_file
 write_branches $result_file
 
 # Get list of current failed tests
@@ -425,20 +426,30 @@ fi
 
 # Update history
 history_file=${SPATIAL_HOME}/spatial.wiki/Regression_Test_History.csv
+pretty_file=${SPATIAL_HOME}/spatial.wiki/Pretty_Regression_Test_History.csv
 all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\*//g" | sort`)
 for aa in ${all_apps[@]}; do
 	# Append status to line
 	a=(`echo $aa | sed "s/ //g"`)
 	dashes=(`cat ${result_file} | grep "[0-9]\+\_$a" | grep -oh "\-" | wc -l`)
 	num=$(($dashes/4))
-	cmd="sed -i \"s/${a}\([[:blank:]]*\),,[0-9]\\+,/${a}\1,,/g\" ${history_file}"
-	echo $cmd
+	if [ $num = 0 ]; then bar=█; elif [ $num = 1 ]; then bar=▇; elif [ $num = 2 ]; then bar=▆; elif [ $num = 3 ]; then bar=▅; elif [ $num = 4 ]; then bar=▄; elif [ $num = 5 ]; then bar=▃; elif [ $num = 6 ]; then bar=▂; else bar=▁; fi
+	cmd="sed -i \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"
+	# echo $cmd
+	eval "$cmd"
+	cmd="sed -i \"/^${a}\ \+,,/ s/$/$bar/\" ${pretty_file}"
 	eval "$cmd"
 
 	# Shave first if too long
-	numel=(`head -1 ${history_file} | grep -oh "\," | wc -l`)
+	numel=(`cat ${history_file} | grep $a | grep -oh "\," | wc -l`)
 	if [ "$numel" -gt 48 ]; then
 		cmd="sed -i \"s/${a}\([[:blank:]]*\),,[0-9]\\+,/${a}\1,,/g\" ${history_file}"
+		eval "$cmd"
+	fi
+	# Shave first if too long
+	numel=(`cat ${pretty_file} | grep $a | grep -oh "." | wc -l`)
+	if [ "$numel" -gt 48 ]; then
+		cmd="sed -i \"s/${a}\([[:blank:]]*\),,./${a}\1,,/g\" ${pretty_file}"
 		eval "$cmd"
 	fi
 
@@ -450,3 +461,4 @@ git add MaxJ-Regression-Tests-Status.md
 git add Regression_Test_History.csv
 git commit -m "automated status update via cron"
 git push
+

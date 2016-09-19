@@ -282,11 +282,10 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
         if (readsByPort.isEmpty) throw new Exception(s"Memory ${quote(mem)} duplicate #$i has no reader")
         if (writesByPort.isEmpty) throw new Exception(s"Memory ${quote(mem)} duplicate #$i has no writer")
-
         readsByPort.foreach{ case (port, readers) =>
           val controllers = readers.flatMap{reader => topControllerOf(reader.access, mem, i) }.distinct
           assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple read done control signals")
-          Console.println(s"emitting for $mem - $buffers readers $controllers ")
+          Console.println(s"connectrdone emitting for $buffers $mem $readers $controllers")
           // TODO: Syntax for port-specific read done?
           if (controllers.nonEmpty)
             emit(s"""${quoteDuplicate(mem, i)}.connectRdone(${quote(controllers.head.node)}_done, $port);""")

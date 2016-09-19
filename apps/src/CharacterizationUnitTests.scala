@@ -234,9 +234,9 @@ object CharBramTest extends SpatialAppCompiler with CharBram // Args: 5
 trait CharBram extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 8;
-  val outerPar = 4;
-  val dim0 = 19200;
+  val innerPar = 1;
+  val outerPar = 1;
+  val dim0 = 192;
   val dim1 = 96;
   def CharBram(numin: Rep[T]) = {
     val tileDim0 = param(dim0);
