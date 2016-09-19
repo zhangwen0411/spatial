@@ -488,12 +488,7 @@ trait SimpleFoldApp extends SpatialApp {
   }
 }
 
-<<<<<<< HEAD
 object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args: 
-=======
-// 11
-object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args:
->>>>>>> 17931bbd61e2d6afd92ec0c512b331ddbb1aa537
 trait Memcpy2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]

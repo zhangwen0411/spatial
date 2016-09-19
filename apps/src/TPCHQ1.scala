@@ -2,6 +2,29 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
+/*
+SELECT
+    l_returnflag,
+    l_linestatus,
+    sum(l_quantity) as sum_qty,
+    sum(l_extendedprice) as sum_base_price,
+    sum(l_extendedprice * (1 - l_discount)) as sum_disc_price,
+    sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge,
+    avg(l_quantity) as avg_qty,
+    avg(l_extendedprice) as avg_price,
+    avg(l_discount) as avg_disc,
+    count(*) as count_order
+FROM
+    lineitem
+WHERE
+    l_shipdate <= date '1998-12-01' - interval '90' day
+GROUP BY
+    l_returnflag,
+    l_linestatus
+ORDER BY
+    l_returnflag,
+    l_linestatus;
+*/
 object TPCHQ1 extends SpatialAppCompiler with TPCHQ1_App
 trait TPCHQ1_App extends SpatialApp {
   type FT = SInt
@@ -15,13 +38,13 @@ trait TPCHQ1_App extends SpatialApp {
   val outerPar = 2
   val innerPar = 2
 
-  def tpchq1(datesIn: Rep[Array[UInt]], quantsIn: Rep[Array[UInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
+  def tpchq1(flagsIn: Rep[Array[SInt]], statusIn: Rep[Array[SInt]], datesIn: Rep[Array[SInt]], quantsIn: Rep[Array[SInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
     val dataSize = ArgIn[SInt]
     setArg(dataSize, datesIn.length)
 
 
-    val dates  = OffChipMem[UInt](dataSize)
-    val quants = OffChipMem[UInt](dataSize)
+    val dates  = OffChipMem[SInt](dataSize)
+    val quants = OffChipMem[SInt](dataSize)
     val discts = OffChipMem[FT](dataSize)
     val prices = OffChipMem[FT](dataSize)
     val minDateIn = MIN_DATE
@@ -43,8 +66,8 @@ trait TPCHQ1_App extends SpatialApp {
 
       val acc = Reg[FT]
       Fold(dataSize by ts par op)(acc, 0.as[FT]){ i =>
-        val datesTile  = BRAM[UInt](ts)
-        val quantsTile = BRAM[UInt](ts)
+        val datesTile  = BRAM[SInt](ts)
+        val quantsTile = BRAM[SInt](ts)
         val disctsTile = BRAM[FT](ts)
         val pricesTile = BRAM[FT](ts)
         Parallel {
@@ -70,15 +93,29 @@ trait TPCHQ1_App extends SpatialApp {
 
   def main() {
     val N = args(0).to[SInt]
+    val max_buckets = args(1).to[SInt]
+    // l_returnflag,
+    // l_linestatus,
+    // sum(l_quantity) as sum_qty,
+    // sum(l_extendedprice) as sum_base_price,
+    // sum(l_extendedprice * (1 - l_discount)) as sum_disc_price,
+    // sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge,
+    // avg(l_quantity) as avg_qty,
+    // avg(l_extendedprice) as avg_price,
+    // avg(l_discount) as avg_disc,
+    // count(*) as count_order
 
-    val dates  = Array.fill(N){random[UInt](20) + 65}
-    val quants = Array.fill(N){random[UInt](25) }
+    val returnflags = Array.fill(N){random[SInt](max_buckets)}
+    val linestatuses = Array.fill(N){random[SInt](max_buckets)}
+    val count = Array.tabulate(N){ i => i }
+    val dates  = Array.fill(N){random[SInt](20) + 65}
+    val quants = Array.fill(N){random[SInt](25) }
     // val discts = Array.fill(N){random[FT] * 0.05f + 0.02f}
     // val prices = Array.fill(N){random[FT] * 1000f}
     val discts = Array.fill(N){random[FT] * 10 + 1}
     val prices = Array.fill(N){random[FT] * 1000}
 
-    val result = tpchq1(dates, quants, discts, prices)
+    val result = tpchq1(returnflags, linestatuses, dates, quants, discts, prices)
 
     // --- software version
     val conds = Array.tabulate(N){i => dates(i) > MIN_DATE && dates(i) < MAX_DATE &&

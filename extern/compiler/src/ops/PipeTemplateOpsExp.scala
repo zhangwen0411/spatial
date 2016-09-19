@@ -407,6 +407,21 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Hwblock(func) =>
       controlNodeStack.push(sym)
+      controller_tree.write("""<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.css">
+<script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+<script src="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.js"></script>
+</head><body>
+
+  <div data-role="main" class="ui-content">
+    <h2>Controller Diagram</h2>
+<TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">"""
+      )
+
+      print_stage_prefix(s"""Hwblock: $sym""")
 			inHwScope = true
 			emitComment("Emitting Hwblock dependencies {")
       val hwblockDeps = recursiveDeps(rhs)
@@ -449,20 +464,29 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
       emitController(sym, None)
       emitBlock(func)
 			inHwScope = false
+      print_stage_suffix()
+      controller_tree.write(s"""  </TABLE>
+</body>
+</html>""")
+      controller_tree.close
+
       controlNodeStack.pop
 
     case e@Counterchain_new(counters) =>
 
     case e@Pipe_foreach(cchain, func, inds) =>
       controlNodeStack.push(sym)
+      print_stage_prefix(s"""Pipe_foreach: $sym""")
       emitController(sym, Some(cchain))
       emitNestedIdx(cchain, inds)
       emitRegChains(sym, inds)
       emitBlock(func, s"${quote(sym)} Foreach")             // Map function
+      print_stage_suffix()
       controlNodeStack.pop
 
     case e@Pipe_fold(cchain, accum, zero, fA, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
       controlNodeStack.push(sym)
+      print_stage_prefix(s"""Pipe_fold: $sym""")
       emitController(sym, Some(cchain))
       emitNestedIdx(cchain, inds)
       emitRegChains(sym, inds)
@@ -475,17 +499,22 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
       emitBlock(rFunc, s"${quote(sym)} Reduce")
       emitValDef(res, quote(getBlockResult(rFunc)))
       emitBlock(stFunc, s"${quote(sym)} Store")
+      print_stage_suffix()
       controlNodeStack.pop
 
 
 		case e@Pipe_parallel(func: Block[Unit]) =>
       controlNodeStack.push(sym)
+      print_stage_prefix(s"""Pipe_parallel $sym""")
       emitController(sym, None)
       emitBlock(func, s"${quote(sym)} Parallel")
+      print_stage_suffix()
       controlNodeStack.pop
 
 		case e@Unit_pipe(func: Block[Unit]) =>
+      var hadThingsInside = if (isInnerPipe(sym)) {false} else {true}
       controlNodeStack.push(sym)
+      print_stage_prefix(s"""Unit_pipe $sym""", hadThingsInside)
       emit(s"""// Unit pipe writtenIn(${quote(sym)}) = ${writtenIn(sym)}""")
       writtenIn(sym) foreach { s =>
         val Def(d) = s
@@ -519,6 +548,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
       emitBlock(func, s"${quote(sym)} Unitpipe")
 
+      print_stage_suffix(hadThingsInside)
       controlNodeStack.pop
 
     case _ => super.emitNode(sym,rhs)

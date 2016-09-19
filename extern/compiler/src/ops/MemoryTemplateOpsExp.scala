@@ -285,17 +285,18 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         readsByPort.foreach{ case (port, readers) =>
           val controllers = readers.flatMap{reader => topControllerOf(reader.access, mem, i) }.distinct
           assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple read done control signals")
-          Console.println(s"connectrdone emitting for $buffers $mem $readers $controllers")
           // TODO: Syntax for port-specific read done?
+          val portlist = port.mkString{","}
           if (controllers.nonEmpty)
-            emit(s"""${quoteDuplicate(mem, i)}.connectRdone(${quote(controllers.head.node)}_done, $port);""")
+            emit(s"""${quoteDuplicate(mem, i)}.connectRdone(${quote(controllers.head.node)}_done, new int[] { $portlist });""")
         }
         writesByPort.foreach{ case (port, writers) =>
           val controllers = writers.flatMap{writer => topControllerOf(writer.access, mem, i) }.distinct
           assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple write done control signals")
           // TODO: Syntax for port-specific write done?
+          val portlist = port.mkString{","}
           if (controllers.nonEmpty)
-            emit(s"""${quoteDuplicate(mem, i)}.connectWdone(${quote(controllers.head.node)}_done, $port);""")
+            emit(s"""${quoteDuplicate(mem, i)}.connectWdone(${quote(controllers.head.node)}_done, new int[] { $portlist });""")
         }
       }
     }
@@ -448,12 +449,10 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
       val Def(rhss) = parentCtr
       Console.println(s"the parent counter for $write $bram is $parentCtr from $parentPipe, def $rhss")
-      val accEn = parentCtr match {
-        case Deff(Counter_new(start, end, step, par)) => s"stream.offset(${quote(writeCtrl)}_datapath_en, -$offsetStr)"
-        case Deff(Counterchain_new(ctrs))             => s"stream.offset(${quote(writeCtrl)}_datapath_en, -$offsetStr)"
-        case _ =>  s"stream.offset(${quote(writeCtrl)}_done /* Not sure why this sig works, but it does */, -$offsetStr)"
+      val accEn = writeCtrl match {
+        case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
+        case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
       }
-
       if (writers.length == 1) {
         dups.foreach {case (dd, ii) =>
           num_dims match {
@@ -533,6 +532,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         emitComment(s""" Offchip_new(${quote(size)}) }""")
 
     case Offchip_load_cmd(mem, fifo, ofs, len, par) =>
+      print_stage_prefix(s"Offchip Load: $sym", false)
       withStream(baseStream) {
         emit(s"""DFEVar ${quote(fifo)}_trashEn = dfeBool().newInstance(this); // Send stream to trash for when read is not burst-aligned""")
       }
@@ -556,9 +556,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       }
       emit(s"""${quote(fifo)}_writeEn <== ${quote(sym)}_en;""")
       emit(s"""${quote(fifo)}_wdata <== ${quote(fifo)}_rdata;""")
+      print_stage_suffix(false)
 
     case Offchip_store_cmd(mem, fifo, ofs, len, par) =>
       // TODO: Offchip stores with burst not aligned
+      print_stage_prefix(s"Offchip Store: $sym", false)
       emit(s"""// ${quote(sym)}: Offchip_store_cmd(${quote(mem)},${quote(fifo)}, ${quote(ofs)}, ${quote(len)}, ${quote(par)})""")
       emit(s"""MemoryCmdStLib ${quote(sym)} = new MemoryCmdStLib(
           this,
@@ -568,7 +570,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           ${quote(len)},
           ${quote(fifo)}_writeEn, ${quote(fifo)}_wdata);""")
       emit(s"""${quote(fifo)}_readEn <== ${quote(sym)}_en;""")
-
+      print_stage_suffix(false)
 //      emitComment("Offchip store from fifo")
 
     case Reg_new(init) =>
@@ -684,17 +686,19 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
         case _ =>
           if (isAccum(reg)) {
-            val rstStr = quote(parentOf(reg).get) + "_rst_en"
+            val accEn = writeCtrl match {
+              case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
+              case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
+            }
+
+            val rstStr = quote(parentOf(reg).get) + "_done /*because _rst_en goes hi on each iter*/"
             writeCtrl match {
               case p@Def(EatReflect(_:Pipe_foreach | _:ParPipeForeach)) =>
                 throw new Exception(s"Foreaches may not have accumulators ($reg in $p)")
 
               case p@Deff(_:Pipe_fold[_,_] | _:ParPipeReduce[_,_] | _:Unit_pipe) =>
                 emit(s"// Write to accumulator register")
-                val enstr = styleOf(p) match {
-                  case InnerPipe => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_datapath_en & ${quote(writeCtrl)}_redLoop_done;""")
-                  case _ => emit(s"""DFEVar ${quote(reg)}_en = ${quote(p)}_en & ${quote(writeCtrl)}_redLoop_done;""")
-                }
+                emit(s"""DFEVar ${quote(reg)}_en = $accEn;""")
                 reduceType(reg) match {
                   case Some(fps: ReduceFunction) => fps match {
                     case FixPtSum =>
