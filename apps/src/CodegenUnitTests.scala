@@ -250,7 +250,7 @@ trait ParFifoLoadApp extends SpatialApp {
 }
 
 // 7
-object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args: 
+object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args:
 trait FifoLoadStoreApp extends SpatialApp {
   type T = SInt
   val N = 192
@@ -271,7 +271,7 @@ trait FifoLoadStoreApp extends SpatialApp {
           f1 := srcFPGA(0::tileSize)
           dstFPGA(0::tileSize) := f1
         }
-        Pipe(tileSize by 1) { i => 
+        Pipe(tileSize by 1) { i =>
           dummyOut := i
         }
       }
@@ -339,7 +339,7 @@ trait SimpleReduceApp extends SpatialApp {
   }
 }
 
-// object SimpleUnitTest extends SpatialAppCompiler with SimpleUnit // Args: 
+// object SimpleUnitTest extends SpatialAppCompiler with SimpleUnit // Args:
 // trait SimpleUnit extends SpatialApp {
 //   val N = 96.as[SInt]
 
@@ -435,7 +435,7 @@ trait NiterApp extends SpatialApp {
     println("expected: " + gold)
     println("result:   " + result)
 
-    val cksum = gold == result 
+    val cksum = gold == result
     println("PASS: " + cksum + " (Niter)")
   }
 }
@@ -447,10 +447,9 @@ trait SimpleFoldApp extends SpatialApp {
   val constTileSize = 96
   val N = 192
 
-
   def simple_fold(src: Rep[Array[T]]) = {
     val innerPar = param(8); domainOf(innerPar) = (1, 1, 1)
-    val tileSize = param(constTileSize); domainOf(constTileSize) = (constTileSize, constTileSize, constTileSize)
+    val tileSize = param(constTileSize); domainOf(tileSize) = (constTileSize, constTileSize, constTileSize)
     val len = src.length; bound(len) = 9216
 
     val N = ArgIn[T]
@@ -494,7 +493,7 @@ trait SimpleFoldApp extends SpatialApp {
 }
 
 // 11
-object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args: 
+object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args:
 trait Memcpy2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]

@@ -125,19 +125,19 @@ trait ParameterAnalyzer extends Traversal {
   debugMode = SpatialConfig.debugging
   verboseMode = SpatialConfig.verbose
 
-  val MIN_TILE_SIZE  = 96    // words
-  val MAX_TILE_SIZE  = 96000 // words
-  val MAX_TILE       = 51340
+  val MIN_TILE_SIZE = 96    // words
+  val MAX_TILE_SIZE = 96000 // words
+  val MAX_TILE      = 51340 // words, unused
 
   val MAX_PAR_FACTOR = 192  // duplications
   val MAX_OUTER_PAR  = 15
 
   var tileSizes: List[Param[Int]] = Nil  // Params used to calculate BRAM size
   var parParams: List[Param[Int]] = Nil  // Params used as parallelization factors for counters
-  val range     = HashMap[Param[Int],RRange]()
+  val range = HashMap[Param[Int],RRange]()
 
-  var restrict:  Set[Restrict] = Set.empty   // Restrictions on parameters
-  var innerLoop  = false
+  var restrict: Set[Restrict] = Set.empty   // Restrictions on parameters
+  var innerLoop = false
 
   override def preprocess[A:Manifest](b: Block[A]) = {
     for ((s,m) <- metadata) {
