@@ -501,4 +501,14 @@ trait UnrollingTransformer extends MultiPassTransformer {
     case lhs2@Deff(e: Accum_fold[_,_]) => Some( unrollAccumFold(lhs2, e)(e.ctx,e.numT,e.mT,e.mC) )
     case lhs2 => Some(lhs2) // Just use mirrored symbol by default
   }
+
+  // Mirror metadata only after transformer has completed. Metadata is not required
+  // to follow forward dataflow, so mirroring metadata on the fly will not necessarily be correct
+  override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
+    // Mirror only syms which don't also have a mirroring rule
+    allSubst.values.filter{sym => !allSubst.contains(sym)}.foreach{sym =>
+      setProps(sym, mirror(getProps(sym), f.asInstanceOf[Transformer]))
+    }
+    super.postprocess(b)
+  }
 }
