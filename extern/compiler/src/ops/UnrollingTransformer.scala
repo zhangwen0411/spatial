@@ -11,6 +11,7 @@ import spatial.compiler.ops._
 trait UnrollingTransformExp extends ReductionAnalysisExp with LoweredPipeOpsExp with MemoryAnalysisExp {
   this: SpatialExp =>
 
+
   case class UnrolledResult(isIt: Boolean) extends Metadata
   object isReduceResult {
     def update(e: Exp[Any], isIt: Boolean) { setMetadata(e, UnrolledResult(isIt)) }

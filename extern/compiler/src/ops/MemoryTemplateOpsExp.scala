@@ -286,6 +286,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         readsByPort.foreach{ case (port, readers) =>
           val controllers = readers.flatMap{reader => topControllerOf(reader.access, mem, i) }.distinct
           assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple read done control signals")
+          Console.println(s"emitting for $mem - $buffers readers $controllers ")
           // TODO: Syntax for port-specific read done?
           if (controllers.nonEmpty)
             emit(s"""${quoteDuplicate(mem, i)}.connectRdone(${quote(controllers.head.node)}_done, $port);""")
@@ -408,7 +409,6 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       }
     }
 
-    brams += bram.asInstanceOf[Sym[BRAM[Any]]]
     // Handle if loading a composite type
     //n.compositeValues.zipWithIndex.map { t =>
     //  val v = t._1
@@ -734,6 +734,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       emitComment(s"} Reg_write // regType ${regType(reg)}, numDuplicates = ${allDups.length}")
 
     case Bram_new(size, zero) =>
+      brams += sym.asInstanceOf[Sym[BRAM[Any]]]
+
       withStream(baseStream) {
         emitComment("Bram_new {")
         val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
