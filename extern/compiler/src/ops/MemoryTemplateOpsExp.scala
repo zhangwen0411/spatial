@@ -332,22 +332,22 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
   def bramLoad(read: Sym[Any], bram: Exp[BRAM[Any]], addr: Exp[Any], par: Boolean = false) {
     emitComment("Bram_load {")
+    val dups = duplicatesOf(bram)
+    val readers = readersOf(bram)
+    val reader = readers.find{_.access == read}.get // Corresponding reader for this read node
+    val b_i = instanceIndicesOf(read, bram).head    // Instance indices should have exactly one index for reads
+
+    val bram_name = s"${quote(bram)}_${b_i}"
+    val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
+    val num_dims = dimsOf(bram).length
     if (isDummy(bram)) {
       val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
       bankOverride(read) match {
-        case -1 => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}); //r1.0""")
-        case b => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}, $b); //r1.5""")
+        case -1 => emit(s"""${pre} ${quote(read)} = ${quote(bram_name)}.connectRport(${quote(addr)}); //r1.0""")
+        case b => emit(s"""${pre} ${quote(read)} = ${quote(bram_name)}.connectRport(${quote(addr)}, $b); //r1.5""")
 
       }
     } else {
-      val dups = duplicatesOf(bram)
-      val readers = readersOf(bram)
-      val reader = readers.find{_.access == read}.get // Corresponding reader for this read node
-      val b_i = instanceIndicesOf(read, bram).head    // Instance indices should have exactly one index for reads
-
-      val bram_name = s"${quote(bram)}_${b_i}"
-      val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
-      val num_dims = dimsOf(bram).length
 
       val inds = parIndicesOf(read)
       assert(inds.nonEmpty, s"Empty par access indices for read $read of $bram")
@@ -460,10 +460,10 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           num_dims match {
             case 1 =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), $accEn); //3""")
+                stream.offset($dataStr, -$offsetStr), $accEn); //w3""")
             case _ =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), $accEn); //4""")
+                stream.offset($dataStr, -$offsetStr), $accEn); //w4""")
           }
         }
       } /*else {
@@ -475,10 +475,10 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       }*/
     }
     else { // Not accum
-      // [TODO] Raghu: Current assumption is that this always returns the parent
-      // writing to the BRAM. Is this always true? Confirm
       if (isDummy(bram)) {
-        emit(s"""${quote(bram)}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //6""")
+        dups.foreach {case (dd, ii) =>
+          emit(s"""${quote(bram)}_$ii.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w6""")
+        }
       }
       else num_dims match {
         case 1 =>

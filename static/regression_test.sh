@@ -104,6 +104,7 @@ cd ${PUB_HOME}
 ${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} 2>&1 | tee -a ${5}/log
 
 sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${5}/log
+sed -i \"s/error retrieving current directory/Ignoring getcwd e r r o r/g\" log
 
 wc=\$(cat ${5}/log | grep \"couldn't find DEG file\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
@@ -116,7 +117,7 @@ fi
 
 wc=\$(cat ${5}/log | grep \"error\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
-	echo \"PASS: -1 (${4} Spatial Error)\"
+	echo \"PASS: -2 (${4} Spatial Error)\"
     rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
     echo "[STATUS] Declaring failure build_in_spatial"
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
@@ -127,7 +128,7 @@ cd ${5}/out
 make clean sim 2>&1 | tee -a ${5}/log
 wc=\$(cat ${5}/log | sed \"s/Error 1 (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
-	echo \"PASS: -1 (${4} Spatial Error)\"
+	echo \"PASS: -3 (${4} Spatial Error)\"
     rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
     echo "[STATUS] Declaring failure compile_maxj"
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_maxj.${3}_${4}
@@ -337,7 +338,7 @@ for ac in ${app_classes[@]}; do
 
 		# Run vulture
 		cd ${SPATIAL_HOME}/regression_tests/${ac}/
-		bash ${SPATIAL_HOME}/static/vulture.sh workers_for_${ac}
+		bash ${SPATIAL_HOME}/static/vulture.sh ${ac}
 
 	done
 done
@@ -428,18 +429,19 @@ all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" 
 for aa in ${all_apps[@]}; do
 	# Append status to line
 	a=(`echo $aa | sed "s/ //g"`)
-	num=(`cat ${result_file} | grep "[0-9]\+\_$a" | grep -oh "\-\-\-\-" | wc -l`)
-	cmd="sed -i \"/^${a},/ s/$/,$num/\" ${history_file}"
+	dashes=(`cat ${result_file} | grep "[0-9]\+\_$a" | grep -oh "\-" | wc -l`)
+	num=$(($dashes/4))
+	cmd="sed -i \"s/${a}\([[:blank:]]*\),,[0-9]\\+,/${a}\1,,/g\" ${history_file}"
 	echo $cmd
 	eval "$cmd"
 
 	# Shave first if too long
 	numel=(`head -1 ${history_file} | grep -oh "\," | wc -l`)
 	if [ "$numel" -gt 48 ]; then
-		cmd="sed -i \"s/${a},,[0-9]\\+,/${a},,/g\" ${history_file}"
+		cmd="sed -i \"s/${a}\([[:blank:]]*\),,[0-9]\\+,/${a}\1,,/g\" ${history_file}"
 		eval "$cmd"
 	fi
-	
+
 done
 
 # git push
