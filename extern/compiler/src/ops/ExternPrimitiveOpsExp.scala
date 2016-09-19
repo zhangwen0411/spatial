@@ -6,6 +6,8 @@ import scala.virtualization.lms.common.{BaseExp, EffectExp, ScalaGenEffect, DotG
 import ppl.delite.framework.transform.{DeliteTransform}
 import scala.reflect.{Manifest,SourceContext}
 
+import scala.collection.mutable.HashMap
+
 import spatial.shared._
 import spatial.shared.ops._
 import spatial.compiler._
@@ -33,6 +35,8 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
   with SpatialMetadataOpsExp with FixPtOpsExp {
 
   this: SpatialExp =>
+
+  var rwPortAlias = HashMap[Exp[Any],Exp[Any]]()
 
   case class Min2[T](a: Rep[T],b:Rep[T])(implicit val mT: Manifest[T], val oT: Order[T], val nT: Num[T], val ctx: SourceContext) extends Def[T]
   case class Max2[T](a: Rep[T],b:Rep[T])(implicit val mT: Manifest[T], val oT: Order[T], val nT: Num[T], val ctx: SourceContext) extends Def[T]
@@ -432,6 +436,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
             emit(s"""// DFEVar $sym = ${quote(x)}.cast($ts)""")
           }
         }
+
     case _ => super.emitNode(sym, rhs)
 
   }

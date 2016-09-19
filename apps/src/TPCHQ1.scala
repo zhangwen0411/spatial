@@ -2,8 +2,8 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object TPCHQ6 extends SpatialAppCompiler with TPCHQ6_App
-trait TPCHQ6_App extends SpatialApp {
+object TPCHQ1 extends SpatialAppCompiler with TPCHQ1_App
+trait TPCHQ1_App extends SpatialApp {
   type FT = SInt
   type Array[T] = ForgeArray[T]
 
@@ -15,7 +15,7 @@ trait TPCHQ6_App extends SpatialApp {
   val outerPar = 2
   val innerPar = 2
 
-  def tpchq6(datesIn: Rep[Array[UInt]], quantsIn: Rep[Array[UInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
+  def tpchq1(datesIn: Rep[Array[UInt]], quantsIn: Rep[Array[UInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
     val dataSize = ArgIn[SInt]
     setArg(dataSize, datesIn.length)
 
@@ -78,7 +78,7 @@ trait TPCHQ6_App extends SpatialApp {
     val discts = Array.fill(N){random[FT] * 10 + 1}
     val prices = Array.fill(N){random[FT] * 1000}
 
-    val result = tpchq6(dates, quants, discts, prices)
+    val result = tpchq1(dates, quants, discts, prices)
 
     // --- software version
     val conds = Array.tabulate(N){i => dates(i) > MIN_DATE && dates(i) < MAX_DATE &&
@@ -90,6 +90,6 @@ trait TPCHQ6_App extends SpatialApp {
     println("result " + result)
     
     val cksum = gold == result
-    println("PASS: " + cksum + " (TPCHQ6)")
+    println("PASS: " + cksum + " (TPCHQ1)")
   }
 }

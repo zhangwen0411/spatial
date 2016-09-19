@@ -59,6 +59,7 @@ trait MemoryTemplateTypesExp extends MemoryTemplateTypes with BaseExp {
 trait MemoryTemplateOpsExp extends MemoryTemplateTypesExp with ExternPrimitiveOpsExp with EffectExp with BRAMOpsExp {
   this: SpatialExp =>
 
+  val stream_offset_guess = 20
   // --- Nodes
   case class Vector_from_list[T](elems: List[Exp[T]])(implicit val mT: Manifest[T], val ctx: SourceContext) extends Def[Vector[T]]
 
@@ -333,8 +334,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     if (isDummy(bram)) {
       val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
       bankOverride(read) match {
-        case -1 => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}); //1.0""")
-        case b => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}, $b); //1.5""")
+        case -1 => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}); //r1.0""")
+        case b => emit(s"""${pre} ${quote(read)} = ${quote(bram)}.connectRport(${quote(addr)}, $b); //r1.5""")
 
       }
     } else {
@@ -359,13 +360,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             addEmittedConsts(addr0)
 
             if (par)
-              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${quote(bram)}.connectRport(${quote(addr0)}))); //2""")
+              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${quote(bram_name)}.connectRport(${quote(addr0)}))); //r2""")
             else
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}); //3""")
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}); //r3""")
           }
           else {
             // Many addresses
-            emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr)}); //4""")
+            emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr)}); //r4""")
           }
         case 2 => // 2D bram
           if (inds.length == 1) {
@@ -375,9 +376,9 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             addEmittedConsts(addr0, addr1)
 
             if (par)
-              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}))); //5""")
+              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}))); //r5""")
             else
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}); //6""")
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}); //r6""")
 
           }
           else {
@@ -389,14 +390,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val addr0 = inds.map{ind => quote2D(ind,0) }
               val addr1 = quote2D(inds(0), 1)
               emit(s"""// All readers share column. vectorized """)
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}); //7""")
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}); //r7""")
             }
             // Same rows?
             else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
               val addr0 = quote2D(inds(0), 0)
               val addr1 = inds.map{ind => quote2D(ind, 0) }
               emit(s"""// All readers share row. vectorized""")
-              emit(s"""${pre} ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")}))); //8""")
+              emit(s"""${pre} ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")}))); //r8""")
             }
             else {
               throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
@@ -416,6 +417,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     //  emit(s"""${quote(v)} <== ${quote(read)}[$idx];""")
     //}
     emitComment("} Bram_load")
+
+
   }
 
   def bramStore(write: Sym[Any], bram: Exp[BRAM[Any]], addr: Exp[Any], value: Exp[Any]) {
@@ -556,6 +559,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       emit(s"""${quote(fifo)}_wdata <== ${quote(fifo)}_rdata;""")
 
     case Offchip_store_cmd(mem, fifo, ofs, len, par) =>
+      // TODO: Offchip stores with burst not aligned
       emit(s"""// ${quote(sym)}: Offchip_store_cmd(${quote(mem)},${quote(fifo)}, ${quote(ofs)}, ${quote(len)}, ${quote(par)})""")
       emit(s"""MemoryCmdStLib ${quote(sym)} = new MemoryCmdStLib(
           this,
@@ -569,41 +573,48 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 //      emitComment("Offchip store from fifo")
 
     case Reg_new(init) =>
-      regs += sym.asInstanceOf[Sym[Reg[Any]]]
+      val EatAlias(alias) = sym
+      // TODO: Is it safe to emit things for sym below, or should I emit for alias?
+      if (!regs.contains(alias.asInstanceOf[Sym[Reg[Any]]])) {
+        regs += alias.asInstanceOf[Sym[Reg[Any]]]
 
-      withStream(baseStream) {
-        emitComment("Reg_new {")
-        val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-        val duplicates = duplicatesOf(sym)
-        val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
-          case ConstFix(rv) => rv
-          case ConstFlt(rv) => rv
-        }
-        duplicates.zipWithIndex.foreach { case (d, i) =>
-          regType(sym) match {
-            case Regular =>
-              (reduceType(sym), i) match {
-                case (Some(fps: ReduceFunction), 0) =>
-                  Console.println(s"[WARNING] Why is duplicate 0 the reduce function accum?")
-                  // Assume only duplicate 1 needs reg_lib if this is reducetype
-                case _ =>
-                  val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
-                  if (d.depth > 1) {
-                    emit(s"""DblBufReg ${quote(sym)}_${i}_lib = new DblBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
-                    val readstr = if (parOf(sym)>1) "readv" else "read"
-                    emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
-                    emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
-                  } else {
-                    emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
-                    val readstr = if (parOf(sym) > 1) "readv" else "read"
-                    emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
-                    emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
-                  }
-              }
-            case _ => throw new Exception(s"""Unknown reg type ${regType(sym)}""")
+        withStream(baseStream) {
+          emitComment("Reg_new {")
+          val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+          val duplicates = duplicatesOf(sym)
+          val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
+            case ConstFix(rv) => rv
+            case ConstFlt(rv) => rv
           }
+          duplicates.zipWithIndex.foreach { case (d, i) =>
+            regType(sym) match {
+              case Regular =>
+                (reduceType(sym), i) match {
+                  case (Some(fps: ReduceFunction), 0) =>
+                    Console.println(s"[WARNING] Assume duplicate 0 is the inside reduction register and do not emit lib")
+                  case _ =>
+                    val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
+                    if (d.depth > 1) {
+                      emit(s"""DblBufReg ${quote(sym)}_${i}_lib = new DblBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
+                      val readstr = if (parOf(sym)>1) "readv" else "read"
+                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
+                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
+                    } else {
+                      emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
+                      val readstr = if (parOf(sym) > 1) "readv" else "read"
+                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
+                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
+                    }
+                }
+              case _ => throw new Exception(s"""Unknown reg type ${regType(sym)}""")
+            }
+          }
+          emitComment("Reg_new }")
         }
-        emitComment("Reg_new }")
+      } else {
+        withStream(baseStream) {
+          emit(s"// Already emitted register $sym under alias $alias")          
+        }
       }
 
     case Argin_new(init) =>
@@ -616,6 +627,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     case Argout_new(init) => //emitted in reg_write
 
     case e@Reg_read(reg) =>
+      // TODO: Should I eat alias here?
+      Console.println(s"Would like to read $reg $sym")
       if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
         rTreeMap(sym) match {
           case Nil =>
@@ -641,8 +654,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         }
 
         // Specialized reductions (regular accumulators with a reduction type) just use sym directly
-        if (regType(reg) != Regular || !isAccum(reg) || !reduceType(reg).map{t => t != OtherReduction}.getOrElse(false) )
-          emit(s"""$pre ${quote(sym)} = $regStr;""")
+        // TODO: Why was the statement below in the if statement?  Seems like we always want it printed...
+        // if (regType(reg) != Regular || !isAccum(reg) || !reduceType(reg).map{t => t != OtherReduction}.getOrElse(false) ) {
+        emit(s"""$pre ${quote(sym)} = $regStr;""")
+        // } else {
+        //   emit(s"""// Wanted to print $pre ${quote(sym)} = $regStr but ${regType(reg)} not Regular, or $reg not accum, or the third bool false""")
+        // }
       }
       else {
         emit(s"""// ${quote(sym)} is just a register read""")
@@ -687,7 +704,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                     case FltPtSum =>
                       emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                   }
-                  dups.foreach { case (dup, ii) => emit(s"""${quote(reg)}_${ii+1}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false));""")}
+                  // Assume duplicate 0 is used for reduction, all others need writes
+                  dups.foreach { case (dup, ii) => if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false));""")}
                 }
               case _ =>
                 emit(s"DFEVar ${quote(reg)}_en = constant.var(true)")

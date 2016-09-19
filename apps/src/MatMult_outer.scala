@@ -19,9 +19,9 @@ trait MatMult_outerApp extends SpatialApp {
     val b = OffChipMem[T](P, N)
     val c = OffChipMem[T](M, N)
 
-    val bm = param(2)
-    val bn = param(96)
-    val bp = param(96)
+    val bm        = param(4) 
+    val bn        = param(96) 
+    val bp        = param(96) 
 
     setMem(a, A)
     setMem(b, B)
@@ -79,6 +79,7 @@ trait MatMult_outerApp extends SpatialApp {
     println("expected cksum: " + gold.map(a => a).reduce{_+_})
     println("result cksum: " + result.map(a => a).reduce{_+_})
 
-    assert(gold == result)
-  }
-}
+    val cksum = result.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (MatMult_outer)")
+   }
+ }

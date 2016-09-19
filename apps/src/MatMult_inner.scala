@@ -10,9 +10,9 @@ trait MatMult_innerApp extends SpatialApp {
   val tileSizeM = 4
   val tileSizeN = 96
   val tileSizeP = 96
-  val innerPar = 2
-  val midPar = 2
-  val outerPar = 2
+  val innerPar = 1
+  val midPar = 1
+  val outerPar = 1
   val storePar = 1
 
   def MatMult_inner(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
@@ -30,11 +30,12 @@ trait MatMult_innerApp extends SpatialApp {
     val bm        = param(tileSizeM);   domainOf(bm) = (1,1536,1)
     val bn        = param(tileSizeN);   domainOf(bn) = (96,1536,96)
     val bp        = param(tileSizeP);   domainOf(bp) = (96,1536,96)
-    val op  = param(2);
-    val mp = param(2);
-    val ip  = param(2);
-    val upMidPar  = param(2);
-    val stPar     = param(2);
+    val op  = param(2);   
+    val mp = param(2);   
+    val ip  = param(2);   
+    val upMidPar  = param(1);   
+    val stPar     = param(1);   
+
     domainOf(op)  = (1,6,1)
     domainOf(mp) = (1,96,1)
     domainOf(ip)  = (1,96,1)
@@ -95,6 +96,8 @@ trait MatMult_innerApp extends SpatialApp {
     println("expected cksum: " + gold.map(a => a).reduce{_+_})
     println("result cksum: " + result.map(a => a).reduce{_+_})
 
-    assert(gold == result)
+    val cksum = result.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (MatMult_inner)")
+
   }
 }

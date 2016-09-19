@@ -11,6 +11,7 @@ import spatial.shared._
   # CharLoadTest #
   ################
 
+  Do this for N iterations:
 
  (outerPar tiles)           offchip ←|→ onchip
           (innerPar ldPar)
@@ -33,6 +34,7 @@ import spatial.shared._
   # CharStoreTest #
   #################
 
+ Do this for N iterations: 
 
  (outerPar tiles)
            Dummy Memories     onchip ←|→ offchip
@@ -77,13 +79,13 @@ import spatial.shared._
                                        
 
 */
-object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp
+object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp // Args: 5
 trait CharLoadTestApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 2;
-  val outerPar = 2;
-  val dim0 = 96;
+  val innerPar = 8;
+  val outerPar = 4;
+  val dim0 = 19200;
   val dim1 = 96;
 
   def CharLoad(srcHost: Rep[Array[T]], iters: Rep[SInt]) = {
@@ -140,19 +142,30 @@ trait CharLoadTestApp extends SpatialApp {
     val src = Array.tabulate[T](dim0*dim1*outerPar) { i => i }
     val result = CharLoad(src, iters)
 
-    val gold = src(0)
-    println("expected " + outerPar*innerPar + " things in increments of something like " + dim0 + "*" + dim1 + " : ")
+    // val gold = List.tabulate(outerPar) { i => 
+    //   List.tabulate(innerPar) {j => 
+    //     i * dim0 * dim1 + j
+    //   }
+    // }
+    // gold.foreach{row => row.foreach{println(_)}}
     result.map{row => row.foreach{println(_)}}
+
+    // Lazy check because I don't feel like xor'ing here
+    val cksum = result.flatten.zipWithIndex.map{ case (a, i) =>
+      if (i < outerPar) {a == 0} else {a != 0}
+    }.reduce{_&&_}
+    println("PASS: " + cksum  + " (CharLoadTest)")
+
   }
 }
 
-object CharStoreTest extends SpatialAppCompiler with CharStore
+object CharStoreTest extends SpatialAppCompiler with CharStore // Args: 5 3
 trait CharStore extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 4;
-  val outerPar = 2;
-  val dim0 = 96;
+  val innerPar = 8;
+  val outerPar = 4;
+  val dim0 = 19200;
   val dim1 = 96;
   def CharStore(iters: Rep[T], numin: Rep[T]) = {
     val sinnerPar = param(innerPar);
@@ -206,21 +219,24 @@ trait CharStore extends SpatialApp {
     val result = CharStore(len, num)
     val print_result = result.map(a => a.reduce{_+_})
 
-
     // println("expected: sequential stuff")
-    println("Expected: " + mem.map(a=>a).reduce{_+_}*dim0*dim1)
-    println("Received: " + print_result.map(a => a).reduce{_+_})
+    println("Expected: " + mem.map{a => a}.reduce{_+_}*dim0*dim1)
+    println("Received: " + print_result.map{a => a}.reduce{_+_})
+
+    val cksum = mem.reduce{_+_}*dim0*dim1 == print_result.reduce{_+_}
+    println("PASS: " + cksum + " (CharStoreTest)")
+
   }
 }
 
 
-object CharBramTest extends SpatialAppCompiler with CharBram
+object CharBramTest extends SpatialAppCompiler with CharBram // Args: 5
 trait CharBram extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 2;
-  val outerPar = 2;
-  val dim0 = 96;
+  val innerPar = 8;
+  val outerPar = 4;
+  val dim0 = 19200;
   val dim1 = 96;
   def CharBram(numin: Rep[T]) = {
     val tileDim0 = param(dim0);
@@ -270,5 +286,13 @@ trait CharBram extends SpatialApp {
     result.map{row =>
       row.foreach{println(_)}
     }
+    val check = result.map{row => row.map{a => a}.reduce{_+_}}.reduce{_+_}
+    val gold = List.tabulate(innerPar*outerPar){ i => numin }.reduce{_+_}
+
+    val cksum = check == gold
+    println("PASS: " + cksum + " (CharBramTest)")
+
   }
 }
+
+// NOTES: WHY DID 3 AND 7 FAIL FOR CHAR LOAD? - Sept 17 2016

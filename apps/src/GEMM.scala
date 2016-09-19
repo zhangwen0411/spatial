@@ -106,7 +106,7 @@ import spatial.shared._
                                  
 
                                              (compute_n)
-                                     ↓ ↓
+                                      ↓ ↓
                                       _nr ................
                         (compute_k) →|o o|               .
                                    kc|   |               .
@@ -239,8 +239,8 @@ trait GEMMApp extends SpatialApp {
               }
             }
           }
-        }
-      }
+        
+}      }
       c(0::M, 0::N, param(1)) := tileC
 
     }

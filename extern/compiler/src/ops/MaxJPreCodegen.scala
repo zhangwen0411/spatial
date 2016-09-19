@@ -27,17 +27,21 @@ trait MaxJPreCodegen extends Traversal  {
 		val IR: MaxJPreCodegen.this.IR.type = MaxJPreCodegen.this.IR
 	}
 
-  def isArgOrConst(x: Exp[Any]) = x match {
+  def isConstOrArgOrBnd(x: Exp[Any]) = x match {
     case s@Sym(n) => {
       s match {
-        case Def(Argin_new(_)) => true
-        case Def(ConstFixPt(_,_,_,_)) => true
-        case Def(ConstFltPt(_,_,_)) => true
-        case _ => false
+        case Deff(ConstFixPt(_,_,_,_)) => true
+        case Deff(ConstFltPt(_,_,_)) => true
+        case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
+          xx match {
+            case Deff(Argin_new(_)) => true
+            case _ =>  false 
+          }
+        case Deff(_) => false // None
+        case _ => true // Is bound
       }
     }
   }
-
 
   def quote(x: Exp[Any]) = x match {
     case s@Sym(n) => {
@@ -347,9 +351,9 @@ trait MaxJPreCodegen extends Traversal  {
   def emitReduction(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
 
-    var inputArgs = Set[Sym[Any]]()
+    var inputVecs = Set[Sym[Any]]()
     var treeResult = ""
-    var args_and_consts = Set[Exp[Any]]()
+    var consts_args_bnds_list = Set[Exp[Any]]()
     var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
     val treeStringPre = focusBlock(func){ // Send reduce tree to separate file
       focusExactScope(func){ stms =>
@@ -363,8 +367,9 @@ trait MaxJPreCodegen extends Traversal  {
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
             case tag @ FltPt_Add(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              // TODO: Way of doing this args & consts check that isn't stupid
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               if (isReduceResult(s)) {
@@ -374,8 +379,8 @@ trait MaxJPreCodegen extends Traversal  {
                 s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
               }
             case tag @ FixPt_Add(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               if (isReduceResult(s)) {
@@ -385,86 +390,86 @@ trait MaxJPreCodegen extends Traversal  {
                 s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
               }
             case tag @ FltPt_Mul(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
             case tag @ FixPt_Mul(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
             case FixPt_Lt(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
             case FixPt_Leq(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
             case FixPt_Neq(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
             case FixPt_Eql(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
             case FixPt_And(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
             case FixPt_Or(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
             case FixPt_Lsh(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
             case FixPt_Rsh(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
             case FltPt_Lt(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
             case FltPt_Leq(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
             case FltPt_Neq(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
             case FltPt_Eql(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
@@ -473,40 +478,40 @@ trait MaxJPreCodegen extends Traversal  {
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ~${quote(a)};"""
             case Bit_And(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
             case Bit_Or(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ${quote(a)} | ${quote(b)};"""
             case Bit_Xor(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ${quote(a)} ^ ${quote(b)};"""
             case Bit_Xnor(a,b) =>
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ~(${quote(a)} ^ ${quote(b)});"""
             case Mux2(sel,a,b) =>
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              if (isArgOrConst(a)) {args_and_consts += a}
-              if (isArgOrConst(b)) {args_and_consts += b}
+              if (isConstOrArgOrBnd(a)) {consts_args_bnds_list += a}
+              if (isConstOrArgOrBnd(b)) {consts_args_bnds_list += b}
               val pre = maxJPre(s)
               s"""$pre ${quote(s)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;"""
-            case input @ (Par_bram_load(_, _)) =>
-              inputArgs += s
-              ""
+            case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+              inputVecs += s
+              s"/* Par_bram_load */"
             case _ =>
-              ""
+              s"/* Unknown Deff $s $dd */"
           }
         }
       }
@@ -519,16 +524,17 @@ trait MaxJPreCodegen extends Traversal  {
     } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
 
     val krnl_input_args = if (treeResult != "") {
-      inputArgs.map(quote(_)).mkString("DFEVector<DFEVar> ",", DFEVector<DFEVar> ", "") + s", DFEVar ${treeResult}"
+      inputVecs.map(quote(_)).mkString("DFEVector<DFEVar> ",", DFEVector<DFEVar> ", "") + s", DFEVar ${treeResult}"
     } else {""}
     val first_comma = if (treeResult != "") { "," } else {""}
-
+    val second_comma = if (inputVecs.toList.length > 0 & treeResult != "") { "," } else {""} 
+    val res_input_arg = if (treeResult != "") {s"DFEVar ${treeResult}"} else {""}
     // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
     //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
     // } else { "" }
 
 
-    val cst_genStr = args_and_consts.map { exp =>
+    val cst_genStr = consts_args_bnds_list.map { exp =>
       val ts = tpstr(1)(exp.tp, implicitly[SourceContext])
       exp match {
         case s@Sym(_) => { s match {
@@ -541,6 +547,16 @@ trait MaxJPreCodegen extends Traversal  {
         }}
       }
     }.mkString("\n")
+
+    val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.toList.sortWith(_<_).mkString(",")
+    val trailing_args = consts_args_bnds_list.toList
+    val owner_comma = if (trailing_args.length > 0 & (vec_input_args == "" & res_input_arg == "")) {","} else {""} // TODO: Super ugly hack
+
+    val trailing_args_comma = if (trailing_args.length > 0 & (vec_input_args != "" | res_input_arg != "")) {","} else {""}
+    val trailing_args_string = trailing_args.map { exp =>
+      s"""DFEVar ${quote(exp)}"""
+    }.sortWith(_<_).mkString(",")
+
     emit(s"""package engine;
 import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
 import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.CounterChain;
@@ -573,9 +589,10 @@ $cst_genStr
 $treeString
 }
 
-${quote(sym)}_reduce_kernel(KernelLib owner ${first_comma} ${krnl_input_args}) {
+${quote(sym)}_reduce_kernel(KernelLib owner $first_comma $vec_input_args $second_comma
+                $res_input_arg $trailing_args_comma $owner_comma $trailing_args_string) {
   super(owner);
-  common(${inputArgs.map(quote(_)).mkString(",")} ${first_comma} ${treeResult});
+  common(${inputVecs.map(quote(_)).toList.sortWith(_<_).mkString(", ")} ${second_comma} ${treeResult} $trailing_args_comma ${trailing_args.map { exp => quote(exp)}.sortWith(_<_).mkString(",")});
 }
 }""")
 

@@ -33,7 +33,9 @@ trait ReductionAnalysisExp extends NodeMetadataOpsExp {
     case Deff(FltPt_Add(`a`,`b`)) => FltPtSum
     case Deff(Min2(`a`,`b`)) if isFixPtType(a.tp) => FixPtMin
     case Deff(Max2(`a`,`b`)) if isFixPtType(a.tp) => FixPtMax
-    case _ => OtherReduction
+    case _ => 
+      Console.println("[WARNING] $rFunc on $a and $b does not match any reduce type!")
+      OtherReduction
   }
 }
 
@@ -56,7 +58,7 @@ trait ReductionAnalyzer extends Traversal with SpatialTraversalTools {
       reduceType(a) = funcType
       reduceType(acc) = funcType
       reduceType(lhs) = funcType
-      Console.println(s"acc $acc to $funcType in $lhs")
+      Console.println(s"pipefold acc $acc to $funcType in $lhs")
       Console.println(s"a $a to $funcType in $lhs")
 
 
@@ -70,6 +72,8 @@ trait ReductionAnalyzer extends Traversal with SpatialTraversalTools {
       reduceType(a) = funcType
       reduceType(acc) = funcType
       reduceType(lhs) = funcType
+      Console.println(s"accumfold acc $acc to $funcType in $lhs")
+      Console.println(s"a $a to $funcType in $lhs")
 
 
     case _ => super.traverse(lhs, rhs)
