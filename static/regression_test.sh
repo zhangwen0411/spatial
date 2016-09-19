@@ -415,9 +415,9 @@ if [ ! -z "$diff" ]; then
 	for m in ${emails[@]}; do
 		if [[ ! "$last_m" = "$m" ]]; then 
 			tmp=(`echo $courtesy_email | sed "s/APPS_LIST/${diff[@]}/g" | sed "s/OLD_COMMITS/${old_commit}/g" | sed "s/NEW_COMMITS/${new_commit}/g"`)
-			echo -e ${tmp} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@whitehouse.gov
+			echo -e ${tmp} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@MakeFPGAsGreatAgain.com
 		fi
-		# echo "[EMAIL] Sent ${tmp} to $m"
+		echo "[EMAIL] Sent ${tmp} to $m"
 		last_m=$m
 	done
 fi
@@ -425,9 +425,10 @@ fi
 # Update history
 history_file=${SPATIAL_HOME}/spatial.wiki/Regression_Test_History.csv
 all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\*//g" | sort`)
-for a in ${all_apps[@]}; do
+for aa in ${all_apps[@]}; do
+	a=(`echo $aa | sed "s/ //g"`)
 	num=(`cat ${result_file} | grep "[0-9]\+\_$a" | grep -oh "\-\-\-\-" | wc -l`)
-	cmd="sed -i \"/^${a}\\,/ s/$/,$num/\" ${history_file}"
+	cmd="sed -i \"/^${a},/ s/$/,$num/\" ${history_file}"
 	echo $cmd
 	eval "$cmd"
 done

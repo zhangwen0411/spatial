@@ -548,7 +548,7 @@ trait MaxJPreCodegen extends Traversal  {
       }
     }.mkString("\n")
 
-    val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.mkString(",")
+    val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.toList.sortWith(_<_).mkString(",")
     val trailing_args = consts_args_bnds_list.toList
     val owner_comma = if (trailing_args.length > 0 & (vec_input_args == "" & res_input_arg == "")) {","} else {""} // TODO: Super ugly hack
 
@@ -589,10 +589,10 @@ $cst_genStr
 $treeString
 }
 
-${quote(sym)}_reduce_kernel(KernelLib owner $first_comma $inputVecs $second_comma
+${quote(sym)}_reduce_kernel(KernelLib owner $first_comma $vec_input_args $second_comma
                 $res_input_arg $trailing_args_comma $owner_comma $trailing_args_string) {
   super(owner);
-  common(${inputVecs.map(quote(_)).mkString(", ")} ${second_comma} ${treeResult} $trailing_args_comma ${trailing_args.map { exp => quote(exp)}.sortWith(_<_).mkString(",")});
+  common(${inputVecs.map(quote(_)).toList.sortWith(_<_).mkString(", ")} ${second_comma} ${treeResult} $trailing_args_comma ${trailing_args.map { exp => quote(exp)}.sortWith(_<_).mkString(",")});
 }
 }""")
 

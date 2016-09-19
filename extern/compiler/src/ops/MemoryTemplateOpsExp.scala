@@ -288,14 +288,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple read done control signals")
           // TODO: Syntax for port-specific read done?
           if (controllers.nonEmpty)
-            emit(s"""${quoteDuplicate(mem, i)}.connectRdone(${quote(controllers.head)}_done, $port);""")
+            emit(s"""${quoteDuplicate(mem, i)}.connectRdone(${quote(controllers.head.node)}_done, $port);""")
         }
         writesByPort.foreach{ case (port, writers) =>
           val controllers = writers.flatMap{writer => topControllerOf(writer.access, mem, i) }.distinct
           assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple write done control signals")
           // TODO: Syntax for port-specific write done?
           if (controllers.nonEmpty)
-            emit(s"""${quoteDuplicate(mem, i)}.connectWdone(${quote(controllers.head)}_done, $port);""")
+            emit(s"""${quoteDuplicate(mem, i)}.connectWdone(${quote(controllers.head.node)}_done, $port);""")
         }
       }
     }
@@ -588,8 +588,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             case Regular =>
               (reduceType(sym), i) match {
                 case (Some(fps: ReduceFunction), 0) =>
-                  Console.println(s"[WARNING] Why is duplicate 0 the reduce function accum?")
-                  // Assume only duplicate 1 needs reg_lib if this is reducetype
+                  Console.println(s"[WARNING] Assume duplicate 0 is the inside reduction register and do not emit lib")
                 case _ =>
                   val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
                   if (d.depth > 1) {
@@ -620,6 +619,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     case Argout_new(init) => //emitted in reg_write
 
     case e@Reg_read(reg) =>
+      Console.println(s"Would like to read $reg $sym")
       if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
         rTreeMap(sym) match {
           case Nil =>
@@ -645,8 +645,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         }
 
         // Specialized reductions (regular accumulators with a reduction type) just use sym directly
-        if (regType(reg) != Regular || !isAccum(reg) || !reduceType(reg).map{t => t != OtherReduction}.getOrElse(false) )
+        if (regType(reg) != Regular || !isAccum(reg) || !reduceType(reg).map{t => t != OtherReduction}.getOrElse(false) ) {
           emit(s"""$pre ${quote(sym)} = $regStr;""")
+        } else {
+          emit(s"""// Wanted to print $pre ${quote(sym)} = $regStr but ${regType(reg)} not Regular, or $reg not accum, or the third bool false""")
+        }
       }
       else {
         emit(s"""// ${quote(sym)} is just a register read""")
@@ -691,7 +694,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                     case FltPtSum =>
                       emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                   }
-                  dups.foreach { case (dup, ii) => emit(s"""${quote(reg)}_${ii+1}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false));""")}
+                  // Assume duplicate 0 is used for reduction, all others need writes
+                  dups.foreach { case (dup, ii) => if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false));""")}
                 }
               case _ =>
                 emit(s"DFEVar ${quote(reg)}_en = constant.var(true)")

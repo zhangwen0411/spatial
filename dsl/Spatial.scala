@@ -220,43 +220,41 @@ trait SpatialDSL extends ForgeApplication
     importSpatialMisc()
     importTupleTypeClassInstances()
 
+    // Traversals: Generic traversal for debugging, etc.
+    val DotPrinter            = traversal("DotIRPrinter", isExtern=true)
+    val Printer               = traversal("SpatialPrinter", isExtern=true)
+    val PrinterLast           = traversal("SpatialPrinterLast", isExtern=true)
 
-    // --- Traversals
-    val LevelAnalyzer = analyzer("PipeLevel", isExtern=true)
-    val UnitPipeTransformer = transformer("UnitPipe", isExtern=true)
-    val StageAnalyzer = analyzer("Stage", isExtern=true)
-    val GlobalAnalyzer = analyzer("Global")
+    // Analyzers: Set metadata
+    val NameAnalyzer          = traversal("NameAnalyzer", isExtern=true)
+    val DSE                   = traversal("DSE", isExtern=true)
+    val OffChipAnalyzer       = traversal("OffChipAnalyzer", isExtern=true)
+    val LevelAnalyzer         = analyzer("PipeLevel", isExtern=true)
+    val StageAnalyzer         = analyzer("Stage", isExtern=true)
+    val GlobalAnalyzer        = analyzer("Global")
     val ControlSignalAnalyzer = analyzer("ControlSignal", isExtern=true)
-    val UnrolledControlAnalyzer = analyzer("UnrolledControlSignal", isExtern=true)
+    val UnrolledControl       = analyzer("UnrolledControlSignal", isExtern=true)
     val SpatialAffineAnalysis = analyzer("SpatialAffine", isExtern=true)
+    val BoundAnalyzer         = analyzer("Bound", isIterative=false)
+    val MemoryAnalyzer        = analyzer("Memory", isExtern=true)
+    val AreaAnalyzer          = analyzer("Area", isExtern=true)
+    val LatencyAnalyzer       = analyzer("Latency", isExtern=true)
+    val OpsAnalyzer           = analyzer("Ops", isExtern=true)
+    val ReductionAnalyzer     = analyzer("Reduction", isExtern=true)
+    val ParameterAnalyzer     = analyzer("Parameter",isExtern=true)
 
-    val BoundAnalyzer = analyzer("Bound", isIterative=false)
-    val DSE = traversal("DSE", isExtern=true)
-    val MemoryAnalyzer = analyzer("Memory", isExtern=true)
-    val AreaAnalyzer = analyzer("Area", isExtern=true)
-    val LatencyAnalyzer = analyzer("Latency", isExtern=true)
-    val OpsAnalyzer = analyzer("Ops", isExtern=true)
-    val ReductionAnalyzer = analyzer("Reduction", isExtern=true)
+    // Transformers: Change or mirror IR
+    val UnitPipeTransformer   = transformer("UnitPipe", isExtern=true)
+    val Unrolling             = transformer("Unrolling", isExtern=true)
+    val ConstantFolding       = traversal("ConstantFolding", isExtern=true)
 
-    val ConstantFolding = traversal("ConstantFolding", isExtern=true)
-    //val RegisterFolding = traversal("RegisterFolding", isExtern=true)
-    //val MetaPipeRegInsertion = traversal("MetaPipeRegInsertion",isExtern=true)
-
-    val OffChipAnalyzer = traversal("OffChipAnalyzer", isExtern=true)
-
-    val ParameterAnalyzer = analyzer("Parameter",isExtern=true)
-
-    val Unrolling = transformer("Unrolling", isExtern=true)
-
-    val DotPrinter = traversal("DotIRPrinter", isExtern=true)
-    val Printer = traversal("SpatialPrinter", isExtern=true)
-    val PrinterLast = traversal("SpatialPrinterLast", isExtern=true)
-    val NameAnalyzer = traversal("NameAnalyzer", isExtern=true)
-
-    val PIRScheduling = analyzer("PIRSchedule", isExtern=true)
-    val PIRGen = traversal("PIRGen", isExtern=true)
-
+    // CGRA stuff
+    val PIRScheduling     = analyzer("PIRSchedule", isExtern=true)
+    val PIRGen            = traversal("PIRGen", isExtern=true) // Technically a codegen
     val PlasticineLatency = traversal("PlasticineLatencyAnalyzer", isExtern=true)
+
+    // --- Transformer ordering notes
+    // Controlle metadata doesn't dataflow order! Explicitly run control signal analyzer after transformers
 
     importGlobalAnalysis()
     importBoundAnalysis()
@@ -300,9 +298,6 @@ trait SpatialDSL extends ForgeApplication
     schedule(ConstantFolding)       // Constant folding
     schedule(GlobalAnalyzer)        // Add "global" annotations for newly created symbols after folding
 
-    //schedule(RegisterFolding) -- TODO: Not sure if register folding is safe yet
-    //schedule(Printer)
-
     // --- Post-DSE Analysis
     schedule(MemoryAnalyzer)        // Memory analyzer (to finalize banking/buffering)
     schedule(Printer)
@@ -311,14 +306,13 @@ trait SpatialDSL extends ForgeApplication
     schedule(PlasticineLatency)     // Plasticine latency
     schedule(Printer)
 
-// Temporarily disabled until moved to unrolling
-//    schedule(MetaPipeRegInsertion)  // Inserts registers between metapipe stages for counter signals
-
     // --- Design Elaboration
     schedule(ReductionAnalyzer)     // Reduce/accumulator specialization
     schedule(Unrolling)             // Pipeline unrolling
-    schedule(UnrolledControlAnalyzer) // Control signal metadata after unrolling
-    schedule(DotPrinter)             // Graph after unrolling
+
+    // --- Final analysis
+    schedule(UnrolledControl)       // Control signal metadata after unrolling
+    schedule(DotPrinter)            // Graph after unrolling
     schedule(Printer)
     schedule(PrinterLast)
     schedule(PIRGen)
