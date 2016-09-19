@@ -27,7 +27,6 @@ trait DSE extends Traversal {
 
   lazy val ctrlAnalyzer = new ControlSignalAnalyzer{val IR: DSE.this.IR.type = DSE.this.IR}
   lazy val paramAnalyzer = new ParameterAnalyzer{val IR: DSE.this.IR.type = DSE.this.IR}
-  //lazy val printer = new IRPrinterPlus{val IR: DSE.this.IR.type = DSE.this.IR}
   lazy val bndAnalyzer = new BoundAnalyzer with QuickTraversal{val IR: DSE.this.IR.type = DSE.this.IR}
   lazy val contention = new ContentionModel{val IR: DSE.this.IR.type = DSE.this.IR}
   lazy val memAnalyzer = new MemoryAnalyzer{val IR: DSE.this.IR.type = DSE.this.IR}
@@ -36,7 +35,6 @@ trait DSE extends Traversal {
   lazy val parParams = paramAnalyzer.parParams
   lazy val localMems = ctrlAnalyzer.localMems
   lazy val metapipes = ctrlAnalyzer.metapipes
-  //lazy val accFactors = ctrlAnalyzer.memAccessFactors.toList
   lazy val topController = ctrlAnalyzer.top
 
   override def run[A:Manifest](b: Block[A]) = {
@@ -44,16 +42,22 @@ trait DSE extends Traversal {
     ctrlAnalyzer.run(b)
     paramAnalyzer.run(b)
 
-    //if (debugMode && SpatialConfig.enableDSE) printer.run(b)
+    if (SpatialConfig.enableDSE) {
+      debug("Tile Sizes: ")
+      def ctx(x: Exp[Any]) = {
+        val c = topContext(mpos(x.pos)); s"${c.fileName}:${c.line}"
+      }
+      tileSizes.foreach{t => debug(s"  ${ctx(t)}: $t")}
+      debug("Parallelization Factors:")
+      parParams.foreach{t => debug(s"  ${ctx(t)}: $t")}
+      debug("Metapipelining Toggles:")
+      metapipes.foreach{t => debug(s"  ${ctx(t)}: $t")}
+    }
 
-    debug("Tile Sizes: ")
-    tileSizes.foreach{t => val name = nameOf(t).getOrElse(t.toString); debug(s"  $name")}
-    debug("Parallelization Factors:")
-    parParams.foreach{t => val name = nameOf(t).getOrElse(t.toString); debug(s"  $name")}
-    debug("Metapipelining Toggles:")
-    metapipes.foreach{t => debug(s"  ${mpos(t.pos).line}")}
-
-    if (SpatialConfig.enableDSE) dse(b)
+    if (SpatialConfig.enableDSE) {
+      val (space, restrict, numericFactors) = pruneSpace()
+      dse(b, space, restrict, numericFactors)
+    }
 
     debug("Freezing DSE parameters")
     tileSizes.foreach{p => p.fix}
@@ -81,9 +85,51 @@ trait DSE extends Traversal {
     }
   }*/
 
+  // A. Get lists of parameters and prune space
+  def pruneSpace() = {
+    val restrict = paramAnalyzer.restrict
+    val ranges   = paramAnalyzer.range
 
-  def dse[A:Manifest](b: Block[A]) {
-    // Specify FPGA target (hardcoded right now)/
+    val numericFactors = tileSizes ++ parParams
+
+    // HACK: All par factors for readers and writers of a given BRAM must be equal or one
+    /*for ((mem,factors) <- accFactors) {
+      val distFactors = factors.distinct
+      if (distFactors.length > 1) restrict ::= REqualOrOne(distFactors)
+    }*/
+
+    debug("Pruning design space...")
+    debug("Found the following parameter restrictions: ")
+    for (r <- restrict) { debug(s"  $r") }
+    for ((p,r) <- ranges if numericFactors.contains(p)) { debug(s"  $p: ${r.start}:${r.step}:${r.end}") }
+
+    // Prune single factors
+    val initialSpace = prune(numericFactors, ranges, restrict)
+
+    // Remove restrictions that have already been pruned for (1 param only)
+    val prunedRestrict = restrict.filterNot{r => r.deps.length <= 1}
+
+    // HACK: Don't sequentialize pipes with tile load/store children
+    val nonTxMetapipes = metapipes.filterNot(pipe => childrenOf(pipe).exists(isOffChipTransfer(_)))
+
+    val mps = nonTxMetapipes.map{mp => Domain(List(true,false), {c: Boolean => c match {case true => styleOf(mp) = CoarsePipe; case false => styleOf(mp) = SequentialPipe}; () }) }
+    val space = (initialSpace ++ mps)
+
+    debug("")
+    debug("Pruned space:")
+    if (debugMode) {
+      (numericFactors ++ nonTxMetapipes).zip(space).foreach{case (p, d) => debug(s"$p: $d")}
+    }
+
+    (space, prunedRestrict, numericFactors)
+  }
+
+
+  def dse[A:Manifest](b: Block[A], space: List[Domain[_]], restrict: Set[Restrict], numericFactors: List[Param[Int]]) {
+
+    def isLegalSpace() = restrict.forall(_.evaluate)
+
+    // B. Specify FPGA target (hardcoded right now)/
     val target = FPGAResourceSummary(alms=262400,regs=524800,dsps=1963,bram=2567,streams=13)
 
     val areaAnalyzer = new AreaAnalyzer{val IR: DSE.this.IR.type = DSE.this.IR}
@@ -94,50 +140,8 @@ trait DSE extends Traversal {
     bndAnalyzer.silence()
     memAnalyzer.silence()
 
-    bndAnalyzer.run(b)
-    //areaAnalyzer.run(b)
-    //cycleAnalyzer.run(b)
-
-    // A. Get lists of parameters
-    var restrict  = paramAnalyzer.restrict
-    val ranges    = paramAnalyzer.range
-
-    // HACK: All par factors for readers and writers of a given BRAM must be equal or one
-    /*for ((mem,factors) <- accFactors) {
-      val distFactors = factors.distinct
-      if (distFactors.length > 1) restrict ::= REqualOrOne(distFactors)
-    }*/
-
-    def isLegalSpace() = restrict.forall(_.evaluate)
-
     // C. Calculate space
     debug("Running DSE")
-    debug("")
-    debug("Found the following parameter restrictions: ")
-    val numericFactors = tileSizes ++ parParams
-
-    for (r <- restrict)   { debug(s"  $r") }
-    for ((p,r) <- ranges if numericFactors.contains(p)) { debug(s"  ${nameOf(p).getOrElse(p.toString)}: ${r.start}:${r.step}:${r.end}") }
-
-    // Prune single factors
-    val initialSpace = prune(numericFactors, ranges, restrict)
-
-    // Remove restrictions that have already been pruned for (1 param only)
-    restrict = restrict.filterNot{r => r.deps.length <= 1}
-
-    // Don't sequentialize pipes with tile load/store children
-    val nonTxMetapipes = metapipes.filterNot(pipe => childrenOf(pipe).exists(isOffChipTransfer(_)))
-
-    val mps = nonTxMetapipes.map{mp => Domain(List(true,false), {c: Boolean => c match {case true => styleOf(mp) = CoarsePipe; case false => styleOf(mp) = SequentialPipe}; () }) }
-    val space = (initialSpace ++ mps)
-
-    if (debugMode) {
-      debug("")
-      debug("Pruned space:")
-      (numericFactors ++ nonTxMetapipes).zip(space).foreach{case (p, d) =>
-        debug(nameOf(p).getOrElse(p.toString) + ": " + d.toString)
-      }
-    }
 
 
     val N = space.size
@@ -154,7 +158,8 @@ trait DSE extends Traversal {
     val size = spaceSize.toInt
 
     // --- Find all legal points
-    // FIXME: This could take a long time if space size is really large
+    // FIXME: This could take a long time if space size is really large.
+    // Maybe take a random sample of all points instead, accounting that some will be illegal?
     val legalPoints = ArrayBuffer[Int]()
 
     val legalStart = System.currentTimeMillis

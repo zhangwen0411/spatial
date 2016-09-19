@@ -140,6 +140,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       // Metadata for memory accesses
       portsOf(s).foreach{case (mem,ports) => portsOf(parPush, f(mem)) = ports }
       instanceIndicesOf(parPush, f(fifo)) = instanceIndicesOf(s, fifo)
+      topControllersOf(parPush, f(fifo)) = topControllersOf(s, fifo)
 
       cloneFuncs.foreach{func => func(parPush) }
       lanes.unify(s, parPush)
@@ -156,6 +157,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       lenOf(parPop) = lanes.length
       portsOf(s).foreach{case (mem,ports) => portsOf(parPop, f(mem)) = ports }
       instanceIndicesOf(parPop, f(fifo)) = instanceIndicesOf(s, fifo)
+      topControllersOf(parPop, f(fifo)) = topControllersOf(s, fifo)
 
       cloneFuncs.foreach{func => func(parPop) }
       lanes.split(s, parPop)(e._mT)
@@ -180,6 +182,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
       parIndicesOf(parStore) = lanes.map{i => accessIndicesOf(s).map(f(_)) }
       instanceIndicesOf(parStore, f(bram)) = instanceIndicesOf(s, bram)
       portsOf(s).foreach{case (mem,ports) => portsOf(parStore, f(mem)) = ports }
+      // Requires mirroring post-unrolling
+      topControllersOf(parStore, f(bram)) = topControllersOf(s, bram)
 
       cloneFuncs.foreach{func => func(parStore) }
       lanes.unify(s, parStore)
@@ -198,7 +202,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
       parIndicesOf(parLoad) = lanes.map{i => accessIndicesOf(s).map(f(_)) }
       instanceIndicesOf(parLoad, f(bram)) = instanceIndicesOf(s, bram)
       portsOf(s).foreach{case (mem,ports) => portsOf(parLoad, f(mem)) = ports }
-
+      // Requires mirroring post-unrolling
+      topControllersOf(parLoad, f(bram)) = topControllersOf(s, bram)
 
       cloneFuncs.foreach{func => func(parLoad) }
       lanes.split(s, parLoad)(e._mT)

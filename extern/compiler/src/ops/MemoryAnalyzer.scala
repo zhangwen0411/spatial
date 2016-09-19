@@ -150,6 +150,14 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
       portMap.flatMap(x => x.get(instIdx))  // Option[Controller]
     }
   }
+  object topControllersOf {
+    def update(access: Exp[Any], mem: Exp[Any], mapping: Option[Map[Int, Controller]]) {
+      if (mapping.isDefined) {
+        mapping.get.foreach{case (idx, ctrl) => topControllerOf(access, mem, idx) = ctrl }
+      }
+    }
+    def apply(access: Exp[Any], mem: Exp[Any]) = meta[AccessTopController](access).flatMap(_.mapping.get(mem))
+  }
 
   override def mirror[T<:Metadata](m: T, f: Transformer): T = m match {
     case MemInstanceIndices(map) =>
@@ -392,7 +400,7 @@ trait BankingBase extends Traversal {
           (lca,dist,access)
         }
         // Find accesses which require n-buffering, group by their controller
-        val metapipeLCAs = lcas.filter(_._2 > 0).groupBy(_._1).mapValues(_.map(_._3))
+        val metapipeLCAs = lcas.filter(_._2 != 0).groupBy(_._1).mapValues(_.map(_._3))
 
         // Hierarchical metapipelining is currently disallowed
         if (metapipeLCAs.keys.size > 1) throw UnsupportedNBufferException(mem, metapipeLCAs)
@@ -410,7 +418,11 @@ trait BankingBase extends Traversal {
           // Metapipelined case
           case Some(ctrl) =>
             // Partition accesses based on whether they're n-buffered or time multiplexed with the n-buffer
-            val (nbuf, tmux) = accesses.partition{access => lca(access.controller, ctrl) == ctrl}
+            val (nbuf, tmux) = accesses.partition{access =>
+              val common = lca(access.controller, ctrl).get
+              debug(s"    lca( $access, $ctrl ) = $common ")
+              common == ctrl
+            }
 
             val ports = Map((nbuf.map{a => a -> Set(bufferPorts(a)) } ++
                              tmux.map{a => a -> List.tabulate(depth){i=>i}.toSet}
@@ -562,6 +574,7 @@ trait BRAMBanking extends BankingBase {
     val strides = if (indices.length == 1) List(allStrides.last) else allStrides
 
     val Def(d) = access
+    debug(s"")
     debug(s"  access:  $access = $d")
     debug(s"  indices: $indices")
     debug(s"  pattern: $pattern")
@@ -593,7 +606,7 @@ trait BRAMBanking extends BankingBase {
 
     val duplicates = factors.filter{factor => !used(factor)}.map{case Exact(p) => p.toInt}.fold(1){_*_}
 
-    debug(s"Inferred banking: " + banking.mkString(", ") + s" (duplicates = $duplicates)")
+    debug(s"  Inferred: " + banking.mkString(", ") + s" (duplicates = $duplicates)")
     (banking, duplicates)
   }
 }

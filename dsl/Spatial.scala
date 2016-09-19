@@ -273,7 +273,7 @@ trait SpatialDSL extends ForgeApplication
     // --- Pre-DSE analysis
     schedule(OffChipAnalyzer)       // Check dimensions of offchip memories
     schedule(StageAnalyzer)         // Get number of stages in each control node
-    schedule(ControlSignalAnalyzer) // Variety of control signal related metadata (TODO: Needed here? Run by DSE)
+    //schedule(ControlSignalAnalyzer) // Variety of control signal related metadata (TODO: Needed here? Run by DSE)
     schedule(SpatialAffineAnalysis) // Access patterns
     schedule(DotPrinter)            // Graph prior to unrolling
 
