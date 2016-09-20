@@ -71,12 +71,10 @@ trait SpatialAffineAnalyzer extends AffineAnalyzer {
 
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) {
     rhs match {
-      case EatReflect(e:Pipe_fold[_,_]) =>
-        accessIndicesOf(lhs) = e.inds
-        accessPatternOf(lhs) = e.inds.map{i => LinearAccess(i)}
-      case EatReflect(e:Accum_fold[_,_]) =>
-        accessIndicesOf(lhs) = e.indsInner
-        accessPatternOf(lhs) = e.indsInner.map{i => LinearAccess(i)}
+      case EatReflect(e:Scatter[_]) =>
+        accessPatternOf(lhs) = List(RandomAccess)
+      case EatReflect(e:Gather[_]) =>
+        accessPatternOf(lhs) = List(RandomAccess)
       case _ =>
     }
     super.traverse(lhs,rhs)

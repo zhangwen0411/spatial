@@ -8,7 +8,7 @@
 ##########
 # CONFIG #
 ##########
-test_name="CharBramTest" # Label for data to be scraped
+test_name="CharStoreTest" # Label for data to be scraped
 testname_as_prefix="false" # Flag indicating if test_name is a prefix (for printing to csv with multiple tests)
 base_dir="./${test_name}" # Move whatever maxj/ you want to scrape to this dir
 insertion_file="/home/mattfel/characterization/${test_name}.csv" # Specify file that holds current unpopulated table
@@ -167,7 +167,7 @@ for d in "${directories[@]}"; do
 
 	# Pop in data
 	cmd="sed -i 's/,${tag},/,${data},,,,,,,,,,,,,,,,${tag}/g' ${fname}"
-	echo $cmd
+	# echo $cmd
 	eval ${cmd}
 
 done

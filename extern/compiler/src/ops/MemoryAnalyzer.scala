@@ -264,7 +264,7 @@ trait BankingBase extends Traversal {
       }
     }
   }
-  val allowConcurrentReaders = false
+  val allowConcurrentReaders = true
   val allowConcurrentWriters = false
   val allowPipelinedReaders  = true
   val allowPipelinedWriters  = true
@@ -569,7 +569,6 @@ trait BRAMBanking extends BankingBase {
   import IR._
 
   override def bankAccess(mem: Exp[Any], access: Exp[Any]): (List[Banking], Int) = {
-    val indices = accessIndicesOf(access)
     val pattern = accessPatternOf(access)
     val allStrides = constDimsToStrides(dimsOf(mem).map{case Exact(d) => d.toInt})
     val strides = if (indices.length == 1) List(allStrides.last) else allStrides
@@ -577,7 +576,6 @@ trait BRAMBanking extends BankingBase {
     val Def(d) = access
     debug(s"")
     debug(s"  access:  $access = $d")
-    debug(s"  indices: $indices")
     debug(s"  pattern: $pattern")
 
     val factors = unrollFactorsOf(access) diff unrollFactorsOf(mem) // Parallelization factors relative to this memory
@@ -596,7 +594,7 @@ trait BRAMBanking extends BankingBase {
       else 1
     }
 
-    val banking = (pattern, indices, strides).zipped.map{ case (pattern, index, stride) => pattern match {
+    val banking = (pattern, strides).zipped.map{ case (pattern, stride) => pattern match {
       case AffineAccess(Exact(a),i,b) => StridedBanking(a.toInt*stride, bankFactor(i))
       case StridedAccess(Exact(a),i)  => StridedBanking(a.toInt*stride, bankFactor(i))
       case OffsetAccess(i,b)          => StridedBanking(stride, bankFactor(i))

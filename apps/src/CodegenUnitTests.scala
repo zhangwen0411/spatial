@@ -249,7 +249,6 @@ trait ParFifoLoadApp extends SpatialApp {
   }
 }
 
-// 7
 object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args:
 trait FifoLoadStoreApp extends SpatialApp {
   type T = SInt
@@ -295,14 +294,12 @@ trait FifoLoadStoreApp extends SpatialApp {
     (0 until arraySize) foreach { i => print(dst(i) + " ") }
     println("")
 
-
     val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
     println("PASS: " + cksum + " (FifoLoadStore)")
 
   }
 }
 
-// 8
 object SimpleReduce extends SpatialAppCompiler with SimpleReduceApp // Args: 72
 trait SimpleReduceApp extends SpatialApp {
   type T = SInt
@@ -392,7 +389,6 @@ trait SimpleReduceApp extends SpatialApp {
 //   }
 // }
 
-// 9
 object Niter extends SpatialAppCompiler with NiterApp // Args: 9216
 trait NiterApp extends SpatialApp {
   type T = SInt
@@ -492,7 +488,6 @@ trait SimpleFoldApp extends SpatialApp {
   }
 }
 
-// 11
 object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args:
 trait Memcpy2DApp extends SpatialApp {
   type T = SInt
@@ -545,7 +540,6 @@ trait Memcpy2DApp extends SpatialApp {
   }
 }
 
-// 12
 object BlockReduce1D extends SpatialAppCompiler with BlockReduce1DApp // Args: 1920
 trait BlockReduce1DApp extends SpatialApp {
   type T = SInt
@@ -637,3 +631,89 @@ trait MultiplexedWriteApp extends SpatialApp {
   }
 }
 
+object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Args: 192
+trait ScatterGatherApp extends SpatialApp {
+  type T = SInt
+  type Array[T] = ForgeArray[T]
+  val N = 1920
+
+  val tileSize = 96
+
+  def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
+
+    val numAddrs = ArgIn[SInt]; setArg(numAddrs, size)
+
+    val srcAddrs = OffChipMem[T](numAddrs)
+    val gatherData = OffChipMem[T](dataSize)
+    val scatterResult = OffChipMem[T](dataSize)
+
+    setMem(srcAddrs, addrs)
+    setMem(gatherData, offchip_data)
+
+    Accel {
+      val addrs = BRAM[T](numAddrs)
+      val gathered = BRAM[T](numAddrs)
+      Pipe {addrs := srcAddrs(0::numAddrs, param(1))}
+      Pipe {gathered := gatherData(addrs)}
+      Pipe {scatterResult(addrs) := gathered}
+    }
+    getMem(scatterResult)
+  }
+
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def main() = {
+    // val size = args(unit(0)).to[SInt]
+    val size = args(0).to[SInt]
+    val dataSize = args(1).to[SInt] // Should be way bigger than size
+    val addrs = Array.tabulate[SInt](size) { i => i*2 }
+    val offchip_data = Array.fill(dataSize) {random[SInt](dataSize)}
+
+    val received = scattergather(addrs, offchip_data, size, dataSize)
+
+    val gold = Array.tabulate(tileSize) { i => if (addrs.map{_==i}.reduce{_||_}) {offchip_data(i)} else {0} }
+
+    printArr(gold, "gold:")
+    printArr(received, "received:")
+    val cksum = received.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (ScatterGather)")
+
+  }
+}
+
+
+object InOutArg extends SpatialAppCompiler with InOutArgApp // Args: 7
+trait InOutArgApp extends SpatialApp {
+
+  def main() {
+
+    // Declare SW-HW interface vals
+    val x = ArgIn[SInt]
+    val y = ArgOut[SInt]
+    val N = args(0).to[SInt]
+
+    // Connect SW vals to HW vals
+    setArg(x, N)
+
+    // Create HW accelerator
+    Accel {
+      Pipe { y := x + 4 }
+    }
+
+
+    // Extract results from accelerator
+    val result = getArg(y)
+
+    // Create validation checks and debug code
+    val gold = N + 4
+    println("expected: " + gold)
+    println("result: " + result)
+
+    val cksum = gold == result
+    println("PASS: " + cksum + " (InOutArg)")
+  }
+}
