@@ -18,6 +18,7 @@ trait ControllerTemplateOpsExp extends ControllerTemplateOps with MemoryTemplate
 
   type Idx = FixPt[Signed,B32,B0]
 
+
   // --- Nodes
   case class Pipe_foreach(cchain: Exp[CounterChain], func: Block[Unit], inds: List[Sym[Idx]])(implicit val ctx: SourceContext) extends Def[Pipeline]
   case class Pipe_fold[T,C[T]] (
