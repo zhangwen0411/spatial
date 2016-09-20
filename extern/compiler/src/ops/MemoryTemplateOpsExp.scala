@@ -13,6 +13,7 @@ import spatial.compiler._
 import spatial.compiler.ops._
 
 trait BlockRAM[T]
+trait SparseTile[T]
 trait SpatialFIFO[T]
 trait SpatialCAM[K,V]
 trait SpatialVector[T]
@@ -26,6 +27,7 @@ trait SpatialIndices
 trait MemoryTemplateTypesExp extends MemoryTemplateTypes with BaseExp {
   type OffChipMem[T] = DRAM[T]
   type BRAM[T] = BlockRAM[T]
+  type STile[T] = SparseTile[T]
   type FIFO[T] = SpatialFIFO[T]
   type CAM[K,V] = SpatialCAM[K,V]
   type Vector[T] = SpatialVector[T]
@@ -38,6 +40,7 @@ trait MemoryTemplateTypesExp extends MemoryTemplateTypes with BaseExp {
   def isPipeline[T:Manifest] = isSubtype(manifest[T].runtimeClass, classOf[SpatialPipeline])
   def isRegister[T:Manifest] = isSubtype(manifest[T].runtimeClass, classOf[Register[_]])
   def isBRAM[T:Manifest]     = isSubtype(manifest[T].runtimeClass, classOf[BlockRAM[_]])
+  def isSparseTile[T:Manifest] = isSubtype(manifest[T].runtimeClass, classOf[SparseTile[_]])
   def isFIFO[T:Manifest]     = isSubtype(manifest[T].runtimeClass, classOf[SpatialFIFO[_]])
   def isCache[T:Manifest]    = isSubtype(manifest[T].runtimeClass, classOf[CACHE[_]])
   def isCAM[T:Manifest]      = isSubtype(manifest[T].runtimeClass, classOf[SpatialCAM[_,_]])
@@ -45,6 +48,7 @@ trait MemoryTemplateTypesExp extends MemoryTemplateTypes with BaseExp {
 
   def offchipMemManifest[T:Manifest]: Manifest[OffChipMem[T]] = manifest[DRAM[T]]
   def bramManifest[T:Manifest]: Manifest[BRAM[T]] = manifest[BlockRAM[T]]
+  def stileManifest[T:Manifest]: Manifest[STile[T]] = manifest[SparseTile[T]]
   def fifoManifest[T:Manifest]: Manifest[FIFO[T]] = manifest[SpatialFIFO[T]]
   def camManifest[K:Manifest,V:Manifest]: Manifest[CAM[K,V]] = manifest[SpatialCAM[K,V]]
   def vectorManifest[T:Manifest]: Manifest[Vector[T]] = manifest[SpatialVector[T]]
@@ -532,6 +536,54 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         emitComment(s""" Offchip_new(${quote(size)}) {""")
         alwaysGen { emit(s"""int ${quote(sym)} = ${getNextLMemAddr()};""") }
         emitComment(s""" Offchip_new(${quote(size)}) }""")
+
+    case Gather(mem,local,addrs,len,par) =>
+      print_stage_prefix(s"Gather: ${quote(sym)}", false)
+      // TODO: Should Matt assume instanceIndicesOf returns set of size 1?
+      val i = instanceIndicesOf(sym, addrs).head
+
+      val parStr = if (quote(par) == "1") {
+//         emit(s"""DFEVar ${quote(sym)}_waddr = ${quote(addrs)}_$i.type.newInstance(this);
+// DFEVar ${quote(sym)}_wdata = ${quote(local)}_0.type.newInstance(this); // Assume duplicate _0 exists
+// DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
+        ""
+      } else {
+        "${quote(par)},"
+      }
+      emit(s"""DFEVector<DFEVar> ${quote(sym)}_waddr = new DFEVectorType<DFEVar>(${quote(addrs)}_$i.type, ${quote(par)}).newInstance(this);
+DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0.type, ${quote(par)}).newInstance(this);
+DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")        
+
+      emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
+      emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
+      emit(s"""GatherLib ${quote(sym)} = new GatherLib(
+        this,
+        ${quote(sym)}_en, ${quote(sym)}_done, $parStr
+        ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
+        ${quote(addrs)}_$i, 
+        ${quote(mem)},  "${quote(mem)}_${quote(sym)}_in",
+        ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
+      duplicatesOf(local).zipWithIndex.foreach { case (m,i) => 
+        emit(s"""${quote(local)}_$i.connectWport(${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
+      }
+      print_stage_suffix(quote(sym),false)
+
+    case Scatter(mem,local,addrs,len,par) =>
+      print_stage_prefix(s"Scatter: ${quote(sym)}", false)
+      // TODO: Should Matt assume instanceIndicesOf returns set of size 1?
+      val i = instanceIndicesOf(sym, addrs).head
+      // TODO: Should Matt assume instanceIndicesOf returns set of size 1?
+      val j = instanceIndicesOf(sym, local).head
+
+      emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
+      emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
+      emit(s"""ScatterLib ${quote(sym)} = new ScatterLib(
+        this,
+        ${quote(sym)}_en, ${quote(sym)}_done,
+        ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
+        ${quote(addrs)}_$i, ${quote(local)}_$j, 
+        ${quote(mem)}, "${quote(mem)}_${quote(sym)}_out");""")
+      print_stage_suffix(quote(sym),false)
 
     case Offchip_load_cmd(mem, fifo, ofs, len, par) =>
       print_stage_prefix(s"Offchip Load: ${quote(sym)}", false)
