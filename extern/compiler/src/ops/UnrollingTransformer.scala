@@ -310,7 +310,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
   // Create a single block with map + reduce + load + reduce + store
   // Still have to keep acc separate to make sure load isn't lifted out of the block (e.g. for registers)
-  def unrollPipeFold[T,C[T]](lhs: Exp[Any], rhs: Pipe_fold[T,C])(implicit ctx: SourceContext, numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
+  def unrollPipeFold[T,C[T]](orig: Exp[Any], lhs: Exp[Any], rhs: Pipe_fold[T,C])(implicit ctx: SourceContext, numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
     val Pipe_fold(cchain,accum,zero,foldAccum,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) = rhs
     aliasOf(acc) = accum
     scrubSym(lhs.asInstanceOf[Sym[Any]])
@@ -318,12 +318,16 @@ trait UnrollingTransformer extends MultiPassTransformer {
     val lanes = Unroller(cchain, inds)
     val inds2 = lanes.indices
 
+    debug(s"Reduce $lhs (was $orig)")
+
     val blk = reifyBlock {
       val mapResults = unrollMap(func, lanes)(mT)
       val valids = boundChecks(cchain, inds2)
 
       if (isOuterLoop(lhs)) {
         val dummyInner = fresh[Any]
+        debug(s"Adding mapping $orig,$lhs -> $dummyInner")
+        register(orig, dummyInner)
         register(lhs, dummyInner)
         val innerBlk = reifyBlock {
           val newIdx = inlineBlock(iFunc)
@@ -332,6 +336,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
         val innerPipe = reflectEffect[Unit](Unit_pipe(innerBlk)(ctx), summarizeEffects(innerBlk) andAlso Simple())
         styleOf(innerPipe) = InnerPipe
         register(dummyInner, innerPipe)
+        remove(orig)
         remove(lhs)
       }
       else {
@@ -340,6 +345,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
       }
     }
     val newPipe = reflectEffect(ParPipeReduce(cchain, accum, blk, rFunc, inds2, acc, rV)(ctx,mT,mC))
+
+    register(lhs, newPipe)
 
     isInnerAccum(accum) = true
     isInnerAccum(acc) = true
@@ -353,7 +360,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
     newPipe
   }
 
-  def unrollAccumFold[T,C[T]](lhs: Exp[Any], rhs: Accum_fold[T,C])(implicit ctx: SourceContext, numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
+  def unrollAccumFold[T,C[T]](orig: Exp[Any], lhs: Exp[Any], rhs: Accum_fold[T,C])(implicit ctx: SourceContext, numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
     val Accum_fold(ccMap,ccRed,accum,zero,foldAccum,iFunc,func,ld1,ld2,rFunc,st,indsMap,indsRed,idx,part,acc,res,rV) = rhs
     aliasOf(acc) = accum
     scrubSym(lhs.asInstanceOf[Sym[Any]])
@@ -374,7 +381,10 @@ trait UnrollingTransformer extends MultiPassTransformer {
       val mapResults = unrollMap(func, mapLanes)
       val validsMap = boundChecks(ccMap, indsMap2)
 
-      register(lhs, dummyInner) // For metadata mirroring in reduction
+      register(orig, dummyInner) // For metadata mirroring in reduction
+      register(lhs, dummyInner)
+      debug(s"Fold $lhs (was $orig)")
+      debug(s"Adding mapping $orig -> $dummyInner")
 
       if (isUnitCounterChain(ccRed)) {
         withSubstScope(acc -> accum){
@@ -470,9 +480,12 @@ trait UnrollingTransformer extends MultiPassTransformer {
         styleOf(innerPipe) = InnerPipe
         register(dummyInner, innerPipe)
       }
+      remove(orig)
+      remove(lhs)
     }
-    remove(lhs)
     val newPipe = reflectEffect(ParPipeForeach(ccMap, blk, indsMap2), summarizeEffects(blk).star andAlso Simple() )
+
+    register(lhs, newPipe)
 
     val Def(d) = newPipe
     debug(s"$newPipe = $d")
@@ -535,8 +548,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
   // Mirrors first prior to attempting to transform -- need to scrub mirrored symbols if they are not used
   override def transform[A:Manifest](lhs: Sym[A], rhs: Def[A])(implicit ctx: SourceContext) = self_mirror(lhs, rhs) match {
     case lhs2@Deff(e: Pipe_foreach) => Some( unrollForeach(lhs2, e) )
-    case lhs2@Deff(e: Pipe_fold[_,_]) => Some( unrollPipeFold(lhs2, e)(e.ctx,e.numT,e.mT,e.mC) )
-    case lhs2@Deff(e: Accum_fold[_,_]) => Some( unrollAccumFold(lhs2, e)(e.ctx,e.numT,e.mT,e.mC) )
+    case lhs2@Deff(e: Pipe_fold[_,_]) => Some( unrollPipeFold(lhs, lhs2, e)(e.ctx,e.numT,e.mT,e.mC) )
+    case lhs2@Deff(e: Accum_fold[_,_]) => Some( unrollAccumFold(lhs, lhs2, e)(e.ctx,e.numT,e.mT,e.mC) )
     case lhs2 => Some(lhs2) // Just use mirrored symbol by default
   }
 
