@@ -126,8 +126,8 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
     def update(access: Exp[Any], mem: Exp[Any], ports: Map[Int,Set[Int]]) {
       ports.foreach{case (instIdx, port) => portsOf(access, mem, instIdx) = port }
     }
-    def apply(access: Exp[Any]): Map[Exp[Any], Map[Int,Set[Int]]] = {
-      meta[MemPortIndex](access).map(_.mapping).getOrElse(Map.empty)
+    def apply(access: Exp[Any], mem: Exp[Any]): Map[Int,Set[Int]] = {
+      meta[MemPortIndex](access).get.mapping.apply(mem) // Should always be defined
     }
   }
 
@@ -456,6 +456,7 @@ trait BankingBase extends Traversal {
 
   final def bank(mem: Exp[Any]) {
     debug("")
+    debug("-----------------------------------")
     debug(s"Inferring instances for memory $mem " + nameOf(mem).map{n => "(" + n + ")"}.getOrElse(""))
 
     val writers = writersOf(mem)

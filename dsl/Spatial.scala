@@ -224,6 +224,7 @@ trait SpatialDSL extends ForgeApplication
     val DotPrinter            = traversal("DotIRPrinter", isExtern=true)
     val Printer               = traversal("SpatialPrinter", isExtern=true)
     val PrinterLast           = traversal("SpatialPrinterLast", isExtern=true)
+    val StructurePrint        = analyzer("Structure", isExtern=true)
 
     // Analyzers: Set metadata
     val NameAnalyzer          = traversal("NameAnalyzer", isExtern=true)
@@ -315,6 +316,7 @@ trait SpatialDSL extends ForgeApplication
     schedule(DotPrinter)            // Graph after unrolling
     schedule(Printer)
     schedule(PrinterLast)
+    schedule(StructurePrint)
     schedule(PIRGen)
 
     // External groups

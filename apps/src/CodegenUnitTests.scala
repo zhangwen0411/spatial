@@ -596,7 +596,6 @@ trait BlockReduce1DApp extends SpatialApp {
   }
 }
 
-
 object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Args: 192 
 trait ScatterGatherApp extends SpatialApp {
   type T = SInt
@@ -685,3 +684,38 @@ trait InOutArgApp extends SpatialApp {
     println("PASS: " + cksum + " (InOutArg)")
   }
 }
+
+object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteApp
+trait MultiplexedWriteApp extends SpatialApp {
+  type Array[T] = ForgeArray[T]
+
+  val tileSize = 16
+
+  def main() = {
+    val N = 1024
+    val T = param(tileSize)
+    val P = param(4)
+    val I = 5.as[SInt]
+    val weights = OffChipMem[SInt](N)
+    val inputs  = OffChipMem[SInt](N)
+    Accel {
+      val wt = BRAM[SInt](T)
+      val in = BRAM[SInt](T)
+      Sequential(N by T){i =>
+        wt := weights(i::i+T)
+        in := inputs(i::i+T)
+
+        // Some math nonsense (definitely not a correct implementation of anything)
+        Pipe(I by 1){x =>
+          Pipe(T par P){j => wt(j) = wt(j) - ((wt(j) - in(j))/in(j)) }
+          val sum = Reduce(T par P)(0.as[SInt]){j => wt(j) }{_+_}
+          Pipe(T par P){j => wt(j) = (wt(j) * tileSize) / sum }
+
+          weights(i::i+T) := wt
+        }
+      }
+
+    }
+  }
+}
+
