@@ -3,6 +3,7 @@ package spatial.compiler.ops
 import scala.reflect.{Manifest,SourceContext}
 import scala.virtualization.lms.internal.{Traversal,NestedBlockTraversal}
 import scala.virtualization.lms.common.EffectExp
+import scala.virtualization.lms.util.GraphUtil
 
 import spatial.shared._
 import spatial.shared.ops._
@@ -351,43 +352,115 @@ trait SpatialTraversalTools extends NestedBlockTraversal {
 }
 
 
-object ReductionTreeAnalysis {
-  /*
-    Calculate delay line costs:
-    a. Determine time (in cycles) any given input or internal signal needs to be delayed
-    b. Distinguish each delay line as a separate entity
+// --- Controller helper functions
+trait ControllerTools extends Traversal {
+  val IR: SpatialExp with NodeMetadataOpsExp
+  import IR.{__ifThenElse => _, infix_until => _, assert => _, _}
 
-    Is there a concise equation that can capture this? Haven't been able to come up with one.
-    E.g.
-      8 inputs => perfectly balanced binary tree, no delay paths
-      9 inputs => 1 path of length 3
-      85 inputs => 3 paths with lengths 2, 1, and 1
-  */
-  def reductionTreeDelays(nLeaves: Int): List[Long] = {
-    if ( (nLeaves & (nLeaves - 1)) == 0) Nil // Specialize for powers of 2
-    // Could also have 2^k + 1 case (delay = 1 path of length k)
+  /**
+   * @returns The least common ancestor (LCA) controller of two controllers
+   **/
+  def lca(a: Controller, b: Controller) = GraphUtil.leastCommonAncestor[Controller](a, b, {node => parentOf(node)})
+
+  /**
+   * Pipeline distance between controllers a and b:
+   * If a and b have a least common ancestor which is neither a nor b,
+   * this is defined as the dataflow distance between the LCA's children which contain a and b
+   * When a and b are equal, the distance is defined as zero.
+   *
+   * TODO: How is distance defined when the LCA is a xor b?
+   * @returns The LCA of a and b and the pipeline distance.
+   */
+  def lcaWithDistance(a: Controller, b: Controller): (Controller, Int) = {
+    if (a == b) (a, 0)
     else {
-      def reduceLevel(nNodes: Int, completePaths: List[Long], currentPath: Long): List[Long] = {
-        if (nNodes <= 1) completePaths  // Stop when 1 node is remaining
-        else if (nNodes % 2 == 0) {
-          // For an even number of nodes, we don't need any delays - all current delay paths end
-          val allPaths = completePaths ++ (if (currentPath > 0) List(currentPath) else Nil)
-          reduceLevel(nNodes/2, allPaths, 0L)
-        }
-        // For odd number of nodes, always delay exactly one signal, and keep delaying that signal until it can be used
-        else reduceLevel((nNodes-1)/2 + 1, completePaths, currentPath+1)
-      }
+      val (lca, pathA, pathB) = GraphUtil.leastCommonAncestorWithPaths[Controller](a, b, {node => parentOf(node)})
+      if (lca.isEmpty) throw NoCommonControllerException(a,b)
 
-      reduceLevel(nLeaves, Nil, 0L)
+      val parent = lca.get
+      //debug(s"lca($a, $b) = $parent [outer = ${isOuterControl(parent)}]")
+
+      if (isOuterControl(parent)) {
+        val topA = if (a == parent) parent else pathA.head
+        val topB = if (b == parent) parent else pathB.head
+        val children = parent +: childrenOf(parent)
+
+        // ISSUE #2: Children assumed to be a linear sequence of stages
+        val idxA = children.indexOf(topA)
+        val idxB = children.indexOf(topB)
+
+        if (idxA < 0) throw LCADistanceException(a, b)
+        if (idxB < 0) throw LCADistanceException(b, a)
+
+        //debug(s"topA = $topA ($idxA), topB = $topB ($idxB), dist = ${idxA - idxB}")
+
+        (parent, idxB - idxA) // Negative means B comes before A
+      }
+      else (parent, 0)
     }
   }
 
-  def reductionTreeHeight(nLeaves: Int): Int = {
-    def treeLevel(nNodes: Int, curHeight: Int): Int = {
-      if (nNodes <= 1) curHeight
-      else if (nNodes % 2 == 0) treeLevel(nNodes/2, curHeight + 1)
-      else treeLevel((nNodes - 1)/2 + 1, curHeight + 1)
+  /**
+   * Coarse-grained pipeline distance between accesses a and b.
+   * If the LCA controller of a and b is a metapipeline, the pipeline distance
+   * of the respective controllers for a and b. Otherwise zero.
+   *
+   * // TODO: How is this defined for streaming cases?
+   * @returns The LCA of a and b and the coarse-grained pipeline distance
+   **/
+  def lcaWithCoarseDistance(a: Access, b: Access): (Controller, Int) = {
+    val (lca, dist) = lcaWithDistance(a.controller, b.controller)
+    val coarseDistance = if (isMetaPipe(lca)) dist else 0
+    (lca, coarseDistance)
+  }
+
+  /**
+   * @returns The child of the top controller which contains the given access.
+   * Undefined if the access is not contained within a child of the top controller
+   **/
+  def childContaining(top: Controller, access: Access) = {
+    val child = access.controller
+    val (lca, pathA, pathB) = GraphUtil.leastCommonAncestorWithPaths[Controller](top,child, {node => parentOf(node)})
+
+    val accessController = pathB.head
+    if (top == accessController || lca.isEmpty || top != lca.get)
+      throw UndefinedChildException(top, access)
+
+    accessController
+  }
+
+  /**
+   * Returns metapipe controller for given accesses
+   **/
+  def findMetapipe(mem: Exp[Any], readers: List[Access], writers: List[Access]) = {
+    val accesses = readers ++ writers
+    assert(accesses.nonEmpty)
+
+    val anchor = if (readers.nonEmpty) readers.head else writers.head
+    debug(s"  anchor = $anchor")
+
+    val lcas = accesses.map{access =>
+      val (lca,dist) = lcaWithCoarseDistance(anchor, access)
+      debug(s"    lca($anchor, $access) = $lca ($dist)")
+      (lca,dist,access)
     }
-    treeLevel(nLeaves, 0)
+    // Find accesses which require n-buffering, group by their controller
+    val metapipeLCAs = lcas.filter(_._2 != 0).groupBy(_._1).mapValues(_.map(_._3))
+
+    // Hierarchical metapipelining is currently disallowed
+    if (metapipeLCAs.keys.size > 1) throw UnsupportedNBufferException(mem, metapipeLCAs)
+
+    val metapipe = metapipeLCAs.keys.headOption
+
+    val minDist = lcas.map(_._2).min
+
+    // Port 0: First stage to write/read
+    // Port X: X stage(s) after first stage
+    val ports = Map(lcas.map{grp => grp._3 -> (grp._2 - minDist)}:_*)
+
+    debug(s"  metapipe = $metapipe")
+    ports.foreach{case (access, port) => debug(s"    - $access : port #$port")}
+
+    (metapipe, ports)
   }
 }

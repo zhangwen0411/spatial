@@ -325,19 +325,12 @@ trait UnrollingTransformer extends MultiPassTransformer {
       val valids = boundChecks(cchain, inds2)
 
       if (isOuterLoop(lhs)) {
-        val dummyInner = fresh[Any]
-        debug(s"Adding mapping $orig,$lhs -> $dummyInner")
-        register(orig, dummyInner)
-        register(lhs, dummyInner)
         val innerBlk = reifyBlock {
           val newIdx = inlineBlock(iFunc)
           unrollReduce(lhs, accum, mapResults, valids, zero, rFunc, newIdx, ld, st, idx, res, rV)(mT,numT)
         }
         val innerPipe = reflectEffect[Unit](Unit_pipe(innerBlk)(ctx), summarizeEffects(innerBlk) andAlso Simple())
         styleOf(innerPipe) = InnerPipe
-        register(dummyInner, innerPipe)
-        remove(orig)
-        remove(lhs)
       }
       else {
         val newIdx = inlineBlock(iFunc)
@@ -346,12 +339,9 @@ trait UnrollingTransformer extends MultiPassTransformer {
     }
     val newPipe = reflectEffect(ParPipeReduce(cchain, accum, blk, rFunc, inds2, acc, rV)(ctx,mT,mC))
 
-    register(lhs, newPipe)
-
     isInnerAccum(accum) = true
     isInnerAccum(acc) = true
     aliasOf(acc) = accum
-    debug(s"Setting alias of $acc to $accum")
 
     val Def(d) = newPipe
     debug(s"$newPipe = $d")
@@ -381,17 +371,11 @@ trait UnrollingTransformer extends MultiPassTransformer {
       val mapResults = unrollMap(func, mapLanes)
       val validsMap = boundChecks(ccMap, indsMap2)
 
-      register(orig, dummyInner) // For metadata mirroring in reduction
-      register(lhs, dummyInner)
-      debug(s"Fold $lhs (was $orig)")
-      debug(s"Adding mapping $orig -> $dummyInner")
-
       if (isUnitCounterChain(ccRed)) {
         withSubstScope(acc -> accum){
 
           val innerBlk = reifyBlock {
             val newIdx = inlineBlock(iFunc)
-            debug(s"Unrolling intermediate loads for accum fold: ")
             val loads = mapResults.map{mem =>
               duringClone{e =>
                 //instanceIndicesOf(e, mem) = instanceIndicesOf(lhs, partial)
@@ -407,7 +391,6 @@ trait UnrollingTransformer extends MultiPassTransformer {
           }
           val innerPipe = reflectEffect[Unit](Unit_pipe(innerBlk)(ctx), summarizeEffects(innerBlk) andAlso Simple())
           styleOf(innerPipe) = InnerPipe
-          register(dummyInner, innerPipe)
         }
       }
       else {
@@ -474,18 +457,12 @@ trait UnrollingTransformer extends MultiPassTransformer {
         }
         val innerPipe = reflectEffect(ParPipeReduce(ccRed, accum, innerBlk, rFunc, indsRed2, acc, rV), summarizeEffects(innerBlk).star andAlso Simple() andAlso Write(List(accum.asInstanceOf[Sym[C[T]]])) )
         aliasOf(acc) = accum
-        debug(s"Setting alias of $acc to $accum")
         isInnerAccum(accum) = true
         isInnerAccum(acc) = true
         styleOf(innerPipe) = InnerPipe
-        register(dummyInner, innerPipe)
       }
-      remove(orig)
-      remove(lhs)
     }
     val newPipe = reflectEffect(ParPipeForeach(ccMap, blk, indsMap2), summarizeEffects(blk).star andAlso Simple() )
-
-    register(lhs, newPipe)
 
     val Def(d) = newPipe
     debug(s"$newPipe = $d")
@@ -527,7 +504,6 @@ trait UnrollingTransformer extends MultiPassTransformer {
       val b2 = withSubstScope( (i.flatten.zip(i2.flatten) ++ List(acc -> acc2)):_*) { f(b) }
       val rF2 = withSubstScope(rV._1 -> rV2._1, rV._2 -> rV2._2){ f(rF) }
       aliasOf(acc2) = a2
-      debug(s"Setting alias of $acc2 to $a2")
       reflectMirrored(Reflect(ParPipeReduce(f(cc),a2,b2,rF2,i2,acc2,rV2)(e.ctx,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
 
     case EatReflect(e@Bram_store(bram,addr,value)) =>

@@ -238,6 +238,7 @@ trait SpatialDSL extends ForgeApplication
     val SpatialAffineAnalysis = analyzer("SpatialAffine", isExtern=true)
     val BoundAnalyzer         = analyzer("Bound", isIterative=false)
     val MemoryAnalyzer        = analyzer("Memory", isExtern=true)
+    val BufferAnalyzer        = analyzer("Buffer", isExtern=true)
     val AreaAnalyzer          = analyzer("Area", isExtern=true)
     val LatencyAnalyzer       = analyzer("Latency", isExtern=true)
     val OpsAnalyzer           = analyzer("Ops", isExtern=true)
@@ -313,6 +314,7 @@ trait SpatialDSL extends ForgeApplication
 
     // --- Final analysis
     schedule(UnrolledControl)       // Control signal metadata after unrolling
+    schedule(BufferAnalyzer)        // Top controllers for n-buffers
     schedule(DotPrinter)            // Graph after unrolling
     schedule(Printer)
     schedule(PrinterLast)
