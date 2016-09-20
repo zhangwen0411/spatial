@@ -604,21 +604,23 @@ trait ScatterGatherApp extends SpatialApp {
   val N = 1920
 
   val tileSize = 96
+  val maxNumAddrs = 192
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
     val numAddrs = ArgIn[SInt]; setArg(numAddrs, size)
+    val offchip_dataSize = ArgIn[SInt]; setArg(offchip_dataSize, dataSize)
 
     val srcAddrs = OffChipMem[T](numAddrs)
-    val gatherData = OffChipMem[T](dataSize)
-    val scatterResult = OffChipMem[T](dataSize)
+    val gatherData = OffChipMem[T](offchip_dataSize)
+    val scatterResult = OffChipMem[T](offchip_dataSize)
 
     setMem(srcAddrs, addrs)
     setMem(gatherData, offchip_data)
 
     Accel {
-      val addrs = BRAM[T](numAddrs)
-      val gathered = BRAM[T](numAddrs)
+      val addrs = BRAM[T](maxNumAddrs)
+      val gathered = BRAM[T](maxNumAddrs)
       Pipe {addrs := srcAddrs(0::numAddrs, param(1))}
       Pipe {gathered := gatherData(addrs)}
       Pipe {scatterResult(addrs) := gathered}
