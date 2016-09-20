@@ -455,13 +455,14 @@ for aa in ${all_apps[@]}; do
 
 done
 
+cd ${SPATIAL_HOME}
 hash_str=`git rev-parse HEAD`
 lines=(`cat $history_file | wc -l`)
-dline=$((lines-3))
+dline=$((lines-18))
 sed -i -e "${dline}d" $history_file
 echo "$hash_str" >> $history_file
 lines=(`cat $pretty | wc -l`)
-dline=$((lines-3))
+dline=$((lines-18))
 sed -i -e "${dline}d" $pretty
 echo "$hash_str" >> $pretty_file
 

@@ -15,7 +15,7 @@ trait LoweredPipeOpsExp extends ExternPrimitiveTypesExp with MemoryTemplateOpsEx
   val table_init = """<TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">"""
 
   def print_stage_prefix(name: String, hasThingsInside: Boolean = true) {
-    controller_tree.write(s"""<TR><TD><font size = "6">$name </font> """)
+    controller_tree.write(s"""<TD><font size = "6">$name </font> """)
     if (hasThingsInside) {
       controller_tree.write(s"""<div data-role="collapsible">
       <h4>expand</h4>${table_init}""")
@@ -25,7 +25,7 @@ trait LoweredPipeOpsExp extends ExternPrimitiveTypesExp with MemoryTemplateOpsEx
     if (hadThingsInside) {
       controller_tree.write("""</TABLE></div>""")
     }
-    controller_tree.write(s"</TD></TR><!-- Close $name -->")
+    controller_tree.write(s"</TD><!-- Close $name -->")
   }
 
   // --- Nodes
