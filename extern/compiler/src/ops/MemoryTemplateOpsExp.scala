@@ -537,14 +537,25 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         alwaysGen { emit(s"""int ${quote(sym)} = ${getNextLMemAddr()};""") }
         emitComment(s""" Offchip_new(${quote(size)}) }""")
 
-    case Gather(mem,local,addrs,_,_) =>
+    case Gather(mem,local,addrs,len,par) =>
       print_stage_prefix(s"Gather: ${quote(sym)}", false)
-      emit(s"WOO GAT")
+      emit(s"""GatherLib ${quote(sym)} = new GatherLib(
+        this,
+        ${quote(sym)}_en, ${quote(sym)}_done,
+        isLdSt, forceLdSt,
+        ${quote(addrs)}, ${quote(mem)}, $len,
+        sBurstOffset, streamName,
+        waddr, wdata, wen);""")
       print_stage_suffix(quote(sym),false)
 
-    case Scatter(mem,local,addrs,_,_) =>
+    case Scatter(mem,local,addrs,len,par) =>
       print_stage_prefix(s"Scatter: ${quote(sym)}", false)
-      emit(s"WOO SCAT")
+      emit(s"""ScatterLib ${quote(sym)} = new ScatterLib(
+        this,
+        ${quote(sym)}_en, ${quote(sym)}_done,
+        isLdSt, forceLdSt,
+        ${quote(addrs)}, ${quote(mem)}, $len,
+        sBurstOffset, streamName);""")
       print_stage_suffix(quote(sym),false)
 
     case Offchip_load_cmd(mem, fifo, ofs, len, par) =>
