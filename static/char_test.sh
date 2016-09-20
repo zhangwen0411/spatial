@@ -11,8 +11,8 @@ file=${SPATIAL_HOME}/apps/src/CharacterizationUnitTests.scala
 
 innerPar=(1 8)
 outerPar=(1 4)
-dim0=(1920 19200)
-dim1=(96)
+dim0=(192)
+dim1=(1920 19200)
 
 i=$start_channel
 

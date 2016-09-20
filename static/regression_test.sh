@@ -437,7 +437,7 @@ for aa in ${all_apps[@]}; do
 	cmd="sed -i \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"
 	# echo $cmd
 	eval "$cmd"
-	cmd="sed -i \"/^${a}\ \+,,/ s/$/$bar/\" ${pretty_file}"
+	cmd="sed -i \"/^${a}\ \+,/ s/$/$bar/\" ${pretty_file}"
 	eval "$cmd"
 
 	# Shave first if too long
@@ -463,7 +463,7 @@ sed -i -e "${dline}d" $history_file
 echo "$hash_str" >> $history_file
 lines=(`cat $pretty | wc -l`)
 dline=$((lines-18))
-sed -i -e "${dline}d" $pretty
+sed -i -e "${dline}d" $pretty_file
 echo "$hash_str" >> $pretty_file
 
 # git push
