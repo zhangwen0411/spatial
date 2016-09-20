@@ -4,7 +4,7 @@ import scala.reflect.{Manifest,SourceContext}
 
 import scala.virtualization.lms.internal.Traversal
 import scala.virtualization.lms.common.EffectExp
-import scala.virtualization.lms.util.GraphUtil
+
 
 import scala.collection.mutable.HashMap
 
@@ -175,7 +175,7 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
 }
 
 // Technically doesn't need a real traversal, but nice to have debugging, etc.
-trait BankingBase extends Traversal {
+trait BankingBase extends Traversal with ControllerTools {
   val IR: SpatialExp with MemoryAnalysisExp
   import IR.{assert => _, infix_until => _, _}
 
@@ -186,57 +186,6 @@ trait BankingBase extends Traversal {
   // TODO: Account for "killing" writes, write ordering
   def reachingWrites(mem: Exp[Any], reader: Access) = writersOf(mem)
 
-  def lca(a: Controller, b: Controller) = GraphUtil.leastCommonAncestor[Controller](a, b, {node => parentOf(node)})
-
-  // TODO: how is distance defined when one controller is the child of the other?
-  def lcaWithDistance(a: Controller, b: Controller): (Controller, Int) = {
-    if (a == b) (a, 0)
-    else {
-      val (lca, pathA, pathB) = GraphUtil.leastCommonAncestorWithPaths[Controller](a, b, {node => parentOf(node)})
-      debug("    lca: " + lca)
-      debug("    node A: " + a)
-      debug("    node B: " + b)
-      debug("    path A: " + pathA.mkString(", "))
-      debug("    path B: " + pathB.mkString(", "))
-      if (lca.isEmpty) throw NoCommonControllerException(a,b)
-
-      val parent = lca.get
-
-      if (isOuterControl(parent)) {
-        val topA = if (a == parent) parent else pathA.head
-        val topB = if (b == parent) parent else pathB.head
-        val children = parent +: childrenOf(parent)
-
-        debug("    LCA children: " + children.mkString(", "))
-        val idxA = children.indexOf(topA) // FIXME: (Issue #2) Metapipe children assumed to be a
-        val idxB = children.indexOf(topB) // linear sequence of stages, not an arbitrary graph
-
-        if (idxA < 0) throw LCADistanceException(a, b)
-        if (idxB < 0) throw LCADistanceException(b, a)
-
-        (parent, idxB - idxA) // Negative means B comes before A
-      }
-      else (parent, 0)
-    }
-  }
-
-  // Defined as the number of coarse-grained pipeline stages between accesses A and B
-  // TODO: How is this defined for streaming cases?
-  def lcaWithCoarseDistance(a: Access, b: Access): (Controller, Int) = {
-    val (lca, dist) = lcaWithDistance(a.controller, b.controller)
-    val coarseDistance = if (isMetaPipe(lca)) dist else 0
-    (lca, coarseDistance)
-  }
-
-  def childContaining(top: Controller, access: Access) = {
-    val child = access.controller
-    val (lca, pathA, pathB) = GraphUtil.leastCommonAncestorWithPaths[Controller](top,child, {node => parentOf(node)})
-
-    val accessController = pathB.head
-    assert(top != accessController, s"[N-Buffering] Top controller of access $access is top ($top)")
-    assert(lca.isDefined && top == lca.get, s"[N-Buffering] Top controller for n-buffer access $access was $lca, not given top ($top)")
-    accessController
-  }
 
   // Least common multiple of two integers (smallest integer which has integer divisors a and b)
   def lcm(a: Int, b: Int): Int = {
@@ -392,26 +341,7 @@ trait BankingBase extends Traversal {
         InstanceGroup(None, accesses, MemInstance(1, duplicates, banking), Map(reader.get -> Set(0)), Map.empty)
       }
       else {
-        val anchor = reader.getOrElse(writers.head)
-        debug(s"  Anchor: $anchor")
-        val lcas = accesses.map{access =>
-          val (lca,dist) = lcaWithCoarseDistance(anchor, access)
-          debug(s"  access: $access, LCA = $lca, distance = $dist")
-          (lca,dist,access)
-        }
-        // Find accesses which require n-buffering, group by their controller
-        val metapipeLCAs = lcas.filter(_._2 != 0).groupBy(_._1).mapValues(_.map(_._3))
-
-        // Hierarchical metapipelining is currently disallowed
-        if (metapipeLCAs.keys.size > 1) throw UnsupportedNBufferException(mem, metapipeLCAs)
-
-        val metapipe = metapipeLCAs.keys.headOption
-
-        val minDist = lcas.map(_._2).min
-
-        // Port 0: First stage to write/read
-        // Port X: X stage(s) after first stage
-        val bufferPorts = Map(lcas.map{grp => grp._3 -> (grp._2 - minDist)}:_*)
+        val (metapipe, bufferPorts) = findMetapipe(mem, reader.toList, writers)
         val depth = bufferPorts.values.max + 1
 
         metapipe match {
@@ -498,7 +428,6 @@ trait BankingBase extends Traversal {
 
         swaps.get(a) match {
           case Some(swap) =>
-            topControllerOf(access, mem, i) = swap
             debug(s"""   - $a (ports: ${ports(a).mkString(", ")}) [swap: $swap]""")
           case None =>
             debug(s"""   - $a (ports: ${ports(a).mkString(", ")})""")

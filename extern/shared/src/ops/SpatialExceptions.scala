@@ -38,6 +38,13 @@ trait SpatialExceptionsCompilerOps extends SpatialExceptionsOps with NodeMetadat
   case class UnknownZeroException(tp: Manifest[_])(implicit ctx: SourceContext) extends
   SpatialException(5, s"Primitive expressions with unrecognized type: ${name(tp)}")
 
+  case class EmptyDuplicateException(mem: Rep[Any], i: Int) extends
+  SpatialException(6, s"Duplicate $i of ${name(mem)} has no readers or writers")
+
+  case class UndefinedChildException(top: Controller, access: Access) extends
+  SpatialException(7, s"childContaining(access = $access, top = $top) is not defined because no child of top contains access")
+
+
   /** True user / input program errors **/
   abstract class UserException(id: Int, msg: String, console: => Unit) extends Exception(s"Error #$id: " + msg) {
     console
