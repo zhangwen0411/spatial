@@ -21,11 +21,11 @@ trait LoweredPipeOpsExp extends ExternPrimitiveTypesExp with MemoryTemplateOpsEx
       <h4>expand</h4>${table_init}""")
     }
   }
-  def print_stage_suffix(hadThingsInside: Boolean = true) {
+  def print_stage_suffix(name: String, hadThingsInside: Boolean = true) {
     if (hadThingsInside) {
       controller_tree.write("""</TABLE></div>""")
     }
-    controller_tree.write(s"</TD></TR>")
+    controller_tree.write(s"</TD></TR><!-- Close $name -->")
   }
 
   // --- Nodes
@@ -188,20 +188,20 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       styleOf(sym) match {
         case StreamPipe => 
           emitComment(s"""StrmPipe to be emitted""")
-          print_stage_prefix(s"Foreach Streampipe $sym")
+          print_stage_prefix(s"Foreach Streampipe ${quote(sym)}")
         case CoarsePipe => 
           emitComment(s"""MPSM to be emitted""")
-          print_stage_prefix(s"Foreach Metapipe $sym")
+          print_stage_prefix(s"Foreach Metapipe ${quote(sym)}")
         case InnerPipe => 
           emitComment(s"""PipeSM to be emitted""")
-          print_stage_prefix(s"Foreach Innerpipe $sym", false)
+          print_stage_prefix(s"Foreach Innerpipe ${quote(sym)}", false)
           hadThingsInside = false
         case SequentialPipe => 
           emitComment(s"""SeqSM to be emitted""")
-          print_stage_prefix(s"Foreach Seqpipe $sym")
+          print_stage_prefix(s"Foreach Seqpipe ${quote(sym)}")
         case _ => 
           emitComment(s"""ParPipeForeach style: ${styleOf(sym)}""")
-          print_stage_prefix(s"Foreach ${styleOf(sym)} $sym")
+          print_stage_prefix(s"Foreach ${styleOf(sym)} ${quote(sym)}")
       }
       emitController(sym, Some(cchain))
       emitParallelizedLoop(inds, cchain)
@@ -209,7 +209,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emitBlock(func)
       emit("""}""")
       emitComment(s"""} ParPipeForeach ${quote(sym)}""")
-      print_stage_suffix()
+      print_stage_suffix(quote(sym), hadThingsInside)
       controlNodeStack.pop
 
     case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
@@ -220,17 +220,17 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       styleOf(sym) match {
         case CoarsePipe => 
           emitComment(s"""MPSM to be emitted""")
-          print_stage_prefix(s"Reduce Metapipe $sym")
+          print_stage_prefix(s"Reduce Metapipe ${quote(sym)}")
         case InnerPipe => 
           emitComment(s"""PipeSM to be emitted""")
-          print_stage_prefix(s"Reduce Innerpipe $sym", false)
+          print_stage_prefix(s"Reduce Innerpipe ${quote(sym)}", false)
           hadThingsInside = false
         case SequentialPipe => 
           emitComment(s"""SeqSM to be emitted""")
-          print_stage_prefix(s"Reduce Seqpipe $sym")
+          print_stage_prefix(s"Reduce Seqpipe ${quote(sym)}")
         case _ => 
           emitComment(s"""ParPipeReduce style: ${styleOf(sym)}""")
-          print_stage_prefix(s"Reduce ${styleOf(sym)} $sym")
+          print_stage_prefix(s"Reduce ${styleOf(sym)} ${quote(sym)}")
       }
 
       // The body of ParPipeReduce uses 'acc' to refer to the accumulator
@@ -304,7 +304,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
 
       emit("""}""")
       emitComment(s"""} ParPipeReduce ${quote(sym)}""")
-      print_stage_suffix(hadThingsInside)
+      print_stage_suffix(quote(sym), hadThingsInside)
       controlNodeStack.pop
 
     case _ => super.emitNode(sym, rhs)

@@ -532,7 +532,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         emitComment(s""" Offchip_new(${quote(size)}) }""")
 
     case Offchip_load_cmd(mem, fifo, ofs, len, par) =>
-      print_stage_prefix(s"Offchip Load: $sym", false)
+      print_stage_prefix(s"Offchip Load: ${quote(sym)}", false)
       withStream(baseStream) {
         emit(s"""DFEVar ${quote(fifo)}_trashEn = dfeBool().newInstance(this); // Send stream to trash for when read is not burst-aligned""")
       }
@@ -556,11 +556,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       }
       emit(s"""${quote(fifo)}_writeEn <== ${quote(sym)}_en;""")
       emit(s"""${quote(fifo)}_wdata <== ${quote(fifo)}_rdata;""")
-      print_stage_suffix(false)
+      print_stage_suffix(quote(sym), false)
 
     case Offchip_store_cmd(mem, fifo, ofs, len, par) =>
       // TODO: Offchip stores with burst not aligned
-      print_stage_prefix(s"Offchip Store: $sym", false)
+      print_stage_prefix(s"Offchip Store: ${quote(sym)}", false)
       emit(s"""// ${quote(sym)}: Offchip_store_cmd(${quote(mem)},${quote(fifo)}, ${quote(ofs)}, ${quote(len)}, ${quote(par)})""")
       emit(s"""MemoryCmdStLib ${quote(sym)} = new MemoryCmdStLib(
           this,
@@ -570,7 +570,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           ${quote(len)},
           ${quote(fifo)}_writeEn, ${quote(fifo)}_wdata);""")
       emit(s"""${quote(fifo)}_readEn <== ${quote(sym)}_en;""")
-      print_stage_suffix(false)
+      print_stage_suffix(quote(sym), false)
 //      emitComment("Offchip store from fifo")
 
     case Reg_new(init) =>
