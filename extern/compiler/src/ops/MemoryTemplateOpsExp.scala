@@ -539,23 +539,50 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
     case Gather(mem,local,addrs,len,par) =>
       print_stage_prefix(s"Gather: ${quote(sym)}", false)
+      // TODO: Should Matt assume instanceIndicesOf returns set of size 1?
+      val i = instanceIndicesOf(sym, addrs).head
+
+      val parStr = if (quote(par) == "1") {
+//         emit(s"""DFEVar ${quote(sym)}_waddr = ${quote(addrs)}_$i.type.newInstance(this);
+// DFEVar ${quote(sym)}_wdata = ${quote(local)}_0.type.newInstance(this); // Assume duplicate _0 exists
+// DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
+        ""
+      } else {
+        "${quote(par)},"
+      }
+      emit(s"""DFEVector<DFEVar> ${quote(sym)}_waddr = new DFEVectorType<DFEVar>(${quote(addrs)}_$i.type, ${quote(par)}).newInstance(this);
+DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0.type, ${quote(par)}).newInstance(this);
+DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")        
+
+      emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
+      emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
       emit(s"""GatherLib ${quote(sym)} = new GatherLib(
         this,
-        ${quote(sym)}_en, ${quote(sym)}_done,
-        isLdSt, forceLdSt,
-        ${quote(addrs)}, ${quote(mem)}, $len,
-        sBurstOffset, streamName,
-        waddr, wdata, wen);""")
+        ${quote(sym)}_en, ${quote(sym)}_done, $parStr
+        ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
+        ${quote(addrs)}_$i, 
+        ${quote(mem)},  "${quote(mem)}_${quote(sym)}_in",
+        ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
+      duplicatesOf(local).zipWithIndex.foreach { case (m,i) => 
+        emit(s"""${quote(local)}_$i.connectWport(${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
+      }
       print_stage_suffix(quote(sym),false)
 
     case Scatter(mem,local,addrs,len,par) =>
       print_stage_prefix(s"Scatter: ${quote(sym)}", false)
+      // TODO: Should Matt assume instanceIndicesOf returns set of size 1?
+      val i = instanceIndicesOf(sym, addrs).head
+      // TODO: Should Matt assume instanceIndicesOf returns set of size 1?
+      val j = instanceIndicesOf(sym, local).head
+
+      emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
+      emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
       emit(s"""ScatterLib ${quote(sym)} = new ScatterLib(
         this,
         ${quote(sym)}_en, ${quote(sym)}_done,
-        isLdSt, forceLdSt,
-        ${quote(addrs)}, ${quote(mem)}, $len,
-        sBurstOffset, streamName);""")
+        ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
+        ${quote(addrs)}_$i, ${quote(local)}_$j, 
+        ${quote(mem)}, "${quote(mem)}_${quote(sym)}_out");""")
       print_stage_suffix(quote(sym),false)
 
     case Offchip_load_cmd(mem, fifo, ofs, len, par) =>

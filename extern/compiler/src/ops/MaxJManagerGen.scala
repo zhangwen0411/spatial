@@ -301,13 +301,34 @@ s"""
     memStreams.foreach{
       case tt@Def(EatReflect(Offchip_store_cmd(mem,stream,ofs,len,p))) =>
         val streamName = s"${quote(mem)}_${quote(tt)}"
+        emit(s"""// Offchip_store_cmd $streamName""")
         emit(s"""    DFELink ${streamName}_out = addStreamToOnCardMemory("${streamName}_out", k.getOutput("${streamName}_out_cmd"));""")
         emit(s"""    ${streamName}_out <== k.getOutput("${streamName}_out");""")
 
       case tt@Def(EatReflect(Offchip_load_cmd(mem,stream,ofs,len,p))) =>
      	  val streamName = s"${quote(mem)}_${quote(tt)}"
+        emit(s"""// Offchip_load_cmd $streamName""")
         emit(s"""    DFELink ${streamName}_in = addStreamFromOnCardMemory("${streamName}_in", k.getOutput("${streamName}_in_cmd"));""")
         emit(s"""    k.getInput("${streamName}_in") <== ${streamName}_in;""")
+      case tt@Def(EatReflect(Scatter(mem,local,addrs,len,par))) =>
+        val streamName = s"${quote(mem)}_${quote(tt)}"
+        emit(s"""// Scatter $streamName""")
+        val Exact(p) = par
+        (0 until p.toInt) foreach { i: Int => 
+	      emit(s"""    DFELink ${streamName}_out_rd_${i} = addStreamFromOnCardMemory("${streamName}_out_rd_${i}", k.getOutput("${streamName}_out_rd_cmd_${i}"));""")
+	      emit(s"""    k.getInput("${streamName}_out_rd_${i}") <== ${streamName}_out_rd_${i};""")        
+	      emit(s"""    DFELink ${streamName}_out_$i = addStreamToOnCardMemory("${streamName}_out_$i", k.getOutput("${streamName}_out_cmd_$i"));""")
+	      emit(s"""    ${streamName}_out_$i <== k.getOutput("${streamName}_out_$i");""")
+        }
+      case tt@Def(EatReflect(Gather(mem,local,addrs,len,par))) =>
+     	  val streamName = s"${quote(mem)}_${quote(tt)}"
+        emit(s"""// Gather $streamName""")
+        val Exact(p) = par
+        (0 until p.toInt) foreach { i: Int => 
+          emit(s"""    DFELink ${streamName}_in_$i = addStreamFromOnCardMemory("${streamName}_in_$i", k.getOutput("${streamName}_in_cmd_$i"));""")
+          emit(s"""    k.getInput("${streamName}_in_$i") <== ${streamName}_in_$i;""")
+        }
+
     }
     emit(mConstructorEpilogue)
   }

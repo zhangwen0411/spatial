@@ -184,6 +184,8 @@ trait MaxJPreCodegen extends Traversal  {
 
     case _:Offchip_store_cmd[_] => memStreams += sym
     case _:Offchip_load_cmd[_] => memStreams += sym
+    case _:Scatter[_] => memStreams += sym
+    case _:Gather[_] => memStreams += sym
 
     case Bram_new(size, zero) =>
       val dups = duplicatesOf(sym)

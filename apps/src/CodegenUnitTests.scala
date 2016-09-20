@@ -604,11 +604,11 @@ trait ScatterGatherApp extends SpatialApp {
 
   val tileSize = 96
   val maxNumAddrs = 192
+  val offchip_dataSize = 19200
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
     val numAddrs = ArgIn[SInt]; setArg(numAddrs, size)
-    val offchip_dataSize = ArgIn[SInt]; setArg(offchip_dataSize, dataSize)
 
     val srcAddrs = OffChipMem[T](numAddrs)
     val gatherData = OffChipMem[T](offchip_dataSize)
@@ -636,13 +636,40 @@ trait ScatterGatherApp extends SpatialApp {
   def main() = {
     // val size = args(unit(0)).to[SInt]
     val size = args(0).to[SInt]
-    val dataSize = args(1).to[SInt] // Should be way bigger than size
-    val addrs = Array.tabulate[SInt](size) { i => i*2 }
+    val dataSize = offchip_dataSize
+    val addrs = Array.tabulate[SInt](size) { i => i*2
+      // i match {
+      //   case 5 => 199
+      //   case 6 => 201
+      //   case 7 => 191
+      //   case 8 => 203
+      //   case 9 => 381
+      //   case 10 => 385
+      //   case 15 => 97
+      //   case 94 => 3
+      //   case 95 => 1
+      //   case 83 => 101
+      //   case 70 => 203
+      //   case _ => i*2
+      // } 
+    }
+    // Scramble some of the addrs
+    // addrs(5) = 199
+    // addrs(6) = 201
+    // addrs(7) = 191
+    // addrs(8) = 203
+    // addrs(9) = 381
+    // addrs(10) = 385
+    // addrs(15) = 97
+    // addrs(94) = 3
+    // addrs(95) = 1
     val offchip_data = Array.fill(dataSize) {random[SInt](dataSize)}
 
     val received = scattergather(addrs, offchip_data, size, dataSize)
 
-    val gold = Array.tabulate(tileSize) { i => if (addrs.map{_==i}.reduce{_||_}) {offchip_data(i)} else {0} }
+    // printArr(addrs, "addrs: ")
+    // (0 until dataSize) foreach { i => println(i + " match? " + (addrs.map{a => a==i}.reduce{_||_}) ) }
+    val gold = Array.tabulate(dataSize) { i => __ifThenElse(addrs.map{a => a==i}.reduce{_||_}, offchip_data(i), 0) } // Staging ifthenelse
 
     printArr(gold, "gold:")
     printArr(received, "received:")
