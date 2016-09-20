@@ -571,7 +571,7 @@ trait BRAMBanking extends BankingBase {
   override def bankAccess(mem: Exp[Any], access: Exp[Any]): (List[Banking], Int) = {
     val pattern = accessPatternOf(access)
     val allStrides = constDimsToStrides(dimsOf(mem).map{case Exact(d) => d.toInt})
-    val strides = if (indices.length == 1) List(allStrides.last) else allStrides
+    val strides = if (pattern.length == 1) List(allStrides.last) else allStrides
 
     val Def(d) = access
     debug(s"")
