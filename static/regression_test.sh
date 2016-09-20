@@ -3,6 +3,8 @@
 ##########
 # CONFIG #
 ##########
+# Length of history to maintain in pretty printer
+hist=32
 # App classes
 app_classes=("dense" "sparse" "unit" "characterization")
 
@@ -431,7 +433,7 @@ all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" 
 for aa in ${all_apps[@]}; do
 	# Append status to line
 	a=(`echo $aa | sed "s/ //g"`)
-	dashes=(`cat ${result_file} | grep "[0-9]\+\_$a" | grep -oh "\-" | wc -l`)
+	dashes=(`cat ${result_file} | grep "[0-9]\+\_$a\(\ \|\*\)" | grep -oh "\-" | wc -l`)
 	num=$(($dashes/4))
 	if [ $num = 0 ]; then bar=▇; elif [ $num = 1 ]; then bar=▆; elif [ $num = 2 ]; then bar=▅; elif [ $num = 3 ]; then bar=▄; elif [ $num = 4 ]; then bar=▃; elif [ $num = 5 ]; then bar=▂; elif [ $num = 6 ]; then bar=▁; else bar=□; fi
 
@@ -449,15 +451,15 @@ for aa in ${all_apps[@]}; do
 	eval "$cmd"
 
 	# Shave first if too long
-	numel=(`cat ${history_file} | grep "^$a" | grep -oh "\," | wc -l`)
-	if [ "$numel" -gt 48 ]; then
+	numel=(`cat ${history_file} | grep "^$a\ " | grep -oh "\," | wc -l`)
+	if [ $numel -gt $hist ]; then
 		cmd="sed -i \"s/^${a}\([[:blank:]]*\),,[0-9]\\+,/${a}\1,,/g\" ${history_file}"
 		echo "[SPATIAL NOTICE] shaving $a in history"
 		eval "$cmd"
 	fi
 	# Shave first if too long
-	numel=(`cat ${pretty_file} | grep "^$a" | grep -oh "." | wc -l`)
-	if [ "$numel" -gt 48 ]; then
+	numel=(`cat ${pretty_file} | grep "^$a\ " | grep -oh "." | wc -l`)
+	if [ $numel -gt $(($hist+23)) ]; then # 23 = chars before bars
 		cmd="sed -i \"s/^${a}\([[:blank:]]*\),,./${a}\1,,/g\" ${pretty_file}"
 		echo "[SPATIAL NOTICE] shaving $a in pretty history"
 		eval "$cmd"
@@ -468,11 +470,11 @@ done
 cd ${SPATIAL_HOME}
 hash_str=`git rev-parse HEAD`
 lines=(`cat $history_file | wc -l`)
-dline=$((lines-18))
+dline=$(($lines-$(($hist-1))))
 sed -i -e "${dline}d" $history_file
 echo "$hash_str" >> $history_file
 lines=(`cat $pretty_file | wc -l`)
-dline=$((lines-18))
+dline=$(($lines-$(($hist-1))))
 sed -i -e "${dline}d" $pretty_file
 echo "$hash_str" >> $pretty_file
 
