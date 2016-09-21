@@ -416,6 +416,7 @@ csvemails=(`echo ${email[@]} | sed 's/ /,/g'`)
 # Check for intersection and send notice
 diff=($(comm -12 <(for X in "${new_fail[@]}"; do echo "${X}"; done|sort)  <(for X in "${old_pass[@]}"; do echo "${X}"; done|sort)))
 last_m=""
+echo "[SPATIAL NOTICE] The following apps got messed up: $diff"
 if [ ! -z "$diff" ]; then 
 	for m in ${emails[@]}; do
 		if [[ ! "$last_m" = "$m" ]]; then 
@@ -432,39 +433,42 @@ history_file=${SPATIAL_HOME}/spatial.wiki/Regression_Test_History.csv
 pretty_file=${SPATIAL_HOME}/spatial.wiki/Pretty_Regression_Test_History.csv
 all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\*//g" | sort`)
 for aa in ${all_apps[@]}; do
-	# Append status to line
-	a=(`echo $aa | sed "s/ //g"`)
-	dashes=(`cat ${result_file} | grep "[0-9]\+\_$a\(\ \|\*\)" | grep -oh "\-" | wc -l`)
-	num=$(($dashes/4))
-	if [ $num = 0 ]; then bar=▇; elif [ $num = 1 ]; then bar=▆; elif [ $num = 2 ]; then bar=▅; elif [ $num = 3 ]; then bar=▄; elif [ $num = 4 ]; then bar=▃; elif [ $num = 5 ]; then bar=▂; elif [ $num = 6 ]; then bar=▁; else bar=□; fi
+	if [[ ! "$last_aa" = "$aa" ]]; then
+		# Append status to line
+		a=(`echo $aa | sed "s/ //g"`)
+		dashes=(`cat ${result_file} | grep "[0-9]\+\_$a\(\ \|\*\)" | grep -oh "\-" | wc -l`)
+		num=$(($dashes/4))
+		if [ $num = 0 ]; then bar=▇; elif [ $num = 1 ]; then bar=▆; elif [ $num = 2 ]; then bar=▅; elif [ $num = 3 ]; then bar=▄; elif [ $num = 4 ]; then bar=▃; elif [ $num = 5 ]; then bar=▂; elif [ $num = 6 ]; then bar=▁; else bar=□; fi
 
-	# Print what the seds are for debug
-	cmd="sed \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"
-	echo -e "\n\n [SPATIAL NOTICE] sedding for $a"
-	eval "$cmd"
-	cmd="sed \"/^${a}\ \+,/ s/$/$bar/\" ${pretty_file}"
-	eval "$cmd"
-
-	# Actually edit files
-	cmd="sed -i \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"
-	eval "$cmd"
-	cmd="sed -i \"/^${a}\ \+,/ s/$/$bar/\" ${pretty_file}"
-	eval "$cmd"
-
-	# Shave first if too long
-	numel=(`cat ${history_file} | grep "^$a\ " | grep -oh "\," | wc -l`)
-	if [ $numel -gt $hist ]; then
-		cmd="sed -i \"s/^${a}\([[:blank:]]*\),,[0-9]\\+,/${a}\1,,/g\" ${history_file}"
-		echo "[SPATIAL NOTICE] shaving $a in history"
+		# Print what the seds are for debug
+		cmd="sed \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"
+		echo -e "\n\n [SPATIAL NOTICE] sedding for $a"
 		eval "$cmd"
-	fi
-	# Shave first if too long
-	numel=(`cat ${pretty_file} | grep "^$a\ " | grep -oh "." | wc -l`)
-	if [ $numel -gt $(($hist+23)) ]; then # 23 = chars before bars
-		cmd="sed -i \"s/^${a}\([[:blank:]]*\),,./${a}\1,,/g\" ${pretty_file}"
-		echo "[SPATIAL NOTICE] shaving $a in pretty history"
+		cmd="sed \"/^${a}\ \+,/ s/$/$bar/\" ${pretty_file}"
 		eval "$cmd"
+
+		# Actually edit files
+		cmd="sed -i \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"
+		eval "$cmd"
+		cmd="sed -i \"/^${a}\ \+,/ s/$/$bar/\" ${pretty_file}"
+		eval "$cmd"
+
+		# Shave first if too long
+		numel=(`cat ${history_file} | grep "^$a\ " | grep -oh "\," | wc -l`)
+		if [ $numel -gt $hist ]; then
+			cmd="sed -i \"s/^${a}\([[:blank:]]*\),,[0-9]\\+,/${a}\1,,/g\" ${history_file}"
+			echo "[SPATIAL NOTICE] shaving $a in history"
+			eval "$cmd"
+		fi
+		# Shave first if too long
+		numel=(`cat ${pretty_file} | grep "^$a\ " | grep -oh "." | wc -l`)
+		if [ $numel -gt $(($hist+23)) ]; then # 23 = chars before bars
+			cmd="sed -i \"s/^${a}\([[:blank:]]*\),,./${a}\1,,/g\" ${pretty_file}"
+			echo "[SPATIAL NOTICE] shaving $a in pretty history"
+			eval "$cmd"
+		fi
 	fi
+	last_aa=$aa
 
 done
 
