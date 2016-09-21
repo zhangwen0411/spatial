@@ -433,113 +433,109 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
   }
 
   def bramStore(write: Sym[Any], bram: Exp[BRAM[Any]], addr: Exp[Any], value: Exp[Any]) {
-    if (!isBoundSym(write)) {
-      emitComment("Bram_store {")
-      val dataStr = quote(value)
-      val allDups = duplicatesOf(bram)
+    emitComment("Bram_store {")
+    val dataStr = quote(value)
+    val allDups = duplicatesOf(bram)
 
-      val writers = writersOf(bram)
-      val EatAlias(ww) = write
-      Console.println(s"bram $bram, writers $writers, matching this $write $ww")
-      val writeCtrl = writers.find{_.access == write}.get.controlNode
+    val writers = writersOf(bram)
+    val EatAlias(ww) = write
+    Console.println(s"bram $bram, writers $writers, matching this $write $ww")
+    val writeCtrl = writers.find{_.access == write}.get.controlNode
 
-      val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(write,bram).contains(dup._2) }
+    val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(write,bram).contains(dup._2) }
 
-      val inds = parIndicesOf(write)
-      val num_dims = dimsOf(bram).length
+    val inds = parIndicesOf(write)
+    val num_dims = dimsOf(bram).length
 
-      assert(inds.nonEmpty, s"Empty par access indices for write $write of $bram")
+    assert(inds.nonEmpty, s"Empty par access indices for write $write of $bram")
 
-      if (isAccum(bram)) {
-        val offsetStr = quote(writersOf(bram).head.controlNode) + "_offset"
-        val parentPipe = parentOf(bram).getOrElse(throw new Exception(s"Bram ${quote(bram)} does not have a parent!"))
-        val parentCtr = parentPipe match {
-          case Deff(d:Pipe_fold[_,_]) => d.cchain
-          case Deff(d:Pipe_foreach) => d.cchain
-          case Deff(d:ParPipeReduce[_,_]) => d.cc
-          case Deff(d:ParPipeForeach) => d.cc
-          case p => throw new Exception(s"Unknown accumulator parent type $p!")
-        }
-
-        val Def(rhss) = parentCtr
-        Console.println(s"the parent counter for $write $bram is $parentCtr from $parentPipe, def $rhss")
-        val accEn = writeCtrl match {
-          case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
-          case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
-        }
-        if (writers.length == 1) {
-          dups.foreach {case (dd, ii) =>
-            num_dims match {
-              case 1 =>
-                emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr)); //w3""")
-              case _ =>
-                emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr)); //w4""")
-            }
-          }
-        } /*else {
-          val bank_num = i
-          dups.foreach {case (dd, ii) =>
-            emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
-              stream.offset($dataStr, -$offsetStr), $accEn); //5""")
-          }
-        }*/
+    if (isAccum(bram)) {
+      val offsetStr = quote(writersOf(bram).head.controlNode) + "_offset"
+      val parentPipe = parentOf(bram).getOrElse(throw new Exception(s"Bram ${quote(bram)} does not have a parent!"))
+      val parentCtr = parentPipe match {
+        case Deff(d:Pipe_fold[_,_]) => d.cchain
+        case Deff(d:Pipe_foreach) => d.cchain
+        case Deff(d:ParPipeReduce[_,_]) => d.cc
+        case Deff(d:ParPipeForeach) => d.cc
+        case p => throw new Exception(s"Unknown accumulator parent type $p!")
       }
-      else { // Not accum
-        if (isDummy(bram)) {
-          dups.foreach {case (dd, ii) =>
-            emit(s"""${quote(bram)}_$ii.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w6""")
+
+      val Def(rhss) = parentCtr
+      Console.println(s"the parent counter for $write $bram is $parentCtr from $parentPipe, def $rhss")
+      val accEn = writeCtrl match {
+        case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
+        case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
+      }
+      if (writers.length == 1) {
+        dups.foreach {case (dd, ii) =>
+          num_dims match {
+            case 1 =>
+              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
+                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr)); //w3""")
+            case _ =>
+              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
+                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr)); //w4""")
           }
         }
-        else num_dims match {
-          case 1 =>
+      } /*else {
+        val bank_num = i
+        dups.foreach {case (dd, ii) =>
+          emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
+            stream.offset($dataStr, -$offsetStr), $accEn); //5""")
+        }
+      }*/
+    }
+    else { // Not accum
+      if (isDummy(bram)) {
+        dups.foreach {case (dd, ii) =>
+          emit(s"""${quote(bram)}_$ii.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w6""")
+        }
+      }
+      else num_dims match {
+        case 1 =>
+          dups.foreach {case (dd, ii) =>
+            emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //8""")
+          }
+        case 2 =>
+          if (inds.length == 1) {
+            val addrs = inds(0)
             dups.foreach {case (dd, ii) =>
-              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //8""")
+              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10""")
             }
-          case 2 =>
-            if (inds.length == 1) {
-              val addrs = inds(0)
+          }
+          else {
+            // TODO: This may not quite be right
+            def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
+            // Many addresses
+            // Same columns?
+            if (inds.map{ind => quote2D(ind, 1)}.distinct.length == 1) {
+              val addr0 = inds.map{ind => quote2D(ind,0) }
+              val addr1 = quote2D(inds(0), 1)
+              emit(s"""// All readers share column. vectorized """)
               dups.foreach {case (dd, ii) =>
-                emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10""")
+                emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                ${dataStr}, ${quote(writeCtrl)}_datapath_en); //13""")
+              }
+            }
+            // Same rows?
+            else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
+              val addr0 = quote2D(inds(0), 0)
+              val addr1 = inds.map{ind => quote2D(ind, 0) }
+              emit(s"""// All readers share row. vectorized""")
+              dups.foreach {case (dd, ii) =>
+                emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                ${dataStr}, ${quote(writeCtrl)}_datapath_en); // 15""")
               }
             }
             else {
-              // TODO: This may not quite be right
-              def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
-              // Many addresses
-              // Same columns?
-              if (inds.map{ind => quote2D(ind, 1)}.distinct.length == 1) {
-                val addr0 = inds.map{ind => quote2D(ind,0) }
-                val addr1 = quote2D(inds(0), 1)
-                emit(s"""// All readers share column. vectorized """)
-                dups.foreach {case (dd, ii) =>
-                  emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //13""")
-                }
-              }
-              // Same rows?
-              else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
-                val addr0 = quote2D(inds(0), 0)
-                val addr1 = inds.map{ind => quote2D(ind, 0) }
-                emit(s"""// All readers share row. vectorized""")
-                dups.foreach {case (dd, ii) =>
-                  emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); // 15""")
-                }
-              }
-              else {
-                throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
-              }
+              throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
             }
-          case _ =>
-            throw new Exception("MaxJ generation of more than 2D BRAMs is currently unsupported.")
-        }
+          }
+        case _ =>
+          throw new Exception("MaxJ generation of more than 2D BRAMs is currently unsupported.")
       }
-      emitComment("} Bram_store")
-    } else {
-      Console.println(s"$write is a bound sym, ignoring write!")
     }
+    emitComment("} Bram_store")
   }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {

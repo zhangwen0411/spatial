@@ -239,8 +239,6 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       val Def(d) = accum  // CHEATING!
       duplicatesOf(acc) = duplicatesOf(accum)
       readersOf(acc) = readersOf(accum)
-      val Deff(writer) = writersOf(acc).head.access //(wr controller, accum bool, st node of type bram_store)
-      emitNode(acc, d)
 
       emitComment(s"""ParPipeReduce ${quote(sym)} controller {""")
       emitController(sym, Some(cchain))
@@ -250,6 +248,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emitParallelizedLoop(inds, cchain)
       emitComment(s"""} ${quote(sym)} par loop""")
 
+      // Putting reduction tree in its own kernel
       var inputVecs = Set[Sym[Any]]()
       var consts_args_bnds_list = Set[Exp[Any]]()
       var treeResult = ""
@@ -286,13 +285,8 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
 
       val Def(EatReflect(dp)) = accum
       dp match {
-        case Bram_new(_,_) =>
-          writer match {
-            case Bram_store(bram, addr, value) =>
-              emitNode(bram.asInstanceOf[Sym[Any]], Bram_store(accum.asInstanceOf[Sym[BRAM[Any]]], addr, value))
-            case Par_bram_store(bram, addr, value) =>
-              emitNode(bram.asInstanceOf[Sym[Any]], Par_bram_store(accum.asInstanceOf[Sym[BRAM[Any]]], addr, value))
-          }
+        case a@Bram_new(_,_) =>
+          // emitNode(accum.asInstanceOf[Sym[Any]], d)
         /* NOT SURE WHAT THIS SECTION DOES! -Matt*/
         case Reg_new(init) =>
         //   (0 until duplicatesOf(accum).size) foreach { i =>

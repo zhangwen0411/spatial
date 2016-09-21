@@ -683,18 +683,18 @@ trait BlockReduce2DApp extends SpatialApp {
   def main() = {
     val numRows = args(0).to[SInt]
     val numCols = args(1).to[SInt]
-    val src = Array.tabulate(numRows) { i => Array.tabulate(numCols) { j => i + j} }
+    val src = Array.tabulate(numRows) { i => Array.tabulate(numCols) { j => i*numCols + j} }
 
     val dst = blockreduce_2d(src.flatten, numRows, numCols)
 
-    val gold = Array.tabulate(tileSize) { i => Array.tabulate(tileSize) { j =>
-        (i+j)*tileSize + ((numCols/tileSize) - 1)*(numCols/tileSize)
-      }
-    }
-    // printArr(gold, "src:")
+    val numBlocks = numRows*numCols/(tileSize*tileSize)
+    val first = ((numBlocks*(numBlocks-1))/2)*tileSize*tileSize
+    val gold = Array.tabulate(tileSize*tileSize) { i => first + i*numBlocks }
+    printArr(gold, "src:")
     printArr(dst, "dst:")
-    // val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
-    // println("PASS: " + cksum + " (BlockReduce2D)")
+    // dst.zip(gold){_==_} foreach {println(_)}
+    val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (BlockReduce2D)")
 
 //    (0 until tileSize) foreach { i => assert(dst(i) == gold(i)) }
   }

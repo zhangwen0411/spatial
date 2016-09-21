@@ -418,8 +418,11 @@ diff=($(comm -12 <(for X in "${new_fail[@]}"; do echo "${X}"; done|sort)  <(for 
 last_m=""
 echo "[SPATIAL NOTICE] The following apps got messed up: ${diff[@]}"
 if [ ! -z "$diff" ]; then 
+	echo "debug1"
 	for m in ${emails[@]}; do
+		echo "debug2"
 		if [[ ! "$last_m" = "$m" ]]; then 
+			echo "debug3"
 			tmp=(`echo $courtesy_email | sed "s/APPS_LIST/${diff[*]}/g" | sed "s/OLD_COMMITS/${old_commit}/g" | sed "s/NEW_COMMITS/${new_commit}/g"`)
 			echo ${tmp} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@MakeFPGAsGreatAgain.com
 		fi
