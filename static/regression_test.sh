@@ -277,7 +277,8 @@ if [ "$wc" -ne 1 ]; then
 		echo "-------------------------------" >> $result_file
 		echo "" >> $result_file
 		echo "" >> $result_file
-		echo -e "*Status updated on `date`* \n" > $result_file
+		tucson_date=`ssh tucson.stanford.edu date`
+		echo -e "*Status updated on $tucson_date* \n" > $result_file
 		echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
 		echo "" >> $result_file
 		echo "Error building Spatial!  Could not validate anything!" >> $result_file
