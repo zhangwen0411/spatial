@@ -314,6 +314,7 @@ trait SpatialDSL extends ForgeApplication
 
     // --- Final analysis
     schedule(UnrolledControl)       // Control signal metadata after unrolling
+    schedule(Printer)
     schedule(BufferAnalyzer)        // Top controllers for n-buffers
     schedule(DotPrinter)            // Graph after unrolling
     schedule(Printer)

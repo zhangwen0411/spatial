@@ -37,7 +37,7 @@ trait BufferAnalyzer extends Traversal with ControllerTools {
 
       val (metapipe, _) = findMetapipe(mem, reads, writes)
 
-      if (metapipe.isDefined) {
+      if (metapipe.isDefined && dup.depth > 1) {
         val ctrl = metapipe.get
         accesses.foreach{a =>
           val child = lca(a.controller, ctrl).get
