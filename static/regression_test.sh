@@ -416,12 +416,12 @@ csvemails=(`echo ${email[@]} | sed 's/ /,/g'`)
 # Check for intersection and send notice
 diff=($(comm -12 <(for X in "${new_fail[@]}"; do echo "${X}"; done|sort)  <(for X in "${old_pass[@]}"; do echo "${X}"; done|sort)))
 last_m=""
-echo "[SPATIAL NOTICE] The following apps got messed up: $diff"
+echo "[SPATIAL NOTICE] The following apps got messed up: ${diff[@]}"
 if [ ! -z "$diff" ]; then 
 	for m in ${emails[@]}; do
 		if [[ ! "$last_m" = "$m" ]]; then 
-			tmp=(`echo $courtesy_email | sed "s/APPS_LIST/${diff[@]}/g" | sed "s/OLD_COMMITS/${old_commit}/g" | sed "s/NEW_COMMITS/${new_commit}/g"`)
-			echo -e ${tmp} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@MakeFPGAsGreatAgain.com
+			tmp=(`echo $courtesy_email | sed "s/APPS_LIST/${diff[*]}/g" | sed "s/OLD_COMMITS/${old_commit}/g" | sed "s/NEW_COMMITS/${new_commit}/g"`)
+			echo ${tmp} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@MakeFPGAsGreatAgain.com
 		fi
 		echo "[EMAIL] Sent ${tmp} to $m"
 		last_m=$m

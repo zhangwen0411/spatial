@@ -555,9 +555,9 @@ trait MaxJPreCodegen extends Traversal  {
 
     val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.toList.sortWith(_<_).mkString(",")
     val trailing_args = consts_args_bnds_list.toList
-    val owner_comma = if (trailing_args.length > 0 & (vec_input_args == "" & res_input_arg == "")) {","} else {""} // TODO: Super ugly hack
+    val owner_comma = if (trailing_args.length > 0 & (vec_input_args != "" | res_input_arg != "")) {","} else {""} // TODO: Super ugly hack
 
-    val trailing_args_comma = if (trailing_args.length > 0 & (vec_input_args != "" | res_input_arg != "")) {","} else {""}
+    val trailing_args_comma = if (trailing_args.length > 0 & (vec_input_args == "" & res_input_arg == "")) {","} else {""}
     val trailing_args_string = trailing_args.map { exp =>
       s"""DFEVar ${quote(exp)}"""
     }.sortWith(_<_).mkString(",")
@@ -587,18 +587,18 @@ import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
 import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
 import java.util.Arrays;
 class ${quote(sym)}_reduce_kernel extends KernelLib {
-void common($vec_input_args $second_comma
-                $res_input_arg $trailing_args_comma $owner_comma $trailing_args_string) {
+void common($vec_input_args /*1*/ ${second_comma}
+                $res_input_arg /*2*/ $owner_comma $trailing_args_string /*3*/) {
 // For now, I just regenerate constants because java is being annoying about class extensions
 $cst_genStr
 
 $treeString
 }
 
-${quote(sym)}_reduce_kernel(KernelLib owner $first_comma $vec_input_args $second_comma
-                $res_input_arg $trailing_args_comma $owner_comma $trailing_args_string) {
+${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $second_comma /*2*/
+                $res_input_arg $trailing_args_comma /*3*/  $trailing_args_string) {
   super(owner);
-  common(${inputVecs.map(quote(_)).toList.sortWith(_<_).mkString(", ")} ${second_comma} ${treeResult} $trailing_args_comma ${trailing_args.map { exp => quote(exp)}.sortWith(_<_).mkString(",")});
+  common(${inputVecs.map(quote(_)).toList.sortWith(_<_).mkString(", ")} ${second_comma} ${treeResult} ${if (treeResult == "" & inputVecs.toList.length == 0) "" else ","} ${trailing_args.map { exp => quote(exp)}.sortWith(_<_).mkString(",")});
 }
 }""")
 

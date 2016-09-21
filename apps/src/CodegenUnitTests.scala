@@ -576,14 +576,14 @@ trait BlockReduce1DApp extends SpatialApp {
   }
 
   def main() = {
-    // val size = args(unit(0)).to[SInt]
-    val size = N
+    val size = args(0).to[SInt]
+    // val size = N
     val src = Array.tabulate(size) { i => i }
 
     val dst = blockreduce_1d(src, size)
 
     val iters = size/tileSize
-    val first = tileSize*(iters*(iters-1))/2
+    val first = ((iters*(iters-1))/2)*tileSize
 
     val gold = Array.tabulate(tileSize) { i => first + i*iters }
 

@@ -334,6 +334,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
   }
 
+  def isBoundSym(x: Sym[Any]) = {
+    x match {
+      case Def(_) => false // Is not a bound sym
+      case _ => true
+    }
+  }
+
   def bramLoad(read: Sym[Any], bram: Exp[BRAM[Any]], addr: Exp[Any], par: Boolean = false) {
     emitComment("Bram_load {")
     val dups = duplicatesOf(bram)
@@ -426,108 +433,113 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
   }
 
   def bramStore(write: Sym[Any], bram: Exp[BRAM[Any]], addr: Exp[Any], value: Exp[Any]) {
-    emitComment("Bram_store {")
-    val dataStr = quote(value)
-    val allDups = duplicatesOf(bram)
+    if (!isBoundSym(write)) {
+      emitComment("Bram_store {")
+      val dataStr = quote(value)
+      val allDups = duplicatesOf(bram)
 
-    val writers = writersOf(bram)
-    Console.println(s"bram $bram, writers $writers, matching this $write")
-    val writeCtrl = writers.find{_.access == write}.get.controlNode
+      val writers = writersOf(bram)
+      val EatAlias(ww) = write
+      Console.println(s"bram $bram, writers $writers, matching this $write $ww")
+      val writeCtrl = writers.find{_.access == write}.get.controlNode
 
-    val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(write,bram).contains(dup._2) }
+      val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(write,bram).contains(dup._2) }
 
-    val inds = parIndicesOf(write)
-    val num_dims = dimsOf(bram).length
+      val inds = parIndicesOf(write)
+      val num_dims = dimsOf(bram).length
 
-    assert(inds.nonEmpty, s"Empty par access indices for write $write of $bram")
+      assert(inds.nonEmpty, s"Empty par access indices for write $write of $bram")
 
-    if (isAccum(bram)) {
-      val offsetStr = quote(writersOf(bram).head.controlNode) + "_offset"
-      val parentPipe = parentOf(bram).getOrElse(throw new Exception(s"Bram ${quote(bram)} does not have a parent!"))
-      val parentCtr = parentPipe match {
-        case Deff(d:Pipe_fold[_,_]) => d.cchain
-        case Deff(d:Pipe_foreach) => d.cchain
-        case Deff(d:ParPipeReduce[_,_]) => d.cc
-        case Deff(d:ParPipeForeach) => d.cc
-        case p => throw new Exception(s"Unknown accumulator parent type $p!")
-      }
-
-      val Def(rhss) = parentCtr
-      Console.println(s"the parent counter for $write $bram is $parentCtr from $parentPipe, def $rhss")
-      val accEn = writeCtrl match {
-        case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
-        case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
-      }
-      if (writers.length == 1) {
-        dups.foreach {case (dd, ii) =>
-          num_dims match {
-            case 1 =>
-              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), $accEn); //w3""")
-            case _ =>
-              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), $accEn); //w4""")
-          }
+      if (isAccum(bram)) {
+        val offsetStr = quote(writersOf(bram).head.controlNode) + "_offset"
+        val parentPipe = parentOf(bram).getOrElse(throw new Exception(s"Bram ${quote(bram)} does not have a parent!"))
+        val parentCtr = parentPipe match {
+          case Deff(d:Pipe_fold[_,_]) => d.cchain
+          case Deff(d:Pipe_foreach) => d.cchain
+          case Deff(d:ParPipeReduce[_,_]) => d.cc
+          case Deff(d:ParPipeForeach) => d.cc
+          case p => throw new Exception(s"Unknown accumulator parent type $p!")
         }
-      } /*else {
-        val bank_num = i
-        dups.foreach {case (dd, ii) =>
-          emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
-            stream.offset($dataStr, -$offsetStr), $accEn); //5""")
+
+        val Def(rhss) = parentCtr
+        Console.println(s"the parent counter for $write $bram is $parentCtr from $parentPipe, def $rhss")
+        val accEn = writeCtrl match {
+          case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
+          case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
         }
-      }*/
-    }
-    else { // Not accum
-      if (isDummy(bram)) {
-        dups.foreach {case (dd, ii) =>
-          emit(s"""${quote(bram)}_$ii.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w6""")
-        }
-      }
-      else num_dims match {
-        case 1 =>
+        if (writers.length == 1) {
           dups.foreach {case (dd, ii) =>
-            emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //8""")
+            num_dims match {
+              case 1 =>
+                emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
+                  stream.offset($dataStr, -$offsetStr), $accEn); //w3""")
+              case _ =>
+                emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
+                  stream.offset($dataStr, -$offsetStr), $accEn); //w4""")
+            }
           }
-        case 2 =>
-          if (inds.length == 1) {
-            val addrs = inds(0)
+        } /*else {
+          val bank_num = i
+          dups.foreach {case (dd, ii) =>
+            emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
+              stream.offset($dataStr, -$offsetStr), $accEn); //5""")
+          }
+        }*/
+      }
+      else { // Not accum
+        if (isDummy(bram)) {
+          dups.foreach {case (dd, ii) =>
+            emit(s"""${quote(bram)}_$ii.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w6""")
+          }
+        }
+        else num_dims match {
+          case 1 =>
             dups.foreach {case (dd, ii) =>
-              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10""")
+              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //8""")
             }
-          }
-          else {
-            // TODO: This may not quite be right
-            def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
-            // Many addresses
-            // Same columns?
-            if (inds.map{ind => quote2D(ind, 1)}.distinct.length == 1) {
-              val addr0 = inds.map{ind => quote2D(ind,0) }
-              val addr1 = quote2D(inds(0), 1)
-              emit(s"""// All readers share column. vectorized """)
+          case 2 =>
+            if (inds.length == 1) {
+              val addrs = inds(0)
               dups.foreach {case (dd, ii) =>
-                emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                ${dataStr}, ${quote(writeCtrl)}_datapath_en); //13""")
-              }
-            }
-            // Same rows?
-            else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
-              val addr0 = quote2D(inds(0), 0)
-              val addr1 = inds.map{ind => quote2D(ind, 0) }
-              emit(s"""// All readers share row. vectorized""")
-              dups.foreach {case (dd, ii) =>
-                emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
-                ${dataStr}, ${quote(writeCtrl)}_datapath_en); // 15""")
+                emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10""")
               }
             }
             else {
-              throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
+              // TODO: This may not quite be right
+              def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
+              // Many addresses
+              // Same columns?
+              if (inds.map{ind => quote2D(ind, 1)}.distinct.length == 1) {
+                val addr0 = inds.map{ind => quote2D(ind,0) }
+                val addr1 = quote2D(inds(0), 1)
+                emit(s"""// All readers share column. vectorized """)
+                dups.foreach {case (dd, ii) =>
+                  emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //13""")
+                }
+              }
+              // Same rows?
+              else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
+                val addr0 = quote2D(inds(0), 0)
+                val addr1 = inds.map{ind => quote2D(ind, 0) }
+                emit(s"""// All readers share row. vectorized""")
+                dups.foreach {case (dd, ii) =>
+                  emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); // 15""")
+                }
+              }
+              else {
+                throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
+              }
             }
-          }
-        case _ =>
-          throw new Exception("MaxJ generation of more than 2D BRAMs is currently unsupported.")
+          case _ =>
+            throw new Exception("MaxJ generation of more than 2D BRAMs is currently unsupported.")
+        }
       }
+      emitComment("} Bram_store")
+    } else {
+      Console.println(s"$write is a bound sym, ignoring write!")
     }
-    emitComment("} Bram_store")
   }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
@@ -790,43 +802,47 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       emitComment(s"} Reg_write // regType ${regType(reg)}, numDuplicates = ${allDups.length}")
 
     case Bram_new(size, zero) =>
-      brams += sym.asInstanceOf[Sym[BRAM[Any]]]
+      if (!isBoundSym(sym)) {
+        brams += sym.asInstanceOf[Sym[BRAM[Any]]]
 
-      withStream(baseStream) {
-        emitComment("Bram_new {")
-        val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-        //TODO: does templete assume bram has 2 dimension?
-        val dims = dimsOf(sym)
-        val sizes = dims.map{dim => bound(dim).get.toInt}
-        val size0 = sizes(0)
-        val size1 = sizes.size match {
-          case 1 => 1
-          case 2 => sizes(1)
-          case _ => throw new Exception("MaxJ generation does not yet support BRAMs with more than 2 dimensions.")
-        }
-        val dups = duplicatesOf(sym)
-        dups.zipWithIndex.foreach { case (r, i) =>
-          Console.println(s"emitting bram $sym - $i, instance $r")
-          val banks = getBanking(r)
-          val strides = getStride(r)
-          if (isDummy(sym)) {
-            emit(s"""DummyMemLib ${quote(sym)}_${i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""")
-          } else {
-            if (r.depth == 1) {
-              emit(s"""BramLib ${quote(sym)}_${i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides});""") // [TODO] Raghu: Stride from metadata
-            }
-            else if (r.depth == 2) {
-              val numReaders_for_this_duplicate = readersOf(sym).filter{q => instanceIndicesOf(q.access, sym).contains(i)}.length
-
-              emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
-              emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
-                ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
+        withStream(baseStream) {
+          emitComment("Bram_new {")
+          val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+          //TODO: does templete assume bram has 2 dimension?
+          val dims = dimsOf(sym)
+          val sizes = dims.map{dim => bound(dim).get.toInt}
+          val size0 = sizes(0)
+          val size1 = sizes.size match {
+            case 1 => 1
+            case 2 => sizes(1)
+            case _ => throw new Exception("MaxJ generation does not yet support BRAMs with more than 2 dimensions.")
+          }
+          val dups = duplicatesOf(sym)
+          dups.zipWithIndex.foreach { case (r, i) =>
+            Console.println(s"emitting bram $sym - $i, instance $r")
+            val banks = getBanking(r)
+            val strides = getStride(r)
+            if (isDummy(sym)) {
+              emit(s"""DummyMemLib ${quote(sym)}_${i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""")
             } else {
-              emit(s"""CANNOT EMIT ${r.depth}-buffered mem yet!!""")
+              if (r.depth == 1) {
+                emit(s"""BramLib ${quote(sym)}_${i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides});""") // [TODO] Raghu: Stride from metadata
+              }
+              else if (r.depth == 2) {
+                val numReaders_for_this_duplicate = readersOf(sym).filter{q => instanceIndicesOf(q.access, sym).contains(i)}.length
+
+                emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
+                emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
+                  ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
+              } else {
+                emit(s"""CANNOT EMIT ${r.depth}-buffered mem yet!!""")
+              }
             }
           }
+          emitComment("} Bram_new")
         }
-        emitComment("} Bram_new")
+      } else {
+        Console.println(s"$sym is a bound sym!")
       }
 
     case Bram_load(EatAlias(bram), addr) =>
