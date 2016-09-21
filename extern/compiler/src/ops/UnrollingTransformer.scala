@@ -480,11 +480,11 @@ trait UnrollingTransformer extends MultiPassTransformer {
     setProps(sym2, mirror(getProps(sym), f.asInstanceOf[Transformer]))
     cloneFuncs.foreach{func => func(sym2)}
 
-    debug(s"  Cloning $sym = $rhs")
+    /*debug(s"  Cloning $sym = $rhs")
     getProps(sym).foreach{m => debug(s"  " + makeString(m)) }
     val rhs2 = sym2 match { case Def(d) => d; case _ => null }
     debug(s"  Created $sym2 = $rhs2")
-    getProps(sym2).foreach{m => debug(s"    " + makeString(m)) }
+    getProps(sym2).foreach{m => debug(s"    " + makeString(m)) }*/
     sym2
   }
 

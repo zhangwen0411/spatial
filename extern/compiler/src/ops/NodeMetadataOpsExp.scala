@@ -422,11 +422,10 @@ trait ControllerTools extends Traversal {
     val child = access.controller
     val (lca, pathA, pathB) = GraphUtil.leastCommonAncestorWithPaths[Controller](top,child, {node => parentOf(node)})
 
-    val accessController = pathB.head
-    if (top == accessController || lca.isEmpty || top != lca.get)
+    if (pathB.isEmpty || lca.isEmpty || top != lca.get)
       throw UndefinedChildException(top, access)
 
-    accessController
+    pathB.head
   }
 
   /**
