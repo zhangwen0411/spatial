@@ -430,8 +430,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     val dataStr = quote(value)
     val allDups = duplicatesOf(bram)
 
-    Console.println(s"bram $bram, writers $writers, matching this $write")
     val writers = writersOf(bram)
+    Console.println(s"bram $bram, writers $writers, matching this $write")
     val writeCtrl = writers.find{_.access == write}.get.controlNode
 
     val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(write,bram).contains(dup._2) }
