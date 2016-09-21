@@ -13,20 +13,7 @@ trait KmeansApp extends SpatialApp {
   val innerPar = 2
   val outerPar = 2
 
-
-  def reduceTree(x: List[(Rep[SInt], Rep[SInt])]): List[(Rep[SInt], Rep[SInt])] = {
-    if (x.length == 1) x
-    else reduceTree(List.tabulate(x.length/2){i =>
-      val (dist1,index1) = x(2*i)
-      val (dist2,index2) = x(2*i+1)
-      val closer = dist1 < dist2
-      val minDist = mux(closer, dist1, dist2)
-      val minIndx = mux(closer, index1, index2)
-      (minDist, minIndx)
-    })
-  }
-
-  def kmeans(points_in: Rep[Array[SInt]], numPoints: Rep[SInt], numCents: Rep[SInt], numDims: Rep[SInt]) = {
+  def kmeans(points_in: Rep[Array[T]], numPoints: Rep[SInt], numCents: Rep[SInt], numDims: Rep[SInt]) = {
     bound(numPoints) = 960000
     bound(numCents) = MAXK
     bound(numDims) = MAXD
@@ -39,6 +26,7 @@ trait KmeansApp extends SpatialApp {
     val P2 = param(innerPar);    domainOf(P2) = (1,96,4)     // Dimensions accumulated in parallel (outer)
     val P3 = param(innerPar);    domainOf(P3) = (1,16,4)     // Points calculated in parallel
     val PR = param(innerPar);    domainOf(PR) = (1,96,4)
+    val P4 = param(innerPar);    domainOf(P4) = (1,96,4)
     /*val P4 = param(1);    domainOf(P4) = (1,MAXD,1)   // Dimensions accumulated in parallel (inner)
     val P5 = param(1);    domainOf(P5) = (1,MAXD,1)   // Dimensions compared in parallel
     val P6 = param(1);    domainOf(P6) = (1,MAXD,1)   // Dimensions saved in parallel
@@ -78,13 +66,13 @@ trait KmeansApp extends SpatialApp {
           val minDist = Reg[SInt](-1)  // Distance to closest centroid
 
           // Find the index of the closest centroid
-          Pipe(K par PX){ct =>
+          /*Reduce(K par P4){ct =>
             val dist = Reduce(D par P2)(0.as[SInt]){d => (pts(pt,d) - cts(ct,d)) ** 2 }{_+_}
             Pipe {
               minDist := min2(dist.value, minDist.value)
               minCent := mux(minDist.value == dist.value, ct, minCent.value)
             }
-          }
+          }*/
 
           // Store this point to the set of accumulators
           val localCent = BRAM[SInt](MAXK,MAXD)

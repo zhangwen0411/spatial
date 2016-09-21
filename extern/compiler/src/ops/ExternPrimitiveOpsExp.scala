@@ -89,8 +89,13 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
   }
 
   // --- Rewrite Rules
-  // TODO: Allow rewrite rules in forge on metadata helpers
-  def extractNumericConst[T:Manifest](x: T): Option[Double] = {
+  override def globalCheck(__arg0: Rep[Any])(implicit __pos: SourceContext): Boolean = __arg0 match {
+    case p: Param[_] => true
+    case Const(x) => true
+    case _ => super.globalCheck(__arg0)
+  }
+
+  private def extractNumericConst[T:Manifest](x: T): Option[Double] = {
     val mD = manifest[Double]
     val mF = manifest[Float]
     val mI = manifest[Int]
@@ -101,28 +106,20 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
       case `mL` => Some(x.asInstanceOf[Long].toDouble)
       case `mF` => Some(x.asInstanceOf[Float].toDouble)
       case `mD` => Some(x.asInstanceOf[Double])
-      case mT =>
-        //stageWarn("Unrecognized type: " + mT + " for symbol " + x)
-        None
+      case mT   => None
     }
   }
-  override def boundOf(__arg0: Rep[Any])(implicit __pos: SourceContext): Option[MBound] = __arg0 match {
+
+  override def boundOf(x: Rep[Any])(implicit ctx: SourceContext): Option[MBound] = x match {
     case p@Param(x) =>
-      val c = extractNumericConst(x)(p.tp)
-      c.map{c => if (p.isFixed) fixed(c) else exact(c) }
+      extractNumericConst(x)(p.tp).map{c => if (p.isFixed) fixed(c) else exact(c) }
 
-    case Const(x) =>
-      val c = extractNumericConst(x)(__arg0.tp)
-      c.map{c => fixed(c) }
+    case Const(c) =>
+      extractNumericConst(c)(x.tp).map{b => fixed(b) }
 
-    case _ => super.boundOf(__arg0)
+    case _ => super.boundOf(x)
   }
 
-  override def globalCheck(__arg0: Rep[Any])(implicit __pos: SourceContext): Boolean = __arg0 match {
-    case p: Param[_] => true
-    case Const(x) => true
-    case _ => super.globalCheck(__arg0)
-  }
 
   // TODO: Move to spec later?
   // Rewrite needed for length calculation of vectors, ranges
