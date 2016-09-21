@@ -472,10 +472,10 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             num_dims match {
               case 1 =>
                 emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), $accEn); //w3""")
+                  stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr)); //w3""")
               case _ =>
                 emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                  stream.offset($dataStr, -$offsetStr), $accEn); //w4""")
+                  stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr)); //w4""")
             }
           }
         } /*else {

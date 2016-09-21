@@ -188,20 +188,20 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       styleOf(sym) match {
         case StreamPipe => 
           emitComment(s"""StrmPipe to be emitted""")
-          print_stage_prefix(s"Foreach Streampipe ${quote(sym)}")
+          print_stage_prefix(s"Foreach Streampipe <b>${quote(sym)}</b>")
         case CoarsePipe => 
           emitComment(s"""MPSM to be emitted""")
-          print_stage_prefix(s"Foreach Metapipe ${quote(sym)}")
+          print_stage_prefix(s"Foreach Metapipe <b>${quote(sym)}</b>")
         case InnerPipe => 
           emitComment(s"""PipeSM to be emitted""")
-          print_stage_prefix(s"Foreach Innerpipe ${quote(sym)}", false)
+          print_stage_prefix(s"Foreach Innerpipe <b>${quote(sym)}</b>", false)
           hadThingsInside = false
         case SequentialPipe => 
           emitComment(s"""SeqSM to be emitted""")
-          print_stage_prefix(s"Foreach Seqpipe ${quote(sym)}")
+          print_stage_prefix(s"Foreach Seqpipe <b>${quote(sym)}</b>")
         case _ => 
           emitComment(s"""ParPipeForeach style: ${styleOf(sym)}""")
-          print_stage_prefix(s"Foreach ${styleOf(sym)} ${quote(sym)}")
+          print_stage_prefix(s"Foreach ${styleOf(sym)} <b>${quote(sym)}</b>")
       }
       emitController(sym, Some(cchain))
       emitParallelizedLoop(inds, cchain)
@@ -220,17 +220,17 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       styleOf(sym) match {
         case CoarsePipe => 
           emitComment(s"""MPSM to be emitted""")
-          print_stage_prefix(s"Reduce Metapipe ${quote(sym)}")
+          print_stage_prefix(s"Reduce Metapipe <b>${quote(sym)}</b>")
         case InnerPipe => 
           emitComment(s"""PipeSM to be emitted""")
-          print_stage_prefix(s"Reduce Innerpipe ${quote(sym)}", false)
+          print_stage_prefix(s"Reduce Innerpipe <b>${quote(sym)}</b>", false)
           hadThingsInside = false
         case SequentialPipe => 
           emitComment(s"""SeqSM to be emitted""")
-          print_stage_prefix(s"Reduce Seqpipe ${quote(sym)}")
+          print_stage_prefix(s"Reduce Seqpipe <b>${quote(sym)}</b>")
         case _ => 
           emitComment(s"""ParPipeReduce style: ${styleOf(sym)}""")
-          print_stage_prefix(s"Reduce ${styleOf(sym)} ${quote(sym)}")
+          print_stage_prefix(s"Reduce ${styleOf(sym)} <b>${quote(sym)}</b>")
       }
 
       // The body of ParPipeReduce uses 'acc' to refer to the accumulator
