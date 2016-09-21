@@ -34,7 +34,6 @@ trait BufferAnalyzer extends Traversal with ControllerTools {
       val accesses = reads ++ writes
       debug("  accesses: " + accesses.mkString(", "))
 
-
       val (metapipe, _) = findMetapipe(mem, reads, writes)
 
       if (metapipe.isDefined && dup.depth > 1) {

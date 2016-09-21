@@ -312,6 +312,11 @@ trait SpatialMetadata {
      * Fixed(Rep[Any])  // Returns Option[Double]. Defined only for fixed bounds
      **/
     val MBound = metadata("MBound", "bound" -> SDouble, "exact" -> SBoolean, "locked" -> SBoolean)
+    onMeet (MBound) (${
+      MBound(Math.max(this.bound,that.bound), this.exact && that.exact, this.locked && that.locked)
+    })
+    isExistential(MBound, false)
+
     val boundOps = metadata("bound")
     static (boundOps) ("update", Nil, (MAny, SDouble) :: MUnit, effect = simple) implements
       composite ${ setMetadata($0, MBound($1, false, false)) }
