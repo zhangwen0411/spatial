@@ -567,7 +567,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         this,
         ${quote(sym)}_en, ${quote(sym)}_done, $parStr
         ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
-        ${quote(addrs)}_$i, 
+        ${quote(addrs)}_$i, ${quote(len)},
         ${quote(mem)},  "${quote(mem)}_${quote(sym)}_in",
         ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
       duplicatesOf(local).zipWithIndex.foreach { case (m,i) => 
@@ -588,7 +588,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         this,
         ${quote(sym)}_en, ${quote(sym)}_done,
         ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
-        ${quote(addrs)}_$i, ${quote(local)}_$j, 
+        ${quote(addrs)}_$i, ${quote(local)}_$j, ${quote(len)},
         ${quote(mem)}, "${quote(mem)}_${quote(sym)}_out");""")
       print_stage_suffix(quote(sym),false)
 
