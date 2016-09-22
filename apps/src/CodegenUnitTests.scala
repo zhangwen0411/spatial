@@ -496,7 +496,7 @@ trait Memcpy2DApp extends SpatialApp {
   val C = 96
 
   def memcpy_2d(src: Rep[ForgeArray[T]], rows: Rep[SInt], cols: Rep[SInt]) = {
-    val tileDim1 = param(2);
+    val tileDim1 = param(8);
     val tileDim2 = param(96);  domainOf(tileDim2) = (96, 96, 96)
 
     val rowsIn = rows
