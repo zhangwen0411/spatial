@@ -18,7 +18,7 @@ trait Caches {
     val cache_new = internal (Cache) ("cache_new", T, ("offchip", OffChip(T)) :: Cache(T), effect = mutable)
     val cache_load = internal (Cache) ("cache_load", T, (("cache", Cache(T)), ("addr", Idx)) :: T)
     val cache_store = internal (Cache) ("cache_store", T, (("cache", Cache(T)), ("addr", Idx), ("value", T)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
-    //TODO: cache_flush?
+    //ISSUE #32: cache_flush?
 
     // --- Internals
 

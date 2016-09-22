@@ -247,6 +247,7 @@ trait SpatialDSL extends ForgeApplication
 
     // Transformers: Change or mirror IR
     val UnitPipeTransformer   = transformer("UnitPipe", isExtern=true)
+    val RegisterCleanup       = transformer("RegisterCleanup", isExtern=true)
     val Unrolling             = transformer("Unrolling", isExtern=true)
     val ConstantFolding       = traversal("ConstantFolding", isExtern=true)
 
@@ -275,8 +276,9 @@ trait SpatialDSL extends ForgeApplication
     // --- Pre-DSE analysis
     schedule(OffChipAnalyzer)       // Check dimensions of offchip memories
     schedule(StageAnalyzer)         // Get number of stages in each control node
-    //schedule(ControlSignalAnalyzer) // Variety of control signal related metadata (TODO: Needed here? Run by DSE)
     schedule(SpatialAffineAnalysis) // Access patterns
+    schedule(MemoryAnalyzer)        // Get used readers/writers of each memory
+    schedule(RegisterCleanup)       // Remove unused register reads created in unit pipe insertion
     schedule(DotPrinter)            // Graph prior to unrolling
 
     // --- Design Space Exploration
