@@ -107,14 +107,14 @@ trait PIRGen extends Traversal with PIRCommon {
   }
 
   def generateGlobals() {
-    val (mems, memCtrls) = globals.partition{case MemCtrl(_,_,_) => false; case _ => true}
+    val (mems, dramCtrls) = globals.partition{case DRAMCtrl(_,_,_) => false; case _ => true}
     mems.foreach(emitComponent(_))
-    memCtrls.foreach(emitComponent(_))
+    dramCtrls.foreach(emitComponent(_))
   }
 
   def generateFooter() {
     val args = globals.flatMap{case InputArg(name)=>Some(name); case OutputArg(name)=>Some(name); case _ => None}.mkString(", ")
-    val mcs  = globals.flatMap{case MemCtrl(name,_,_)=>Some(name); case _ => None}.mkString(", ")
+    val mcs  = globals.flatMap{case DRAMCtrl(name,_,_)=>Some(name); case _ => None}.mkString(", ")
     //emit(s"top.updateFields(List(${cus(top.get).name}), List($args), List($mcs))")
     emit(s"")
     close("}")
@@ -219,7 +219,7 @@ trait PIRGen extends Traversal with PIRCommon {
       }
       emit(decl)
 
-    case mem@MemCtrl(_,region,mode) => emit(s"val ${quote(mem)} = MemoryController($mode, ${quote(region)})")
+    case mem@DRAMCtrl(_,region,mode) => emit(s"val ${quote(mem)} = MemoryController($mode, ${quote(region)})")
     case mem: Offchip   => emit(s"val ${quote(mem)} = OffChip()")
     case mem: InputArg  => emit(s"val ${quote(mem)} = ArgIn()")
     case mem: OutputArg => emit(s"val ${quote(mem)} = ArgOut()")
@@ -245,7 +245,7 @@ trait PIRGen extends Traversal with PIRCommon {
   def quote(sram: CUMemory): String = sram.name
   def quote(mem: GlobalMem): String = mem match {
     case Offchip(name)     => s"${name}_oc"
-    case MemCtrl(name,_,_) => s"${name}_mc"
+    case DRAMCtrl(name,_,_) => s"${name}_mc"
     case InputArg(name)    => s"${name}_argin"
     case OutputArg(name)   => s"${name}_argout"
     case ScalarMem(name)   => s"${name}_scalar"
@@ -276,7 +276,7 @@ trait PIRGen extends Traversal with PIRCommon {
     case ScalarIn(_, mem:ScalarMem)  => quote(mem)            // Scalar inputs from CU
     case ScalarOut(_, out:OutputArg) => quote(out)            // Scalar output to output arg
     case ScalarOut(_, mem:ScalarMem) => quote(mem)            // Output to another CU
-    case ScalarOut(_, mc:MemCtrl) => s"${quote(mc)}.saddr"    // Output to memory address
+    case ScalarOut(_, mc:DRAMCtrl) => s"${quote(mc)}.saddr"    // Output to memory address
 
     case VectorIn(mem)                => quote(mem)           // Global vector read
     case InputReg(mem)                => quote(mem)           // Local vector read

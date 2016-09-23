@@ -422,7 +422,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 <TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">"""
       )
 
-      print_stage_prefix(s"""Hwblock: ${quote(sym)}""")
+      print_stage_prefix(s"""Hwblock: <b>${quote(sym)}</b>""")
 			inHwScope = true
 			emitComment("Emitting Hwblock dependencies {")
       val hwblockDeps = recursiveDeps(rhs)
@@ -477,7 +477,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
     case e@Pipe_foreach(cchain, func, inds) =>
       controlNodeStack.push(sym)
-      print_stage_prefix(s"""Pipe_foreach: ${quote(sym)}""")
+      print_stage_prefix(s"""Pipe_foreach: <b>${quote(sym)}</b>""")
       emitController(sym, Some(cchain))
       emitNestedIdx(cchain, inds)
       emitRegChains(sym, inds)
@@ -487,7 +487,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
     case e@Pipe_fold(cchain, accum, zero, fA, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
       controlNodeStack.push(sym)
-      print_stage_prefix(s"""Pipe_fold: ${quote(sym)}""")
+      print_stage_prefix(s"""Pipe_fold: <b>${quote(sym)}</b>""")
       emitController(sym, Some(cchain))
       emitNestedIdx(cchain, inds)
       emitRegChains(sym, inds)
@@ -506,7 +506,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
 		case e@Pipe_parallel(func: Block[Unit]) =>
       controlNodeStack.push(sym)
-      print_stage_prefix(s"""Pipe_parallel ${quote(sym)}""")
+      print_stage_prefix(s"""Pipe_parallel <b>${quote(sym)}</b>""")
       emitController(sym, None)
       emitBlock(func, s"${quote(sym)} Parallel")
       print_stage_suffix(quote(sym))
@@ -523,7 +523,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
         case ForkJoin => s"Parpipe"
       }
 
-      print_stage_prefix(s"""Unit $smStr ${quote(sym)}""", hadThingsInside)
+      print_stage_prefix(s"""Unit $smStr <b>${quote(sym)}</b>""", hadThingsInside)
       emit(s"""// Unit pipe writtenIn(${quote(sym)}) = ${writtenIn(sym)}""")
       writtenIn(sym) foreach { s =>
         val Def(d) = s

@@ -71,107 +71,124 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
     def apply(e: Exp[Any]) = meta[MemDuplicates](e).map(_.insts).getOrElse(Nil)
   }
 
-
   /**
     Metadata for determining which memory instance(s) an access should correspond to.
     Needed to preserve mapping after unrolling
   */
   case class MemInstanceIndices(mapping: Map[Exp[Any], Set[Int]]) extends Metadata
   object instanceIndicesOf {
-    def update(access: Exp[Any], mem: Exp[Any], idxs: Set[Int]) = instanceIndicesOf.get(access) match {
+    // Override all instance indices for this access for the given memory
+    def update(access: Exp[Any], mem: Exp[Any], idxs: Set[Int]): Unit = instanceIndicesOf.get(access) match {
       case Some(map) =>
         val newMap = map.filterKeys(_ != mem) + (mem -> idxs)
         setMetadata(access, MemInstanceIndices(newMap))
       case None =>
         setMetadata(access, MemInstanceIndices(Map(mem -> idxs)))
     }
-    def add(access: Exp[Any], mem: Exp[Any], idx: Int) = instanceIndicesOf.get(access) match {
-      case Some(map) if map contains mem =>
-        val newMap = map.filterKeys(_ != mem) + (mem -> (map(mem) + idx))
-        setMetadata(access, MemInstanceIndices(newMap))
+    // Add an instance index for this access for the given memory
+    def add(access: Exp[Any], mem: Exp[Any], idx: Int): Unit = instanceIndicesOf.get(access) match {
       case Some(map) =>
-        val newMap = map.filterKeys(_ != mem) + (mem -> Set(idx))
+        val newMap = map.filterKeys(_ != mem) + (mem -> (map.getOrElse(mem,Set.empty) + idx))
         setMetadata(access, MemInstanceIndices(newMap))
       case None =>
         setMetadata(access, MemInstanceIndices(Map(mem -> Set(idx))))
     }
-    def get(access: Exp[Any]) = meta[MemInstanceIndices](access).map(_.mapping)
-
-    def apply(access: Exp[Any], mem: Exp[Any]) = {
-      val mapping = meta[MemInstanceIndices](access).map(_.mapping).getOrElse(throw NoInstanceIndicesException(access, mem))
-      mapping.getOrElse(mem, throw NoInstanceIndicesException(access, mem))
+    // Return all instance indices for this access for the given memory
+    def apply(access: Exp[Any], mem: Exp[Any]): Set[Int] = instanceIndicesOf.get(access) match {
+      case Some(map) if map contains mem => map(mem)
+      case _ => throw NoInstanceIndicesException(access, mem)
     }
+
+    def update(access: Access, mem: Exp[Any], idxs: Set[Int]): Unit = { instanceIndicesOf(access.node, mem) = idxs }
+    def add(access: Access, mem: Exp[Any], idx: Int): Unit = { instanceIndicesOf.add(access.node, mem, idx) }
+    def apply(access: Access, mem: Exp[Any]): Set[Int] = { instanceIndicesOf(access.node, mem) }
+
+    private def get(access: Exp[Any]) = meta[MemInstanceIndices](access).map(_.mapping)
+
+    def reset(access:Exp[Any]): Unit = { setMetadata(access, MemInstanceIndices(Map.empty)) }
   }
 
+  /**
+    Metadata for which n-buffered ports a given access should connect to. Ports should either be:
+    - Undefined (for unbuffered cases)
+    - A single port (for buffered cases)
+    - All ports of the given memory (for writes time multiplexed with the buffer)
+   */
   case class MemPortIndex(mapping: Map[Exp[Any], Map[Int,Set[Int]]]) extends Metadata
-  object portOf {
-    def get(access: Exp[Any]) = meta[MemPortIndex](access).map(_.mapping)
-    def apply(access: Exp[Any], mem: Exp[Any], instIdx: Int): Set[Int] = {
-      val map = meta[MemPortIndex](access).map(_.mapping).getOrElse(throw NoPortsException(access, mem, instIdx))
-      val portMap = map.getOrElse(mem, throw NoPortsException(access, mem, instIdx))
-      portMap.getOrElse(instIdx, throw NoPortsException(access, mem, instIdx))
-    }
-  }
   object portsOf {
-    def update(access: Exp[Any], mem: Exp[Any], instIdx: Int, idx: Set[Int]) = portOf.get(access) match {
-      case Some(map) if map contains mem =>
-        val newMap = map.filterKeys(_ != mem) + (mem -> (map(mem) + (instIdx -> idx)))
-        setMetadata(access, MemPortIndex(newMap))
+    // Override all ports for this access for the given memory and instance index
+    def update(access: Exp[Any], mem: Exp[Any], instIdx: Int, ports: Set[Int]): Unit = portsOf.get(access) match {
       case Some(map) =>
-        val newMap = map + (mem -> Map(instIdx -> idx))
+        val newMap = map.filterKeys(_ != mem) + (mem -> (map.getOrElse(mem,Map.empty) + (instIdx -> ports)))
         setMetadata(access, MemPortIndex(newMap))
       case None =>
-        setMetadata(access, MemPortIndex(Map(mem -> Map(instIdx -> idx))))
+        setMetadata(access, MemPortIndex(Map(mem -> Map(instIdx -> ports))))
     }
-    def update(access: Exp[Any], mem: Exp[Any], ports: Map[Int,Set[Int]]) {
+    // Override all ports for this access for the given memory for all instance indices
+    def update(access: Exp[Any], mem: Exp[Any], ports: Map[Int,Set[Int]]): Unit = {
       ports.foreach{case (instIdx, port) => portsOf(access, mem, instIdx) = port }
     }
-    def apply(access: Exp[Any], mem: Exp[Any]): Map[Int,Set[Int]] = {
-      meta[MemPortIndex](access).get.mapping.apply(mem) // Should always be defined
+    // Get all port mappings for this access for the given memory
+    def apply(access: Exp[Any], mem: Exp[Any]): Map[Int,Set[Int]] = portsOf.get(access) match {
+      case Some(map) if map contains mem => map(mem)
+      case _ => throw NoPortsException(access, mem, None)
     }
+    // Get ports for this access for the given memory and instance index
+    def apply(access: Exp[Any], mem: Exp[Any], instIdx: Int): Set[Int] = {
+      val ports = portsOf(access, mem)
+      ports.getOrElse(instIdx, throw NoPortsException(access, mem, Some(instIdx)))
+    }
+
+    def update(access: Access, mem: Exp[Any], instIdx: Int, ports: Set[Int]): Unit = { portsOf(access.node, mem, instIdx) = ports }
+    def update(access: Access, mem: Exp[Any], ports: Map[Int,Set[Int]]): Unit = { portsOf(access.node, mem) = ports }
+    def apply(access: Access, mem: Exp[Any]): Map[Int,Set[Int]] = { portsOf(access.node, mem) }
+    def apply(access: Access, mem: Exp[Any], instIdx: Int): Set[Int] = { portsOf(access.node, mem, instIdx) }
+
+    private def get(access: Exp[Any]) = meta[MemPortIndex](access).map(_.mapping)
+
+    def reset(access:Exp[Any]): Unit = { setMetadata(access, MemPortIndex(Map.empty)) }
   }
 
+  /**
+    Metadata for the controller determining the done signal for a buffered read or write
+    Set per memory and per instance index
+   */
   case class AccessTopController(mapping: Map[Exp[Any], Map[Int,Controller]]) extends Metadata
   object topControllerOf {
-    def update(access: Exp[Any], mem: Exp[Any], instIdx: Int, ctrl: Controller) = topControllerOf.get(access) match {
-      case Some(map) if map contains mem =>
-        val newMap = map.filterKeys(_ != mem) + (mem -> (map(mem) + (instIdx -> ctrl)))
-        setMetadata(access, AccessTopController(newMap))
+    // Set top controller for the given access, memory, and instance index
+    def update(access: Exp[Any], mem: Exp[Any], instIdx: Int, ctrl: Controller): Unit = topControllerOf.get(access) match {
       case Some(map) =>
-        val newMap = map + (mem -> Map(instIdx -> ctrl))
+        val newMap = map.filterKeys(_ != mem) + (mem -> (map.getOrElse(mem,Map.empty) + (instIdx -> ctrl)))
         setMetadata(access, AccessTopController(newMap))
       case None =>
         setMetadata(access, AccessTopController(Map(mem -> Map(instIdx -> ctrl))))
     }
-    def get(access: Exp[Any]) = meta[AccessTopController](access).map(_.mapping)
+    // Get the top controller for the given access, memory, and instance index
     def apply(access: Exp[Any], mem: Exp[Any], instIdx: Int): Option[Controller] = {
       val mapping = meta[AccessTopController](access).map(_.mapping) // Option Map[Exp, Map[Int,Controller]]
       val portMap = mapping.flatMap(_.get(mem))  // Option[Map[Int,Controller]]
       portMap.flatMap(x => x.get(instIdx))  // Option[Controller]
     }
-  }
-  object topControllersOf {
-    def update(access: Exp[Any], mem: Exp[Any], mapping: Option[Map[Int, Controller]]) {
-      if (mapping.isDefined) {
-        mapping.get.foreach{case (idx, ctrl) => topControllerOf(access, mem, idx) = ctrl }
-      }
-    }
-    def apply(access: Exp[Any], mem: Exp[Any]) = meta[AccessTopController](access).flatMap(_.mapping.get(mem))
+
+    def update(access: Access, mem: Exp[Any], instIdx: Int, ctrl: Controller): Unit = { topControllerOf(access.node, mem, instIdx) = ctrl }
+    def apply(access: Access, mem: Exp[Any], instIdx: Int): Option[Controller] = { topControllerOf(access.node, mem, instIdx) }
+
+    private def get(access: Exp[Any]) = meta[AccessTopController](access).map(_.mapping)
   }
 
-  override def mirror[T<:Metadata](m: T, f: Transformer): T = m match {
+  // Mirroring rules for metadata
+  override def mirror[T<:Metadata](m: T, f: Transformer): T = (m match {
     case MemInstanceIndices(map) =>
-      MemInstanceIndices(map.map{case (mem,idxs) => f(mem) -> idxs }).asInstanceOf[T]
+      MemInstanceIndices(map.map{case (mem,idxs) => f(mem) -> idxs })
 
     case MemPortIndex(mapping) =>
-      MemPortIndex(mapping.map{case (mem, idxs) => f(mem) -> idxs}).asInstanceOf[T]
+      MemPortIndex(mapping.map{case (mem, idxs) => f(mem) -> idxs})
 
     case AccessTopController(mapping) =>
-      AccessTopController(mapping.map{case (mem, ctrls) => f(mem) -> ctrls.map{case (idx,ctrl) => idx -> (f(ctrl.node),ctrl.inReduce) }}).asInstanceOf[T]
+      AccessTopController(mapping.map{case (mem, ctrls) => f(mem) -> ctrls.map{case (idx,ctrl) => idx -> mirrorCtrl(ctrl,f) }})
 
     case _ => super.mirror(m,f)
-  }
-
+  }).asInstanceOf[T]
 }
 
 // Technically doesn't need a real traversal, but nice to have debugging, etc.
@@ -329,7 +346,7 @@ trait BankingBase extends Traversal with ControllerTools {
     writers.foreach{writer => debug(s"      $writer")}
 
     val accesses = writers ++ reader
-    val bankings = accesses.map{a => bankAccess(mem, a.access)}
+    val bankings = accesses.map{a => bankAccess(mem, a.node)}
     val banking = bankings.map(_._1).reduce{(a,b) => combineBankings(mem,a,b) }
     val duplicates = bankings.map(_._2).reduce{(a,b) => Math.max(a,b) }
 
@@ -391,6 +408,11 @@ trait BankingBase extends Traversal with ControllerTools {
 
     val writers = writersOf(mem)
     val readers = readersOf(mem)
+    val accesses = writers ++ readers
+    accesses.foreach{access =>
+      instanceIndicesOf.reset(access.node)
+      portsOf.reset(access.node)
+    }
 
     if (writers.isEmpty && !isArgIn(mem))
       stageWarn("Memory " + nameOf(mem).getOrElse("") + s" ($mem) defined here has no writers!")(mpos(mem.pos))
@@ -421,17 +443,11 @@ trait BankingBase extends Traversal with ControllerTools {
     instanceGroups.zipWithIndex.foreach{case (InstanceGroup(metapipe, accesses, instance, ports, swaps), i) =>
       debug(s"  #$i Depth: ${instance.depth}, Duplicates: ${instance.duplicates}, Banking: " + instance.banking.mkString(", "))
 
-      accesses.foreach{a =>
-        val access = a.access
+      accesses.foreach{access =>
         instanceIndicesOf.add(access, mem, i)
-        portsOf(access, mem, i) = ports(a)
+        portsOf(access, mem, i) = ports(access)
 
-        swaps.get(a) match {
-          case Some(swap) =>
-            debug(s"""   - $a (ports: ${ports(a).mkString(", ")}) [swap: $swap]""")
-          case None =>
-            debug(s"""   - $a (ports: ${ports(a).mkString(", ")})""")
-        }
+        debug(s"""   - $access (ports: ${ports(access).mkString(", ")}) [swap: ${swaps.get(access)}]""")
       }
     }
 
@@ -553,6 +569,12 @@ trait FIFOBanking extends BankingBase {
   override val allowMultipleReaders = false
   override val allowMultipleWriters = false
 
+  // TODO: Should check that we don't have patterns like:
+  // val fifo = FIFO
+  // Pipe(P1)
+  //   Pipe(P2)
+  //     fifo.pop/push
+  // as this implies multiple concurrent reads/writes
   override def bankAccess(mem: Exp[Any], access: Exp[Any]): (List[Banking], Int) = {
     val banks = (unrollFactorsOf(access) diff unrollFactorsOf(mem)).map{case Exact(p) => p.toInt}.fold(1){_*_}
     (List(StridedBanking(1, banks)), 1)
@@ -586,5 +608,4 @@ trait MemoryAnalyzer extends Traversal {
     run(ctrlAnalyzer.localMems)
     b
   }
-
 }

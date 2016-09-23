@@ -269,7 +269,9 @@ trait MaxJManagerGen {
 	    // Create a KernelConfiguration object that sets the OptimizationTechnique
 	    // to optimize for area, which is the default in the 2014.1 compiler
 	    // TODO: This causes build failures with MaxJ during source annotation. Investigate why
-	    // KernelConfiguration kernelConfig = getCurrentKernelConfig();
+	    KernelConfiguration kernelConfig = getCurrentKernelConfig();
+	    kernelConfig.warnings.setWarningBehaviour(KernelConfiguration.WarningOptions.Warning.ALL, 
+	    	KernelConfiguration.WarningOptions.WarningBehaviour.IGNORE);
 	    // kernelConfig.optimization.setOptimizationTechnique(OptimizationTechnique.AREA);
 	    // KernelBlock k = addKernel(new TopKernel(makeKernelParameters("TopKernel", kernelConfig)));
 

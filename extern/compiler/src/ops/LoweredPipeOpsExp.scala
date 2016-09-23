@@ -139,7 +139,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
         case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
           xx match {
             case Deff(Argin_new(_)) => true
-            case _ =>  false
+            case _ =>  false 
           }
         case Deff(_) => false // None
         case _ => true // Is bound
@@ -173,7 +173,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
       case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case _ =>
+      case _ => 
     }
     set ++ ret
   }
@@ -186,22 +186,22 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emit("""{""")
       var hadThingsInside = true
       styleOf(sym) match {
-        case StreamPipe =>
+        case StreamPipe => 
           emitComment(s"""StrmPipe to be emitted""")
-          print_stage_prefix(s"Foreach Streampipe ${quote(sym)}")
-        case CoarsePipe =>
+          print_stage_prefix(s"Foreach Streampipe <b>${quote(sym)}</b>")
+        case CoarsePipe => 
           emitComment(s"""MPSM to be emitted""")
-          print_stage_prefix(s"Foreach Metapipe ${quote(sym)}")
-        case InnerPipe =>
+          print_stage_prefix(s"Foreach Metapipe <b>${quote(sym)}</b>")
+        case InnerPipe => 
           emitComment(s"""PipeSM to be emitted""")
-          print_stage_prefix(s"Foreach Innerpipe ${quote(sym)}", false)
+          print_stage_prefix(s"Foreach Innerpipe <b>${quote(sym)}</b>", false)
           hadThingsInside = false
-        case SequentialPipe =>
+        case SequentialPipe => 
           emitComment(s"""SeqSM to be emitted""")
-          print_stage_prefix(s"Foreach Seqpipe ${quote(sym)}")
-        case _ =>
+          print_stage_prefix(s"Foreach Seqpipe <b>${quote(sym)}</b>")
+        case _ => 
           emitComment(s"""ParPipeForeach style: ${styleOf(sym)}""")
-          print_stage_prefix(s"Foreach ${styleOf(sym)} ${quote(sym)}")
+          print_stage_prefix(s"Foreach ${styleOf(sym)} <b>${quote(sym)}</b>")
       }
       emitController(sym, Some(cchain))
       emitParallelizedLoop(inds, cchain)
@@ -218,19 +218,19 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emit("""{""")
       var hadThingsInside = true
       styleOf(sym) match {
-        case CoarsePipe =>
+        case CoarsePipe => 
           emitComment(s"""MPSM to be emitted""")
-          print_stage_prefix(s"Reduce Metapipe ${quote(sym)}")
-        case InnerPipe =>
+          print_stage_prefix(s"Reduce Metapipe <b>${quote(sym)}</b>")
+        case InnerPipe => 
           emitComment(s"""PipeSM to be emitted""")
-          print_stage_prefix(s"Reduce Innerpipe ${quote(sym)}", false)
+          print_stage_prefix(s"Reduce Innerpipe <b>${quote(sym)}</b>", false)
           hadThingsInside = false
-        case SequentialPipe =>
+        case SequentialPipe => 
           emitComment(s"""SeqSM to be emitted""")
-          print_stage_prefix(s"Reduce Seqpipe ${quote(sym)}")
-        case _ =>
+          print_stage_prefix(s"Reduce Seqpipe <b>${quote(sym)}</b>")
+        case _ => 
           emitComment(s"""ParPipeReduce style: ${styleOf(sym)}""")
-          print_stage_prefix(s"Reduce ${styleOf(sym)} ${quote(sym)}")
+          print_stage_prefix(s"Reduce ${styleOf(sym)} <b>${quote(sym)}</b>")
       }
 
       // The body of ParPipeReduce uses 'acc' to refer to the accumulator
@@ -239,8 +239,6 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       val Def(d) = accum  // CHEATING!
       duplicatesOf(acc) = duplicatesOf(accum)
       readersOf(acc) = readersOf(accum)
-      val Deff(writer) = writersOf(acc).head.access //(wr controller, accum bool, st node of type bram_store)
-      //emitNode(acc, d)
 
       emitComment(s"""ParPipeReduce ${quote(sym)} controller {""")
       emitController(sym, Some(cchain))
@@ -250,6 +248,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emitParallelizedLoop(inds, cchain)
       emitComment(s"""} ${quote(sym)} par loop""")
 
+      // Putting reduction tree in its own kernel
       var inputVecs = Set[Sym[Any]]()
       var consts_args_bnds_list = Set[Exp[Any]]()
       var treeResult = ""
@@ -286,13 +285,8 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
 
       val Def(EatReflect(dp)) = accum
       dp match {
-        case Bram_new(_,_) =>
-          writer match {
-            case Bram_store(bram, addr, value) =>
-              emitNode(bram.asInstanceOf[Sym[Any]], Bram_store(accum.asInstanceOf[Sym[BRAM[Any]]], addr, value))
-            case Par_bram_store(bram, addr, value) =>
-              emitNode(bram.asInstanceOf[Sym[Any]], Par_bram_store(accum.asInstanceOf[Sym[BRAM[Any]]], addr, value))
-          }
+        case a@Bram_new(_,_) =>
+          // emitNode(accum.asInstanceOf[Sym[Any]], d)
         /* NOT SURE WHAT THIS SECTION DOES! -Matt*/
         case Reg_new(init) =>
         //   (0 until duplicatesOf(accum).size) foreach { i =>

@@ -135,35 +135,17 @@ trait UnrollingTransformer extends MultiPassTransformer {
       val enables = lanes.vectorize{p => f(en) && valids(p) }
       val parPush = par_push_fifo(f(fifo), values, enables, true)(e._mT,e.__pos)
 
-      //if (SpatialConfig.genCGRA) {
       setProps(parPush, mirror(getProps(s), f.asInstanceOf[Transformer]))
-      //}
-
-      /*
-      // Metadata (also needs mirroring after unrolling is complete)
-      instanceIndicesOf(parPush, f(mem)) = instanceIndicesOf(s, mem)
-      topControllersOf(parPush, f(mem)) = topControllersOf(s, mem)
-      portsOf(parPush, f(mem)) = portsOf(s, mem)*/
-
       cloneFuncs.foreach{func => func(parPush) }
       lanes.unify(s, parPush)
 
     case EatReflect(e@Pop_fifo(fifo@EatAlias(mem))) if !lanes.isUnrolled(fifo) =>
       debug(s"Unrolling $s = $d")
       val parPop = par_pop_fifo(f(fifo), lanes.length)(e._mT,e.__pos)
-      //if (SpatialConfig.genCGRA) {
-      setProps(parPop, mirror(getProps(s), f.asInstanceOf[Transformer]))
-      //}
-
-
       dimsOf(parPop) = List(lanes.length.as[Index])
       lenOf(parPop) = lanes.length
-      /*
-      // Metadata (also needs mirroring after unrolling is complete)
-      instanceIndicesOf(parPop, f(mem)) = instanceIndicesOf(s, mem)
-      topControllersOf(parPop, f(mem)) = topControllersOf(s, mem)
-      portsOf(parPop, f(mem)) = portsOf(s, mem)*/
 
+      setProps(parPop, mirror(getProps(s), f.asInstanceOf[Transformer]))
       cloneFuncs.foreach{func => func(parPop) }
       lanes.split(s, parPop)(e._mT)
 
@@ -182,16 +164,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
       val addrs  = lanes.vectorize{p => f(addr)}
       val parStore = par_bram_store(f(bram), addrs, values)(e._mT, e.__pos)
 
-      //if (SpatialConfig.genCGRA) {
       setProps(parStore, mirror(getProps(s), f.asInstanceOf[Transformer]))
       parIndicesOf(parStore) = lanes.map{i => accessIndicesOf(s).map(f(_)) }
-      //}
-      /*
-      // Metadata (also needs mirroring after unrolling is complete)
-      instanceIndicesOf(parStore, f(mem)) = instanceIndicesOf(s, mem)
-      topControllersOf(parStore, f(mem)) = topControllersOf(s, mem)
-      portsOf(parStore, f(mem)) = portsOf(s, mem)*/
-
       cloneFuncs.foreach{func => func(parStore) }
       lanes.unify(s, parStore)
 
@@ -201,19 +175,11 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
       val addrs = lanes.vectorize{p => f(addr)}
       val parLoad = par_bram_load(f(bram), addrs)(e._mT, e.__pos)
-      //if (SpatialConfig.genCGRA) {
-      setProps(parLoad, mirror(getProps(s), f.asInstanceOf[Transformer]))
-      parIndicesOf(parLoad) = lanes.map{i => accessIndicesOf(s).map(f(_)) }
-      //}
-
       dimsOf(parLoad) = List(lanes.length.as[Index])
       lenOf(parLoad) = lanes.length
-      /*
-      // Metadata (also needs mirroring after unrolling is complete)
-      instanceIndicesOf(parLoad, f(mem)) = instanceIndicesOf(s, mem)
-      topControllersOf(parLoad, f(mem)) = topControllersOf(s, mem)
-      portsOf(parLoad, f(mem)) = portsOf(s, mem)*/
 
+      setProps(parLoad, mirror(getProps(s), f.asInstanceOf[Transformer]))
+      parIndicesOf(parLoad) = lanes.map{i => accessIndicesOf(s).map(f(_)) }
       cloneFuncs.foreach{func => func(parLoad) }
       lanes.split(s, parLoad)(e._mT)
 
@@ -290,7 +256,6 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
     val treeResult = reduceTree(inputs){(x,y) => reduce(x,y) }
     val accumLoad = duringClone{e =>
-      //instanceIndicesOf(e,accum) = instanceIndicesOf(node,accum)
       if (SpatialConfig.genCGRA) reduceType(e) = None
     }{
       withSubstScope(idx -> newIdx){ inlineBlock(ld) }
@@ -378,7 +343,6 @@ trait UnrollingTransformer extends MultiPassTransformer {
             val newIdx = inlineBlock(iFunc)
             val loads = mapResults.map{mem =>
               duringClone{e =>
-                //instanceIndicesOf(e, mem) = instanceIndicesOf(lhs, partial)
                 if (SpatialConfig.genCGRA) reduceType(e) = None
               }{
                 withSubstScope(partial -> mem, part -> mem, idx -> newIdx){inlineBlock(ld1)(mT)}
@@ -410,10 +374,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
           }
           val loads = mapResults.map{mem =>                  // Calculate list of loaded results for each memory
               reduceLanes.foreach{p => register(part -> mem) } // Set partial result to be this memory
-              duringClone{e =>
-                //instanceIndicesOf(e, mem) = instanceIndicesOf(lhs, partial)
-                if (SpatialConfig.genCGRA) reduceType(e) = None
-              }{
+              duringClone{e => if (SpatialConfig.genCGRA) reduceType(e) = None}{
                 unrollMap(ld1, reduceLanes)(mT)              // Unroll the load of the partial result
               }
           }
@@ -438,10 +399,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
             else {
               throw ReductionWithoutZeroException()(mpos(lhs.pos))
             }
-            val accRead = duringClone{e =>
-              //instanceIndicesOf(e,accum) = instanceIndicesOf(lhs,accum)
-              if (SpatialConfig.genCGRA) reduceType(e) = None
-            }{
+            val accRead = duringClone{e => if (SpatialConfig.genCGRA) reduceType(e) = None}{
               inlineBlock(ld2)(mT)
             }
             val newRes = duringClone{e => if (SpatialConfig.genCGRA) reduceType(e) = None}{
@@ -527,15 +485,5 @@ trait UnrollingTransformer extends MultiPassTransformer {
     case lhs2@Deff(e: Pipe_fold[_,_]) => Some( unrollPipeFold(lhs, lhs2, e)(e.ctx,e.numT,e.mT,e.mC) )
     case lhs2@Deff(e: Accum_fold[_,_]) => Some( unrollAccumFold(lhs, lhs2, e)(e.ctx,e.numT,e.mT,e.mC) )
     case lhs2 => Some(lhs2) // Just use mirrored symbol by default
-  }
-
-  // Mirror metadata only after transformer has completed. Metadata is not required
-  // to follow forward dataflow, so mirroring metadata on the fly will not necessarily be correct
-  override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
-    // Mirror only syms which don't also have a mirroring rule
-    allSubst.values.filter{sym => !allSubst.contains(sym)}.foreach{sym =>
-      setProps(sym, mirror(getProps(sym), f.asInstanceOf[Transformer]))
-    }
-    super.postprocess(b)
   }
 }

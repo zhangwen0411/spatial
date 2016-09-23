@@ -249,7 +249,7 @@ trait ParFifoLoadApp extends SpatialApp {
   }
 }
 
-object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args: 
+object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args:
 trait FifoLoadStoreApp extends SpatialApp {
   type T = SInt
   val N = 192
@@ -332,7 +332,7 @@ trait SimpleReduceApp extends SpatialApp {
     println("result:   " + result)
 
     val cksum = gold == result
-    println("PASS: " + cksum + " (FifoLoadStore)")
+    println("PASS: " + cksum + " (SimpleReduce)")
   }
 }
 
@@ -488,7 +488,7 @@ trait SimpleFoldApp extends SpatialApp {
   }
 }
 
-object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args: 
+object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args:
 trait Memcpy2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -576,14 +576,14 @@ trait BlockReduce1DApp extends SpatialApp {
   }
 
   def main() = {
-    // val size = args(unit(0)).to[SInt]
-    val size = N
+    val size = args(0).to[SInt]
+    // val size = N
     val src = Array.tabulate(size) { i => i }
 
     val dst = blockreduce_1d(src, size)
 
     val iters = size/tileSize
-    val first = tileSize*(iters*(iters-1))/2
+    val first = ((iters*(iters-1))/2)*tileSize
 
     val gold = Array.tabulate(tileSize) { i => first + i*iters }
 
@@ -596,7 +596,112 @@ trait BlockReduce1DApp extends SpatialApp {
   }
 }
 
-object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Args: 192 
+object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args:
+trait UnalignedLdApp extends SpatialApp {
+  type T = SInt
+  type Array[T] = ForgeArray[T]
+  val N = 1920
+
+  val numCols = 155
+  val paddedCols = 192
+
+  def unaligned_1d(src: Rep[ForgeArray[T]]) = {
+
+    val srcFPGA = OffChipMem[T](paddedCols)
+    val acc = ArgOut[T]
+
+    setMem(srcFPGA, src)
+
+    Accel {
+      val mem = BRAM[T](numCols)
+      Pipe { mem := srcFPGA(0::numCols) }
+      acc := Reduce(numCols by 1)(0.as[T]) { i => mem(i) }{_+_}
+    }
+    getArg(acc)
+  }
+
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def main() = {
+    // val size = args(unit(0)).to[SInt]
+    val size = paddedCols
+    val src = Array.tabulate(size) { i => i }
+
+    val dst = unaligned_1d(src)
+
+    val gold = Array.tabulate(numCols) { i => i }.reduce{_+_}
+
+    println("src:" + gold)
+    println("dst:" + dst)
+    val cksum = gold == dst
+    println("PASS: " + cksum + " (UnalignedLd)")
+
+//    (0 until tileSize) foreach { i => assert(dst(i) == gold(i)) }
+  }
+}
+
+object BlockReduce2D extends SpatialAppCompiler with BlockReduce2DApp // Args: 960 960
+trait BlockReduce2DApp extends SpatialApp {
+  type T = SInt
+  type Array[T] = ForgeArray[T]
+  val N = 1920
+
+  val tileSize = 96
+
+  def blockreduce_2d(/*src: Rep[ForgeArray[T]],*/ rows: Rep[SInt], cols: Rep[SInt]) = {
+
+    val rowsIn = ArgIn[SInt]; setArg(rowsIn, rows)
+    val colsIn = ArgIn[SInt]; setArg(colsIn, cols)
+
+    val srcFPGA = OffChipMem[T](rowsIn,colsIn)
+    val dstFPGA = OffChipMem[T](tileSize,tileSize)
+
+    //setMem(srcFPGA, src)
+
+    Accel {
+      val accum = BRAM[T](tileSize,tileSize)
+      Fold (rowsIn by tileSize, colsIn by tileSize)(accum, 0.as[T]) { (i,j)  =>
+        val tile = BRAM[T](tileSize,tileSize)
+        tile := srcFPGA(i::i+tileSize, j::j+tileSize, param(1))
+        tile
+      }{_+_}
+      dstFPGA (0::tileSize, 0::tileSize) := accum
+    }
+    getMem(dstFPGA)
+  }
+
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def main() = {
+    val numRows = args(0).to[SInt]
+    val numCols = args(1).to[SInt]
+    //val src = Array.tabulate(numRows) { i => Array.tabulate(numCols) { j => i*numCols + j} }
+
+    val dst = blockreduce_2d(numRows, numCols)
+
+    /*val numBlocks = numRows*numCols/(tileSize*tileSize)
+    val first = ((numBlocks*(numBlocks-1))/2)*tileSize*tileSize
+    val gold = Array.tabulate(tileSize*tileSize) { i => first + i*numBlocks }
+    printArr(gold, "src:")
+    printArr(dst, "dst:")
+    // dst.zip(gold){_==_} foreach {println(_)}
+    val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (BlockReduce2D)")*/
+
+//    (0 until tileSize) foreach { i => assert(dst(i) == gold(i)) }
+  }
+}
+
+
+object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Args: 192
 trait ScatterGatherApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -651,7 +756,7 @@ trait ScatterGatherApp extends SpatialApp {
       //   case 83 => 101
       //   case 70 => 203
       //   case _ => i*2
-      // } 
+      // }
     }
     // Scramble some of the addrs
     // addrs(5) = 199

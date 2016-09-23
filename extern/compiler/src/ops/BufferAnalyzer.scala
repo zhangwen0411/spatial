@@ -29,8 +29,8 @@ trait BufferAnalyzer extends Traversal with ControllerTools {
 
     duplicates.zipWithIndex.foreach{case (dup, i) =>
       debug(s"  Duplicate #$i: $dup")
-      val reads = readers.filter{read => instanceIndicesOf(read.access, mem).contains(i) }
-      val writes = writers.filter{write => instanceIndicesOf(write.access, mem).contains(i) }
+      val reads = readers.filter{read => instanceIndicesOf(read, mem).contains(i) }
+      val writes = writers.filter{write => instanceIndicesOf(write, mem).contains(i) }
       val accesses = reads ++ writes
       debug("  accesses: " + accesses.mkString(", "))
 
@@ -38,14 +38,14 @@ trait BufferAnalyzer extends Traversal with ControllerTools {
 
       if (metapipe.isDefined && dup.depth > 1) {
         val ctrl = metapipe.get
-        accesses.foreach{a =>
-          val child = lca(a.controller, ctrl).get
+        accesses.foreach{access =>
+          val child = lca(access.controller, ctrl).get
           if (child == ctrl) {
-            val swap = childContaining(ctrl, a)
-            debug(s"    - PORT ACCESS $a [swap = $swap]")
-            topControllerOf(a.access, mem, i) = swap
+            val swap = childContaining(ctrl, access)
+            debug(s"    - PORT ACCESS $access [swap = $swap]")
+            topControllerOf(access, mem, i) = swap
           }
-          else debug(s"    - MUX ACCESS  $a [lca = $child]")
+          else debug(s"    - MUX ACCESS  $access [lca = $child]")
         }
       }
 

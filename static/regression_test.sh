@@ -3,6 +3,8 @@
 ##########
 # CONFIG #
 ##########
+# Length of history to maintain in pretty printer
+hist=32
 # App classes
 app_classes=("dense" "sparse" "unit" "characterization")
 
@@ -275,7 +277,8 @@ if [ "$wc" -ne 1 ]; then
 		echo "-------------------------------" >> $result_file
 		echo "" >> $result_file
 		echo "" >> $result_file
-		echo -e "*Status updated on `date`* \n" > $result_file
+		tucson_date=`ssh tucson.stanford.edu date`
+		echo -e "*Status updated on $tucson_date* \n" > $result_file
 		echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
 		echo "" >> $result_file
 		echo "Error building Spatial!  Could not validate anything!" >> $result_file
@@ -413,11 +416,15 @@ csvemails=(`echo ${email[@]} | sed 's/ /,/g'`)
 # Check for intersection and send notice
 diff=($(comm -12 <(for X in "${new_fail[@]}"; do echo "${X}"; done|sort)  <(for X in "${old_pass[@]}"; do echo "${X}"; done|sort)))
 last_m=""
+echo "[SPATIAL NOTICE] The following apps got messed up: ${diff[@]}"
 if [ ! -z "$diff" ]; then 
+	echo "debug1"
 	for m in ${emails[@]}; do
+		echo "debug2"
 		if [[ ! "$last_m" = "$m" ]]; then 
-			tmp=(`echo $courtesy_email | sed "s/APPS_LIST/${diff[@]}/g" | sed "s/OLD_COMMITS/${old_commit}/g" | sed "s/NEW_COMMITS/${new_commit}/g"`)
-			echo -e ${tmp} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@MakeFPGAsGreatAgain.com
+			echo "debug3"
+			tmp=(`echo $courtesy_email | sed "s/APPS_LIST/${diff[*]}/g" | sed "s/OLD_COMMITS/${old_commit}/g" | sed "s/NEW_COMMITS/${new_commit}/g"`)
+			echo ${tmp} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@MakeFPGAsGreatAgain.com
 		fi
 		echo "[EMAIL] Sent ${tmp} to $m"
 		last_m=$m
@@ -429,50 +436,53 @@ history_file=${SPATIAL_HOME}/spatial.wiki/Regression_Test_History.csv
 pretty_file=${SPATIAL_HOME}/spatial.wiki/Pretty_Regression_Test_History.csv
 all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\*//g" | sort`)
 for aa in ${all_apps[@]}; do
-	# Append status to line
-	a=(`echo $aa | sed "s/ //g"`)
-	dashes=(`cat ${result_file} | grep "[0-9]\+\_$a" | grep -oh "\-" | wc -l`)
-	num=$(($dashes/4))
-	if [ $num = 0 ]; then bar=▇; elif [ $num = 1 ]; then bar=▆; elif [ $num = 2 ]; then bar=▅; elif [ $num = 3 ]; then bar=▄; elif [ $num = 4 ]; then bar=▃; elif [ $num = 5 ]; then bar=▂; elif [ $num = 6 ]; then bar=▁; else bar=□; fi
+	if [[ ! "$last_aa" = "$aa" ]]; then
+		# Append status to line
+		a=(`echo $aa | sed "s/ //g"`)
+		dashes=(`cat ${result_file} | grep "[0-9]\+\_$a\(\ \|\*\)" | grep -oh "\-" | wc -l`)
+		num=$(($dashes/4))
+		if [ $num = 0 ]; then bar=▇; elif [ $num = 1 ]; then bar=▆; elif [ $num = 2 ]; then bar=▅; elif [ $num = 3 ]; then bar=▄; elif [ $num = 4 ]; then bar=▃; elif [ $num = 5 ]; then bar=▂; elif [ $num = 6 ]; then bar=▁; else bar=□; fi
 
-	# Print what the seds are for debug
-	cmd="sed \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"
-	echo -e "\n\n [SPATIAL NOTICE] sedding for $a"
-	eval "$cmd"
-	cmd="sed \"/^${a}\ \+,/ s/$/$bar/\" ${pretty_file}"
-	eval "$cmd"
-
-	# Actually edit files
-	cmd="sed -i \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"
-	eval "$cmd"
-	cmd="sed -i \"/^${a}\ \+,/ s/$/$bar/\" ${pretty_file}"
-	eval "$cmd"
-
-	# Shave first if too long
-	numel=(`cat ${history_file} | grep "^$a" | grep -oh "\," | wc -l`)
-	if [ "$numel" -gt 48 ]; then
-		cmd="sed -i \"s/^${a}\([[:blank:]]*\),,[0-9]\\+,/${a}\1,,/g\" ${history_file}"
-		echo "[SPATIAL NOTICE] shaving $a in history"
+		# Print what the seds are for debug
+		cmd="sed \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"
+		echo -e "\n\n [SPATIAL NOTICE] sedding for $a"
 		eval "$cmd"
-	fi
-	# Shave first if too long
-	numel=(`cat ${pretty_file} | grep "^$a" | grep -oh "." | wc -l`)
-	if [ "$numel" -gt 48 ]; then
-		cmd="sed -i \"s/^${a}\([[:blank:]]*\),,./${a}\1,,/g\" ${pretty_file}"
-		echo "[SPATIAL NOTICE] shaving $a in pretty history"
+		cmd="sed \"/^${a}\ \+,/ s/$/$bar/\" ${pretty_file}"
 		eval "$cmd"
+
+		# Actually edit files
+		cmd="sed -i \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"
+		eval "$cmd"
+		cmd="sed -i \"/^${a}\ \+,/ s/$/$bar/\" ${pretty_file}"
+		eval "$cmd"
+
+		# Shave first if too long
+		numel=(`cat ${history_file} | grep "^$a\ " | grep -oh "\," | wc -l`)
+		if [ $numel -gt $hist ]; then
+			cmd="sed -i \"s/^${a}\([[:blank:]]*\),,[0-9]\\+,/${a}\1,,/g\" ${history_file}"
+			echo "[SPATIAL NOTICE] shaving $a in history"
+			eval "$cmd"
+		fi
+		# Shave first if too long
+		numel=(`cat ${pretty_file} | grep "^$a\ " | grep -oh "." | wc -l`)
+		if [ $numel -gt $(($hist+23)) ]; then # 23 = chars before bars
+			cmd="sed -i \"s/^${a}\([[:blank:]]*\),,./${a}\1,,/g\" ${pretty_file}"
+			echo "[SPATIAL NOTICE] shaving $a in pretty history"
+			eval "$cmd"
+		fi
 	fi
+	last_aa=$aa
 
 done
 
 cd ${SPATIAL_HOME}
 hash_str=`git rev-parse HEAD`
 lines=(`cat $history_file | wc -l`)
-dline=$((lines-18))
+dline=$(($lines-$(($hist-1))))
 sed -i -e "${dline}d" $history_file
 echo "$hash_str" >> $history_file
 lines=(`cat $pretty_file | wc -l`)
-dline=$((lines-18))
+dline=$(($lines-$(($hist-1))))
 sed -i -e "${dline}d" $pretty_file
 echo "$hash_str" >> $pretty_file
 

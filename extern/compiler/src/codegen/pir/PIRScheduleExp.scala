@@ -48,7 +48,7 @@ trait PIRCommon extends SubstQuotingExp with Traversal {
     def mem(mem: Exp[Any], reader: Exp[Any]) = allocateMem(mem, reader, cu)
 
     // A CU can have multiple SRAMs for a given mem symbol, one for each local read
-    def memories(mem: Exp[Any]) = readersOf(mem).filter(_.controlNode == pipe).map{read => allocateMem(mem, read.access, cu) }
+    def memories(mem: Exp[Any]) = readersOf(mem).filter(_.controlNode == pipe).map{read => allocateMem(mem, read.node, cu) }
 
     def addReg(x: Exp[Any], reg: LocalMem) { cu.addReg(x, reg) }
     def addRef(x: Exp[Any], ref: LocalRef) { refs += x -> ref }
@@ -250,24 +250,25 @@ trait PIRCommon extends SubstQuotingExp with Traversal {
     case (bank1, NoBanks) => bank1
   }
 
-  private def initializeSRAM(sram: CUMemory, mem_in: Exp[Any], reader: Exp[Any], cu: ComputeUnit) {
+  private def initializeSRAM(sram: CUMemory, mem_in: Exp[Any], read: Exp[Any], cu: ComputeUnit) {
     // TODO: Assumes we see the mapping prior to any uses
     debug(s"Creating SRAM for memory $mem_in: ")
     getProps(mem_in).foreach{m => debug(makeString(m)) }
 
     val mem = aliasOf(mem_in)
+    val reader = readersOf(mem).find{_.node == read}.get
 
     val instIndex = instanceIndicesOf(reader, mem).head
     val instance = duplicatesOf(mem).apply(instIndex)
 
     // First writer corresponding to this reader
-    val writers = writersOf(mem).filter{writer => instanceIndicesOf(writer.access, mem).contains(instIndex) }
+    val writers = writersOf(mem).filter{writer => instanceIndicesOf(writer, mem).contains(instIndex) }
     assert(writers.length <= 1, "PIR cannot currently handle multiple writers")
     val writer = writers.headOption
     debug(s"Creating SRAM for memory $mem, reader $reader, writer: $writer, cu $cu")
 
     val writerCU = writer.map{writer => allocateCU(writer.controlNode) }
-    val swapWriteCU = writer.flatMap{writer => topControllerOf(writer.access, mem, instIndex) }.map{ctrl => allocateCU(ctrl.node) }
+    val swapWriteCU = writer.flatMap{writer => topControllerOf(writer, mem, instIndex) }.map{ctrl => allocateCU(ctrl.node) }
     val swapReadCU = topControllerOf(reader, mem, instIndex).map{ctrl => allocateCU(ctrl.node) }
 
     debug(s"  readerCU: $cu")
@@ -291,8 +292,8 @@ trait PIRCommon extends SubstQuotingExp with Traversal {
     debug(s"  readIter: $readIter")
     debug(s"  writeIter: $writeIter")
 
-    val readBanking = bank(mem, reader, readIter)
-    val writeBanking = writer.map{writer => bank(mem, writer.access, writeIter) }.getOrElse(NoBanks)
+    val readBanking = bank(mem, read, readIter)
+    val writeBanking = writer.map{writer => bank(mem, writer.node, writeIter) }.getOrElse(NoBanks)
 
     debug(s"  read banking: $readBanking")
     debug(s"  write banking: $writeBanking")
@@ -340,7 +341,7 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   // Inter-CU communication
   sealed abstract class GlobalMem
   case class Offchip(name: String) extends GlobalMem
-  case class MemCtrl(name: String, region: Offchip, mode: MemoryMode) extends GlobalMem
+  case class DRAMCtrl(name: String, region: Offchip, mode: MemoryMode) extends GlobalMem
   case class InputArg(name: String) extends GlobalMem
   case class OutputArg(name: String) extends GlobalMem
   case class ScalarMem(name: String) extends GlobalMem
@@ -388,15 +389,15 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   case class LocalRef(stage: Int, reg: LocalMem)
 
   def isReadOutsidePipe(x: Exp[Any], pipe: Exp[Any], reader: Option[Exp[Any]] = None) = {
-    isArgOut(x) || readersOf(x).exists{read => reader.map{filt => read.access == filt}.getOrElse(true) && read.controlNode != pipe }
+    isArgOut(x) || readersOf(x).exists{read => reader.map{filt => read.node == filt}.getOrElse(true) && read.controlNode != pipe }
   }
   // (A) reader exists in this pipe or there are no readers
   def isReadInPipe(x: Exp[Any], pipe: Exp[Any], reader: Option[Exp[Any]] = None) = {
-    readersOf(x).isEmpty || readersOf(x).exists{read => reader.map{filt => read.access == filt}.getOrElse(true) && read.controlNode == pipe }
+    readersOf(x).isEmpty || readersOf(x).exists{read => reader.map{filt => read.node == filt}.getOrElse(true) && read.controlNode == pipe }
   }
   // Not an input argument, (a) writer exists in this pipe or there are no writers
   def isWrittenInPipe(x: Exp[Any], pipe: Exp[Any], writer: Option[Exp[Any]] = None) = {
-    !isArgIn(x) && (writersOf(x).isEmpty || writersOf(x).exists{write => writer.map{filt => write.access == filt}.getOrElse(true) && write.controlNode == pipe })
+    !isArgIn(x) && (writersOf(x).isEmpty || writersOf(x).exists{write => writer.map{filt => write.node == filt}.getOrElse(true) && write.controlNode == pipe })
   }
 
   // TODO: This is VERY redundant with PIR
@@ -541,7 +542,7 @@ ${super.dumpString}
   case class TileTransferUnit(
     override val name: String,
     override val parent: Option[ComputeUnit],
-    val ctrl: MemCtrl,
+    val ctrl: DRAMCtrl,
     var vec: VectorMem,
     val mode: MemoryMode
   ) extends ComputeUnit(name,parent) {

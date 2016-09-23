@@ -25,6 +25,8 @@ trait TileCseTestApp extends SpatialApp {
     }
 
     val result = getArg(out)
+    println("Result =   " + result)
+    println("Expected = 2034")
     assert(result == 2034) // 400 + 2 + 1600 + 32
   }
 }
