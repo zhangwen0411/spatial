@@ -557,7 +557,12 @@ trait MaxJPreCodegen extends Traversal  {
     val trailing_args = consts_args_bnds_list.toList
     val owner_comma = if (trailing_args.length > 0 & (vec_input_args != "" | res_input_arg != "")) {","} else {""} // TODO: Super ugly hack
 
-    val trailing_args_comma = if (first_comma == "," & vec_input_args == "" & second_comma == "" & res_input_arg != "") "," else ""
+    val trailing_args_comma = if (
+      (trailing_args.length > 0) & (
+        (first_comma == "" & vec_input_args == "" & second_comma == "" & res_input_arg == "") |
+        (vec_input_args != "" & second_comma == "" & res_input_arg == "") |
+        (res_input_arg != ""))
+        ) "," else ""
     val trailing_args_string = trailing_args.map { exp =>
       s"""DFEVar ${quote(exp)}"""
     }.sortWith(_<_).mkString(",")
