@@ -707,9 +707,9 @@ trait ScatterGatherApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   val N = 1920
 
-  val tileSize = 768
-  val maxNumAddrs = 768
-  val offchip_dataSize = maxNumAddrs*5
+  val tileSize = 384
+  val maxNumAddrs = 1536
+  val offchip_dataSize = maxNumAddrs*6
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
@@ -744,7 +744,7 @@ trait ScatterGatherApp extends SpatialApp {
     val size = maxNumAddrs
     val dataSize = offchip_dataSize
     val addrs = Array.tabulate[SInt](size) { i => 
-      // i*2
+      // i*2 // for debug
       if (i == 5) 199 else if (i == 6) offchip_dataSize-2 else if (i == 7) 191 else if (i==8) 203
         else if (i == 9) 381 else if (i == 10) offchip_dataSize-97 else if (i == 15) 97
         else if (i == 16) 11 else if (i == 17) 99 else if (i == 18) 245

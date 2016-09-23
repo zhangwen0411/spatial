@@ -111,18 +111,22 @@ sed -i \"s/error retrieving current directory/Ignoring getcwd e r r o r/g\" log
 wc=\$(cat ${5}/log | grep \"couldn't find DEG file\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -1 (${4} Spatial Error)\"
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
-    echo "[STATUS] Declaring failure app_not_written"
-    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_not_written.${3}_${4}
+	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+   		echo "[STATUS] Declaring failure app_not_written"
+    	touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_not_written.${3}_${4}
+    fi
 	exit 1
 fi
 
 wc=\$(cat ${5}/log | grep \"error\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -2 (${4} Spatial Error)\"
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
-    echo "[STATUS] Declaring failure build_in_spatial"
-    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
+	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+	    echo "[STATUS] Declaring failure build_in_spatial"
+    	touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
+    fi
 	exit 1
 fi
 
@@ -131,32 +135,44 @@ make clean sim 2>&1 | tee -a ${5}/log
 wc=\$(cat ${5}/log | sed \"s/Error 1 (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -3 (${4} Spatial Error)\"
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
-    echo "[STATUS] Declaring failure compile_maxj"
-    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_maxj.${3}_${4}
+	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+	    echo "[STATUS] Declaring failure compile_maxj"
+	    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_maxj.${3}_${4}
+	fi
 	exit 1
 fi
 
 cd out
 bash ${5}/out/run.sh ${args_list[i]} 2>&1 | tee -a ${5}/log
 if grep -q \"PASS: 1\" ${5}/log; then
-  rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
-  touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
+  fi
 elif grep -q \"PASS: true\" ${5}/log; then
-  rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
-  touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
+  fi
 elif grep -q \"PASS: 0\" ${5}/log; then
-  rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
-  echo "[STATUS] Declaring failure validation"
-  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    echo "[STATUS] Declaring failure validation"
+	touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+  fi
 elif grep -q \"PASS: false\" ${5}/log; then
-  rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
-  echo "[STATUS] Declaring failure validation"
-  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    echo "[STATUS] Declaring failure validation"
+    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+  fi
 else 
-  rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
-  echo "[STATUS] Declaring failure no_validation_check"
-  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_no_validation_check.${3}_${4}		
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    echo "[STATUS] Declaring failure no_validation_check"
+	touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_no_validation_check.${3}_${4}		
+  fi
 fi" >> $1
 }
 
@@ -290,11 +306,15 @@ if [ "$wc" -ne 1 ]; then
 	fi
 fi
 rm log
+cd ${PUB_HOME}
 
 
 ################
 # LAUNCH TESTS #
 ################
+
+# Use magic to free unused semaphores
+for semid in `ipcs -s | cut -d" " -f 2` ; do pid=`ipcs -s -i $semid | tail -n 2 | head -n 1 | awk '{print $5}'`; running=`ps --no-headers -p $pid | wc -l` ; if [ $running -eq 0 ] ; then ipcrm -s $semid ; fi ; done
 
 IFS=$'\n'
 # Unit test apps (Add more by editing CodegenUnitTests.scala)
@@ -355,14 +375,6 @@ done
 #####################
 
 result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
-courtesy_email="The following apps went from pass to fail\n
-APPS_LIST
-\n
-when going from commits: \n
-OLD_COMMITS
-\n
-to\n
-NEW_COMMITS"
 
 # Wait and publish results
 echo "[STATUS] `date`: Waiting $delay seconds..."
@@ -423,8 +435,15 @@ if [ ! -z "$diff" ]; then
 		echo "debug2"
 		if [[ ! "$last_m" = "$m" ]]; then 
 			echo "debug3"
-			tmp=(`echo $courtesy_email | sed "s/APPS_LIST/${diff[*]}/g" | sed "s/OLD_COMMITS/${old_commit}/g" | sed "s/NEW_COMMITS/${new_commit}/g"`)
-			echo ${tmp} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@MakeFPGAsGreatAgain.com
+			courtesy_email="The following apps went from pass to fail\n
+			${diff[@]}
+			\n
+			when going from commits: \n
+			$old_commit
+			\n
+			to\n
+			$new_commit"
+			echo ${courtesy_email} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@MakeFPGAsGreatAgain.com
 		fi
 		echo "[EMAIL] Sent ${tmp} to $m"
 		last_m=$m
