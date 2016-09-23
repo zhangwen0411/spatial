@@ -481,7 +481,7 @@ for aa in ${all_apps[@]}; do
 		if [ $numel -gt $(($hist+23)) ]; then # 23 = chars before bars
 			cmd="sed -i \"s/^${a}\([[:blank:]]*\),,./${a}\1,,/g\" ${pretty_file}"
 			echo "[SPATIAL NOTICE] shaving $a in pretty history"
-			eval "$cmd"
+			eval "$cmd"	
 		fi
 	fi
 	last_aa=$aa

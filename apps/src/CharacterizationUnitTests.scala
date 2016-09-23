@@ -235,7 +235,7 @@ trait CharBram extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val innerPar = 4;
-  val outerPar = 1;
+  val outerPar = 2;
   val dim0 = 192;
   val dim1 = 192;
   def CharBram(numin: Rep[T], addrIn0: Rep[T], addrIn1: Rep[T]) = {
