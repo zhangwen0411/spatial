@@ -598,7 +598,7 @@ $treeString
 ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $second_comma /*2*/
                 $res_input_arg $trailing_args_comma /*3*/  $trailing_args_string) {
   super(owner);
-  common(${inputVecs.map(quote(_)).toList.sortWith(_<_).mkString(", ")} ${second_comma} ${treeResult} ${if (treeResult == "" & inputVecs.toList.length == 0) "" else ","} ${trailing_args.map { exp => quote(exp)}.sortWith(_<_).mkString(",")});
+  common(${inputVecs.map(quote(_)).toList.sortWith(_<_).mkString(", ")} ${second_comma} ${treeResult} ${if ((treeResult != "" | inputVecs.toList.length != 0) & trailing_args.length > 0) "," else ""} ${trailing_args.map { exp => quote(exp)}.sortWith(_<_).mkString(",")});
 }
 }""")
 
