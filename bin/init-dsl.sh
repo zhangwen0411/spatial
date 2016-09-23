@@ -25,11 +25,18 @@ FORGE_EXTERN="${FORGE_HOME}/extern"
 FORGE_STATIC="${FORGE_HOME}/static"
 FORGE_DSLS="${FORGE_HOME}/src/dsls"
 FORGE_APPS="${FORGE_HOME}/apps"
+if [ "$(uname)" == "Darwin" ]; then
+	# Under Mac OS X platform        
+	LINK_FLAG="-sfh"
+elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
+  # Under GNU/Linux platform
+	LINK_FLAG="-sf -T"
+fi
 
-ln -sf -T "$SPATIAL_HOME/static" "$FORGE_STATIC/$dsl"
-ln -sf -T "$SPATIAL_HOME/extern" "$FORGE_EXTERN/$dsl"
-ln -sf -T "$SPATIAL_HOME/dsl"    "$FORGE_DSLS/$lcdsl"
-ln -sf -T "$SPATIAL_HOME/apps"   "$FORGE_APPS/$dsl"
+ln $LINK_FLAG "$SPATIAL_HOME/static" "$FORGE_STATIC/$dsl"
+ln $LINK_FLAG "$SPATIAL_HOME/extern" "$FORGE_EXTERN/$dsl"
+ln $LINK_FLAG "$SPATIAL_HOME/dsl"    "$FORGE_DSLS/$lcdsl"
+ln $LINK_FLAG "$SPATIAL_HOME/apps"   "$FORGE_APPS/$dsl"
 
 DEST="$SPATIAL_HOME/published/"
 APPS="$DEST/$dsl/apps"
@@ -48,7 +55,7 @@ $FORGE_HOME/bin/publish $dsl --no-apps --dest $DEST
 ### Hack: add symlink to apps and tests directories
 cd "$DEST/$dsl"
 if ! [ -L $APPS ]; then
-	ln -sf -T "$SPATIAL_HOME/apps" $APPS
+	ln $LINK_FLAG "$SPATIAL_HOME/apps" $APPS
 fi 
 
 if [ -d "$TEST" ]; then 
@@ -56,7 +63,7 @@ if [ -d "$TEST" ]; then
 		rmdir $TEST
 	fi
 fi
-ln -sf -T "$SPATIAL_HOME/tests" $TEST
+ln $LINK_FLAG "$SPATIAL_HOME/tests" $TEST
 
 echo "sbt compile"
 sbt compile
