@@ -443,7 +443,7 @@ if [ ! -z "$diff" ]; then
 			\n
 			to\n
 			$new_commit"
-			echo ${courtesy_email} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@MakeFPGAsGreatAgain.com
+			echo ${courtesy_email} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@spatial-lang.com
 		fi
 		echo "[EMAIL] Sent ${tmp} to $m"
 		last_m=$m

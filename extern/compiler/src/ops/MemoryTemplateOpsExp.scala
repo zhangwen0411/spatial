@@ -439,7 +439,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
     val writers = writersOf(bram)
     val EatAlias(ww) = write
-    Console.println(s"bram $bram, writers $writers, matching this $write $ww")
+    if (writers.map{writer => parentOf(writer.controlNode)}.distinct.length > 1) {
+      throw new Exception(s"Bram $bram seems to have writers that cannot be hardcoded to banks")
+    }
+
+    // Console.println(s"""bram $bram, writers $writers, 
+    //   test ${writers(0).access}, ${controllers}
+    //   matching this $write $ww daddy ${parentOf(bram)}""")
     val writeCtrl = writers.find{_.access == write}.get.controlNode
 
     val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(write,bram).contains(dup._2) }
@@ -450,7 +456,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     assert(inds.nonEmpty, s"Empty par access indices for write $write of $bram")
 
     if (isAccum(bram)) {
-      val offsetStr = quote(writersOf(bram).head.controlNode) + "_offset"
+      val offsetStr = quote(writers.head.controlNode) + "_offset"
       val parentPipe = parentOf(bram).getOrElse(throw new Exception(s"Bram ${quote(bram)} does not have a parent!"))
       val parentCtr = parentPipe match {
         case Deff(d:Pipe_fold[_,_]) => d.cchain
@@ -500,7 +506,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           if (inds.length == 1) {
             val addrs = inds(0)
             dups.foreach {case (dd, ii) =>
-              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10""")
+              if (writers.length == 1) {
+                emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10""")
+              } else {
+                val bank_num = writers.map{ w => w.access }.indexOf(write)
+                emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10""")
+              }
             }
           }
           else {
@@ -513,8 +524,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val addr1 = quote2D(inds(0), 1)
               emit(s"""// All readers share column. vectorized """)
               dups.foreach {case (dd, ii) =>
-                emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                ${dataStr}, ${quote(writeCtrl)}_datapath_en); //13""")
+                if (writers.length == 1) {
+                  emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13""")                  
+                } else {
+                  val bank_num = writers.map{ w => w.access }.indexOf(write)
+                  emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13.5""")                                    
+                }
               }
             }
             // Same rows?
@@ -523,8 +540,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val addr1 = inds.map{ind => quote2D(ind, 0) }
               emit(s"""// All readers share row. vectorized""")
               dups.foreach {case (dd, ii) =>
-                emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
-                ${dataStr}, ${quote(writeCtrl)}_datapath_en); // 15""")
+                if (writers.length == 1) {
+                  emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w15""")
+                } else {
+                  val bank_num = writers.map{ w => w.access }.indexOf(write)
+                  emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w15""")
+                }
               }
             }
             else {

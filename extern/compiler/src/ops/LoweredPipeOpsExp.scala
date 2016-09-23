@@ -189,7 +189,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       val Def(EatReflect(Counterchain_new(diagram_counters))) = cchain
       var ctr_str = diagram_counters.map { ctr =>
         val Def(EatReflect(Counter_new(start, end, step, par))) = ctr
-        s"${quote(start)} : ${quote(step)} : ${quote(end)} p ${quote(par)}"
+        s"${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
       }
 
       var hadThingsInside = true
@@ -225,7 +225,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       val Def(EatReflect(Counterchain_new(diagram_counters))) = cchain
       var ctr_str = diagram_counters.map { ctr =>
         val Def(EatReflect(Counter_new(start, end, step, par))) = ctr
-        s"${quote(start)} : ${quote(step)} : ${quote(end)} p ${quote(par)}"
+        s"${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
       }
 
       emitComment(s"""ParPipeReduce ${quote(sym)} = ParPipeReduce(${quote(cchain)}, ${quote(accum)}) {""")
