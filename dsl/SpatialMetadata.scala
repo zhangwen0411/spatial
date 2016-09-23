@@ -138,6 +138,14 @@ trait SpatialMetadata {
       composite ${ meta[MDelayReg]($0).map(_.isDelay).getOrElse(false) }
 
 
+    val MExternalRead = metadata("MExternalReaders", "readers" -> SList(MAny))
+    val externReadOps = metadata("externalReadersOf")
+    internal.static (externReadOps) ("update", Nil, (MAny, SList(MAny)) :: MUnit, effect = simple) implements
+      composite ${ setMetadata($0, MExternalReaders($1)) }
+    internal.static (externReadOps) ("apply", Nil, (MAny) :: SList(MAny)) implements
+      composite ${ meta[MExternalReaders]($0).map(_.readers).getOrElse(Nil) }
+
+
     /**
      * Register type
      * Used to track type of register ("Regular", "ArgumentIn", or "ArgumentOut")

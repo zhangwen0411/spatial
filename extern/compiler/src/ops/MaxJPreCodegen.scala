@@ -35,7 +35,7 @@ trait MaxJPreCodegen extends Traversal  {
   //       case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
   //         xx match {
   //           case Deff(Argin_new(_)) => true
-  //           case _ =>  false 
+  //           case _ =>  false
   //         }
   //       case Deff(_) => false // None
   //       case _ => true // Is bound
@@ -192,7 +192,7 @@ trait MaxJPreCodegen extends Traversal  {
       dups.zipWithIndex.foreach { case (d, i) =>
         val readers = readersOf(sym)
         if (d.depth == 2) {
-          val numReaders_for_this_duplicate = readers.filter{r => instanceIndicesOf(r.access, sym).contains(i) }.length
+          val numReaders_for_this_duplicate = readers.filter{r => instanceIndicesOf(r, sym).contains(i) }.length
           withStream(newStream("bram_" + quote(sym) + "_" + i)) {
             emitDblBufSM(quote(sym) + "_" + i, numReaders_for_this_duplicate)
           }
@@ -359,7 +359,7 @@ trait MaxJPreCodegen extends Traversal  {
         case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
           xx match {
             case Deff(Argin_new(_)) => true
-            case _ =>  false 
+            case _ =>  false
           }
         case Deff(_) => false // None
         case _ => true // Is bound
@@ -393,7 +393,7 @@ trait MaxJPreCodegen extends Traversal  {
       case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
       case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case _ => 
+      case _ =>
     }
     set ++ ret
   }
@@ -532,7 +532,7 @@ trait MaxJPreCodegen extends Traversal  {
     } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
 
     val first_comma = if (treeResult != "") { "," } else {""}
-    val second_comma = if (inputVecs.toList.length > 0 & treeResult != "") { "," } else {""} 
+    val second_comma = if (inputVecs.toList.length > 0 & treeResult != "") { "," } else {""}
     val res_input_arg = if (treeResult != "") {s"DFEVar ${treeResult}"} else {""}
     // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
     //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")

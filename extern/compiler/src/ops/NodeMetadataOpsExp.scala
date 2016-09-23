@@ -86,11 +86,14 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     }
   }
 
+  def mirrorCtrl(x: Controller, f: Transformer): Controller = (f(x.node), x.inReduce)
+  def mirrorAccess(x: Access, f: Transformer): Access = (f(x.node), mirrorCtrl(x.controller, f))
+
   /** Metadata mirroring **/
   override def mirror[T<:Metadata](m: T, f: Transformer): T = (m match {
     case Parent(parent) => Parent(f(parent))
-    case Writers(writers) => Writers(writers.map{x => (f(x.access), (f(x.controlNode), x.inReduce)) })
-    case Readers(readers) => Readers(readers.map{x => (f(x.access), (f(x.controlNode), x.inReduce)) })
+    case Writers(writers) => Writers(writers.map{x => mirrorAccess(x, f) })
+    case Readers(readers) => Readers(readers.map{x => mirrorAccess(x, f) })
     case WrittenMemsIn(written) => WrittenMemsIn(written.map{x => f(x)})
     case Children(children) => Children(children.map{x => f(x)})
     case _ => super.mirror(m,f)

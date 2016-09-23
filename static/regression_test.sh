@@ -3,8 +3,8 @@
 ##########
 # CONFIG #
 ##########
-# Length of history to maintain in pretty printer
-hist=32
+# Length of history to maintain in pretty printer (remember to manually add enough git commits)
+hist=48
 # App classes
 app_classes=("dense" "sparse" "unit" "characterization")
 

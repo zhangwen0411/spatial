@@ -6,7 +6,7 @@ package spatial
 trait BRAMs {
   this: SpatialDSL =>
 
-  // TODO: Should we support a BRAM reset API? How to time this properly? Should this be a composite which creates a Pipe?
+  // ISSUE #32: Should we support a BRAM reset API? How to time this properly? Should this be a composite which creates a Pipe?
   def importBRAMs() {
     val T = tpePar("T")
     val BRAM         = lookupTpe("BRAM")
@@ -157,17 +157,12 @@ trait BRAMs {
     impl (bram_new)   (codegen($cala, ${ Array.fill($size.toInt)($zero) })) // $t[T] refers to concrete type in IR
     impl (bram_load)  (codegen($cala, ${ $bram.apply($addr.toInt) }))
     impl (bram_store) (codegen($cala, ${ $bram.update($addr.toInt, $value) }))
-    //impl (bram_reset) (codegen($cala, ${ (0 until $bram.length).foreach{i => $bram.update(i, $zero) }}))
 
     // --- C++ Backend
     impl (bram_new) (codegen(cpp, ${new $t[T]($size) }))
 
     // --- MaxJ Backend
-    // bram_new (extern)
-    // bram_load (extern)
-    // bram_store (extern)
-    // impl (bram_reset) (codegen(maxj, ${ })) TODO: removed from spatial?
-
+    // See MemoryTemplateOpsExp in extern/compiler/src/ops
 
     // --- Unrolled nodes
     val load = internal (BRAM) ("par_bram_load", T, (("bram", BRAM(T)), ("addr", MVector(Idx))) :: MVector(T), aliasHint = aliases(Nil))

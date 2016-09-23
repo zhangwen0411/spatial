@@ -281,27 +281,27 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       val writers = writersOf(mem)
 
       buffers.foreach{ case (d, i) =>
-        val readsByPort = readers.filter{reader => instanceIndicesOf(reader.access, mem).contains(i) }.groupBy{a => portOf(a.access, mem, i) }
-        val writesByPort = writers.filter{writer => instanceIndicesOf(writer.access, mem).contains(i) }.groupBy{a => portOf(a.access, mem, i) }
+        // Note: Grouping by sets of integers here. Accesses to a buffer should either have one port or all ports, so this is ok
+        val readsByPort = readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
+        val writesByPort = writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
 
-        if (readsByPort.isEmpty) throw new Exception(s"Memory ${quote(mem)} duplicate #$i has no reader")
-        if (writesByPort.isEmpty) throw new Exception(s"Memory ${quote(mem)} duplicate #$i has no writer")
-        readsByPort.foreach{ case (port, readers) =>
-          val controllers = readers.flatMap{reader => topControllerOf(reader.access, mem, i) }.distinct
-          assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple read done control signals")
-          // TODO: Syntax for port-specific read done?
-          val portlist = port.mkString{","}
-          if (controllers.nonEmpty)
-            emit(s"""${quoteDuplicate(mem, i)}.connectRdone(${quote(controllers.head.node)}_done, new int[] { $portlist });""")
+        if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
+
+        def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String) {
+          val controllers = accesses.flatMap{access => topControllerOf(access, mem, i) }.distinct
+          val isBuffered = ports.size == 1 && accesses.nonEmpty
+
+          if (isBuffered && controllers.length > 1)
+            throw MultipleSwapControllersException(mem, i, accesses, ports.head)
+          else if (isBuffered && controllers.isEmpty)
+            throw UndefinedSwapControllerException(mem, i, accesses, ports.head)
+          else if (isBuffered) {
+            val portlist = ports.mkString{","} // TODO: Can probably use ports.head here
+            emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, new int[] { $portlist });""")
+          }
         }
-        writesByPort.foreach{ case (port, writers) =>
-          val controllers = writers.flatMap{writer => topControllerOf(writer.access, mem, i) }.distinct
-          assert(controllers.length <= 1, s"Port $port of memory $mem contains multiple write done control signals")
-          // TODO: Syntax for port-specific write done?
-          val portlist = port.mkString{","}
-          if (controllers.nonEmpty)
-            emit(s"""${quoteDuplicate(mem, i)}.connectWdone(${quote(controllers.head.node)}_done, new int[] { $portlist });""")
-        }
+        readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectRdone") }
+        writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectWdone") }
       }
     }
 
@@ -309,6 +309,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
   override def emitFileFooter() = {
     emitBufferControlSignals()
+    withStream(baseStream) {
+      emit(s"""// Emit argin reads""")
+      Console.println(s"EMITTING DAMN FOOTER $emitted_argins")
+      emitted_argins.toList.foreach {
+        case (sym, regStr) =>
+          emit(s"""${maxJPre(sym)} ${quote(sym)} = $regStr; // reg read""")
+      }      
+    }
     super.emitFileFooter()
   }
 
@@ -345,8 +353,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     emitComment("Bram_load {")
     val dups = duplicatesOf(bram)
     val readers = readersOf(bram)
-    val reader = readers.find{_.access == read}.get // Corresponding reader for this read node
-    val b_i = instanceIndicesOf(read, bram).head    // Instance indices should have exactly one index for reads
+    val reader = readers.find{_.node == read}.get   // Corresponding reader for this read node
+    val b_i = instanceIndicesOf(reader, bram).head    // Instance indices should have exactly one index for reads
 
     val bram_name = s"${quote(bram)}_${b_i}"
     val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
@@ -438,17 +446,15 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     val allDups = duplicatesOf(bram)
 
     val writers = writersOf(bram)
+    val writer = writers.find(_.node == write).get
     val EatAlias(ww) = write
     if (writers.map{writer => parentOf(writer.controlNode)}.distinct.length > 1) {
       throw new Exception(s"Bram $bram seems to have writers that cannot be hardcoded to banks")
     }
+    Console.println(s"bram $bram, writers $writers, matching this $write $ww")
+    val writeCtrl = writer.controlNode
 
-    // Console.println(s"""bram $bram, writers $writers, 
-    //   test ${writers(0).access}, ${controllers}
-    //   matching this $write $ww daddy ${parentOf(bram)}""")
-    val writeCtrl = writers.find{_.access == write}.get.controlNode
-
-    val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(write,bram).contains(dup._2) }
+    val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(writer,bram).contains(dup._2) }
 
     val inds = parIndicesOf(write)
     val num_dims = dimsOf(bram).length
@@ -509,7 +515,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               if (writers.length == 1) {
                 emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10""")
               } else {
-                val bank_num = writers.map{ w => w.access }.indexOf(write)
+                val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
                 emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10""")
               }
             }
@@ -528,7 +534,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                   emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13""")                  
                 } else {
-                  val bank_num = writers.map{ w => w.access }.indexOf(write)
+                  val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
                   emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13.5""")                                    
                 }
@@ -544,7 +550,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                   emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w15""")
                 } else {
-                  val bank_num = writers.map{ w => w.access }.indexOf(write)
+                  val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
                   emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w15""")
                 }
@@ -569,8 +575,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
     case Gather(mem,local,addrs,len,par) =>
       print_stage_prefix(s"Gather",s"",s"${quote(sym)}", false)
-      // TODO: Should Matt assume instanceIndicesOf returns set of size 1?
-      val i = instanceIndicesOf(sym, addrs).head
+      val access = writersOf(local).find(_.node == sym).get
+      val i = instanceIndicesOf(access, addrs).head
 
       val parStr = if (quote(par) == "1") {
 //         emit(s"""DFEVar ${quote(sym)}_waddr = ${quote(addrs)}_$i.type.newInstance(this);
@@ -582,7 +588,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       }
       emit(s"""DFEVector<DFEVar> ${quote(sym)}_waddr = new DFEVectorType<DFEVar>(${quote(addrs)}_$i.type, ${quote(par)}).newInstance(this);
 DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0.type, ${quote(par)}).newInstance(this);
-DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")        
+DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
       emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
       emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
@@ -593,17 +599,17 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         ${quote(addrs)}_$i, ${quote(len)},
         ${quote(mem)},  "${quote(mem)}_${quote(sym)}_in",
         ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
-      duplicatesOf(local).zipWithIndex.foreach { case (m,i) => 
+      duplicatesOf(local).zipWithIndex.foreach { case (m,i) =>
         emit(s"""${quote(local)}_$i.connectWport(${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
       }
       print_stage_suffix(quote(sym),false)
 
     case Scatter(mem,local,addrs,len,par) =>
       print_stage_prefix(s"Scatter",s"",s"${quote(sym)}", false)
-      // TODO: Should Matt assume instanceIndicesOf returns set of size 1?
-      val i = instanceIndicesOf(sym, addrs).head
-      // TODO: Should Matt assume instanceIndicesOf returns set of size 1?
-      val j = instanceIndicesOf(sym, local).head
+      val localReader = readersOf(local).find(_.node == sym).get
+      val addrsReader = readersOf(addrs).find(_.node == sym).get
+      val i = instanceIndicesOf(addrsReader, addrs).head
+      val j = instanceIndicesOf(localReader, local).head
 
       emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
       emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
@@ -658,8 +664,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 //      emitComment("Offchip store from fifo")
 
     case Reg_new(init) =>
+      // TODO: This is known to have a def, so it shouldn't be necessary to use EatAlias here
       val EatAlias(alias) = sym
-      // TODO: Is it safe to emit things for sym below, or should I emit for alias?
       if (!regs.contains(alias.asInstanceOf[Sym[Reg[Any]]])) {
         regs += alias.asInstanceOf[Sym[Reg[Any]]]
 
@@ -703,51 +709,63 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       }
 
     case Argin_new(init) =>
-      val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-            emit(s"""DFEVar ${quote(sym)} = io.scalarInput("${quote(sym)}", $ts );""")
-            if (argToExp.contains(sym.asInstanceOf[Sym[Reg[Any]]])) {
-              emit(s"""${quote(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))} <== ${quote(sym)};""")
-            }
+      withStream(baseStream) {
+        val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+        emit(s"""DFEVar ${quote(sym)} = io.scalarInput("${quote(sym)}", $ts );""")
+      }
+      if (argToExp.contains(sym.asInstanceOf[Sym[Reg[Any]]])) {
+        emit(s"""${quote(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))} <== ${quote(sym)};""")
+      }
+
 
     case Argout_new(init) => //emitted in reg_write
 
-    case e@Reg_read(reg) =>
-      // TODO: Should I eat alias here?
-      Console.println(s"Would like to read $reg $sym")
-      if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
-        rTreeMap(sym) match {
-          case Nil =>
-          case m => Console.println(s"LOAD METADATA on $sym -> $m")
-        }
+    case e@Reg_read(EatAlias(reg)) =>
+      val readers = readersOf(reg).filter(_.node == sym) // There can be more than one!
+      readers.foreach{reader =>
+        Console.println(s"Would like to read $reg $sym in ${reader.controller}")
+        if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
+          rTreeMap(sym) match {
+            case Nil =>
+            case m => Console.println(s"LOAD METADATA on $sym -> $m")
+          }
 
-        val pre = maxJPre(sym)
-        val inst = instanceIndicesOf(sym, reg).head // Reads should only have one index
+          val pre = maxJPre(sym)
+          val inst = instanceIndicesOf(reader, reg).head // Reads should only have one index
 
-        val regStr = regType(reg) match {
-          case Regular =>
-            val suffix = {
-              if (!controlNodeStack.isEmpty) controlNodeStack.top match {
-                case Deff(n: ParPipeReduce[_,_]) => if (n.acc == reg) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
-                case top@Deff(Unit_pipe(_)) => if (isAccum(reg) && writtenIn(top).contains(reg)) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
-                case _ => ""
+          val regStr = regType(reg) match {
+            case Regular =>
+              val suffix = {
+                if (!controlNodeStack.isEmpty) controlNodeStack.top match {
+                  case Deff(n: ParPipeReduce[_,_]) => if (n.acc == reg) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
+                  case top@Deff(Unit_pipe(_)) => if (isAccum(reg) && writtenIn(top).contains(reg)) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
+                  case _ => ""
+                }
+                else ""
               }
-              else ""
-            }
-            quote(reg) + "_" + inst + suffix
-          case _ =>
-            quote(reg)
-        }
+              quote(reg) + "_" + inst + suffix
+            case _ =>
+              quote(reg)
+          }
 
-        // Specialized reductions (regular accumulators with a reduction type) just use sym directly
-        // TODO: Why was the statement below in the if statement?  Seems like we always want it printed...
-        // if (regType(reg) != Regular || !isAccum(reg) || !reduceType(reg).map{t => t != OtherReduction}.getOrElse(false) ) {
-        emit(s"""$pre ${quote(sym)} = $regStr;""")
-        // } else {
-        //   emit(s"""// Wanted to print $pre ${quote(sym)} = $regStr but ${regType(reg)} not Regular, or $reg not accum, or the third bool false""")
-        // }
-      }
-      else {
-        emit(s"""// ${quote(sym)} is just a register read""")
+          // Specialized reductions (regular accumulators with a reduction type) just use sym directly
+          // TODO: Why was the statement below in the if statement?  Seems like we always want it printed...
+          // if (regType(reg) != Regular || !isAccum(reg) || !reduceType(reg).map{t => t != OtherReduction}.getOrElse(false) ) {
+          // Do not emit reg read twice
+          regType(reg) match {
+            case ArgumentIn => // emit in baselib suffix
+              if (!emitted_argins.contains((sym, regStr))) {
+                emitted_argins += ((sym,regStr))
+                Console.println(s"argins $emitted_argins")
+              }
+            case _ => // Otherwise emit here
+              emit(s"""$pre ${quote(sym)} = $regStr; // reg read""")
+          }
+
+        }
+        else {
+          emit(s"""// ${quote(sym)} is just a register read""")
+        }
       }
 
     case e@Reg_write(EatAlias(reg), value) =>
@@ -755,10 +773,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
       assert(writersOf(reg).nonEmpty, s"Register ${quote(reg)} is not written by a controller")
 
+      val writer = writersOf(reg).find(_.node == sym).get
+
       val writeCtrl = writersOf(reg).head.controlNode  // Regs have unique writer which also drives reset
       val ts = tpstr(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])
       val allDups = duplicatesOf(reg).zipWithIndex
-      val dups = allDups.filter{case (dup, i) => instanceIndicesOf(sym, reg).contains(i) }
+      val dups = allDups.filter{case (dup, i) => instanceIndicesOf(writer, reg).contains(i) }
 
       regType(reg) match {
         case ArgumentIn => throw new Exception("Cannot write to ArgIn " + quote(reg) + "!")
@@ -848,7 +868,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 emit(s"""BramLib ${quote(sym)}_${i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides});""") // [TODO] Raghu: Stride from metadata
               }
               else if (r.depth == 2) {
-                val numReaders_for_this_duplicate = readersOf(sym).filter{q => instanceIndicesOf(q.access, sym).contains(i)}.length
+                val numReaders_for_this_duplicate = readersOf(sym).filter{q => instanceIndicesOf(q, sym).contains(i)}.length
 
                 emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
                 emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,

@@ -247,6 +247,7 @@ trait SpatialDSL extends ForgeApplication
 
     // Transformers: Change or mirror IR
     val UnitPipeTransformer   = transformer("UnitPipe", isExtern=true)
+    val RegisterCleanup       = transformer("RegisterCleanup", isExtern=true)
     val Unrolling             = transformer("Unrolling", isExtern=true)
     val ConstantFolding       = traversal("ConstantFolding", isExtern=true)
 
@@ -270,13 +271,14 @@ trait SpatialDSL extends ForgeApplication
     // --- Unit Pipe Insertion
     schedule(UnitPipeTransformer)   // Wrap primitives in outer pipes
     schedule(GlobalAnalyzer)        // Values computed outside of all controllers (TODO: Needed again?)
-    schedule(Printer)
 
     // --- Pre-DSE analysis
     schedule(OffChipAnalyzer)       // Check dimensions of offchip memories
     schedule(StageAnalyzer)         // Get number of stages in each control node
-    //schedule(ControlSignalAnalyzer) // Variety of control signal related metadata (TODO: Needed here? Run by DSE)
     schedule(SpatialAffineAnalysis) // Access patterns
+    schedule(MemoryAnalyzer)        // Get used readers/writers of each memory
+    schedule(Printer)
+    schedule(RegisterCleanup)       // Remove unused register reads created in unit pipe insertion
     schedule(DotPrinter)            // Graph prior to unrolling
 
     // --- Design Space Exploration
@@ -306,18 +308,15 @@ trait SpatialDSL extends ForgeApplication
     schedule(AreaAnalyzer)          // Area estimation
     schedule(OpsAnalyzer)           // Instructions, FLOPs, etc. Also runs latency estimates
     schedule(PlasticineLatency)     // Plasticine latency
-    schedule(Printer)
 
     // --- Design Elaboration
     schedule(ReductionAnalyzer)     // Reduce/accumulator specialization
     schedule(Unrolling)             // Pipeline unrolling
+    schedule(Printer)
 
     // --- Final analysis
-    schedule(UnrolledControl)       // Control signal metadata after unrolling
-    schedule(Printer)
     schedule(BufferAnalyzer)        // Top controllers for n-buffers
     schedule(DotPrinter)            // Graph after unrolling
-    schedule(Printer)
     schedule(PrinterLast)
     schedule(StructurePrint)
     schedule(PIRGen)

@@ -149,7 +149,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       debug(s"Allocating CU for $pipe")
       val region = allocateGlobal(mem).asInstanceOf[Offchip]
       val vector = allocateGlobal(vec).asInstanceOf[VectorMem]
-      val mc = MemCtrl(quote(pipe)+"_mc", region, mode)
+      val mc = DRAMCtrl(quote(pipe)+"_mc", region, mode)
       globals += mc
       val parent = parentOfHack(pipe).map(allocateCU(_))
       val cu = TileTransferUnit(quote(pipe), parent, mc, vector, mode)
@@ -175,7 +175,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       copyIterators(readerCU, writerCU)
       val isLocallyRead = readerCU == writerCU
 
-      val sram = allocateMem(mem, reader.access, readerCU)
+      val sram = allocateMem(mem, reader.node, readerCU)
       val vector = if (isLocallyRead) LocalVector else allocateGlobal(mem)
       sram.vector = Some(vector)
       (readerCU, sram)
@@ -211,7 +211,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
   def prescheduleRegisterRead(reg: Exp[Any], reader: Exp[Any], pipe: Option[Exp[Any]]) = {
     debug(s"  Register read: $reader")
     // Register reads may be used by more than one pipe
-    readersOf(reg).filter(_.access == reader).map(_._1).foreach{readCtrl =>
+    readersOf(reg).filter(_.node == reader).map(_._1).foreach{readCtrl =>
       val isCurrentPipe = pipe.map(_ == readCtrl).getOrElse(false)
       val isLocallyWritten = isWrittenInPipe(reg, readCtrl)
 

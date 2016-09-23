@@ -6,9 +6,6 @@ package spatial
 trait OffChip {
   this: SpatialDSL =>
 
-  // TODO: Size of offchip memory can be a staged value, but it can't be a value which is calculated in hardware
-  //       Any way to make this distinction?
-  // TODO: Tile load/store sugar for stream loads (to/from FIFO)
   def importOffChip() {
     val T = tpePar("T")
 

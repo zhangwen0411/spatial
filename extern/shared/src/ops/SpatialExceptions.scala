@@ -23,8 +23,8 @@ trait SpatialExceptionsCompilerOps extends SpatialExceptionsOps with NodeMetadat
   case class NoInstanceIndicesException(access: Rep[Any], mem: Rep[Any]) extends
   SpatialException(0, s"No instance indices defined for access $access on ${name(mem)}")
 
-  case class NoPortsException(access: Rep[Any], mem: Rep[Any], idx: Int) extends
-  SpatialException(1, s"No ports defined for access $access on ${name(mem)}, port $idx")
+  case class NoPortsException(access: Rep[Any], mem: Rep[Any], idx: Option[Int]) extends
+  SpatialException(1, s"No ports defined for access $access on ${name(mem)}" + idx.map{i => s", port $i"}.getOrElse(""))
 
   case class NoCommonControllerException(a: Controller, b: Controller) extends
   SpatialException(2, s"No common controller found between $a and $b when calculating the LCA")
@@ -39,10 +39,16 @@ trait SpatialExceptionsCompilerOps extends SpatialExceptionsOps with NodeMetadat
   SpatialException(5, s"Primitive expressions with unrecognized type: ${name(tp)}")
 
   case class EmptyDuplicateException(mem: Rep[Any], i: Int) extends
-  SpatialException(6, s"Duplicate $i of ${name(mem)} has no readers or writers")
+  SpatialException(6, s"Duplicate $i of ${name(mem)} has no readers and/or writers")
 
   case class UndefinedChildException(top: Controller, access: Access) extends
   SpatialException(7, s"childContaining(access = $access, top = $top) is not defined because no child of top contains access")
+
+  case class MultipleSwapControllersException(mem: Rep[Any], inst: Int, accesses: List[Access], port: Int) extends
+  SpatialException(8, s"Port $port of buffered ${name(mem)} has multiple defined done control signals")
+
+  case class UndefinedSwapControllerException(mem: Rep[Any], inst: Int, accesses: List[Access], port: Int) extends
+  SpatialException(9, s"Port $port of buffered ${name(mem)} has accesses but has no defined done control signals")
 
 
   /** True user / input program errors **/
@@ -53,32 +59,32 @@ trait SpatialExceptionsCompilerOps extends SpatialExceptionsOps with NodeMetadat
   case class ConcurrentReadersException(mem: Rep[Any], a: Access, b: Access) extends
   UserException(0, s"Disallowed concurrent readers for ${name(mem)}", {
     stageError(s"${name(mem)} defined here has multiple concurrent readers: ")(context(mem))
-    stageError(s"  First reader defined here ($a)")(context(a.access))
-    stageError(s"  Second reader defined here ($b)")(context(b.access))
+    stageError(s"  First reader defined here ($a)")(context(a.node))
+    stageError(s"  Second reader defined here ($b)")(context(b.node))
     stageError(s"This is disallowed on memories of type ${repType(mem)}.")(context(mem))
   })
 
   case class ConcurrentWritersException(mem: Rep[Any], a: Access, b: Access) extends
   UserException(1, s"Disallowed concurrent writers for ${name(mem)}", {
     stageError(s"${name(mem)} defined here has multiple concurrent writers: ")(context(mem))
-    stageError(s"  First writer defined here ($a)")(context(a.access))
-    stageError(s"  Second writer defined here ($b)")(context(b.access))
+    stageError(s"  First writer defined here ($a)")(context(a.node))
+    stageError(s"  Second writer defined here ($b)")(context(b.node))
     stageError(s"This is disallowed on memories of type ${repType(mem)}.")(context(mem))
   })
 
   case class PipelinedReadersException(mem: Rep[Any], a: Access, b: Access) extends
   UserException(2, s"Disallowed pipelined readers for ${name(mem)}", {
     stageError(s"${name(mem)} defined here has pipelined readers: ")(context(mem))
-    stageError(s"  First reader defined here ($a)")(context(a.access))
-    stageError(s"  Second reader defined here ($b)")(context(b.access))
+    stageError(s"  First reader defined here ($a)")(context(a.node))
+    stageError(s"  Second reader defined here ($b)")(context(b.node))
     stageError(s"This is disallowed on memories of type ${repType(mem)}.")(context(mem))
   })
 
   case class PipelinedWritersException(mem: Rep[Any], a: Access, b: Access) extends
   UserException(3, s"Disallowed pipelined writers for ${name(mem)}", {
     stageError(s"${name(mem)} defined here has pipelined writers: ")(context(mem))
-    stageError(s"  First writer defined here ($a)")(context(a.access))
-    stageError(s"  Second writer defined here ($b)")(context(b.access))
+    stageError(s"  First writer defined here ($a)")(context(a.node))
+    stageError(s"  Second writer defined here ($b)")(context(b.node))
     stageError(s"This is disallowed on memories of type ${repType(mem)}.")(context(mem))
   })
 
@@ -217,7 +223,7 @@ trait SpatialExceptionsCompilerOps extends SpatialExceptionsOps with NodeMetadat
     stageError(s"${name(mem)} defined here requires nested buffering:")(context(mem))
     for ((lca,accesses) <- grps) {
       stageError(s"Controller: $lca")(context(lca.node))
-      accesses.foreach{a => stageError(s"  Access: $a")(context(a.access)) }
+      accesses.foreach{a => stageError(s"  Access: $a")(context(a.node)) }
     }
     stageError("Nested buffering is currently not supported.")(context(mem))
   })

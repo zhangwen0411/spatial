@@ -248,7 +248,7 @@ trait ParFifoLoadApp extends SpatialApp {
   }
 }
 
-object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args: 
+object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args:
 trait FifoLoadStoreApp extends SpatialApp {
   type T = SInt
   val N = 192
@@ -487,7 +487,7 @@ trait SimpleFoldApp extends SpatialApp {
   }
 }
 
-object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args: 
+object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args:
 trait Memcpy2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -495,7 +495,7 @@ trait Memcpy2DApp extends SpatialApp {
   val C = 96
 
   def memcpy_2d(src: Rep[ForgeArray[T]], rows: Rep[SInt], cols: Rep[SInt]) = {
-    val tileDim1 = param(8);
+    val tileDim1 = param(96);
     val tileDim2 = param(96);  domainOf(tileDim2) = (96, 96, 96)
 
     val rowsIn = rows

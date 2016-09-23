@@ -19,12 +19,17 @@ def main():
   parser.add_argument("--dot", dest="dot", action="store_true", default=False, help="enables dot generation")
   parser.add_argument("--maxj", dest="maxj", action="store_true", default=True, help="enables maxj generation")
   parser.add_argument("--outdir", dest="outdir", default="out", help="location of output dir, relative to publish dir")
+  parser.add_argument('--test', dest="test", action="store_true", default=False, help="enables Scala testing mode")
 
   (opts, args) = parser.parse_known_args()
   if len(args) < 1:
     parser.error("An application file must be passed to delitec as an argument")
 
   java_opts = os.getenv("JAVA_OPTS", "")
+
+  if opts.test == True:
+    opts.maxj = False
+    opts.cpp = False
 
   if opts.dse == True:
     java_opts = java_opts + " -Dspatial.dse=true"
@@ -60,10 +65,15 @@ def main():
   ## TODO: How to determine publish directory?
   publish = os.getenv("HYPER_HOME", "") + "/spatial/published/Spatial/"
   os.system(publish + 'bin/delitec ' + deliteArgs + ' --dump_exception 2>&1 | tee compile.log')
-  if opts.outdir == "out":
-    os.system(publish + 'bin/delite ' + args[0] + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + os.getenv("HYPER_HOME", "") + '/spatial/published/Spatial/out 2>&1 | tee run.log')
+
+  if opts.maxj and opts.cpp:
+    if opts.outdir == "out":
+      os.system(publish + 'bin/delite ' + args[0] + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + os.getenv("HYPER_HOME", "") + '/spatial/published/Spatial/out 2>&1 | tee run.log')
+    else:
+      os.system(publish + 'bin/delite ' + args[0] + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + opts.outdir + ' 2>&1 | tee run.log')
   else:
-    os.system(publish + 'bin/delite ' + args[0] + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + opts.outdir + ' 2>&1 | tee run.log')
+    print 'Running Spatial Scala Test'
+    os.system(publish + 'bin/delite ' + args[0] + ' --codecache=' + opts.outdir + ' 2>&1 | tee run.log')
 
 if __name__ == "__main__":
     main()

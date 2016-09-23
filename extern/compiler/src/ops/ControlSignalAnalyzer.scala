@@ -180,6 +180,10 @@ trait ControlSignalAnalyzer extends Traversal {
         debug(s"  $lhs = $rhs")
         debug("  " + deps.mkString(", "))
 
+        readers.foreach{reader =>
+          if (deps contains reader) externalReadersOf(reader) = externalReadersOf(reader) :+ lhs
+        }
+
         if (isAllocation(lhs)) { // TODO: Other propagaters?
           debug(s"""  Found propagating dep ($lhs) for pending readers (${readers.mkString(",")})""")
           pendingReads += lhs -> readers

@@ -15,7 +15,7 @@ trait NodeMetadataTypes extends Base {
     def inReduce = x._2
   }
   implicit class AccessOps(x: Access) {
-    def access = x._1
+    def node = x._1
     def controller = x._2
     def controlNode = x._2._1
     def inReduce = x._2._2
