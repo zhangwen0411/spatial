@@ -42,8 +42,6 @@ Comments
 --------
 * Expected FifoLoadStore to fail validation
 * Expected GEMM to fail validation
-* Need to fix TPCHQ6 to mix SInts and Flts, currently uses SInts only
-	* TPCHQ6 also stalls with tileSize > 96 and seems to filter out all prices
 * Tighten validation margin on BlackScholes
 * Make SGD work on more than 1 epoch
 " >> $1
@@ -436,7 +434,8 @@ if [ ! -z "$diff" ]; then
 		if [[ ! "$last_m" = "$m" ]]; then 
 			echo "debug3"
 			courtesy_email="The following apps went from pass to fail: ${diff[@]} when going from commits: $old_commit to $new_commit"
-			echo ${courtesy_email} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@spatial-lang.com
+			echo ${courtesy_email} | mail $m -s "[SPATIAL NOTICE] You done messed up" 
+			# -r AppTsar@spatial-lang.com
 			echo "poke" | mail $m -s "[Poke test]"
 		fi
 		echo "[EMAIL] Sent ${tmp} to $m"
@@ -491,7 +490,7 @@ done
 cd ${SPATIAL_HOME}
 hash_str=`git rev-parse HEAD`
 cd ../delite
-dhash_str='git rev-parse HEAD'
+dhash_str=`git rev-parse HEAD`
 cd ${SPATIAL_HOME}
 lines=(`cat $history_file | wc -l`)
 dline=$(($lines-$(($hist-1))))

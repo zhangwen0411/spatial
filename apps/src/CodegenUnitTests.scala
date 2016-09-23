@@ -85,7 +85,6 @@ trait DeviceMemcpyApp extends SpatialApp {
 
 }
 
-// 4
 object SimpleTileLoadStore extends SpatialAppCompiler with SimpleTileLoadStoreApp // Args: 960 5
 trait SimpleTileLoadStoreApp extends SpatialApp {
   type T = SInt
