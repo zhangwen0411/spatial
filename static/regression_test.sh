@@ -435,15 +435,9 @@ if [ ! -z "$diff" ]; then
 		echo "debug2"
 		if [[ ! "$last_m" = "$m" ]]; then 
 			echo "debug3"
-			courtesy_email="The following apps went from pass to fail\n
-			${diff[@]}
-			\n
-			when going from commits: \n
-			$old_commit
-			\n
-			to\n
-			$new_commit"
+			courtesy_email="The following apps went from pass to fail: ${diff[@]} when going from commits: $old_commit to $new_commit"
 			echo ${courtesy_email} | mail $m -s "[SPATIAL NOTICE] You done messed up" -r AppTsar@spatial-lang.com
+			echo "poke" | mail $m -s "[Poke test]"
 		fi
 		echo "[EMAIL] Sent ${tmp} to $m"
 		last_m=$m
@@ -496,14 +490,17 @@ done
 
 cd ${SPATIAL_HOME}
 hash_str=`git rev-parse HEAD`
+cd ../delite
+dhash_str='git rev-parse HEAD'
+cd ${SPATIAL_HOME}
 lines=(`cat $history_file | wc -l`)
 dline=$(($lines-$(($hist-1))))
 sed -i -e "${dline}d" $history_file
-echo "$hash_str" >> $history_file
+echo "$hash_str / $dhash_str" >> $history_file
 lines=(`cat $pretty_file | wc -l`)
 dline=$(($lines-$(($hist-1))))
 sed -i -e "${dline}d" $pretty_file
-echo "$hash_str" >> $pretty_file
+echo "$hash_str / $dhash_str" >> $pretty_file
 
 # git push
 cd ${SPATIAL_HOME}/spatial.wiki
