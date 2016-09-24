@@ -300,8 +300,18 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, new int[] { $portlist });""")
           }
         }
-        readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectRdone") }
-        writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectWdone") }
+        if (d.depth > 2) {
+          // TODO: HOW TO GET UNUSED WR PORTS AND DONE PORTS, or set default vals in maxj?????
+          val dummyWritesByPort = writers.filter{writer => !instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
+          val dummyDonesByPort = writers.filter{writer => !instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
+          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStagedone") }
+          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStagedone") }
+          dummyWritesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectDummyWr") }
+          dummyDonesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectDummyDone") }
+        } else {
+          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectRdone") }
+          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectWdone") }
+        }
       }
     }
 
@@ -685,11 +695,13 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     Console.println(s"[WARNING] Assume duplicate 0 is the inside reduction register and do not emit lib")
                   case _ =>
                     val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
-                    if (d.depth > 1) {
+                    if (d.depth == 2) {
                       emit(s"""DblBufReg ${quote(sym)}_${i}_lib = new DblBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal)); //${d.depth} depth""")
                       val readstr = if (parOf(sym)>1) "readv" else "read"
                       emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
                       emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
+                    } else if (d.depth > 2) {
+                      emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal), ${d.depth}); //${d.depth} depth""")
                     } else {
                       emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
                       val readstr = if (parOf(sym) > 1) "readv" else "read"
@@ -732,6 +744,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
           val pre = maxJPre(sym)
           val inst = instanceIndicesOf(reader, reg).head // Reads should only have one index
+          val port = portsOf(reader, reg, inst).head
+          val nbuf = if (duplicatesOf(reg)(inst).depth > 2) {s"_lib.read($port)"} else ""
 
           val regStr = regType(reg) match {
             case Regular =>
@@ -743,7 +757,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 }
                 else ""
               }
-              quote(reg) + "_" + inst + suffix
+              quote(reg) + "_" + inst + nbuf + suffix
             case _ =>
               quote(reg)
           }
@@ -825,8 +839,11 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 case _ =>
                   val rstStr = quote(parentOf(reg).get) + "_rst_en"
                   // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
-                  if (dup.depth > 1) {
+                  if (dup.depth == 2) {
                     emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false));""")
+                  } else if (dup.depth > 2) {
+                    val port = portsOf(writer, reg, ii).head 
+                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false), $port);""")                    
                   }
                   else {
                     // Using an enable signal instead of "always true" is causing an illegal loop.

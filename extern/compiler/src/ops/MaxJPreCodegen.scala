@@ -197,6 +197,10 @@ trait MaxJPreCodegen extends Traversal  {
             emitDblBufSM(quote(sym) + "_" + i, numReaders_for_this_duplicate)
           }
         } else if (d.depth > 2) {
+          val numReaders_for_this_duplicate = readers.filter{r => instanceIndicesOf(r, sym).contains(i) }.length
+          withStream(newStream("bram_" + quote(sym) + "_" + i)) {
+            emitDblBufSM(quote(sym) + "_" + i, numReaders_for_this_duplicate)
+          }
           // withStream(newStream("bram_" + quote(sym) + "_" + i)) {
           //   emitNBufSM(quote(sym) + "_" + i, d.depth)
           // }
