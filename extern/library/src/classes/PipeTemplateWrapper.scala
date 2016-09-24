@@ -11,7 +11,6 @@ import spatial.library.classes._
 trait ControllerTemplateWrapper {
   this: SpatialBase with SpatialClasses =>
 
-  // TODO: Better way to do this besides recursion?
   def loop(cchain: Rep[CounterChain], idx: Int, indices: List[FixPt[Signed,B32,B0]], func: Rep[Indices] => Rep[Unit]): Rep[Unit] = {
     val ctr = cchain(idx)
     if (idx >= cchain.length - 1) {

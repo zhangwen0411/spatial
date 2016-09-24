@@ -239,9 +239,9 @@ trait ControlSignalAnalyzer extends Traversal {
     case Pipe_fold(cc,a,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) =>
       aliasOf(acc) = a
       traverseWith((lhs, false), inds, cc)(func)
-      traverseWith((lhs, false), inds, cc)(rFunc)
-      traverseWith((lhs, false), inds, cc)(ld)
-      traverseWith((lhs, false), inds, cc)(st)
+      traverseWith((lhs, true), inds, cc)(rFunc)
+      traverseWith((lhs, true), inds, cc)(ld)
+      traverseWith((lhs, true), inds, cc)(st)
       isAccum(a) = true                                   // (6)
       parentOf(a) = lhs  // Reset accumulator with reduction
 
@@ -287,7 +287,6 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
       isAccum(accum) = true                                 // (6)
       parentOf(accum) = lhs // Reset accumulator with reduction, not allocation
 
-      // TODO: Investigate why all metadata isn't copied properly
       propagationPairs ::= (accum, acc)
 
     case _ => super.analyze(lhs, rhs)
@@ -296,8 +295,6 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
     propagationPairs.foreach{case (src,dest) =>
       setProps(dest,getProps(src))
-      //getProps(src).foreach{m => debug(s"$src" + makeString(m)) }
-      //getProps(dest).foreach{m => debug(s"$dest" + makeString(m)) }
     }
     b
   }

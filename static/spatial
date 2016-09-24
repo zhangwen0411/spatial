@@ -62,9 +62,21 @@ def main():
 
   deliteArgs = ' '.join(args)
 
+  SPATIAL_HOME = os.getenv("SPATIAL_HOME", "")
+  if SPATIAL_HOME == "":
+    print 'SPATIAL_HOME is undefined.'
+    try:
+      SPATIAL_HOME = input('SPATIAL_HOME [enter to use current directory]: ')
+    except:
+      SPATIAL_HOME = os.getcwd()
+
   ## TODO: How to determine publish directory?
-  publish = os.getenv("HYPER_HOME", "") + "/spatial/published/Spatial/"
+  publish = SPATIAL_HOME + "/published/Spatial/"
   os.system(publish + 'bin/delitec ' + deliteArgs + ' --dump_exception 2>&1 | tee compile.log')
+
+  if not opts.no_log:
+    print 'Parsing log'
+    os.system(publish + 'bin/parse-log.py')
 
   if opts.maxj and opts.cpp:
     if opts.outdir == "out":
