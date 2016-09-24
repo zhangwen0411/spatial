@@ -239,9 +239,9 @@ trait ControlSignalAnalyzer extends Traversal {
     case Pipe_fold(cc,a,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) =>
       aliasOf(acc) = a
       traverseWith((lhs, false), inds, cc)(func)
-      traverseWith((lhs, false), inds, cc)(rFunc)
-      traverseWith((lhs, false), inds, cc)(ld)
-      traverseWith((lhs, false), inds, cc)(st)
+      traverseWith((lhs, true), inds, cc)(rFunc)
+      traverseWith((lhs, true), inds, cc)(ld)
+      traverseWith((lhs, true), inds, cc)(st)
       isAccum(a) = true                                   // (6)
       parentOf(a) = lhs  // Reset accumulator with reduction
 
