@@ -6,7 +6,7 @@ package spatial
 trait Regs {
   this: SpatialDSL =>
 
-  // TODO: Better / more correct way of exposing register reset?
+  // ISSUE #32: Better / more correct way of exposing register reset?
   def importRegs() {
     val T = tpePar("T")
     val Reg          = lookupTpe("Reg")
@@ -91,7 +91,6 @@ trait Regs {
       infix ("rst") (Nil :: MUnit, effect = write(0)) implements composite ${ reg_reset($self) }
     }
 
-    // TODO: Should warn/error if not an ArgIn?
     /** Enables implicit reading from fixed point type Regs **/
     fimplicit (Reg) ("regFixToFix", (S,I,F), Reg(FixPt(S,I,F)) :: FixPt(S,I,F)) implements redirect ${ readReg($0) }
     /** Enables implicit reading from floating point type Regs **/

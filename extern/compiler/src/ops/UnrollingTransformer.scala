@@ -60,7 +60,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
     val prods = List.tabulate(N){i => Ps.slice(i+1,N).fold(1)(_*_) }
     val indices = Ps.map{p => List.fill(p){ fresh[Index] } }
 
-    def length = P // TODO: better term for this
+    def size = P
 
     def parAddr(p: Int) = List.tabulate(N){d => (p / prods(d)) % Ps(d) }
 
@@ -141,19 +141,19 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
     case EatReflect(e@Pop_fifo(fifo@EatAlias(mem))) if !lanes.isUnrolled(fifo) =>
       debug(s"Unrolling $s = $d")
-      val parPop = par_pop_fifo(f(fifo), lanes.length)(e._mT,e.__pos)
-      dimsOf(parPop) = List(lanes.length.as[Index])
-      lenOf(parPop) = lanes.length
+      val parPop = par_pop_fifo(f(fifo), lanes.size)(e._mT,e.__pos)
+      dimsOf(parPop) = List(lanes.size.as[Index])
+      lenOf(parPop) = lanes.size
 
       setProps(parPop, mirror(getProps(s), f.asInstanceOf[Transformer]))
       cloneFuncs.foreach{func => func(parPop) }
       lanes.split(s, parPop)(e._mT)
 
     case EatReflect(e: Cam_load[_,_]) =>
-      if (lanes.length > 1) throw ParallelizedCAMOpException(s)(mpos(s.pos))
+      if (lanes.size > 1) throw ParallelizedCAMOpException(s)(mpos(s.pos))
       lanes.duplicate(s, d)
     case EatReflect(e: Cam_store[_,_]) =>
-      if (lanes.length > 1) throw ParallelizedCAMOpException(s)(mpos(s.pos))
+      if (lanes.size > 1) throw ParallelizedCAMOpException(s)(mpos(s.pos))
       lanes.duplicate(s, d)
 
     case EatReflect(e@Bram_store(bram@EatAlias(mem),addr,value)) if !lanes.isUnrolled(bram) =>
@@ -175,8 +175,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
       val addrs = lanes.vectorize{p => f(addr)}
       val parLoad = par_bram_load(f(bram), addrs)(e._mT, e.__pos)
-      dimsOf(parLoad) = List(lanes.length.as[Index])
-      lenOf(parLoad) = lanes.length
+      dimsOf(parLoad) = List(lanes.size.as[Index])
+      lenOf(parLoad) = lanes.size
 
       setProps(parLoad, mirror(getProps(s), f.asInstanceOf[Transformer]))
       parIndicesOf(parLoad) = lanes.map{i => accessIndicesOf(s).map(f(_)) }
@@ -199,7 +199,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       loads.foreach{i => parIndicesOf(f(s)) = List(accessIndicesOf(s).map(f(_))) }
       loads
 
-    case d if isControlNode(s) && lanes.length > 1 =>
+    case d if isControlNode(s) && lanes.size > 1 =>
       val parBlk = reifyBlock { lanes.duplicate(s, d); () }
       val parStage = reflectEffect(Pipe_parallel(parBlk), summarizeEffects(parBlk) andAlso Simple())
       styleOf(parStage) = ForkJoin

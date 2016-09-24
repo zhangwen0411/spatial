@@ -8,7 +8,7 @@ import spatial.shared.ops._
 import spatial.compiler._
 import spatial.compiler.ops._
 
-// TODO: Eventually this analyzer should be superceded by more generalized coarse controller dataflow
+// ISSUE #2: Eventually this analyzer should be superceded by more generalized coarse controller dataflow
 
 trait StageAnalysisExp extends NodeMetadataOpsExp {this: SpatialExp => }
 

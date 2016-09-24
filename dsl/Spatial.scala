@@ -276,9 +276,9 @@ trait SpatialDSL extends ForgeApplication
     schedule(OffChipAnalyzer)       // Check dimensions of offchip memories
     schedule(StageAnalyzer)         // Get number of stages in each control node
     schedule(SpatialAffineAnalysis) // Access patterns
-    schedule(MemoryAnalyzer)        // Get used readers/writers of each memory
     schedule(Printer)
-    schedule(RegisterCleanup)       // Remove unused register reads created in unit pipe insertion
+    schedule(MemoryAnalyzer)        // Get used readers/writers of each memory
+    schedule(RegisterCleanup)       // Remove unused registers/writes/reads created in unit pipe insertion
     schedule(DotPrinter)            // Graph prior to unrolling
 
     // --- Design Space Exploration

@@ -41,44 +41,40 @@ trait KmeansApp extends SpatialApp {
     setArg(K, numCents)
     setArg(D, numDims)
 
-    val points = OffChipMem[SInt](N, D)    // Input points
-    val centroids = OffChipMem[SInt](K, D) // Output centroids
+    val points = OffChipMem[T](N, D)    // Input points
+    val centroids = OffChipMem[T](K, D) // Output centroids
     setMem(points, points_in)
 
     Accel {
-      val cts = BRAM[SInt](MAXK, MAXD)
+      val cts = BRAM[T](MAXK, MAXD)
 
       // Load initial centroids (from points)
       cts := points(0::K,0::D, P0)
 
       val DM1 = D.value - 1
 
-      val newCents = BRAM[SInt](MAXK,MAXD)
+      val newCents = BRAM[T](MAXK,MAXD)
       // For each set of points
-      Fold(N by BN par P1, PR)(newCents, 0.as[SInt]){i =>
-        val pts = BRAM[SInt](BN, BD)
+      Fold(N by BN par P1, PR)(newCents, 0.as[T]){i =>
+        val pts = BRAM[T](BN, BD)
         pts := points(i::i+BN, 0::BD, P0)
 
-        val centTile = BRAM[SInt](MAXK, MAXD)
+        val centTile = BRAM[T](MAXK, MAXD)
         // For each point in this set
-        Fold(BN par P3, PR)(centTile, 0.as[SInt]){pt =>
-          val minCent = Reg[SInt](0)  // Index of closest centroid
-          val minDist = Reg[SInt](-1)  // Distance to closest centroid
-
+        Fold(BN par P3, PR)(centTile, 0.as[T]){pt =>
           // Find the index of the closest centroid
-          /*Reduce(K par P4){ct =>
-            val dist = Reduce(D par P2)(0.as[SInt]){d => (pts(pt,d) - cts(ct,d)) ** 2 }{_+_}
-            Pipe {
-              minDist := min2(dist.value, minDist.value)
-              minCent := mux(minDist.value == dist.value, ct, minCent.value)
-            }
-          }*/
+          val minCent = Reduce(K par P4)(pack((0.as[SInt],0.as[T]))){ct =>
+            val dist = Reduce(D par P2)(0.as[T]){d => (pts(pt,d) - cts(ct,d)) ** 2 }{_+_}
+            pack((ct, dist.value))
+          }{(a,b) =>
+            mux(a._2 < b._2, a, b)
+          }
 
           // Store this point to the set of accumulators
           val localCent = BRAM[SInt](MAXK,MAXD)
           Pipe(K by 1, D par P2){(ct,d) =>
             val elem = mux(d == DM1, 1.as[SInt], pts(pt, d))
-            localCent(ct, d) = mux(ct == minCent.value, elem, 0.as[SInt])
+            localCent(ct, d) = mux(ct == minCent.value._1, elem, 0.as[SInt])
           }
           localCent
         }{_+_} // Add the current point to the accumulators for this centroid

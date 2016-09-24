@@ -59,16 +59,6 @@ trait SpatialAffineAnalyzer extends AffineAnalyzer {
   debugMode = SpatialConfig.debugging
   verboseMode = SpatialConfig.verbose
 
-  // TODO: Unused?
-  /*private def patternOfVectorizedOp(offsets: List[Exp[FixPt[Signed,B32,B0]]], inds: List[Sym[FixPt[Signed,B32,B0]]]) = {
-    val trueOffsets = offsets.take(offsets.length - inds.length).map{x => InvariantAccess(x)}
-    val indices = inds.zip(offsets.drop(trueOffsets.length)).map{
-      case (i,Exact(0)) => LinearAccess(i)
-      case (i,b) => OffsetAccess(i,b)
-    }
-    trueOffsets ++ indices
-  }*/
-
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) {
     rhs match {
       case EatReflect(e:Scatter[_]) =>

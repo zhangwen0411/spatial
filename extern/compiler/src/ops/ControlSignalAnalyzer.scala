@@ -287,7 +287,6 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
       isAccum(accum) = true                                 // (6)
       parentOf(accum) = lhs // Reset accumulator with reduction, not allocation
 
-      // TODO: Investigate why all metadata isn't copied properly
       propagationPairs ::= (accum, acc)
 
     case _ => super.analyze(lhs, rhs)
@@ -296,8 +295,6 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
     propagationPairs.foreach{case (src,dest) =>
       setProps(dest,getProps(src))
-      //getProps(src).foreach{m => debug(s"$src" + makeString(m)) }
-      //getProps(dest).foreach{m => debug(s"$dest" + makeString(m)) }
     }
     b
   }

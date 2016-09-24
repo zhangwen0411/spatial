@@ -71,7 +71,7 @@ case class FPGAResources(
 object NoArea extends FPGAResources()
 
 
-// TODO: Should get some of this from loading a file rather than hardcoding
+// ISSUE #33: Should get some of this from loading a file rather than hardcoding
 // All numbers here are from Stratix V profiling
 trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
   this: SpatialExp =>
@@ -168,7 +168,7 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     instances.map{inst => areaOfMemInstance(nbits, dims, inst) }.reduce{_+_}
   }
 
-  def areaOfStreamPipe(n: Int) = NoArea // TODO
+  def areaOfStreamPipe(n: Int) = NoArea // ISSUE #33: Needs characterization
 
   def areaOfMetaPipe(n: Int) = FPGAResources(
     lut4 = (11*n*n + 45*n)/2 + 105,  // 0.5(11n^2 + 45n) + 105
@@ -219,7 +219,7 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     if (isMetaPipe(lhs)) {
       val N = nStages(lhs) - 1          // Number of stages needed for delay
       val P = parsOf(cchain).reduce(_+_) // Number of duplications per counter
-      FPGAResources(lut3=N*P*32, regs = 4*N*P*32) // TODO: Hardcoded 32 bit index sizes
+      FPGAResources(lut3=N*P*32, regs = 4*N*P*32) // ISSUE #33: Hardcoded 32 bit index sizes
     }
     else NoArea
   }
@@ -240,48 +240,46 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     case ConstFix(_) => areaOfMemWord(nbits(s))
     case ConstFlt(_) => areaOfMemWord(nbits(s))
 
-    // TODO
+    // ISSUE #33: Need characterization
     case Fifo_new(_,_) => NoArea
     case Push_fifo(_,_,_) => NoArea
     case Pop_fifo(_) => NoArea
     case Count_fifo(_) => NoArea
 
-    // TODO
+    // ISSUE #33: Need characterization
     case Cam_new(_,_) => NoArea
     case Cam_load(_,_) => NoArea
     case Cam_store(_,_,_) => NoArea
 
-
+    // ISSUE #33: Need characterization
     case Argin_new(_) => areaOfArg(nbits(s))
     case Argout_new(_) => areaOfArg(nbits(s))
-    case Reg_new(_) =>
-      //if (isDblBuf(s)) FPGAResources(lut3 = nbits(s), regs = 4*nbits(s)) // TODO: Why 4?
-      //else             FPGAResources(regs = nbits(s))
-      FPGAResources(regs = nbits(s))
+    case Reg_new(_) => FPGAResources(regs = nbits(s))
 
     case e@Bram_new(depth, _) =>
-      val dims = dimsOf(s).map{d => bound(d).getOrElse{stageWarn("Cannot resolve bound of BRAM dimension"); 1.0}.toInt}
+      val dims = dimsOf(s).zipWithIndex.map{case (d,i) => bound(d).getOrElse{throw InvalidMemoryDimensionException(i)(mpos(s.pos)) }.toInt }
       areaOfBRAM(nbits(e._mT), dims, duplicatesOf(s))
 
+    // ISSUE #33: Need characterization
     case e@Bram_load(ram, _) =>
-      val decode = 0 //if (isPow2(banks(ram))) 0 else Math.ceil(Math.log(banks(ram))).toInt
+      val decode = 0
       val bits = nbits(e._mT)
       FPGAResources(lut3=decode+bits, regs=decode+bits)
 
+    // ISSUE #33: Need characterization
     case e@Bram_store(ram, _, _) =>
-      val decode = 0 //if (isPow2(banks(ram))) 0 else Math.ceil(Math.log(banks(ram))).toInt
+      val decode = 0
       val bits = nbits(e._mT)
       FPGAResources(lut3=decode+bits, regs=decode+bits)
 
-    // TODO: Seems high, confirm
     case _:Counter_new => FPGAResources(lut3=106,regs=67)
     case _:Counterchain_new => NoArea
 
-    // TODO: Have to get numbers for non-32 bit multiplies and divides
     case FixPt_Neg(_)   => FPGAResources(lut3 = nbits(s), regs = nbits(s))
     case FixPt_Add(_,_) => FPGAResources(lut3 = nbits(s), regs = nbits(s))
     case FixPt_Sub(_,_) => FPGAResources(lut3 = nbits(s), regs = nbits(s))
 
+    // ISSUE #33: Have to get numbers for non-32 bit multiplies and divides
     case FixPt_Mul(Exact(c),_) => areaOfConstMult(c.toInt, nbits(s)) // HACK
     case FixPt_Mul(_,Exact(c)) => areaOfConstMult(c.toInt, nbits(s)) // HACK
     case FixPt_Mul(_,_) =>
@@ -309,10 +307,11 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     case FixPt_And(_,_) => FPGAResources(lut3=nbits(s), regs=nbits(s))
     case FixPt_Or(_,_)  => FPGAResources(lut3=nbits(s), regs=nbits(s))
 
+    // ISSUE #33: Needs characterization
     //case FixPt_Lsh(_,_) => // ??? nbits(s)*nbits(s) ?
     //case FixPt_Rsh(_,_) => // ???
 
-    // TODO: Floating point for things besides single precision
+    // ISSUE #33: Floating point for things besides single precision
     case FltPt_Neg(_) =>
       if (nbits(s) != 32) warn(s"Don't know area for $d - using default")
       FPGAResources(lut3=397,lut4=29,lut5=125,lut6=34,lut7=5,regs=606,mem16=50)
@@ -372,11 +371,7 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
 
     case Mux2(_,_,_) => FPGAResources(regs = nbits(s))
 
-    // TODO: Duplication here...
-    case Min2(_,_) =>
-      val lt = if (isFixPtType(s.tp)) FPGAResources(lut3 = nbits(s)+1,regs=1) else FPGAResources(lut4=42,lut6=26,regs=34)
-      lt + FPGAResources(regs = nbits(s))
-    case Max2(_,_) =>
+    case _:Min2[_] | _:Max2[_] =>
       val lt = if (isFixPtType(s.tp)) FPGAResources(lut3 = nbits(s)+1,regs=1) else FPGAResources(lut4=42,lut6=26,regs=34)
       lt + FPGAResources(regs = nbits(s))
 
@@ -390,7 +385,7 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
       FPGAResources(lut4=160,lut6=96,regs=223+nbits(s))
 
 
-    // TODO: New templates - needs recharacterization
+    // ISSUE #33: New templates - needs recharacterization
     // Tile Store
     case Offchip_store_cmd(mem,stream,ofs,len,p) =>
       //val nonConstDims = (dimsOf(tt.mem) ++ tt.memOfs).filterNot{case Fixed(_) => true; case _ => false}.length

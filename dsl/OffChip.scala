@@ -176,8 +176,6 @@ trait OffChip {
     val FIFO    = lookupTpe("FIFO")
     val Range   = lookupTpe("Range")
 
-    // TODO: How to avoid CSE? Doesn't matter except that same symbol may be returned
-    // and need different symbols to manage offset staging metadata properly
     data(Tile, ("_target", OffChip(T)))
     internal (Tile) ("tile_new", T, OffChip(T) :: Tile(T)) implements allocates(Tile, ${$0})
     internal (Tile) ("tile_create", T, (OffChip(T), SList(Range)) :: Tile(T)) implements composite ${
@@ -193,8 +191,6 @@ trait OffChip {
      * @param bram
      **/
     infix (Tile) (":=", T, (Tile(T), BRAM(T)) :: MUnit, TNum(T), effect = write(0)) implements redirect ${ copyTile($0, $1, true) }
-
-    // TODO: Storing from FIFO
     infix (Tile) (":=", T, (Tile(T), FIFO(T)) :: MUnit, TNum(T), effect = write(0)) implements redirect ${ streamTile($0, $1, true) }
 
     direct (Tile) ("streamTile", T, (("tile", Tile(T)), ("fifo", FIFO(T)), ("store", SBoolean)) :: MUnit, TNum(T), effect = simple) implements composite ${
@@ -288,8 +284,6 @@ trait OffChip {
     val BRAM       = lookupTpe("BRAM")
     val Idx = lookupAlias("Index")
 
-    // TODO: How to avoid CSE? Doesn't matter except that same symbol may be returned
-    // and need different symbols to manage offset staging metadata properly
     data(SparseTile, ("_target", OffChip(T)), ("_addrs", BRAM(Idx)), ("_len", Idx))
     internal (SparseTile) ("stile_new", T, (OffChip(T), BRAM(Idx), Idx) :: SparseTile(T)) implements allocates(SparseTile, ${$0}, ${$1}, ${$2})
     internal (SparseTile) ("stile_create", T, (OffChip(T), BRAM(Idx), Idx) :: SparseTile(T)) implements composite ${
