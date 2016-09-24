@@ -408,11 +408,6 @@ trait BankingBase extends Traversal with ControllerTools {
 
     val writers = writersOf(mem)
     val readers = readersOf(mem)
-    val accesses = writers ++ readers
-    accesses.foreach{access =>
-      instanceIndicesOf.reset(access.node)
-      portsOf.reset(access.node)
-    }
 
     if (writers.isEmpty && !isArgIn(mem))
       stageWarn("Memory " + nameOf(mem).getOrElse("") + s" ($mem) defined here has no writers!")(mpos(mem.pos))
@@ -596,11 +591,19 @@ trait MemoryAnalyzer extends Traversal {
   lazy val RegAnalyzer  = new RegisterBanking{val IR: MemoryAnalyzer.this.IR.type = MemoryAnalyzer.this.IR}
   lazy val FIFOAnalyzer = new FIFOBanking{val IR: MemoryAnalyzer.this.IR.type = MemoryAnalyzer.this.IR}
 
-  def run(localMems: List[Exp[Any]]): Unit = localMems.foreach {
-    case mem if isBRAM(mem.tp) => BRAMAnalyzer.bank(mem)
-    case mem if isFIFO(mem.tp) => FIFOAnalyzer.bank(mem)
-    case mem if isRegister(mem.tp) => RegAnalyzer.bank(mem)
-    case mem => throw UnsupportedBankingException(mem)
+  def run(localMems: List[Exp[Any]]): Unit = {
+    val accesses = localMems.flatMap{mem => readersOf(mem) ++ writersOf(mem) }
+    accesses.foreach{access =>
+      instanceIndicesOf.reset(access.node)
+      portsOf.reset(access.node)
+    }
+
+    localMems.foreach {
+      case mem if isBRAM(mem.tp) => BRAMAnalyzer.bank(mem)
+      case mem if isFIFO(mem.tp) => FIFOAnalyzer.bank(mem)
+      case mem if isRegister(mem.tp) => RegAnalyzer.bank(mem)
+      case mem => throw UnsupportedBankingException(mem)
+    }
   }
 
   override def runOnce[A:Manifest](b: Block[A]): Block[A] = {
