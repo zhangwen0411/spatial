@@ -320,7 +320,7 @@ trait SpatialMetadata {
      * Fixed(Rep[Any])  // Returns Option[Double]. Defined only for fixed bounds
      **/
     val MBound = metadata("MBound", "bound" -> SDouble, "exact" -> SBoolean, "locked" -> SBoolean)
-    onMeet (MBound) (${
+    onMeet (MBound, metaAlias) (${
       MBound(Math.max(this.bound,that.bound), this.exact && that.exact, this.locked && that.locked)
     })
     isExistential(MBound, false)

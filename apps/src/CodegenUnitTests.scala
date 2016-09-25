@@ -725,9 +725,9 @@ trait ScatterGatherApp extends SpatialApp {
     Accel {
       val addrs = BRAM[T](maxNumAddrs)
       val gathered = BRAM[T](maxNumAddrs)
-      Pipe {addrs := srcAddrs(0::numAddrs, param(1))}
-      Pipe {gathered := gatherData(addrs)}
-      Pipe {scatterResult(addrs) := gathered}
+      addrs := srcAddrs(0::numAddrs, param(1))
+      gathered := gatherData(addrs)
+      scatterResult(addrs) := gathered
     }
     getMem(scatterResult)
   }

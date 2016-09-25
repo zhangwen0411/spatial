@@ -17,11 +17,24 @@ trait SubstQuotingExp extends QuotingExp  {
   override def quote(x: Exp[Any]) = super.quote(aliasOf(x))
 }
 
-trait PIRCommon extends SubstQuotingExp with Traversal {
+trait PIRCommon extends SubstQuotingExp with ControllerTools {
   val IR: PIRScheduleAnalysisExp with SpatialExp
   import IR.{assert => _, _}
 
   val globals = HashSet[GlobalMem]()
+
+  // HACK: Skip parallel pipes in PIR gen
+  def parentOfHack(x: Exp[Any]): Option[Exp[Any]] = parentOf(x) match {
+    case Some(pipe@Deff(Pipe_parallel(_))) => parentOfHack(pipe)
+    case parentOpt => parentOpt
+  }
+
+  def topControllerHack(access: Access, ctrl: Controller): Controller = ctrl.node match {
+    case pipe@Deff(Pipe_parallel(_)) =>
+      topControllerHack(access, childContaining(ctrl, access))
+    case _ => ctrl
+  }
+
 
   def allocateCU(pipe: Exp[Any]): ComputeUnit
 
@@ -268,8 +281,17 @@ trait PIRCommon extends SubstQuotingExp with Traversal {
     debug(s"Creating SRAM for memory $mem, reader $reader, writer: $writer, cu $cu")
 
     val writerCU = writer.map{writer => allocateCU(writer.controlNode) }
-    val swapWriteCU = writer.flatMap{writer => topControllerOf(writer, mem, instIndex) }.map{ctrl => allocateCU(ctrl.node) }
-    val swapReadCU = topControllerOf(reader, mem, instIndex).map{ctrl => allocateCU(ctrl.node) }
+    val swapWritePipe = writer.flatMap{writer => topControllerOf(writer, mem, instIndex) }
+    val swapReadPipe = topControllerOf(reader, mem, instIndex)
+
+    // HACK: Ignore Parallels as top metapipeline controllers
+    val swapWriteCU = (writer, swapWritePipe) match {
+      case (Some(write), Some(ctrl)) =>
+        val topCtrl = topControllerHack(write, ctrl)
+        Some(allocateCU(topCtrl.node))
+      case _ => None
+    }
+    val swapReadCU = swapReadPipe.map{ctrl => topControllerHack(reader, ctrl)}.map{ctrl => allocateCU(ctrl.node) }
 
     debug(s"  readerCU: $cu")
     debug(s"  writerCU: $writerCU")

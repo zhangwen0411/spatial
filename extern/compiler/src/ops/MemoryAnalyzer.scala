@@ -230,6 +230,7 @@ trait BankingBase extends Traversal with ControllerTools {
       }
     }
   }
+
   val allowConcurrentReaders = true
   val allowConcurrentWriters = false
   val allowPipelinedReaders  = true
@@ -237,27 +238,21 @@ trait BankingBase extends Traversal with ControllerTools {
   val allowMultipleReaders   = true
   val allowMultipleWriters   = true
 
-  // Override to allow concurrent readers
   def checkConcurrentReaders(mem: Exp[Any]): Unit = checkAccesses(mem,readersOf(mem)){(a,b) =>
     if (areConcurrent(a,b)) throw ConcurrentReadersException(mem, a, b)
   }
-  // Override to allow concurrent writers
   def checkConcurrentWriters(mem: Exp[Any]): Unit = checkAccesses(mem,writersOf(mem)){(a,b) =>
     if (areConcurrent(a,b)) throw ConcurrentWritersException(mem, a, b)
   }
-  // Override to allow concurrent readers
   def checkPipelinedReaders(mem: Exp[Any]): Unit = checkAccesses(mem,readersOf(mem)){(a,b) =>
     if (arePipelined(a,b)) throw PipelinedReadersException(mem, a, b)
   }
-  // Override to allow concurrent writers
   def checkPipelinedWriters(mem: Exp[Any]): Unit = checkAccesses(mem,writersOf(mem)){(a,b) =>
     if (arePipelined(a,b)) throw PipelinedWritersException(mem, a, b)
   }
-  // Override to allow multiple readers
   def checkMultipleReaders(mem: Exp[Any]): Unit = if (readersOf(mem).length > 1) {
     throw MultipleReadersException(mem, readersOf(mem))
   }
-  // Override to allow multiple writers
   def checkMultipleWriters(mem: Exp[Any]): Unit = if (writersOf(mem).length > 1) {
     throw MultipleWritersException(mem, writersOf(mem))
   }
@@ -408,11 +403,6 @@ trait BankingBase extends Traversal with ControllerTools {
 
     val writers = writersOf(mem)
     val readers = readersOf(mem)
-    val accesses = writers ++ readers
-    accesses.foreach{access =>
-      instanceIndicesOf.reset(access.node)
-      portsOf.reset(access.node)
-    }
 
     if (writers.isEmpty && !isArgIn(mem))
       stageWarn("Memory " + nameOf(mem).getOrElse("") + s" ($mem) defined here has no writers!")(mpos(mem.pos))
@@ -596,11 +586,19 @@ trait MemoryAnalyzer extends Traversal {
   lazy val RegAnalyzer  = new RegisterBanking{val IR: MemoryAnalyzer.this.IR.type = MemoryAnalyzer.this.IR}
   lazy val FIFOAnalyzer = new FIFOBanking{val IR: MemoryAnalyzer.this.IR.type = MemoryAnalyzer.this.IR}
 
-  def run(localMems: List[Exp[Any]]): Unit = localMems.foreach {
-    case mem if isBRAM(mem.tp) => BRAMAnalyzer.bank(mem)
-    case mem if isFIFO(mem.tp) => FIFOAnalyzer.bank(mem)
-    case mem if isRegister(mem.tp) => RegAnalyzer.bank(mem)
-    case mem => throw UnsupportedBankingException(mem)
+  def run(localMems: List[Exp[Any]]): Unit = {
+    val accesses = localMems.flatMap{mem => readersOf(mem) ++ writersOf(mem) }
+    accesses.foreach{access =>
+      instanceIndicesOf.reset(access.node)
+      portsOf.reset(access.node)
+    }
+
+    localMems.foreach {
+      case mem if isBRAM(mem.tp) => BRAMAnalyzer.bank(mem)
+      case mem if isFIFO(mem.tp) => FIFOAnalyzer.bank(mem)
+      case mem if isRegister(mem.tp) => RegAnalyzer.bank(mem)
+      case mem => throw UnsupportedBankingException(mem)
+    }
   }
 
   override def runOnce[A:Manifest](b: Block[A]): Block[A] = {
