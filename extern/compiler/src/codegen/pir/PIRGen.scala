@@ -178,13 +178,17 @@ trait PIRGen extends Traversal with PIRCommon {
     case sram@CUMemory(sym, size) =>
       debug(s"Generating ${sram.dumpString}")
       var decl = s"""val ${quote(sym)} = SRAM(size = $size"""
+      // TODO: Should be sram.bufferDepth > 1
       sram.swapRead match {
         case Some(cchain) => decl += s""", swapRead = ${cchain.name}(0)"""
-        case None => throw new Exception(s"No swap read controller defined for $sram")
+        case None if sram.isDoubleBuffer => throw new Exception(s"No swap read controller defined for $sram")
+        case None => // Expected
       }
+      // TODO: Should be sram.bufferDepth > 1
       sram.swapWrite match {
         case Some(cchain) => decl += s""", swapWrite = ${cchain.name}(0)"""
-        case None => throw new Exception(s"No swap write controller defined for $sram")
+        case None if sram.isDoubleBuffer => throw new Exception(s"No swap write controller defined for $sram")
+        case None => // Expected
       }
       sram.writeCtrl match {
         case Some(cchain) => decl += s""", writeCtr = ${cchain.name}(0)"""
@@ -194,6 +198,7 @@ trait PIRGen extends Traversal with PIRCommon {
         case Some(banking) => decl += s""", banking = $banking"""
         case None => throw new Exception(s"No banking defined for $sram")
       }
+      // TODO: This should be "bufferDepth = ..."
       decl += s""", doubleBuffer = ${sram.isDoubleBuffer})"""
 
       sram.vector match {
