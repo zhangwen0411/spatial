@@ -8,7 +8,7 @@ import spatial.shared._
 import spatial.shared.ops._
 import spatial.compiler._
 import spatial.compiler.ops._
-import scala.collection.mutable.{HashSet, HashMap}
+import scala.collection.mutable.{HashMap, ArrayBuffer}
 
 // For bound symbols
 trait SubstQuotingExp extends QuotingExp  {
@@ -21,7 +21,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
   val IR: PIRScheduleAnalysisExp with SpatialExp
   import IR.{assert => _, _}
 
-  val globals = HashSet[GlobalMem]()
+  var globals = Set[GlobalMem]()
 
   def allocateCU(pipe: Exp[Any]): ComputeUnit
 
@@ -43,7 +43,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
   // TODO: Awkward extension of ComputeUnit. May want to move all this to CU later?
   abstract class CUContext(val cu: ComputeUnit) {
     private val refs = HashMap[Exp[Any],LocalRef]()
-    private val readAccums = HashSet[AccumReg]()
+    private var readAccums = Set[AccumReg]()
 
     // HACK: Keep track of first read of accum reg (otherwise can use the wrong stage)
     def isUnreadAccum(reg: LocalMem) = reg match {
@@ -54,7 +54,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     def pipe = cu.pipe
 
     def pseudoStages: List[PseudoStage]
-    def stages: List[Stage]
+    def stages: ArrayBuffer[Stage]
     def addStage(stage: Stage): Unit
     def isWriteContext: Boolean
 
@@ -91,13 +91,19 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
           LocalRef(stage-1, reg)
 
       case reg: CounterReg if isWriteContext && !prevStage.isDefined =>
+        debug(s"Referencing counter $reg in first write stage")
         LocalRef(-1, reg)
 
       case reg: AccumReg if isUnreadAccum(reg) =>
+        debug(s"First reference to accumulator $reg in stage $stage")
         readAccums += reg
         LocalRef(stage, reg)
-      case _ if out => LocalRef(stage, reg)
-      case _        => LocalRef(stage-1, reg)
+      case _ if out =>
+        debug(s"Referencing output register $reg in stage $stage")
+        LocalRef(stage, reg)
+      case _ =>
+        debug(s"Referencing input register $reg in stage $stage")
+        LocalRef(stage-1, reg)
     }
     def refIn(reg: LocalMem, stage: Int = stageNum) = ref(reg, false, stage)
     def refOut(reg: LocalMem, stage: Int = stageNum) = ref(reg, true, stage)
@@ -105,65 +111,62 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     def addOutput(e: Exp[Any], prev: LocalMem, out: LocalMem, add: Boolean = true) {
       mapStages.find{stage => stage.outputMems.contains(prev) } match {
         case Some(stage) =>
-          stage.outs ::= refOut(out, mapStages.length - mapStages.indexOf(stage)) // stage idx + 1
+          stage.outs ::= refOut(out, mapStages.indexOf(stage) + 1)
         case None =>
           bypass(prev, out)
       }
       if (add) addReg(e, out)
       else cu.regs += out // No mapping, only list
     }
-
-    def finalizeContext() { }
   }
 
   case class ComputeContext(override val cu: ComputeUnit) extends CUContext(cu) {
     def pseudoStages = cu.computePseudoStages
     def stages = cu.stages
-    def addStage(stage: Stage) { cu.stages ::= stage }
-    override def finalizeContext() { cu.stages = cu.stages.reverse }
+    def addStage(stage: Stage) { cu.stages += stage }
     def isWriteContext = false
   }
   case class WriteContext(override val cu: ComputeUnit, srams: List[CUMemory]) extends CUContext(cu) {
-    cu.writeStages += srams -> Nil
+    cu.writeStages += srams -> ArrayBuffer.empty
 
     def pseudoStages = cu.writePseudoStages(srams)
     def stages = cu.writeStages(srams)
-    def addStage(stage: Stage) { cu.writeStages(srams) = cu.writeStages(srams) :+ stage }
+    def addStage(stage: Stage) { cu.writeStages(srams) += stage }
     def isWriteContext = true
   }
 
 
   // -- Utility functions
-  def allMapStages(cu: ComputeUnit): List[MapStage] = {
-    cu.stages.flatMap{case stage: MapStage => Some(stage); case _ => None} ++
-    cu.writeStages.values.flatMap{stages => stages.flatMap{case stage: MapStage => Some(stage); case _ => None}}
+  def allMapStages(cu: ComputeUnit): Set[MapStage] = {
+    cu.stages.flatMap{case stage: MapStage => Some(stage); case _ => None}.toSet ++
+    cu.writeStages.values.flatMap{stages => stages.flatMap{case stage: MapStage => Some(stage); case _ => None}}.toSet
   }
 
-  def scalarIns(cu: ComputeUnit): List[GlobalMem] = {
-    cu.stages.flatMap(_.inputMems).flatMap{case ScalarIn(_, in) => Some(in); case _ => None} ++
-    cu.srams.flatMap{sram => sram.readAddr.flatMap{case ScalarIn(_, in) => Some(in); case _ => None}} ++
-    cu.srams.flatMap{sram => sram.writeAddr.flatMap{case ScalarIn(_, in) => Some(in); case _ => None}}
+  def scalarIns(cu: ComputeUnit): Set[GlobalMem] = {
+    cu.stages.flatMap(_.inputMems).flatMap{case ScalarIn(_, in) => Some(in); case _ => None}.toSet ++
+    cu.srams.flatMap{sram => sram.readAddr.flatMap{case ScalarIn(_, in) => Some(in); case _ => None}}.toSet ++
+    cu.srams.flatMap{sram => sram.writeAddr.flatMap{case ScalarIn(_, in) => Some(in); case _ => None}}.toSet
   }
-  def scalarOuts(cu: ComputeUnit): List[GlobalMem] = cu match {
-    case tu: TileTransferUnit => Nil
+  def scalarOuts(cu: ComputeUnit): Set[GlobalMem] = cu match {
+    case tu: TileTransferUnit => Set.empty
     case cu: BasicComputeUnit =>
-      cu.stages.flatMap(_.outputMems).flatMap{case ScalarOut(_, out) => Some(out); case _ => None }
-    case _ => Nil
-  }
-
-  def vectorOuts(cu: ComputeUnit): List[VectorMem] = cu match {
-    case tu: TileTransferUnit if tu.mode == MemLoad => List(tu.vec)
-    case cu: BasicComputeUnit =>
-      cu.stages.flatMap(_.outputMems).flatMap{case VectorOut(_, vec: VectorMem) => Some(vec); case _ => None}
-    case _ => Nil
+      cu.stages.flatMap(_.outputMems).flatMap{case ScalarOut(_, out) => Some(out); case _ => None }.toSet
+    case _ => Set.empty
   }
 
-  def vectorIns(cu: ComputeUnit): List[VectorMem] = cu match {
-    case tu: TileTransferUnit if tu.mode == MemStore => List(tu.vec)
+  def vectorOuts(cu: ComputeUnit): Set[VectorMem] = cu match {
+    case tu: TileTransferUnit if tu.mode == MemLoad => Set(tu.vec)
     case cu: BasicComputeUnit =>
-      cu.stages.flatMap(_.inputMems).flatMap{case VectorIn(vec: VectorMem) => Some(vec); case _ => None} ++
-      cu.srams.flatMap{sram => sram.vector.flatMap{case vec: VectorMem => Some(vec); case _ => None }}
-    case _ => Nil
+      cu.stages.flatMap(_.outputMems).flatMap{case VectorOut(_, vec: VectorMem) => Some(vec); case _ => None}.toSet
+    case _ => Set.empty
+  }
+
+  def vectorIns(cu: ComputeUnit): Set[VectorMem] = cu match {
+    case tu: TileTransferUnit if tu.mode == MemStore => Set(tu.vec)
+    case cu: BasicComputeUnit =>
+      cu.stages.flatMap(_.inputMems).flatMap{case VectorIn(vec) => Some(vec); case _ => None}.toSet ++
+      cu.srams.flatMap{sram => sram.vector.flatMap{case vec: VectorMem => Some(vec); case _ => None }}.toSet
+    case _ => Set.empty
   }
 
 

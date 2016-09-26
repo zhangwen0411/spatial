@@ -6,7 +6,7 @@ import spatial.shared._
 import spatial.shared.ops._
 import spatial.compiler._
 import spatial.compiler.ops._
-import scala.collection.mutable.HashMap
+import scala.collection.mutable.{ArrayBuffer, HashMap}
 
 trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisExp with MemoryAnalysisExp {
   this: SpatialExp =>
@@ -48,7 +48,7 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   case class ScalarIn(x: Exp[Any], mem: GlobalMem) extends LocalMem
   case class ScalarOut(x: Exp[Any], mem: GlobalMem) extends LocalMem
 
-  case class VectorIn(mem: GlobalMem) extends LocalMem
+  case class VectorIn(mem: VectorMem) extends LocalMem
   case class InputReg(mem: CUMemory) extends LocalMem
   case class VectorLocal(x: Exp[Any], mem: CUMemory) extends LocalMem
   case class VectorOut(x: Exp[Any], mem: GlobalMem) extends LocalMem
@@ -196,8 +196,8 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
 
     var writePseudoStages = HashMap[List[CUMemory], List[PseudoStage]]()
     var computePseudoStages: List[PseudoStage] = Nil
-    var writeStages = HashMap[List[CUMemory], List[Stage]]()
-    var stages: List[Stage] = Nil
+    var writeStages = HashMap[List[CUMemory], ArrayBuffer[Stage]]()
+    var stages: ArrayBuffer[Stage] = ArrayBuffer.empty
 
     def dumpString = s"""  cchains = ${cchains.mkString(", ")}
   regs    = ${regs.mkString(", ")}

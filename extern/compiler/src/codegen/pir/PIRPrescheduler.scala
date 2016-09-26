@@ -30,7 +30,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     top = None
     pipes = Nil
     cuMapping.clear()
-    globals.clear()
+    globals = Set.empty
     b
   }
 

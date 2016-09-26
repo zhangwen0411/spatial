@@ -3,7 +3,7 @@ package spatial.compiler.ops
 import scala.reflect.{Manifest,SourceContext}
 
 import scala.virtualization.lms.internal.{Traversal, QuotingExp}
-import scala.collection.mutable.{HashMap,HashSet}
+import scala.collection.mutable.{ArrayBuffer,HashMap}
 
 import spatial.shared._
 import spatial.shared.ops._
@@ -21,7 +21,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
   val cuMapping = HashMap[Exp[Any], ComputeUnit]()
   def allocateCU(pipe: Exp[Any]): ComputeUnit = cuMapping(pipe)
 
-  lazy val cus = cuMapping.values
+  lazy val cus = cuMapping.values.toSet
 
   override def run[A:Manifest](b: Block[A]) = {
     for (cu <- cus) removeRouteThruStages(cu)
@@ -53,7 +53,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
 
   def removeUnusedGlobals() {
     val outs = globals.filter{case _:VectorMem | _:ScalarMem => true; case _ => false}
-    val ins = cus.flatMap{cu => scalarIns(cu) ++ vectorIns(cu) }.toSet
+    val ins = cus.flatMap{cu => scalarIns(cu) ++ vectorIns(cu) }
 
     val unusedOuts = outs filterNot (out => ins.contains(out))
 
@@ -107,7 +107,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
       }
       if (bypassStages.nonEmpty) {
         // Remove bypass stages from CU
-        removeStages(cu, bypassStages)
+        removeStages(cu, bypassStages.toSet)
       }
     case _ =>
   }
@@ -121,7 +121,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
       debug(s"Removing dead stages from $cu:")
       deadStages.foreach{stage => debug(s"  $stage")}
       debug("")
-      removeStages(cu, deadStages)
+      removeStages(cu, deadStages.toSet)
     }
   }
 
@@ -180,10 +180,10 @@ trait PIROptimizer extends Traversal with PIRCommon {
   }
 
   // --- Stage removal
-  def removeStages(cu: ComputeUnit, remove: List[Stage]): Unit = {
+  def removeStages(cu: ComputeUnit, remove: Set[Stage]): Unit = {
     val ctx = ComputeContext(cu)
     val stages = ctx.stages
-    cu.stages = Nil
+    cu.stages = ArrayBuffer.empty
 
     debug(s"  Stages are now: ")
     stages.foreach{
@@ -199,7 +199,6 @@ trait PIROptimizer extends Traversal with PIRCommon {
 
       case _ =>
     }
-    ctx.finalizeContext()
   }
 
 
@@ -216,7 +215,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
       case LocalRef(i,reg) => LocalRef(i, swapGlobal_Reg(reg))
     }
     def swapGlobal_Reg(reg: LocalMem) = reg match {
-      case VectorIn(`orig`) => VectorIn(swap)
+      case VectorIn(`orig`) => VectorIn(swap.asInstanceOf[VectorMem])
       case VectorOut(x, `orig`) => VectorOut(x, swap)
       case ScalarIn(x, `orig`) => ScalarIn(x, swap)
       case ScalarOut(x, `orig`) => ScalarOut(x, swap)
