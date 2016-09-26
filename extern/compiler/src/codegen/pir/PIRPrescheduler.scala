@@ -120,7 +120,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     else {
       debug(s"Allocating CU for $pipe")
       val parent = parentOfHack(pipe).map(allocateCU(_))
-      val cu = BasicComputeUnit(quote(pipe), parent, styleOf(pipe))
+      val cu = BasicComputeUnit(quote(pipe), pipe, parent, styleOf(pipe))
       initCU(cu, pipe)
       pipe match {
         case Deff(e:ParPipeForeach)     => addIterators(cu, e.cc, e.inds)
@@ -146,7 +146,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val mc = DRAMCtrl(quote(pipe)+"_mc", region, mode)
       globals += mc
       val parent = parentOfHack(pipe).map(allocateCU(_))
-      val cu = TileTransferUnit(quote(pipe), parent, mc, vector, mode)
+      val cu = TileTransferUnit(quote(pipe), pipe, parent, mc, vector, mode)
       initCU(cu, pipe)
     }
   }

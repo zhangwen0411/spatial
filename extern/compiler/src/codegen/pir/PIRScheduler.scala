@@ -35,13 +35,13 @@ trait PIRScheduler extends Traversal with PIRCommon {
 
     // --- Schedule write contexts
     for (srams <- cu.writePseudoStages.keys) {
-      val writes = WriteContext(pipe, cu, srams)
+      val writes = WriteContext(cu, srams)
       scheduleContext(writes)
       writeStageRegs ++= cu.regs // Reset view of registers each time
       cu.regs = origRegs
     }
     // --- Schedule compute context
-    val compute = ComputeContext(pipe, cu)
+    val compute = ComputeContext(cu)
     scheduleContext(compute)
     cu.regs ++= writeStageRegs
 
