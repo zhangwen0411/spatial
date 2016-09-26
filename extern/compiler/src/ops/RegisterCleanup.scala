@@ -38,29 +38,36 @@ trait RegisterCleanupTransformer extends SinglePassTransformer {
           pendingReaders += use -> map
         }
       }
-      if (!hasReader || externalReadersOf(lhs).nonEmpty) Some(Const(0))
+      if (!hasReader || externalReadersOf(lhs).nonEmpty) Some(Const(666))
       else None
 
     case EatReflect(Reg_write(EatAlias(reg),_)) =>
       debug(s"$lhs = $rhs")
       val hasReaders = readersOf(reg).nonEmpty || isArgOut(reg)
       if (!hasReaders) debug(s"  REMOVING register write $lhs")
-      if (!hasReaders) Some(Const(0)) else None
+      if (!hasReaders) Some(Const(666)) else None
 
     case EatReflect(Reg_new(_)) =>
       debug(s"$lhs = $rhs")
       val hasReaders = readersOf(lhs).nonEmpty
       if (!hasReaders) debug(s"  REMOVING register $lhs")
-      if (!hasReaders) Some(Const(0)) else None
-
-    case _ if pendingReaders contains lhs =>
-      debug(s"$lhs = $rhs")
-      debug(s"  External reader. Adding read substitutions.")
-      val lhs2 = withSubstScope(pendingReaders(lhs).toList:_*){ self_mirror(lhs, rhs) }
-      val Def(d) = lhs2
-      debug(s"  $lhs2 = $d")
-      Some(lhs2)
+      if (!hasReaders) Some(Const(666)) else None
 
     case _ => super.transform(lhs, rhs)
   }
+
+  override def self_mirror[A](lhs: Sym[A], rhs: Def[A]): Exp[A] = {
+    if (pendingReaders contains lhs) {
+      debug(s"$lhs = $rhs")
+      debug(s"  External reader. Adding read substitutions.")
+      val lhs2 = withSubstScope(pendingReaders(lhs).toList:_*){
+        mirror(rhs, f.asInstanceOf[Transformer])(mtype(lhs.tp),mpos(lhs.pos))
+      }
+      val Def(d) = lhs2
+      debug(s"  $lhs2 = $d")
+      lhs2
+    }
+    else super.self_mirror(lhs, rhs)
+  }
+
 }

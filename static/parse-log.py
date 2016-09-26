@@ -25,7 +25,8 @@ def main():
       line = lines[i]
       if "Starting traversal" in line:
         out.close()
-        out = open(logDir + pad(traversal) + "_" + line[19:] + ".log", "w")
+        traversalName = line[19:].replace('\n', '').replace('\r', '')
+        out = open(logDir + pad(traversal) + "_" + traversalName + ".log", "w")
         traversal += 1
       elif line.startswith("Exception"):
         out.close()

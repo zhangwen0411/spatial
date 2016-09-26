@@ -52,13 +52,7 @@ trait PIRGen extends Traversal with PIRCommon {
   override def run[A:Manifest](b: Block[A]) = {
     if (SpatialConfig.genCGRA) {
       stream = new PrintWriter(dir + filename)
-      try {
-        emitPIR(b)
-      }
-      catch { case e: Throwable =>
-        stageWarn("Exception during PIR generation: " + e)
-        if (debugMode) e.printStackTrace;
-      }
+      emitPIR(b)
       stream.flush()
       stream.close()
     }

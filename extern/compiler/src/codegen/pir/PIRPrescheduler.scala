@@ -34,12 +34,6 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     b
   }
 
-  // HACK: Skip parallel pipes in PIR gen
-  def parentOfHack(x: Exp[Any]): Option[Exp[Any]] = parentOf(x) match {
-    case Some(pipe@Deff(Pipe_parallel(_))) => parentOfHack(pipe)
-    case parentOpt => parentOpt
-  }
-
   // --- CounterChains
   def inputs(x: Exp[Any]) = x match {
     case Deff(rhs: Product) => rhs.productIterator.filter(_.isInstanceOf[Exp[_]]).toList
@@ -167,6 +161,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     case Deff(_:Unit_pipe)            => allocateBasicCU(pipe)
     case Deff(e:Offchip_load_cmd[_])  => allocateMemoryCU(pipe, e.mem, e.fifo, MemLoad)
     case Deff(e:Offchip_store_cmd[_]) => allocateMemoryCU(pipe, e.mem, e.fifo, MemStore)
+    case Def(d) => throw new Exception(s"Don't know how to generate CU for: \n  $pipe = $d")
   }
 
   def allocateWrittenSRAM(writer: Exp[Any], mem: Exp[Any], addr: Option[Exp[Any]], writerCU: ComputeUnit, stages: List[PseudoStage]) {
@@ -211,7 +206,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
   def prescheduleRegisterRead(reg: Exp[Any], reader: Exp[Any], pipe: Option[Exp[Any]]) = {
     debug(s"  Register read: $reader")
     // Register reads may be used by more than one pipe
-    readersOf(reg).filter(_.node == reader).map(_._1).foreach{readCtrl =>
+    readersOf(reg).filter(_.node == reader).map(_.controlNode).foreach{readCtrl =>
       val isCurrentPipe = pipe.map(_ == readCtrl).getOrElse(false)
       val isLocallyWritten = isWrittenInPipe(reg, readCtrl)
 
