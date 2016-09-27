@@ -27,18 +27,21 @@ trait RegisterCleanupTransformer extends SinglePassTransformer {
       debug(s"  Readers($reg) = ${readersOf(reg)}")
 
       val hasReader = readersOf(reg).exists{_.node == lhs}
-      if (!hasReader) debug(s"REMOVING register read $lhs")
-
-      if (hasReader && externalReadersOf(lhs).nonEmpty) {
+      if (!hasReader) {
+        debug(s"REMOVING register read $lhs")
+        Some(Const(666))
+      }
+      else if (hasReader && externalReadersOf(lhs).nonEmpty) {
         debug(s"  External readers: ${externalReadersOf(lhs)}")
-        externalReadersOf(lhs).foreach{use =>
+        val reads = externalReadersOf(lhs).map{use =>
           val read = self_mirror(lhs, rhs)
           val map = pendingReaders.getOrElse(use, Map.empty) + (lhs -> read)
           debug(s"    Reader $use: $lhs -> $read")
           pendingReaders += use -> map
+          read
         }
+        Some(reads.head)
       }
-      if (!hasReader || externalReadersOf(lhs).nonEmpty) Some(Const(666))
       else None
 
     case EatReflect(Reg_write(EatAlias(reg),_)) =>

@@ -439,11 +439,11 @@ trait ControllerTools extends Traversal {
     assert(accesses.nonEmpty)
 
     val anchor = if (readers.nonEmpty) readers.head else writers.head
-    debug(s"  anchor = $anchor")
+    //debug(s"  anchor = $anchor")
 
     val lcas = accesses.map{access =>
       val (lca,dist) = lcaWithCoarseDistance(anchor, access)
-      debug(s"    lca($anchor, $access) = $lca ($dist)")
+      //debug(s"    lca($anchor, $access) = $lca ($dist)")
       (lca,dist,access)
     }
     // Find accesses which require n-buffering, group by their controller
@@ -460,7 +460,7 @@ trait ControllerTools extends Traversal {
     // Port X: X stage(s) after first stage
     val ports = Map(lcas.map{grp => grp._3 -> (grp._2 - minDist)}:_*)
 
-    debug(s"  metapipe = $metapipe")
+    //debug(s"  metapipe = $metapipe")
     ports.foreach{case (access, port) => debug(s"    - $access : port #$port")}
 
     (metapipe, ports)

@@ -162,6 +162,12 @@ trait ControlSignalAnalyzer extends Traversal {
     childrenOf(ctrl) = childrenOf(ctrl) :+ child  // (3)
   }
 
+  def usedSyms(e: Any): List[Exp[Any]] = e match {
+    case Reify(x, u, es) => List(x)
+    case Reflect(x, u, es) => usedSyms(x)
+    case _ => readSyms(e)
+  }
+
   def addCommonControlData(lhs: Exp[Any], rhs: Def[Any]) {
     // Set total unrolling factors of this node's scope + internal unrolling factors in this node
     unrollFactorsOf(lhs) = unrollFactors ++ parFactors(lhs) // (9)
@@ -169,9 +175,17 @@ trait ControlSignalAnalyzer extends Traversal {
     if (controller.isDefined) {
       // Add pending readers
       val ctrl = controller.get
-      val parent = if (isControlNode(lhs)) (lhs,false) else ctrl
+      val parent = lhs match {
+        case lhs if isControlNode(lhs) => (lhs,false)
+        case Def(Reify(_,_,_)) => ctrl.node match {
+          case Deff(_:Accum_fold[_,_]) => (ctrl.node, true)
+          case Deff(_:Pipe_fold[_,_])  => (ctrl.node, true)
+          case _ => ctrl
+        }
+        case _ => ctrl
+      }
 
-      val deps = readSyms(rhs)
+      val deps = usedSyms(rhs)
       val delayedReads = deps.filter(pendingReads.keySet contains _)
       val readers = delayedReads.flatMap{sym => pendingReads(sym)}
 

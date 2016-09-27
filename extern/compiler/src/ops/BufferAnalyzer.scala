@@ -26,13 +26,22 @@ trait BufferAnalyzer extends Traversal with ControllerTools {
     val duplicates = duplicatesOf(mem)
 
     debug(s"Setting buffer controllers for $mem:")
+    duplicates.zipWithIndex.foreach{case (dup, i) =>
+      debug(s"  Duplicate #$i: depth=${dup.depth}, copies=${dup.duplicates}, banking=" + dup.banking.mkString(","))
+    }
+    readersOf(mem).zipWithIndex.foreach{case (reader, i) =>
+      debug(s"  Reader #$i: $reader")
+    }
+    writersOf(mem).zipWithIndex.foreach{case (writer, i) =>
+      debug(s"  Writer #$i: $writer")
+    }
 
     duplicates.zipWithIndex.foreach{case (dup, i) =>
-      debug(s"  Duplicate #$i: $dup")
+      debug(s"  #$i:")
       val reads = readers.filter{read => instanceIndicesOf(read, mem).contains(i) }
       val writes = writers.filter{write => instanceIndicesOf(write, mem).contains(i) }
       val accesses = reads ++ writes
-      debug("  accesses: " + accesses.mkString(", "))
+      //debug("    accesses: " + accesses.mkString(", "))
 
       val (metapipe, _) = findMetapipe(mem, reads, writes)
 

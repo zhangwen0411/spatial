@@ -53,12 +53,12 @@ trait UnrollingTransformer extends MultiPassTransformer {
    * Helper class for unrolling
    * Tracks multiple substitution contexts in 'laneSubst' array
    **/
-  case class Unroller(cchain: Exp[CounterChain], inds: List[Exp[Index]]) {
+  case class Unroller(cchain: Exp[CounterChain], inds: List[Exp[Index]], unrolledInds: Option[List[List[Sym[Index]]]] = None) {
     val Ps = parsOf(cchain)
     val P = Ps.reduce(_*_)
     val N = Ps.length
     val prods = List.tabulate(N){i => Ps.slice(i+1,N).fold(1)(_*_) }
-    val indices = Ps.map{p => List.fill(p){ fresh[Index] } }
+    val indices = unrolledInds.getOrElse{ Ps.map{p => List.fill(p){fresh[Index]}} }
 
     def size = P
 
@@ -359,6 +359,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       }
       else {
         debug(s"Unrolling block reduce $lhs")
+        debug(s"  Map results: " + mapResults.mkString(", "))
         val reduceLanes = Unroller(ccRed, indsRed)
         val indsRed2 = reduceLanes.indices
 
@@ -373,9 +374,13 @@ trait UnrollingTransformer extends MultiPassTransformer {
             register(idx -> newIdx)                        // Save address substitution rule for this lane
           }
           val loads = mapResults.map{mem =>                  // Calculate list of loaded results for each memory
-              reduceLanes.foreach{p => register(part -> mem) } // Set partial result to be this memory
-              duringClone{e => if (SpatialConfig.genCGRA) reduceType(e) = None}{
-                unrollMap(ld1, reduceLanes)(mT)              // Unroll the load of the partial result
+              debug(s"  Unrolling load of mem $part as $mem")
+              // Set partial result to be this memory for both alias and the result symbols
+              withSubstScope(part -> mem, partial -> mem){
+                val loadLanes = Unroller(ccRed, indsRed, Some(indsRed2))
+                duringClone{e => if (SpatialConfig.genCGRA) reduceType(e) = None}{
+                  unrollMap(ld1, reduceLanes)(mT)              // Unroll the load of the partial result
+                }
               }
           }
           val results = reduceLanes.map{p =>
