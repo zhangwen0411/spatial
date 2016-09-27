@@ -35,13 +35,13 @@ trait PIRScheduler extends Traversal with PIRCommon {
 
     // --- Schedule write contexts
     for (srams <- cu.writePseudoStages.keys) {
-      val writes = WriteContext(pipe, cu, srams)
+      val writes = WriteContext(cu, srams)
       scheduleContext(writes)
       writeStageRegs ++= cu.regs // Reset view of registers each time
       cu.regs = origRegs
     }
     // --- Schedule compute context
-    val compute = ComputeContext(pipe, cu)
+    val compute = ComputeContext(cu)
     scheduleContext(compute)
     cu.regs ++= writeStageRegs
 
@@ -52,11 +52,27 @@ trait PIRScheduler extends Traversal with PIRCommon {
     debug("Generated compute stages: ")
     cu.stages.foreach(stage => debug(s"  $stage"))
   }
+
   def scheduleContext(ctx: CUContext) {
     debug(s"  Scheduling context $ctx")
     ctx.pseudoStages.foreach {stage => scheduleStage(stage, ctx) }
-    ctx.finalizeContext()
   }
+
+  def scheduleStage(stage: PseudoStage, ctx: CUContext) = stage match {
+    case DefStage(lhs@Deff(rhs), isReduce) =>
+      debug(s"""    $lhs = $rhs ${if (isReduce) "[REDUCE]" else ""}""")
+      if (isReduce) reduceNodeToStage(lhs,rhs,ctx)
+      else          mapNodeToStage(lhs,rhs,ctx)
+
+    case WriteAddrStage(lhs@Deff(rhs)) =>
+      debug(s"""    $lhs = $rhs [WRITE]""")
+      writeAddrToStage(lhs, rhs, ctx)
+
+    case OpStage(op, ins, out, isReduce) =>
+      debug(s"""    $out = $op(${ins.mkString(",")}) [OP]""")
+      opStageToStage(op, ins, out, ctx, isReduce)
+  }
+
 
   // Given result register type A, reroute to type B as necessary
   def propagateReg(exp: Exp[Any], a: LocalMem, b: LocalMem, ctx: CUContext) = (a,b) match {
@@ -93,23 +109,6 @@ trait PIRScheduler extends Traversal with PIRCommon {
     val addrReg = ctx.reg(addr)
     propagateReg(addr, addrReg, wire, ctx)
   }
-
-
-  def scheduleStage(stage: PseudoStage, ctx: CUContext) = stage match {
-    case DefStage(lhs@Deff(rhs), isReduce) =>
-      debug(s"""    $lhs = $rhs ${if (isReduce) "[REDUCE]" else ""}""")
-      if (isReduce) reduceNodeToStage(lhs,rhs,ctx)
-      else          mapNodeToStage(lhs,rhs,ctx)
-
-    case WriteAddrStage(lhs@Deff(rhs)) =>
-      debug(s"""    $lhs = $rhs [WRITE]""")
-      writeAddrToStage(lhs, rhs, ctx)
-
-    case OpStage(op, ins, out, isReduce) =>
-      debug(s"""    $out = $op(${ins.mkString(",")}) [OP]""")
-      opStageToStage(op, ins, out, ctx, isReduce)
-  }
-
 
   // Addresses only, not values
   def writeAddrToStage(lhs: Exp[Any], rhs: Def[Any], ctx: CUContext) = rhs match {

@@ -3,7 +3,7 @@ package spatial.compiler.ops
 import scala.reflect.{Manifest,SourceContext}
 
 import scala.virtualization.lms.internal.{Traversal, QuotingExp}
-import scala.collection.mutable.HashMap
+import scala.collection.mutable.{ArrayBuffer, HashMap}
 
 import spatial.shared._
 import spatial.shared.ops._
@@ -67,15 +67,15 @@ trait PIRGen extends Traversal with PIRCommon {
     scheduler.cus ++= cuMapping.toList
     scheduler.run(b)
     // optimization
-    optimizer.globals ++= (prescheduler.globals ++ scheduler.globals)
+    optimizer.globals = (prescheduler.globals ++ scheduler.globals)
     optimizer.cuMapping ++= cuMapping.toList
     optimizer.run(b)
 
-    splitter.globals ++= optimizer.globals
+    splitter.globals = optimizer.globals
     splitter.cuMapping ++= optimizer.cuMapping.toList
     splitter.run(b)
 
-    globals ++= splitter.globals
+    globals = splitter.globals
     cus ++= splitter.cus.toList
 
     debug("Scheduling complete. Generating...")
@@ -179,6 +179,16 @@ trait PIRGen extends Traversal with PIRCommon {
     case sram@CUMemory(sym, size) =>
       debug(s"Generating ${sram.dumpString}")
       var decl = s"""val ${quote(sym)} = SRAM(size = $size"""
+      sram.swapRead match {
+        case Some(cchain) => decl += s""", swapRead = ${cchain.name}(0)"""
+        case None if sram.isDoubleBuffer => throw new Exception(s"No swap read controller defined for $sram")
+        case None => // Expected
+      }
+      sram.swapWrite match {
+        case Some(cchain) => decl += s""", swapWrite = ${cchain.name}(0)"""
+        case None if sram.isDoubleBuffer => throw new Exception(s"No swap write controller defined for $sram")
+        case None => // Expected
+      }
       sram.writeCtrl match {
         case Some(cchain) => decl += s""", writeCtr = ${cchain.name}(0)"""
         case None => throw new Exception(s"No write controller defined for $sram")
@@ -188,10 +198,12 @@ trait PIRGen extends Traversal with PIRCommon {
         case None => throw new Exception(s"No banking defined for $sram")
       }
       if (sram.isDoubleBuffer) {
+        // TODO: Should be sram.bufferDepth > 1
         val swapRead = sram.swapRead match {
           case Some(cchain) => s"swapRead = ${cchain.name}(0)"
           case None => throw new Exception(s"No swap read controller defined for $sram")
         }
+        // TODO: Should be sram.bufferDepth > 1
         val swapWrite = sram.swapWrite match {
           case Some(cchain) => s"swapWrite = ${cchain.name}(0)"
           case None => throw new Exception(s"No swap write controller defined for $sram")
@@ -312,7 +324,7 @@ trait PIRGen extends Traversal with PIRCommon {
   def emitAllStages(cu: ComputeUnit) {
     var i = 1
     var r = 1
-    def emitStages(stages: List[Stage]) = stages.foreach{
+    def emitStages(stages: ArrayBuffer[Stage]) = stages.foreach{
       case MapStage(op,inputs,outputs) =>
         val ins = inputs.map(quote(_)).mkString(", ")
         val outs = outputs.map(quote(_)).mkString(", ")

@@ -3,7 +3,7 @@ package spatial.compiler.ops
 import scala.reflect.{Manifest,SourceContext}
 
 import scala.virtualization.lms.internal.{Traversal, QuotingExp}
-import scala.collection.mutable.{HashMap,HashSet}
+import scala.collection.mutable.{ArrayBuffer,HashMap}
 
 import spatial.shared._
 import spatial.shared.ops._
@@ -21,7 +21,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
   val cuMapping = HashMap[Exp[Any], ComputeUnit]()
   def allocateCU(pipe: Exp[Any]): ComputeUnit = cuMapping(pipe)
 
-  lazy val cus = cuMapping.values
+  lazy val cus = cuMapping.values.toSet
 
   override def run[A:Manifest](b: Block[A]) = {
     for (cu <- cus) removeRouteThruStages(cu)
@@ -53,7 +53,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
 
   def removeUnusedGlobals() {
     val outs = globals.filter{case _:VectorMem | _:ScalarMem => true; case _ => false}
-    val ins = cus.flatMap{cu => scalarIns(cu) ++ vectorIns(cu) }.toSet
+    val ins = cus.flatMap{cu => scalarIns(cu) ++ vectorIns(cu) }
 
     val unusedOuts = outs filterNot (out => ins.contains(out))
 
@@ -95,8 +95,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
         case bypass@MapStage(Bypass, List(LocalRef(_,ScalarIn(_,in) )), List(LocalRef(_,outReg@ScalarOut(x,out)))) =>
           cus.find{cu => scalarOuts(cu) contains in} match {
             case Some(producer) if producer.parent == cu.parent => // TODO: Is common parent necessary here?
-              val pipe = cuMapping.find(_._2 == producer).get._1
-              val ctx = ComputeContext(pipe, producer)
+              val ctx = ComputeContext(producer)
               val origOut = producer.regs.find{case ScalarOut(_,`in`) => true; case _ => false}.get
               ctx.addOutput(x, origOut, outReg, false)
               debug(s"Adding register $outReg to $producer")
@@ -107,11 +106,8 @@ trait PIROptimizer extends Traversal with PIRCommon {
         case _ => None
       }
       if (bypassStages.nonEmpty) {
-        debug(s"CU $cu now has compute stages: ")
         // Remove bypass stages from CU
-        val stages = removeStages(cu.stages, bypassStages)
-        stages.foreach{stage => debug(s"  $stage") }
-        cu.stages = stages
+        removeStages(cu, bypassStages.toSet)
       }
     case _ =>
   }
@@ -119,10 +115,13 @@ trait PIROptimizer extends Traversal with PIRCommon {
   def removeDeadStages(cu: ComputeUnit) = {
     val deadStages = cu.stages.flatMap{case stage: MapStage if stage.outs.isEmpty => Some(stage); case _ => None }
     if (deadStages.nonEmpty) {
-      val stages = removeStages(cu.stages, deadStages)
-      debug(s"Removing dead stages from $cu")
+      debug(s"Stages in $cu: ")
+      cu.stages.foreach{stage => debug(s"  $stage")}
+      debug("")
+      debug(s"Removing dead stages from $cu:")
       deadStages.foreach{stage => debug(s"  $stage")}
-      cu.stages = stages
+      debug("")
+      removeStages(cu, deadStages.toSet)
     }
   }
 
@@ -181,17 +180,24 @@ trait PIROptimizer extends Traversal with PIRCommon {
   }
 
   // --- Stage removal
-  def removeStages(stages: List[Stage], remove: List[Stage]) = {
-    var nRemoved = 0
-    stages.flatMap{
+  def removeStages(cu: ComputeUnit, remove: Set[Stage]): Unit = {
+    val ctx = ComputeContext(cu)
+    val stages = ctx.stages
+    cu.stages = ArrayBuffer.empty
+
+    debug(s"  Stages are now: ")
+    stages.foreach{
       case stage@MapStage(op,ins,outs) if !remove.contains(stage) =>
-        stage.ins = ins.map{case LocalRef(i,reg) if i > 0 => LocalRef(i - nRemoved, reg); case ref => ref}
-        stage.outs = outs.map{case LocalRef(i,reg) if i > 0 => LocalRef(i - nRemoved, reg); case ref => ref}
-        Some(stage)
-      case stage@ReduceStage(op,init,acc) => Some(stage)
+        stage.ins = ins.map{case LocalRef(i,reg) => ctx.refIn(reg) }
+        stage.outs = outs.map{case LocalRef(i,reg) => ctx.refOut(reg) }
+        debug(s"    $stage")
+        ctx.addStage(stage)
+
+      case stage@ReduceStage(op,init,acc) =>
+        debug(s"    $stage")
+        ctx.addStage(stage)
+
       case _ =>
-        nRemoved += 1
-        None
     }
   }
 
@@ -209,7 +215,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
       case LocalRef(i,reg) => LocalRef(i, swapGlobal_Reg(reg))
     }
     def swapGlobal_Reg(reg: LocalMem) = reg match {
-      case VectorIn(`orig`) => VectorIn(swap)
+      case VectorIn(`orig`) => VectorIn(swap.asInstanceOf[VectorMem])
       case VectorOut(x, `orig`) => VectorOut(x, swap)
       case ScalarIn(x, `orig`) => ScalarIn(x, swap)
       case ScalarOut(x, `orig`) => ScalarOut(x, swap)
@@ -224,7 +230,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
     cu.srams.foreach{sram => swapGlobal_SRAM(sram)}
 
     cu match {
-      case tu@TileTransferUnit(name,parent,ctrl,`orig`,mode) => tu.vec = swap
+      case tu@TileTransferUnit(name,pipe,parent,ctrl,`orig`,mode) => tu.vec = swap
       case _ =>
     }
   }
