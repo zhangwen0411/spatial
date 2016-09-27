@@ -86,12 +86,13 @@ trait PIRGen extends Traversal with PIRCommon {
   }
 
   def generateHeader() {
-    emit("import pir.graph._")
     emit("import pir.graph")
+    emit("import pir.graph._")
+    emit("import pir.graph.enums._")
     emit("import pir.codegen._")
     emit("import pir.plasticine.config._")
     emit("import pir.Design")
-    emit("import pir.PIRMisc._")
+    emit("import pir.misc._")
     emit("import pir.PIRApp")
     emit("")
     open(s"""object ${app}Design extends PIRApp {""")
@@ -178,13 +179,11 @@ trait PIRGen extends Traversal with PIRCommon {
     case sram@CUMemory(sym, size) =>
       debug(s"Generating ${sram.dumpString}")
       var decl = s"""val ${quote(sym)} = SRAM(size = $size"""
-      // TODO: Should be sram.bufferDepth > 1
       sram.swapRead match {
         case Some(cchain) => decl += s""", swapRead = ${cchain.name}(0)"""
         case None if sram.isDoubleBuffer => throw new Exception(s"No swap read controller defined for $sram")
         case None => // Expected
       }
-      // TODO: Should be sram.bufferDepth > 1
       sram.swapWrite match {
         case Some(cchain) => decl += s""", swapWrite = ${cchain.name}(0)"""
         case None if sram.isDoubleBuffer => throw new Exception(s"No swap write controller defined for $sram")
@@ -198,8 +197,21 @@ trait PIRGen extends Traversal with PIRCommon {
         case Some(banking) => decl += s""", banking = $banking"""
         case None => throw new Exception(s"No banking defined for $sram")
       }
-      // TODO: This should be "bufferDepth = ..."
-      decl += s""", doubleBuffer = ${sram.isDoubleBuffer})"""
+      if (sram.isDoubleBuffer) {
+        // TODO: Should be sram.bufferDepth > 1
+        val swapRead = sram.swapRead match {
+          case Some(cchain) => s"swapRead = ${cchain.name}(0)"
+          case None => throw new Exception(s"No swap read controller defined for $sram")
+        }
+        // TODO: Should be sram.bufferDepth > 1
+        val swapWrite = sram.swapWrite match {
+          case Some(cchain) => s"swapWrite = ${cchain.name}(0)"
+          case None => throw new Exception(s"No swap write controller defined for $sram")
+        }
+        decl += s""", buffering = DoubleBuffer(${swapRead}, ${swapWrite}))"""
+      } else {
+        decl += s""", buffering = SingleBuffer())"""
+      }
 
       sram.vector match {
         case Some(LocalVector) => // Nothing?

@@ -2,6 +2,8 @@
 *.log
 *.deg
 *.dot
+*.swp
+tags
 generated/
 pipe_diagram.html
 plasticene_pipe_diagram.html
