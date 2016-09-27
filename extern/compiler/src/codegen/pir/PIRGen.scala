@@ -179,16 +179,16 @@ trait PIRGen extends Traversal with PIRCommon {
     case sram@CUMemory(sym, size) =>
       debug(s"Generating ${sram.dumpString}")
       var decl = s"""val ${quote(sym)} = SRAM(size = $size"""
-      sram.swapRead match {
+      /*sram.swapRead match {
         case Some(cchain) => decl += s""", swapRead = ${cchain.name}(0)"""
-        case None if sram.isDoubleBuffer => throw new Exception(s"No swap read controller defined for $sram")
+        case None if sram.isNBuffer => throw new Exception(s"No swap read controller defined for $sram")
         case None => // Expected
       }
       sram.swapWrite match {
         case Some(cchain) => decl += s""", swapWrite = ${cchain.name}(0)"""
-        case None if sram.isDoubleBuffer => throw new Exception(s"No swap write controller defined for $sram")
+        case None if sram.isNBuffer => throw new Exception(s"No swap write controller defined for $sram")
         case None => // Expected
-      }
+      }*/
       sram.writeCtrl match {
         case Some(cchain) => decl += s""", writeCtr = ${cchain.name}(0)"""
         case None => throw new Exception(s"No write controller defined for $sram")
@@ -197,19 +197,19 @@ trait PIRGen extends Traversal with PIRCommon {
         case Some(banking) => decl += s""", banking = $banking"""
         case None => throw new Exception(s"No banking defined for $sram")
       }
-      if (sram.isDoubleBuffer) {
-        // TODO: Should be sram.bufferDepth > 1
+      if (sram.isNBuffer) {
         val swapRead = sram.swapRead match {
           case Some(cchain) => s"swapRead = ${cchain.name}(0)"
           case None => throw new Exception(s"No swap read controller defined for $sram")
         }
-        // TODO: Should be sram.bufferDepth > 1
         val swapWrite = sram.swapWrite match {
           case Some(cchain) => s"swapWrite = ${cchain.name}(0)"
           case None => throw new Exception(s"No swap write controller defined for $sram")
         }
+        // TODO: Should use sram.bufferDepth
         decl += s""", buffering = DoubleBuffer(${swapRead}, ${swapWrite}))"""
-      } else {
+      }
+      else {
         decl += s""", buffering = SingleBuffer())"""
       }
 
