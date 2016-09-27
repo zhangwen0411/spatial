@@ -297,17 +297,25 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             throw UndefinedSwapControllerException(mem, i, accesses, ports.head)
           else if (isBuffered) {
             val portlist = ports.mkString{","} // TODO: Can probably use ports.head here
-            emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, new int[] { $portlist });""")
+            emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, new int[] { $portlist });""")
           }
         }
         if (d.depth > 2) {
-          // TODO: HOW TO GET UNUSED WR PORTS AND DONE PORTS, or set default vals in maxj?????
-          val dummyWritesByPort = writers.filter{writer => !instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
-          val dummyDonesByPort = writers.filter{writer => !instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
-          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStagedone") }
-          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStagedone") }
-          dummyWritesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectDummyWr") }
-          dummyDonesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectDummyDone") }
+          val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
+          val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
+          val fullPorts = d.depth match {// TODO: proper way to make this list?
+            case 1 => Set(0)
+            case 2 => Set(0,1)
+            case 3 => Set(0,1,2)
+            case 4 => Set(0,1,2,3)
+            case _ => throw new Exception(s"Cannot handle nBuf this big! How to I do 0 until d.depth properly?")
+          }
+          val dummyWPorts = fullPorts -- wPorts
+          val dummyDonePorts = fullPorts -- wPorts -- rPorts
+          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl") }
+          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl") }
+          emit(s"""${quote(mem)}_${i}_lib.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
+          emit(s"""${quote(mem)}_${i}_lib.connectUntouchedPorts(new int[] {${dummyDonePorts.mkString(",")}});""")
         } else {
           readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectRdone") }
           writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectWdone") }

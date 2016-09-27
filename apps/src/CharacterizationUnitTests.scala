@@ -83,10 +83,10 @@ object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp // Args: 5
 trait CharLoadTestApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 4;
-  val outerPar = 4;
+  val innerPar = 1;
+  val outerPar = 1;
   val dim0 = 192;
-  val dim1 = 192;
+  val dim1 = 1920;
 
   def CharLoad(srcHost: Rep[Array[T]], iters: Rep[SInt]) = {
     val sinnerPar = param(innerPar);

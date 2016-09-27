@@ -43,7 +43,6 @@ trait SimpleSequentialApp extends SpatialApp {
 }
 
 
-// 3
 object DeviceMemcpy extends SpatialAppCompiler with DeviceMemcpyApp // Args: 5
 trait DeviceMemcpyApp extends SpatialApp {
   type T = SInt
@@ -248,7 +247,7 @@ trait ParFifoLoadApp extends SpatialApp {
   }
 }
 
-object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args:
+object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args: none
 trait FifoLoadStoreApp extends SpatialApp {
   type T = SInt
   val N = 192
@@ -335,7 +334,7 @@ trait SimpleReduceApp extends SpatialApp {
   }
 }
 
-// object SimpleUnitTest extends SpatialAppCompiler with SimpleUnit // Args:
+// object SimpleUnitTest extends SpatialAppCompiler with SimpleUnit // Args: none
 // trait SimpleUnit extends SpatialApp {
 //   val N = 96.as[SInt]
 
@@ -487,7 +486,7 @@ trait SimpleFoldApp extends SpatialApp {
   }
 }
 
-object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args:
+object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args: none
 trait Memcpy2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -595,7 +594,7 @@ trait BlockReduce1DApp extends SpatialApp {
   }
 }
 
-object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args:
+object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args: none
 trait UnalignedLdApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -643,7 +642,7 @@ trait UnalignedLdApp extends SpatialApp {
   }
 }
 
-object BlockReduce2D extends SpatialAppCompiler with BlockReduce2DApp // Args: 960 960
+object BlockReduce2D extends SpatialAppCompiler with BlockReduce2DApp // Args: 96 384
 trait BlockReduce2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -683,12 +682,35 @@ trait BlockReduce2DApp extends SpatialApp {
     val numRows = args(0).to[SInt]
     val numCols = args(1).to[SInt]
     val src = Array.tabulate(numRows) { i => Array.tabulate(numCols) { j => i*numCols + j} }
+    val flatsrc = src.flatten
 
     val dst = blockreduce_2d(src.flatten, numRows, numCols)
 
-    val numBlocks = numRows*numCols/(tileSize*tileSize)
-    val first = ((numBlocks*(numBlocks-1))/2)*tileSize*tileSize
-    val gold = Array.tabulate(tileSize*tileSize) { i => first + i*numBlocks }
+    val numHorizontal = numRows/tileSize
+    val numVertical = numCols/tileSize
+    val numBlocks = numHorizontal*numVertical
+    // val gold = Array.tabulate(tileSize){i => 
+    //   Array.tabulate(tileSize){j => 
+
+    //     flatsrc(i*tileSize*tileSize + j*tileSize) }}.flatten
+    // }.reduce{(a,b) => a.zip(b){_+_}}
+
+    val a1 = Array.tabulate(tileSize) { i => i }
+    val a2 = Array.tabulate(tileSize) { i => i }
+    val a3 = Array.tabulate(numHorizontal) { i => i }
+    val a4 = Array.tabulate(numVertical) { i => i }
+    val gold = Array.tabulate(tileSize) { i => Array.tabulate(tileSize) {j => 
+      Array.tabulate(numHorizontal) { case ii => Array.tabulate(numVertical) {case jj => 
+          i*tileSize*numVertical + j + ii*tileSize*numVertical*tileSize + jj*tileSize
+        }}.flatten.reduce{_+_}
+      }}.flatten
+    // val first_el = (0 until numVertical).map{ case j => (0 until numHorizontal).map {case i => src.flatten(tileSize*j + tileSize*tileSize*i)}}.flatten.reduce{_+_}
+    // val first_collapse_cols = ((numVertical*tileSize)/2)*(numVertical-1)
+    // val last_collapse_cols = (( numVertical*tileSize*tileSize*(numHorizontal-1) + (first_collapse_cols + numVertical*tileSize*tileSize*(numHorizontal-1)) ) / 2)*(numVertical-1)
+    // val first_collapse_rows = if (numHorizontal == 1) {first_collapse_cols} else { ((first_collapse_cols + last_collapse_cols) / 2) * (numHorizontal-1) }
+    // // TODO: Why does DEG crash if I add first_collapse_rows rather???
+    // val gold = Array.tabulate(tileSize*tileSize) { i => first_collapse_cols + i*numBlocks }
+
     printArr(gold, "src:")
     printArr(dst, "dst:")
     // dst.zip(gold){_==_} foreach {println(_)}
@@ -700,7 +722,7 @@ trait BlockReduce2DApp extends SpatialApp {
 }
 
 
-object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Args: 
+object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Args: none
 trait ScatterGatherApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -800,7 +822,7 @@ trait InOutArgApp extends SpatialApp {
   }
 }
 
-object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteApp
+object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteApp // Args: none 
 trait MultiplexedWriteApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 

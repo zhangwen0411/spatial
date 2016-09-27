@@ -649,7 +649,8 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 		  childrenOf(sym).zipWithIndex.foreach { case (c, idx) =>
 		  	emitGlobalWire(s"""${quote(c)}_done""")
 		  	emit(s"""${quote(sym)}_sm.connectInput("s${idx}_done", ${quote(c)}_done);""")
-        emit(s"""DFEVar ${quote(c)}_en = ${quote(sym)}_sm.getOutput("s${quote(idx)}_en");""")
+        emitGlobalWire(s"""${quote(c)}_en""")
+        emit(s"""${quote(c)}_en <== ${quote(sym)}_sm.getOutput("s${quote(idx)}_en");""")
 		  	enDeclaredSet += c
 		  	doneDeclaredSet += c
 		  }
