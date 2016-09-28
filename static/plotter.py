@@ -15,14 +15,17 @@ csv_name = wiki_home + app_name + ".csv"
 png_name = wiki_home + app_name + ".png"
 
 df = pd.read_csv(csv_name, delimiter=";")
-x = list(df['time'].index)
-times = list(df['time'].values)
-colors = list(df['color'].values)
-commits = list(df['commit'].values)
+x = list(df.ix[:,0].index)
+times = list(df.ix[:,1].values)
+colors = list(df.ix[:,0].values)
+commits = list(df.ix[:,2].values)
 
+fig, ax = plt.subplots()
+ax=plt.gca()
+ax.ticklabel_format(useOffset=False)
 plt.scatter(x, times, c=colors)
 plt.xticks(x, commits, rotation=30)
-plt.gcf().subplots_adjust(bottom=0.15)
+plt.gcf().subplots_adjust(bottom=0.15, left=0.2)
 plt.xlabel("Commit")
 plt.ylabel("Cycles")
 plt.title("Estimated Cycles for " + app_name)

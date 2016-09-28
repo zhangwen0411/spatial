@@ -507,13 +507,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                 stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr)); //w4""")
           }
         }
-      } /*else {
-        val bank_num = i
+      } else {
+        val bank_num = writersOf(bram).map{_.node}.indexOf(write)
         dups.foreach {case (dd, ii) =>
           emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
-            stream.offset($dataStr, -$offsetStr), $accEn); //5""")
+            stream.offset($dataStr, -$offsetStr), $accEn); //w5""")
         }
-      }*/
+      }
     }
     else { // Not accum
       if (isDummy(bram)) {
