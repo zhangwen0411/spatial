@@ -335,11 +335,8 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     sram.swapWrite = swapWrite
     sram.swapRead = swapRead
     sram.banking = Some(banking)
+    sram.bufferDepth = instance.depth
 
-    if (instance.depth == 1) sram.isDoubleBuffer = false
-    else if (instance.depth == 2) sram.isDoubleBuffer = true
-    else
-      throw new Exception("Cannot generate PIR for buffer of depth greater than 2")
   }
 
   def allocateMem(mem: Exp[Any], reader: Exp[Any], cu: ComputeUnit) = {
