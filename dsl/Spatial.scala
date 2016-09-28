@@ -278,7 +278,9 @@ trait SpatialDSL extends ForgeApplication
     schedule(SpatialAffineAnalysis) // Access patterns
     schedule(Printer)
     schedule(MemoryAnalyzer)        // Get used readers/writers of each memory
+    schedule(Printer)
     schedule(RegisterCleanup)       // Remove unused registers/writes/reads created in unit pipe insertion
+    schedule(Printer)
     schedule(DotPrinter)            // Graph prior to unrolling
 
     // --- Design Space Exploration

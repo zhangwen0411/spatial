@@ -261,7 +261,7 @@ ${super.dumpString}
     var swapRead: Option[CUCounterChain] = None
     var writeCtrl: Option[CUCounterChain] = None
     var banking: Option[SRAMBanking] = None
-    var bufferDepth = 1 
+    var bufferDepth:Int = 1 
 
     def dumpString = s"""CUMemory($name, $size) {
   vector = $vector

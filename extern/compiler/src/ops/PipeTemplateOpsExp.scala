@@ -171,6 +171,11 @@ trait ControllerTemplateOpsExp extends ControllerTemplateOps with MemoryTemplate
 
   override def propagate(lhs: Exp[Any], rhs: Def[Any]) = rhs match {
     case Pipe_fold(c,a,z,fA,ld,st,iFunc,func,rFunc,inds,idx,acc,res,rV) =>
+      /*Console.println(s"$lhs = $rhs")
+      Console.println(s"Getting props for $func")
+      Console.println(s"block result of $func = ${getBlockResult(func)}")
+      Console.println(s"props: ${makeString(getProps(func))}")*/
+
       setProps(acc, getProps(a))
       setProps(res, getProps(rFunc))
       setProps(rV._1, getProps(func))

@@ -38,6 +38,7 @@ trait DSE extends Traversal {
   lazy val topController = ctrlAnalyzer.top
 
   override def run[A:Manifest](b: Block[A]) = {
+    debug("Starting traversal " + name)
     bndAnalyzer.run(b)
     ctrlAnalyzer.run(b)
     paramAnalyzer.run(b)
