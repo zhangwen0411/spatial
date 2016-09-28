@@ -17,7 +17,7 @@ sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
 sparse_args_list=("960" "960"      "960"              "960"       "960"   )    
 
 # Seconds to pause while waiting for apps to run
-delay=90
+delay=900
 
 # Override env vars to point to a separate directory for this regression test
 export TESTS_HOME=/home/mattfel/regression_tests
@@ -221,207 +221,207 @@ fi" >> $1
 }
 
 
-# #################
-# # CLONE & BUILD #
-# #################
+#################
+# CLONE & BUILD #
+#################
 
-# # Kill any maxcompilersims older than an hour
-# stale_sims=(`ps axh -O user,etimes | grep mattfel | grep maxcompilersim  | awk '{if ($3 >= 1) print $1}'`)
-# for job in ${stale_sims[@]}; do
-# 	kill -9 $job
-# done
+# Kill any maxcompilersims older than an hour
+stale_sims=(`ps axh -O user,etimes | grep mattfel | grep maxcompilersim  | awk '{if ($3 >= 1) print $1}'`)
+for job in ${stale_sims[@]}; do
+	kill -9 $job
+done
 
-# # Clone and everything
-# echo "[STATUS] `date`: Making test directory"
-# rm -rf $TESTS_HOME && mkdir $TESTS_HOME && cd $TESTS_HOME
-# echo "[STATUS] `date`: Cloning stuff..."
-# git clone git@github.com:stanford-ppl/hyperdsl.git > /dev/null
-# if [ ! -d "./hyperdsl" ]; then
-#   echo "hyperdsl directory does not exist!"
-#   result_file=/home/mattfel/hyperdsl/spatial/spatial.wiki/MaxJ-Regression-Tests-Status.md
-#   echo "Current global status on maxj branch:" > $result_file
-#   echo "-------------------------------" >> $result_file
-#   echo "" >> $result_file
-#   echo "" >> $result_file
-#   echo -e "*Updated `date`*" >> $result_file
-#   echo "" >> $result_file
-#   echo "Error cloning hyperdsl!  Could not validate anything!" >> $result_file
-#   # git push
-#   cd /home/mattfel/hyperdsl/spatial/spatial.wiki
-#   git add MaxJ-Regression-Tests-Status.md
-#   git commit -m "automated status update"
-#   git push
-#   exit 1
-# fi
-# cd hyperdsl
-# git submodule update --init > /dev/null
-# git fetch > /dev/null
-# git checkout spatial > /dev/null
-# cd delite 
-# git fetch > /dev/null 
-# git checkout plasticine > /dev/null 
-# git pull > /dev/null
-# cd ../forge 
-# git fetch > /dev/null 
-# git checkout spatial > /dev/null 
-# git pull > /dev/null
-# cd ../virtualization-lms-core 
-# git fetch > /dev/null 
-# git checkout spatial > /dev/null 
-# git pull > /dev/null
-# cd ../
-# git clone git@github.com:stanford-ppl/spatial.git > /dev/null
-# cd spatial 
-# git fetch > /dev/null 
-# git checkout maxj > /dev/null
-# cd ../
-# echo "[STATUS] `date`: Done cloning stuff!"
-# echo "[STATUS] `date`: Making hyperdsl..."
-# sbt compile > /dev/null 
-# echo "[STATUS] `date`: hyperdsl done!"
-# echo "[STATUS] `date`: Making spatial..."
-# cd spatial
-# make > /dev/null
-# echo "[STATUS] `date`: spatial done!"
-# echo "[STATUS] `date`: Cloning wiki..."
-# git clone git@github.com:stanford-ppl/spatial.wiki.git
-# echo "[STATUS] `date`: wiki clone done!"
+# Clone and everything
+echo "[STATUS] `date`: Making test directory"
+rm -rf $TESTS_HOME && mkdir $TESTS_HOME && cd $TESTS_HOME
+echo "[STATUS] `date`: Cloning stuff..."
+git clone git@github.com:stanford-ppl/hyperdsl.git > /dev/null
+if [ ! -d "./hyperdsl" ]; then
+  echo "hyperdsl directory does not exist!"
+  result_file=/home/mattfel/hyperdsl/spatial/spatial.wiki/MaxJ-Regression-Tests-Status.md
+  echo "Current global status on maxj branch:" > $result_file
+  echo "-------------------------------" >> $result_file
+  echo "" >> $result_file
+  echo "" >> $result_file
+  echo -e "*Updated `date`*" >> $result_file
+  echo "" >> $result_file
+  echo "Error cloning hyperdsl!  Could not validate anything!" >> $result_file
+  # git push
+  cd /home/mattfel/hyperdsl/spatial/spatial.wiki
+  git add MaxJ-Regression-Tests-Status.md
+  git commit -m "automated status update"
+  git push
+  exit 1
+fi
+cd hyperdsl
+git submodule update --init > /dev/null
+git fetch > /dev/null
+git checkout spatial > /dev/null
+cd delite 
+git fetch > /dev/null 
+git checkout plasticine > /dev/null 
+git pull > /dev/null
+cd ../forge 
+git fetch > /dev/null 
+git checkout spatial > /dev/null 
+git pull > /dev/null
+cd ../virtualization-lms-core 
+git fetch > /dev/null 
+git checkout spatial > /dev/null 
+git pull > /dev/null
+cd ../
+git clone git@github.com:stanford-ppl/spatial.git > /dev/null
+cd spatial 
+git fetch > /dev/null 
+git checkout maxj > /dev/null
+cd ../
+echo "[STATUS] `date`: Done cloning stuff!"
+echo "[STATUS] `date`: Making hyperdsl..."
+sbt compile > /dev/null 
+echo "[STATUS] `date`: hyperdsl done!"
+echo "[STATUS] `date`: Making spatial..."
+cd spatial
+make > /dev/null
+echo "[STATUS] `date`: spatial done!"
+echo "[STATUS] `date`: Cloning wiki..."
+git clone git@github.com:stanford-ppl/spatial.wiki.git
+echo "[STATUS] `date`: wiki clone done!"
 
-# # Check if things are OK now
-# rm -rf ${SPATIAL_HOME}/regression_tests;mkdir ${SPATIAL_HOME}/regression_tests
-# echo "[STATUS] `date`: Checking if spatial made correctly..."
-# if [ ! -d "${PUB_HOME}" ]; then
-#   echo "$PUB_HOME directory does not exist!"
-#   # Use main repo's wiki for update
-#   if [ ! -d "/home/mattfel/hyperdsl/spatial/spatial.wiki" ]; then
-#   	echo "FATAL ERROR! No default wiki!"
-#   	exit 1
-#   else 
-#   	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
-# 	git fetch
-# 	git reset --hard
-# 	result_file=/home/mattfel/hyperdsl/spatial/spatial.wiki/MaxJ-Regression-Tests-Status.md
-# 	echo "Current global status on maxj branch:" > $result_file
-# 	echo "-------------------------------" >> $result_file
-# 	echo "" >> $result_file
-# 	echo "" >> $result_file
-# 	echo -e "*Updated `date`*" >> $result_file
-# 	echo "" >> $result_file
-# 	echo "Error building Spatial!  Could not validate anything!" >> $result_file
-# 	# git push
-# 	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
-# 	git add MaxJ-Regression-Tests-Status.md
-# 	git commit -m "automated status update"
-# 	git push
-# 	exit 1
-#   fi
-# fi
+# Check if things are OK now
+rm -rf ${SPATIAL_HOME}/regression_tests;mkdir ${SPATIAL_HOME}/regression_tests
+echo "[STATUS] `date`: Checking if spatial made correctly..."
+if [ ! -d "${PUB_HOME}" ]; then
+  echo "$PUB_HOME directory does not exist!"
+  # Use main repo's wiki for update
+  if [ ! -d "/home/mattfel/hyperdsl/spatial/spatial.wiki" ]; then
+  	echo "FATAL ERROR! No default wiki!"
+  	exit 1
+  else 
+  	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
+	git fetch
+	git reset --hard
+	result_file=/home/mattfel/hyperdsl/spatial/spatial.wiki/MaxJ-Regression-Tests-Status.md
+	echo "Current global status on maxj branch:" > $result_file
+	echo "-------------------------------" >> $result_file
+	echo "" >> $result_file
+	echo "" >> $result_file
+	echo -e "*Updated `date`*" >> $result_file
+	echo "" >> $result_file
+	echo "Error building Spatial!  Could not validate anything!" >> $result_file
+	# git push
+	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
+	git add MaxJ-Regression-Tests-Status.md
+	git commit -m "automated status update"
+	git push
+	exit 1
+  fi
+fi
 
-# # Check if compile worked
-# cd ${PUB_HOME}
-# echo "[STATUS] `date`: Making spatial again but faster because if it ain't broke, don't fix it..."
-# fastmake="cp -r ${SPATIAL_HOME}/extern/compiler/src/ops/* ${PUB_HOME}/compiler/src/spatial/compiler/ops;cd ${PUB_HOME}/;sbt compile 2>&1 | tee -a log"
-# eval "$fastmake"
-# echo "[STATUS] `date`: Remake spatial done!"
-# wc=$(cat log | grep "success" | wc -l)
-# if [ "$wc" -ne 1 ]; then
-# 	if [ ! -d "${SPATIAL_HOME}/spatial.wiki" ]; then
-# 		echo "FATAL ERROR. No wiki dir"
-# 		exit 1
-# 	else 
-# 		cd $SPATIAL_HOME
-# 		hash=`git log --stat --name-status HEAD^..HEAD`
-# 		cd ${SPATIAL_HOME}/spatial.wiki
-# 		result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
-# 		echo "Current global status on maxj branch:" > $result_file
-# 		echo "-------------------------------" >> $result_file
-# 		echo "" >> $result_file
-# 		echo "" >> $result_file
-# 		tucson_date=`ssh tucson.stanford.edu date`
-# 		echo -e "*Status updated on $tucson_date* \n" > $result_file
-# 		echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
-# 		echo "" >> $result_file
-# 		echo "Error building Spatial!  Could not validate anything!" >> $result_file
-# 		# git push
-# 		git add MaxJ-Regression-Tests-Status.md
-# 		git commit -m "automated status update"
-# 		git push
-# 		exit 1
-# 	fi
-# fi
-# rm log
-# cd ${PUB_HOME}
-
-
-# ################
-# # LAUNCH TESTS #
-# ################
-
-# # Use magic to free unused semaphores
-# for semid in `ipcs -s | cut -d" " -f 2` ; do pid=`ipcs -s -i $semid | tail -n 2 | head -n 1 | awk '{print $5}'`; running=`ps --no-headers -p $pid | wc -l` ; if [ $running -eq 0 ] ; then ipcrm -s $semid ; fi ; done
-
-# IFS=$'\n'
-# # Unit test apps (Add more by editing CodegenUnitTests.scala)
-# unit_test_list=(`cat $SPATIAL_HOME/apps/src/CodegenUnitTests.scala | grep "^object .* extends .*" | sed "s/object//g" | sed "s/extends .*//g" | sed "s/ //g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
-# unit_args_list=(`cat $SPATIAL_HOME/apps/src/CodegenUnitTests.scala | grep "^object .* extends .*" | sed "s/object .* with .* \/\/ Args://g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
-# # Characterization test apps (Add more by editing CharacterizationUnitTests.scala)
-# characterization_test_list=(`cat $SPATIAL_HOME/apps/src/CharacterizationUnitTests.scala | grep "^object .* extends .*" | sed "s/object//g" | sed "s/extends .*//g" | sed "s/ //g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
-# characterization_args_list=(`cat $SPATIAL_HOME/apps/src/CharacterizationUnitTests.scala | grep "^object .* extends .*" | sed "s/object .* with .* \/\/ Args://g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
+# Check if compile worked
+cd ${PUB_HOME}
+echo "[STATUS] `date`: Making spatial again but faster because if it ain't broke, don't fix it..."
+fastmake="cp -r ${SPATIAL_HOME}/extern/compiler/src/ops/* ${PUB_HOME}/compiler/src/spatial/compiler/ops;cd ${PUB_HOME}/;sbt compile 2>&1 | tee -a log"
+eval "$fastmake"
+echo "[STATUS] `date`: Remake spatial done!"
+wc=$(cat log | grep "success" | wc -l)
+if [ "$wc" -ne 1 ]; then
+	if [ ! -d "${SPATIAL_HOME}/spatial.wiki" ]; then
+		echo "FATAL ERROR. No wiki dir"
+		exit 1
+	else 
+		cd $SPATIAL_HOME
+		hash=`git log --stat --name-status HEAD^..HEAD`
+		cd ${SPATIAL_HOME}/spatial.wiki
+		result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
+		echo "Current global status on maxj branch:" > $result_file
+		echo "-------------------------------" >> $result_file
+		echo "" >> $result_file
+		echo "" >> $result_file
+		tucson_date=`ssh tucson.stanford.edu date`
+		echo -e "*Status updated on $tucson_date* \n" > $result_file
+		echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
+		echo "" >> $result_file
+		echo "Error building Spatial!  Could not validate anything!" >> $result_file
+		# git push
+		git add MaxJ-Regression-Tests-Status.md
+		git commit -m "automated status update"
+		git push
+		exit 1
+	fi
+fi
+rm log
+cd ${PUB_HOME}
 
 
-# for ac in ${app_classes[@]}; do 
-# 	# Create vulture dir
-# 	rm -rf ${SPATIAL_HOME}/regression_tests/${ac};mkdir ${SPATIAL_HOME}/regression_tests/${ac}
-# 	mkdir ${SPATIAL_HOME}/regression_tests/${ac}/results
-# 	cd ${SPATIAL_HOME}/regression_tests/${ac}
+################
+# LAUNCH TESTS #
+################
 
-# 	# Get apps list
-# 	if [[ $ac == "dense" ]]; then
-# 		test_list=("${dense_test_list[@]}")
-# 		args_list=("${dense_args_list[@]}")
-# 	elif [[ $ac == "sparse" ]]; then
-# 		test_list=("${sparse_test_list[@]}")
-# 		args_list=("${sparse_args_list[@]}")
-# 	elif [[ $ac == "unit" ]]; then
-# 		test_list=("${unit_test_list[@]}")
-# 		args_list=("${unit_args_list[@]}")
-# 	elif [[ $ac == "characterization" ]]; then
-# 		test_list=("${characterization_test_list[@]}")
-# 		args_list=("${characterization_args_list[@]}")
-# 	fi
+# Use magic to free unused semaphores
+for semid in `ipcs -s | cut -d" " -f 2` ; do pid=`ipcs -s -i $semid | tail -n 2 | head -n 1 | awk '{print $5}'`; running=`ps --no-headers -p $pid | wc -l` ; if [ $running -eq 0 ] ; then ipcrm -s $semid ; fi ; done
 
-# 	# Initialize results
-# 	for i in `seq 0 $((${#test_list[@]}-1))`
-# 	do
-# 		touch ${SPATIAL_HOME}/regression_tests/${ac}/results/failed_did_not_finish.${i}_${test_list[i]}
-
-# 		# Make dir for this vulture job
-# 		vulture_dir="${SPATIAL_HOME}/regression_tests/${ac}/${i}_${test_list[i]}"
-# 		rm -rf $vulture_dir;mkdir $vulture_dir
-# 		cmd_file="${vulture_dir}/cmd"
-
-# 		# Create script
-# 		create_script $cmd_file ${ac} $i ${test_list[i]} ${vulture_dir}
-
-# 		# Run vulture
-# 		cd ${SPATIAL_HOME}/regression_tests/${ac}/
-# 		bash ${SPATIAL_HOME}/static/vulture.sh ${ac}
-
-# 	done
-# done
+IFS=$'\n'
+# Unit test apps (Add more by editing CodegenUnitTests.scala)
+unit_test_list=(`cat $SPATIAL_HOME/apps/src/CodegenUnitTests.scala | grep "^object .* extends .*" | sed "s/object//g" | sed "s/extends .*//g" | sed "s/ //g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
+unit_args_list=(`cat $SPATIAL_HOME/apps/src/CodegenUnitTests.scala | grep "^object .* extends .*" | sed "s/object .* with .* \/\/ Args://g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
+# Characterization test apps (Add more by editing CharacterizationUnitTests.scala)
+characterization_test_list=(`cat $SPATIAL_HOME/apps/src/CharacterizationUnitTests.scala | grep "^object .* extends .*" | sed "s/object//g" | sed "s/extends .*//g" | sed "s/ //g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
+characterization_args_list=(`cat $SPATIAL_HOME/apps/src/CharacterizationUnitTests.scala | grep "^object .* extends .*" | sed "s/object .* with .* \/\/ Args://g" | awk -F' ' '{print $0}' | sed "s/\/\///g"`)
 
 
+for ac in ${app_classes[@]}; do 
+	# Create vulture dir
+	rm -rf ${SPATIAL_HOME}/regression_tests/${ac};mkdir ${SPATIAL_HOME}/regression_tests/${ac}
+	mkdir ${SPATIAL_HOME}/regression_tests/${ac}/results
+	cd ${SPATIAL_HOME}/regression_tests/${ac}
+
+	# Get apps list
+	if [[ $ac == "dense" ]]; then
+		test_list=("${dense_test_list[@]}")
+		args_list=("${dense_args_list[@]}")
+	elif [[ $ac == "sparse" ]]; then
+		test_list=("${sparse_test_list[@]}")
+		args_list=("${sparse_args_list[@]}")
+	elif [[ $ac == "unit" ]]; then
+		test_list=("${unit_test_list[@]}")
+		args_list=("${unit_args_list[@]}")
+	elif [[ $ac == "characterization" ]]; then
+		test_list=("${characterization_test_list[@]}")
+		args_list=("${characterization_args_list[@]}")
+	fi
+
+	# Initialize results
+	for i in `seq 0 $((${#test_list[@]}-1))`
+	do
+		touch ${SPATIAL_HOME}/regression_tests/${ac}/results/failed_did_not_finish.${i}_${test_list[i]}
+
+		# Make dir for this vulture job
+		vulture_dir="${SPATIAL_HOME}/regression_tests/${ac}/${i}_${test_list[i]}"
+		rm -rf $vulture_dir;mkdir $vulture_dir
+		cmd_file="${vulture_dir}/cmd"
+
+		# Create script
+		create_script $cmd_file ${ac} $i ${test_list[i]} ${vulture_dir}
+
+		# Run vulture
+		cd ${SPATIAL_HOME}/regression_tests/${ac}/
+		bash ${SPATIAL_HOME}/static/vulture.sh ${ac}
+
+	done
+done
 
 
 
-# #####################
-# # COLLECT & PUBLISH #
-# #####################
 
 
-# # Wait and publish results
-# echo "[STATUS] `date`: Waiting $delay seconds..."
-# sleep $delay
+#####################
+# COLLECT & PUBLISH #
+#####################
+
+
+# Wait and publish results
+echo "[STATUS] `date`: Waiting $delay seconds..."
+sleep $delay
 
 result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
 
@@ -437,7 +437,7 @@ cd ${SPATIAL_HOME}
 hash=`git log --stat --name-status HEAD^..HEAD`
 
 # Get list of previous passed tests and previous commit
-old_pass=(`cat ${result_file} | grep "^\*\*pass" | sed "s/\*\*//g" | sed "s/pass\.[0-9]\+\_//g" sort`)
+old_pass=(`cat ${result_file} | grep "^\*\*pass" | sed "s/\*\*//g" | sed "s/pass\.[0-9]\+\_//g" | sed "s/\[🗠.*//g" | sort`)
 old_commit=(`cat ${result_file} | grep "^commit" | awk '/commit/{i++}i==1'`)
 
 # Begin write to file
@@ -471,7 +471,7 @@ echo -e "Latest delite commit (MaxJ templates): \n\`\`\`\n${dhash}\n\`\`\`" >> $
 write_branches $result_file
 
 # Get list of current failed tests
-new_fail=(`cat ${result_file} | grep "failed_\|failed_did_not_finish" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sort`)
+new_fail=(`cat ${result_file} | grep "failed_\|failed_did_not_finish" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\[🗠.*//g" | sort`)
 new_commit=(`cat ${result_file} | grep "^commit" | awk '/commit/{i++}i==1'`)
 emails=(`cat ${result_file} | grep "<.*>" | sed 's/Author.*<//g' | sed 's/>//g'`)
 csvemails=(`echo ${email[@]} | sed 's/ /,/g'`)
@@ -487,9 +487,8 @@ if [ ! -z "$diff" ]; then
 		if [[ ! "$last_m" = "$m" ]]; then 
 			echo "debug3"
 			courtesy_email="The following apps went from pass to fail: ${diff[@]} when going from commits: $old_commit to $new_commit"
-			echo ${courtesy_email} | mail $m -s "[SPATIAL NOTICE] You done messed up" 
+			echo "Message: ${courtesy_email}" | mail $m -s "[SPATIAL NOTICE] You done messed up" 
 			# -r AppTsar@spatial-lang.com
-			echo "poke" | mail $m -s "[Poke test]"
 		fi
 		echo "[EMAIL] Sent ${tmp} to $m"
 		last_m=$m
@@ -499,12 +498,12 @@ fi
 # Update history 
 history_file=${SPATIAL_HOME}/spatial.wiki/Regression_Test_History.csv
 pretty_file=${SPATIAL_HOME}/spatial.wiki/Pretty_Regression_Test_History.csv
-all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\*//g" | sort`)
+all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\*//g" | sed "s/\[🗠.*//g" | sort`)
 for aa in ${all_apps[@]}; do
 	if [[ ! "$last_aa" = "$aa" ]]; then
 		# Append status to line
 		a=(`echo $aa | sed "s/ //g" | sed "s/\[.*//g"`)
-		dashes=(`cat ${result_file} | grep "[0-9]\+\_$a\(\ \|\*\)" | grep -oh "\-" | wc -l`)
+		dashes=(`cat ${result_file} | grep "[0-9]\+\_$a\(\ \|\*\|\[\)" | sed "s/\[🗠.*//g" | grep -oh "\-" | wc -l`)
 		num=$(($dashes/4))
 		if [ $num = 0 ]; then bar=▇; elif [ $num = 1 ]; then bar=▆; elif [ $num = 2 ]; then bar=▅; elif [ $num = 3 ]; then bar=▄; elif [ $num = 4 ]; then bar=▃; elif [ $num = 5 ]; then bar=▂; elif [ $num = 6 ]; then bar=▁; else bar=□; fi
 

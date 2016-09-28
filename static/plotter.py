@@ -4,6 +4,8 @@
 import numpy as np
 import csv
 import getopt, sys
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pylab
 from StringIO import StringIO
