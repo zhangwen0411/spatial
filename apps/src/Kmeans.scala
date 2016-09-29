@@ -5,7 +5,7 @@ import spatial.shared._
 object Kmeans extends SpatialAppCompiler with KmeansApp
 trait KmeansApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
-  type T = SInt
+  type T = Flt
 
   lazy val MAXK = 96
   lazy val MAXD = 384
@@ -71,20 +71,20 @@ trait KmeansApp extends SpatialApp {
           }
 
           // Store this point to the set of accumulators
-          val localCent = BRAM[SInt](MAXK,MAXD)
+          val localCent = BRAM[T](MAXK,MAXD)
           Pipe(K by 1, D par P2){(ct,d) =>
-            val elem = mux(d == DM1, 1.as[SInt], pts(pt, d))
-            localCent(ct, d) = mux(ct == minCent.value._1, elem, 0.as[SInt])
+            val elem = mux(d == DM1, 1.as[T], pts(pt, d))
+            localCent(ct, d) = mux(ct == minCent.value._1, elem, 0.as[T])
           }
           localCent
         }{_+_} // Add the current point to the accumulators for this centroid
       }{_+_}
 
-      val centCount = BRAM[SInt](MAXK)
+      val centCount = BRAM[T](MAXK)
       Pipe(K by 1 par PX){ct => centCount(ct) = newCents(ct,DM1) }
 
       // Average each new centroid
-      val centsOut = BRAM[SInt](MAXK, MAXD)
+      val centsOut = BRAM[T](MAXK, MAXD)
       Pipe(K by 1, D par PX){(ct,d) =>
         centsOut(ct, d) = newCents(ct,d) / centCount(ct)
       }
@@ -100,23 +100,25 @@ trait KmeansApp extends SpatialApp {
     val K = MAXK.as[SInt];
     val D = MAXD.as[SInt];
 
-    val pts = Array.tabulate(N){i => Array.tabulate(D){d => random[SInt](10) }}
+    val pts = Array.tabulate(N){i => Array.tabulate(D){d => random[T](10) }}
 
     // println("points: ")
     // for (i <- 0 until N) { println(i.mkString + ": " + pts(i).mkString(", ")) }
 
     val result = kmeans(pts.flatten, N, K, D)
 
+    // ISSUE #21 with metadata
+
     // val cts = Array.tabulate(K){i => pts(i) }
 
-    // val gold = Array.empty[ForgeArray[SInt]](K) // ew
+    // val gold = Array.empty[Array[T]](K) // ew
     // val counts = Array.empty[UInt](K)
     // for (i <- 0 until K) {
-    //   gold(i) = Array.fill(D)(0.as[SInt])  // TODO: Fix
+    //   gold(i) = Array.fill(D)(0.as[T])  // TODO: Fix
     // }
     // for (i <- 0 until K) { counts(i) = 0.as[UInt] }
     // // Really bad imperative version
-    // def dist(p1: Rep[ForgeArray[SInt]], p2: Rep[ForgeArray[SInt]]) = p1.zip(p2){(a,b) => (a - b)**2 }.reduce(_+_)
+    // def dist(p1: Rep[Array[T]], p2: Rep[Array[T]]) = p1.zip(p2){(a,b) => (a - b)**2 }.reduce(_+_)
     // for (i <- 0 until N) {
     //   val pt = pts(i)
     //   val distWithIndex = cts.map{ct => dist(pt, ct) }.zipWithIndex
@@ -130,9 +132,9 @@ trait KmeansApp extends SpatialApp {
     //   println(counts.mkString(", "))
     //   for (x <- 0 until K) { println(gold(x).mkString(", ")) }
     // }
-    // val actual = gold.zip(counts){(ct,n) => ct.map{p => p / n.to[SInt] }}.flatten
+    // val actual = gold.zip(counts){(ct,n) => ct.map{p => p / n.to[T] }}.flatten
     // println("gold:   " + actual.map(a => a).reduce{_+_})
-    println("result: " + result.map(a => a).reduce{_+_})
+    // println("result: " + result.map(a => a).reduce{_+_})
 
     //assert( actual == result )
   }

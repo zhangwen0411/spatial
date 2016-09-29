@@ -440,6 +440,8 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     case Reg_write(_,_) => NoArea
     case Reg_reset(_)   => NoArea
     case Offchip_new(_) => NoArea
+    case FieldApply(_,_) => NoArea
+    case _:DeliteStruct[_] => NoArea
 
     // Effects
     case Reflect(d,_,_) => areaOfNode(s,d)

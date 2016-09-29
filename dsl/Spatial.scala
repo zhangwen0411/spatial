@@ -262,6 +262,7 @@ trait SpatialDSL extends ForgeApplication
     importGlobalAnalysis()
     importBoundAnalysis()
 
+    schedule(Printer)
     schedule(NameAnalyzer)          // Symbol names
     schedule(LevelAnalyzer)         // Initial sanity checks and pipe style annotation fixes
     schedule(BoundAnalyzer)         // Bound analysis prior to constant folding

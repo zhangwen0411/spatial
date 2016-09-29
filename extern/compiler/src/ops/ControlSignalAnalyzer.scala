@@ -110,6 +110,7 @@ trait ControlSignalAnalyzer extends Traversal {
     val LocalReader(reads) = reader
     reads.foreach{ case (EatAlias(mem),addr) =>
       readersOf(mem) = readersOf(mem) :+ (reader, ctrl)
+      debug(s"Adding reader ($reader,$ctrl) to $mem")
     }
   }
   def addPendingReader(reader: Exp[Any]) {
@@ -131,11 +132,11 @@ trait ControlSignalAnalyzer extends Traversal {
   def appendWriter(writer: Exp[Any], ctrl: Controller) = {
     val LocalWriter(writes) = writer
     writes.foreach{ case (EatAlias(mem),value,addr) =>
-
       writersOf(mem) = writersOf(mem) :+ (writer, ctrl)        // (5)
       writtenIn(ctrl) = writtenIn(ctrl) :+ mem                 // (10)
       // This memory is set as an accumulator if it's written value depends on the memory (some read node)
       value.foreach{input => isAccum(mem) = hasDependency(input, mem) }  // (6)
+      debug(s"Adding writer ($writer,$ctrl) to $mem")
     }
   }
 
@@ -299,6 +300,7 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
       traverseUnrolled(lhs, inds, cc)(func)
       // rFunc isn't "real" anymore
       isAccum(accum) = true                                 // (6)
+      isInnerAccum(accum) = true
       parentOf(accum) = lhs // Reset accumulator with reduction, not allocation
 
       propagationPairs ::= (accum, acc)

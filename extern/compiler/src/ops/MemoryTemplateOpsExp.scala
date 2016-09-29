@@ -735,6 +735,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
       assert(writersOf(reg).nonEmpty, s"Register ${quote(reg)} is not written by a controller")
 
+      Console.println(s"Checking writers of $reg (" + writersOf(reg).mkString(", ") + s") for $sym")
       val writer = writersOf(reg).find(_.node == sym).get
 
       val writeCtrl = writersOf(reg).head.controlNode  // Regs have unique writer which also drives reset

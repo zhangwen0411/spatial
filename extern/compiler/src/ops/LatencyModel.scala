@@ -249,6 +249,8 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     case Reg_write(_,_) => 1
     case Reg_reset(_)   => 0
     case Offchip_new(_) => 0
+    case FieldApply(_,_) => 0
+    case _:DeliteStruct[_] => 0
 
     case Reflect(d,_,_) => latencyOfNode(s, d)
     case Reify(_,_,_) => 0

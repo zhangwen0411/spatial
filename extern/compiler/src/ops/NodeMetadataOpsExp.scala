@@ -148,6 +148,7 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:Offchip_new[_])   => true
     case EatReflect(_:Counter_new)      => true
     case EatReflect(_:Counterchain_new) => true
+    case EatReflect(_:DeliteStruct[_])  => true
     case _ => false
   }
   def isOffChipTransfer(d: Def[Any]): Boolean = d match {
