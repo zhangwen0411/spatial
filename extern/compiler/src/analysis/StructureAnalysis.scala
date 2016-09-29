@@ -29,6 +29,7 @@ trait StructureAnalyzer extends Traversal {
     val prevParent = hasParent
     val prevStage = stage
     tab += 1
+    stage = 0
     hasParent = true
     super.traverseBlock(block)
     tab = prevTab

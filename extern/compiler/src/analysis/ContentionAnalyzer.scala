@@ -10,7 +10,7 @@ import spatial.compiler.transform._
 
 import scala.collection.mutable.HashMap
 
-trait ContentionModel {
+trait ContentionAnalyzer {
   val IR: SpatialExp with NodeMetadataOpsExp
   import IR._
 
