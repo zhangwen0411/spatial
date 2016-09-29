@@ -468,8 +468,8 @@ done
 echo -e "\n\n***\n\n" >> $result_file
 
 # Link to logs
-echo -e "\n## [History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/Regression_Test_History.csv) \n" >> $result_file
-echo -e "\n## [Prettier History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/Pretty_Regression_Test_History.csv) \n" >> $result_file
+echo -e "\n## [History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${branch}_Regression_Test_History.csv) \n" >> $result_file
+echo -e "\n## [Prettier History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${branch}_Pretty_Regression_Test_History.csv) \n" >> $result_file
 
 write_comments $result_file
 

@@ -479,6 +479,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         case Deff(d:Pipe_foreach) => false
         case Deff(d:ParPipeReduce[_,_]) => true
         case Deff(d:ParPipeForeach) => false
+        case Deff(d:Unit_pipe) => true // Not sure why but this makes matmult work 
         case p => throw new Exception(s"Unknown accumulator parent type $p!")
     }
 
