@@ -826,10 +826,10 @@ object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteApp 
 trait MultiplexedWriteApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
-  val tileSize = 16
+  val tileSize = 96
 
   def main() = {
-    val N = 1024
+    val N = 1920
     val T = param(tileSize)
     val P = param(4)
     val I = 5.as[SInt]
@@ -853,6 +853,62 @@ trait MultiplexedWriteApp extends SpatialApp {
       }
 
     }
+
   }
 }
 
+
+object SequentialWrites extends SpatialAppCompiler with SequentialWritesApp // Args: none 
+trait SequentialWritesApp extends SpatialApp {
+  type T = SInt
+  type Array[T] = ForgeArray[T]
+
+  val tileSize = 96
+  val N = 5
+
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def sequentialwrites(srcData: Rep[ForgeArray[T]], x: Rep[T]) = {
+    val T = param(tileSize)
+    val P = param(4)
+    val src = OffChipMem[SInt](T)
+    val dst = OffChipMem[SInt](T)
+    val xx = ArgIn[T]
+    setArg(xx, x)
+    setMem(src, srcData)
+    Accel {
+      val in = BRAM[SInt](T)
+      in := src(0::T)
+
+      Fold (N by 1)(in, 0.as[T]) { i =>
+        val d = BRAM[SInt](T)
+        Pipe(T by 1){ i => d(i) = xx.value + i }
+        d
+      } {_+_}
+
+      dst(0::T) := in 
+    }
+    getMem(dst)
+  }
+
+  def main() = {
+    val x = args(0).to[SInt]
+    val srcData = Array.tabulate(tileSize) { i => i }
+
+    val result = sequentialwrites(srcData, x)
+
+    val first = x*N
+    val diff = N+1
+    val gold = Array.tabulate(tileSize) { i => first + i*diff}
+
+    printArr(gold, "gold: ")
+    printArr(result, "result: ")
+    val cksum = result.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum  + " (SequentialWrites)")
+
+  }
+}

@@ -279,7 +279,7 @@ trait SpatialDSL extends ForgeApplication
     schedule(Printer)
     schedule(MemoryAnalyzer)        // Get used readers/writers of each memory
     schedule(RegisterCleanup)       // Remove unused registers/writes/reads created in unit pipe insertion
-    schedule(DotPrinter)            // Graph prior to unrolling
+    // schedule(DotPrinter)            // Graph prior to unrolling
 
     // --- Design Space Exploration
     schedule(DSE)                   // Design space exploration. Runs a host of other analyses:
@@ -316,7 +316,7 @@ trait SpatialDSL extends ForgeApplication
 
     // --- Final analysis
     schedule(BufferAnalyzer)        // Top controllers for n-buffers
-    schedule(DotPrinter)            // Graph after unrolling
+    // schedule(DotPrinter)            // Graph after unrolling
     schedule(PrinterLast)
     schedule(StructurePrint)
     schedule(PIRGen)

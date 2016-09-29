@@ -7,7 +7,7 @@ trait MatMult_outerApp extends SpatialApp {
   type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
 
-  def MatMult_outer(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
+  def MatMult_outer(A: Rep[Array[T]], B: Rep[Array[T]], C_init: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
     val M = ArgIn[SInt]
     val N = ArgIn[SInt]
     val P = ArgIn[SInt]
@@ -17,6 +17,7 @@ trait MatMult_outerApp extends SpatialApp {
 
     val a = OffChipMem[T](M, P)
     val b = OffChipMem[T](P, N)
+    val c_init = OffChipMem[T](M, N)
     val c = OffChipMem[T](M, N)
 
     val bm        = param(4) 
@@ -25,13 +26,15 @@ trait MatMult_outerApp extends SpatialApp {
 
     setMem(a, A)
     setMem(b, B)
+    setMem(c, C_init)
 
     Accel {
-      Pipe(M by bm, N by bn) { (i,j) =>
+      Sequential(M by bm, N by bn) { (i,j) =>
+        val tileC = BRAM[T](bm, bn)
+        tileC := c(i::i+bm, j::j+bn, param(1))
        	Pipe(P by bp) { k =>
           val tileA = BRAM[T](bm, bp)
           val tileB = BRAM[T](bp, bn)
-          val tileC = BRAM[T](bm, bn)
           Parallel {
             tileA := a(i::i+bm, k::k+bp, param(1))
             tileB := b(k::k+bp, j::j+bn, param(1))
@@ -63,10 +66,11 @@ trait MatMult_outerApp extends SpatialApp {
 
     val a = Array.fill(M){ Array.fill(P){1} }
     val b = Array.fill(P){ Array.fill(N){1} }
+    val c_init = Array.fill(M){ Array.fill(N){0} }
     // val a = Array.fill(M){ Array.fill(P){random[T](100)} }
     // val b = Array.fill(P){ Array.fill(N){random[T](100)} }
 
-    val result = MatMult_outer(a.flatten, b.flatten, M, N, P)
+    val result = MatMult_outer(a.flatten, b.flatten, c_init.flatten, M, N, P)
 
     val gold = Array.tabulate(M){i =>
       val aRow = a(i)
@@ -78,6 +82,8 @@ trait MatMult_outerApp extends SpatialApp {
 
     println("expected cksum: " + gold.map(a => a).reduce{_+_})
     println("result cksum: " + result.map(a => a).reduce{_+_})
+    printArr(gold, "Gold: ")
+    printArr(result, "Result: ")
 
     val cksum = result.zip(gold){_ == _}.reduce{_&&_}
     println("PASS: " + cksum + " (MatMult_outer)")

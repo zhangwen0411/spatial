@@ -37,7 +37,9 @@ export PIR_HOME=${HYPER_HOME}/spatial/published/Spatial
 # FUNCTIONS #
 #############
 
-
+function foo {
+	echo "$branch"
+}
 function write_comments {
 	echo "
 
@@ -71,7 +73,7 @@ function update_log {
 	progress=(`find . -type f -maxdepth 1 | sort -r`)
 	for p in ${progress[@]}; do
 		pname=(`echo $p | sed "s/.*[0-9]\+_//g"`)
-		cute_plot="[🗠](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/$pname.png)"
+		cute_plot="[🗠](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${branch}_$pname.png)"
 		if [[ $p == *"pass"* ]]; then
 			echo "**$p**${cute_plot}  " | sed "s/\.\///g" >> $1
 			t=(`cat $p`)
@@ -99,7 +101,7 @@ function update_log {
 		fi
 
 		# Update performance file
-		perf_file="${SPATIAL_HOME}/spatial.wiki/${pname}.csv"
+		perf_file="${SPATIAL_HOME}/spatial.wiki/${branch}_${pname}.csv"
 		lines=(`cat $perf_file | wc -l`)
 		dline=$(($lines-$(($perf_hist-1))))
 		last=(`tail -n1 < $perf_file`)
@@ -137,7 +139,7 @@ function create_script {
 	echo "
 #!/bin/bash
 # Override env vars to point to a separate directory for this regression test
-export TESTS_HOME=/home/mattfel/regression_tests
+export TESTS_HOME=/home/mattfel/${branch}_regression_tests
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${TESTS_HOME}/hyperdsl
@@ -313,7 +315,7 @@ if [ ! -d "${PUB_HOME}" ]; then
 	echo "" >> $result_file
 	echo -e "*Updated `date`*" >> $result_file
 	echo "" >> $result_file
-	echo "Error building Spatial!  Could not validate anything!" >> $result_file
+	echo "Error building Spatial!  No published dir. Could not validate anything!" >> $result_file
 	# git push
 	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
 	cmd="git add ${branch}-Regression-Tests-Status.md"
@@ -348,7 +350,7 @@ if [ "$wc" -ne 1 ]; then
 		echo -e "*Status updated on $tucson_date* \n" > $result_file
 		echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
 		echo "" >> $result_file
-		echo "Error building Spatial!  Could not validate anything!" >> $result_file
+		echo "Error building Spatial!  Remake seemed to fail.  Could not validate anything!" >> $result_file
 		# git push
 		cmd="git add ${branch}-Regression-Tests-Status.md"
 		eval "$cmd"
@@ -413,7 +415,7 @@ for ac in ${app_classes[@]}; do
 
 		# Run vulture
 		cd ${SPATIAL_HOME}/regression_tests/${ac}/
-		bash ${SPATIAL_HOME}/static/vulture.sh ${ac}
+		bash ${SPATIAL_HOME}/static/vulture.sh ${ac}_${branch}
 
 	done
 done
@@ -557,6 +559,9 @@ echo "$hash_str / $dhash_str" >> $pretty_file
 
 # git push
 cd ${SPATIAL_HOME}/spatial.wiki
+git stash
+git pull
+git stash pop
 git add *
 git commit -m "automated status update via cron"
 git push
