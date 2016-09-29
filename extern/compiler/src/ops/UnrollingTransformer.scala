@@ -113,13 +113,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
       List(unrolled)
     }
 
-    // If this is a memory that is being unrolled in this scope, the symbol will be the un-mirrored version prior to duplication
-    // If it is not being unrolled in this scope, the symbol will be the already mirrored version
-    def isUnrolled(e: Exp[Any]) = {
-      val inScope = laneSubst.exists(_ contains e)
-      assert(!inScope || laneSubst.forall(_ contains e), s"Symbol $e only exists in some duplicated lanes!")
-      inScope
-    }
+    // Same symbol for all lanes
+    def isCommon(e: Exp[Any]) = laneSubst.map{p => f(e)}.forall{e2 => e2 == f(e)}
   }
 
   /**
@@ -128,7 +123,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
    **/
   def unroll[T](lhs: Sym[T], rhs: Def[T], lanes: Unroller)(implicit ctx: SourceContext): List[Exp[Any]] = rhs match {
     // Account for the edge case with FIFO writing
-    case EatReflect(e@Push_fifo(fifo@EatAlias(mem), value, en)) if !lanes.isUnrolled(fifo) =>
+    case EatReflect(e@Push_fifo(fifo@EatAlias(mem), value, en)) if lanes.isCommon(fifo) =>
       debugs(s"Unrolling $lhs = $rhs")
       val values  = lanes.vectorize{p => f(value)}
       val valids  = boundChecks(lanes.cchain, lanes.indices)
@@ -139,7 +134,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       cloneFuncs.foreach{func => func(parPush) }
       lanes.unify(lhs, parPush)
 
-    case EatReflect(e@Pop_fifo(fifo@EatAlias(mem))) if !lanes.isUnrolled(fifo) =>
+    case EatReflect(e@Pop_fifo(fifo@EatAlias(mem))) if lanes.isCommon(fifo) =>
       debugs(s"Unrolling $lhs = $rhs")
       val parPop = par_pop_fifo(f(fifo), lanes.size)(e._mT,e.__pos)
       dimsOf(parPop) = List(lanes.size.as[Index])
@@ -156,7 +151,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       if (lanes.size > 1) throw ParallelizedCAMOpException(lhs)(mpos(lhs.pos))
       lanes.duplicate(lhs, rhs)
 
-    case EatReflect(e@Bram_store(bram@EatAlias(mem),addr,value)) if !lanes.isUnrolled(bram) =>
+    case EatReflect(e@Bram_store(bram@EatAlias(mem),addr,value)) if lanes.isCommon(bram) =>
       debugs(s"Unrolling $lhs = $rhs")
       val values = lanes.vectorize{p => f(value)}
       val addrs  = lanes.vectorize{p => f(addr)}
@@ -167,7 +162,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       cloneFuncs.foreach{func => func(parStore) }
       lanes.unify(lhs, parStore)
 
-    case EatReflect(e@Bram_load(bram@EatAlias(mem),addr)) if !lanes.isUnrolled(bram) =>
+    case EatReflect(e@Bram_load(bram@EatAlias(mem),addr)) if lanes.isCommon(bram) =>
       debugs(s"Unrolling $lhs = $rhs")
       val addrs = lanes.vectorize{p => f(addr)}
       val parLoad = par_bram_load(f(bram), addrs)(e._mT, e.__pos)
