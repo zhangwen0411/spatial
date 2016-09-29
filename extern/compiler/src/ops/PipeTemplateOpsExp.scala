@@ -545,8 +545,8 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
       if (writesToAccumReg) {
 
-        emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(8));""")
-        emit(s"""Count.Params ${quote(sym)}_redLoopParams = control.count.makeParams(8)
+        emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
+        emit(s"""Count.Params ${quote(sym)}_redLoopParams = control.count.makeParams(9)
                               .withEnable(${quote(sym)}_datapath_en)
                               .withReset(${quote(sym)}_done)
                               .withMax(${quote(sym)}_loopLengthVal)
@@ -743,7 +743,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
             }
 
           case n@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
-            emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(8));""")
+            emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
             emit(s"""CounterChain ${quote(sym)}_redLoopChain = control.count.makeCounterChain(${quote(sym)}_datapath_en);""")
             // emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${stream_offset_guess+1}, 1);""")
             emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
@@ -772,7 +772,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
             } else {
-              emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(8));""")
+              emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
               emit(s"""CounterChain ${quote(sym)}_redLoopChain =
 		        		control.count.makeCounterChain(${quote(sym)}_datapath_en);""")
               // emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${stream_offset_guess+1}, 1);""")
