@@ -14,11 +14,11 @@ trait LoweredPipeOpsExp extends ExternPrimitiveTypesExp with MemoryTemplateOpsEx
   val controller_tree = new PrintWriter(new File("controller_tree.html" ))
   val table_init = """<TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">"""
 
-  def print_stage_prefix(name: String, hasThingsInside: Boolean = true) {
-    controller_tree.write(s"""<TD><font size = "6">$name </font> """)
+  def print_stage_prefix(title: String, ctr: String, node: String, hasThingsInside: Boolean = true) {
+    controller_tree.write(s"""<TD><font size = "6">$title<br><b>$node</b></font><br><font size = "1">$ctr</font> """)
     if (hasThingsInside) {
       controller_tree.write(s"""<div data-role="collapsible">
-      <h4>expand</h4>${table_init}""")
+      <h4> </h4>${table_init}""")
     }
   }
   def print_stage_suffix(name: String, hadThingsInside: Boolean = true) {
@@ -184,24 +184,32 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       controlNodeStack.push(sym)
       emitComment(s"""ParPipeForeach ${quote(sym)} = ParPipeForeach(${quote(cchain)}) {""")
       emit("""{""")
+
+      // Ctr analysis for controller_tree diagram
+      val Def(EatReflect(Counterchain_new(diagram_counters))) = cchain
+      var ctr_str = diagram_counters.map { ctr =>
+        val Def(EatReflect(Counter_new(start, end, step, par))) = ctr
+        s"${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
+      }
+
       var hadThingsInside = true
       styleOf(sym) match {
         case StreamPipe =>
           emitComment(s"""StrmPipe to be emitted""")
-          print_stage_prefix(s"Foreach Streampipe <b>${quote(sym)}</b>")
+          print_stage_prefix(s"Foreach Streampipe",s"${ctr_str}",s"${quote(sym)}")
         case CoarsePipe =>
           emitComment(s"""MPSM to be emitted""")
-          print_stage_prefix(s"Foreach Metapipe <b>${quote(sym)}</b>")
+          print_stage_prefix(s"Foreach Metapipe",s"${ctr_str}",s"${quote(sym)}")
         case InnerPipe =>
           emitComment(s"""PipeSM to be emitted""")
-          print_stage_prefix(s"Foreach Innerpipe <b>${quote(sym)}</b>", false)
+          print_stage_prefix(s"Foreach Innerpipe",s"${ctr_str}",s"${quote(sym)}", false)
           hadThingsInside = false
         case SequentialPipe =>
           emitComment(s"""SeqSM to be emitted""")
-          print_stage_prefix(s"Foreach Seqpipe <b>${quote(sym)}</b>")
+          print_stage_prefix(s"Foreach Seqpipe",s"${ctr_str}",s"${quote(sym)}")
         case _ =>
           emitComment(s"""ParPipeForeach style: ${styleOf(sym)}""")
-          print_stage_prefix(s"Foreach ${styleOf(sym)} <b>${quote(sym)}</b>")
+          print_stage_prefix(s"Foreach ${styleOf(sym)}",s"${ctr_str}",s"${quote(sym)}")
       }
       emitController(sym, Some(cchain))
       emitParallelizedLoop(inds, cchain)
@@ -214,23 +222,29 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
 
     case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
       controlNodeStack.push(sym)
+      val Def(EatReflect(Counterchain_new(diagram_counters))) = cchain
+      var ctr_str = diagram_counters.map { ctr =>
+        val Def(EatReflect(Counter_new(start, end, step, par))) = ctr
+        s"${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
+      }
+
       emitComment(s"""ParPipeReduce ${quote(sym)} = ParPipeReduce(${quote(cchain)}, ${quote(accum)}) {""")
       emit("""{""")
       var hadThingsInside = true
       styleOf(sym) match {
         case CoarsePipe =>
           emitComment(s"""MPSM to be emitted""")
-          print_stage_prefix(s"Reduce Metapipe <b>${quote(sym)}</b>")
+          print_stage_prefix(s"Reduce Metapipe",s"${ctr_str}",s"${quote(sym)}")
         case InnerPipe =>
           emitComment(s"""PipeSM to be emitted""")
-          print_stage_prefix(s"Reduce Innerpipe <b>${quote(sym)}</b>", false)
+          print_stage_prefix(s"Reduce Innerpipe",s"${ctr_str}",s"${quote(sym)}", false)
           hadThingsInside = false
         case SequentialPipe =>
           emitComment(s"""SeqSM to be emitted""")
-          print_stage_prefix(s"Reduce Seqpipe <b>${quote(sym)}</b>")
+          print_stage_prefix(s"Reduce Seqpipe",s"${ctr_str}",s"${quote(sym)}")
         case _ =>
           emitComment(s"""ParPipeReduce style: ${styleOf(sym)}""")
-          print_stage_prefix(s"Reduce ${styleOf(sym)} <b>${quote(sym)}</b>")
+          print_stage_prefix(s"Reduce ${styleOf(sym)}",s"${ctr_str}",s"${quote(sym)}")
       }
 
       // The body of ParPipeReduce uses 'acc' to refer to the accumulator
@@ -277,7 +291,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emitBlock(func)
       emitComment(s"""} ${quote(sym)} func block""")
       val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
-      val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_<_).mkString(",")
+      val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
       val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
       val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
       val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this

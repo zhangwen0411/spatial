@@ -4,6 +4,25 @@ import spatial.shared._
 
 /*
 
+optiQL
+trait TPCHQ6Trait extends TPCHBaseTrait {
+  val queryName = "Q6"
+
+  def query() = {
+    val lineItems = loadLineItems()
+    tic(lineItems.size)
+
+    //FIXME: infix_&& fails to resolve automatically
+    val q = lineItems Where (l => infix_&&(l.l_shipdate >= Date("1994-01-01"), infix_&&(l.l_shipdate < Date("1995-01-01"), infix_&&(l.l_discount >= 0.05, infix_&&(l.l_discount <= 0.07, l.l_quantity < 24))))) 
+    val revenue = q.Sum(l => l.l_extendedprice * l.l_discount)
+
+    toc(revenue)
+    println(revenue)
+  }
+}
+
+
+SQL:
 SELECT
     sum(l_extendedprice * l_discount) as revenue
 FROM
@@ -81,6 +100,12 @@ trait TPCHQ6_App extends SpatialApp {
     getArg(out)
   }
 
+  def printArr(a: Rep[Array[Bit]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
 
   def main() {
     val N = args(0).to[SInt]
@@ -89,14 +114,15 @@ trait TPCHQ6_App extends SpatialApp {
     val quants = Array.fill(N){random[UInt](25) }
     // val discts = Array.fill(N){random[FT] * 0.05f + 0.02f}
     // val prices = Array.fill(N){random[FT] * 1000f}
-    val discts = Array.fill(N){random[FT] * 10 + 1}
-    val prices = Array.fill(N){random[FT] * 1000}
+    val discts = Array.fill(N){random[FT] / 100000}
+    val prices = Array.fill(N){random[FT] / 100000}
 
     val result = tpchq6(dates, quants, discts, prices)
 
     // --- software version
-    val conds = Array.tabulate(N){i => dates(i) > MIN_DATE && dates(i) < MAX_DATE &&
-                                       quants(i) < 24 && discts(i) >= MIN_DISC && discts(i) <= MAX_DISC }
+    val conds = Array.tabulate(N){i => dates(i) > MIN_DATE && dates(i) < MAX_DATE  &&
+                                       quants(i) < 24 && discts(i) >= MIN_DISC  && discts(i) <= MAX_DISC}
+    printArr(conds, "conds: ")
 
     val gold = Array.tabulate(N){i => if (conds(i)) prices(i) * discts(i) else 0.0f.as[FT] }.reduce{_+_}
 

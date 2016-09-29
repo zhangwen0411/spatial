@@ -25,7 +25,7 @@ trait StructureAnalyzer extends Traversal {
   def debugs(x: => Any) = debug(".."*tab + x)
 
   override def traverseBlock[A](block: Block[A]) {
-    val prevTab = 0
+    val prevTab = tab
     val prevParent = hasParent
     val prevStage = stage
     tab += 1

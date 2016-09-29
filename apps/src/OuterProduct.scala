@@ -62,6 +62,10 @@ trait OuterProductApp extends SpatialApp {
     println("expected cksum: " + gold.map(a => a).reduce{_+_})
     println("result cksum:   " + result.map(a => a).reduce{_+_})
     (0 until M*N) foreach { i => assert(result(i) == gold(i)) }
-    assert( result == gold )
+
+    val cksum = result.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum + " (OuterProduct)")
+
+
   }
 }

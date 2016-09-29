@@ -50,6 +50,27 @@ trait SpatialExceptionsCompilerOps extends SpatialExceptionsOps with NodeMetadat
   case class UndefinedSwapControllerException(mem: Rep[Any], inst: Int, accesses: List[Access], port: Int) extends
   SpatialException(9, s"Port $port of buffered ${name(mem)} has accesses but has no defined done control signals")
 
+  case class NoParIndicesException(mem: Rep[Any], access: Rep[Any]) extends
+  SpatialException(10, s"${name(mem)} access $access has no defined par indices")
+
+  case class UndefinedParentException(mem: Rep[Any]) extends
+  SpatialException(11, s"${name(mem)} does not have a defined parent")
+
+
+  /** Exceptions during code generation **/
+  abstract class CodegenException(id: Int, msg: String) extends SpatialException(id, msg)
+
+  // May want to move this to unsupported exceptions?
+  case class MultipleWriteControllersException(mem: Rep[Any], writers: List[Access]) extends
+  CodegenException(100, s"""${name(mem)} appears to have writers enabled by the same parent:
+  ${writers.mkString("  \n")}""")
+
+  case class UnknownParentControllerException(mem: Rep[Any], access: Rep[Any], parent: Rep[Any]) extends
+  CodegenException(101, s"""${name(mem)} access $access has an unknown controller $parent""")
+
+  case class UnknownAccumControllerException(mem: Rep[Any], access: Rep[Any], parent: Rep[Any]) extends
+  CodegenException(102, s"""${name(mem)} access $access has an unknown accumulator controller $parent""")
+
 
   /** True user / input program errors **/
   abstract class UserException(id: Int, msg: String, console: => Unit) extends Exception(s"Error #$id: " + msg) {

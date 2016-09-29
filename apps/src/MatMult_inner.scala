@@ -31,7 +31,7 @@ trait MatMult_innerApp extends SpatialApp {
     val bn        = param(tileSizeN);   domainOf(bn) = (96,1536,96)
     val bp        = param(tileSizeP);   domainOf(bp) = (96,1536,96)
     val op  = param(2);   
-    val mp = param(2);   
+    val mp = param(1);   
     val ip  = param(2);   
     val upMidPar  = param(1);   
     val stPar     = param(1);   

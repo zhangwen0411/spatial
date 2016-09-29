@@ -154,6 +154,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
   import IR.{infix_until => _, looprange_until => _, println => _, _}
 
   var emitted_consts: Set[(Exp[Any], Def[Any])] = Set.empty
+  var emitted_argins: Set[(Exp[Any], String)] = Set.empty
   def addEmittedConsts(xs: Exp[Any]*) = xs.foreach {
     case lhs@Def(rhs) => if (!emitted_consts.contains((lhs, rhs))) { emitted_consts += ((lhs, rhs)) }
     case _ =>
@@ -440,7 +441,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
 
   override def emitFileFooter() = {
     emit(s"""// Emit consts""")
-    emitted_consts.foreach {
+    emitted_consts.foreach { 
       case ((s, d)) =>
         d match {
           case ConstFixPt(x,_,_,_) =>

@@ -3,6 +3,36 @@
 // import spatial.shared._
 
 // /*
+// optiQL
+// trait TPCHQ1Trait extends TPCHBaseTrait {
+
+//   val queryName = "Q1"  
+//   def query() = {  
+
+//     val lineItems = loadLineItems()         
+//     tic(lineItems.size)
+
+//     val q = lineItems Where(_.l_shipdate <= Date("1998-12-01")) GroupBy(l => pack(l.l_returnflag,l.l_linestatus)) Select(g => new Record {
+//       val returnFlag = g.key._1
+//       val lineStatus = g.key._2
+//       val sumQty = g.values.Sum(_.l_quantity)
+//       val sumBasePrice = g.values.Sum(_.l_extendedprice)
+//       val sumDiscountedPrice = g.values.Sum(l => l.l_extendedprice * (1.0 - l.l_discount))
+//       val sumCharge = g.values.Sum(l => l.l_extendedprice * (1.0 - l.l_discount) * infix_+(1.0, l.l_tax)) //FIXME: infix_+ fails to resolve automatically
+//       val avgQty = g.values.Average(_.l_quantity)
+//       val avgPrice = g.values.Average(_.l_extendedprice)
+//       val avgDiscount = g.values.Average(_.l_discount)
+//       val countOrder = g.values.Count
+//     }) OrderBy(asc(_.returnFlag), asc(_.lineStatus))
+    
+//     toc(q)
+//     q.printAsTable()
+//     q.writeAsJSON("out.json")
+//   }    
+// }
+
+
+// SQL:
 // SELECT
 //     l_returnflag,
 //     l_linestatus,

@@ -83,10 +83,10 @@ object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp // Args: 5
 trait CharLoadTestApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 8;
-  val outerPar = 4;
+  val innerPar = 1;
+  val outerPar = 1;
   val dim0 = 192;
-  val dim1 = 19200;
+  val dim1 = 1920;
 
   def CharLoad(srcHost: Rep[Array[T]], iters: Rep[SInt]) = {
     val sinnerPar = param(innerPar);
@@ -163,10 +163,10 @@ object CharStoreTest extends SpatialAppCompiler with CharStore // Args: 5 3
 trait CharStore extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 8;
+  val innerPar = 4;
   val outerPar = 4;
   val dim0 = 192;
-  val dim1 = 19200;
+  val dim1 = 1920;
   def CharStore(iters: Rep[T], numin: Rep[T]) = {
     val sinnerPar = param(innerPar);
     val tileSize0 = param(dim0);
@@ -230,24 +230,28 @@ trait CharStore extends SpatialApp {
 }
 
 
-object CharBramTest extends SpatialAppCompiler with CharBram // Args: 5
+object CharBramTest extends SpatialAppCompiler with CharBram // Args: 5 1 0
 trait CharBram extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 8;
-  val outerPar = 4;
+  val innerPar = 4;
+  val outerPar = 2;
   val dim0 = 192;
-  val dim1 = 19200;
-  def CharBram(numin: Rep[T]) = {
+  val dim1 = 192;
+  def CharBram(numin: Rep[T], addrIn0: Rep[T], addrIn1: Rep[T]) = {
     val tileDim0 = param(dim0);
     val tileDim1 = param(dim1);
     val spar0 = param(innerPar);
     val spar1 = param(outerPar);
 
     val num = ArgIn[SInt]
+    val rdAddr0 = ArgIn[SInt]
+    val rdAddr1 = ArgIn[SInt]
     setArg(num, numin)
+    setArg(rdAddr0, addrIn0)
+    setArg(rdAddr1, addrIn1)
 
-    val out = List.tabulate(outerPar){i => List.tabulate(innerPar) {j => ArgOut[SInt] }}
+    val out = ArgOut[SInt]
 
     Accel {
       val tile = BRAM[T](tileDim0, tileDim1)
@@ -257,39 +261,20 @@ trait CharBram extends SpatialApp {
           tile(i,j) = num
         }
       }
-      Parallel {
-        out.zipWithIndex.foreach{ case (row, i) =>
-          row.zipWithIndex.foreach{ case (o, j) =>
-            Pipe {
-              val rd = tile(i,j)
-              if (i > 0 || j > 0) {memoryIndexOf(rd) = 0}
-              Pipe {o := rd}
-            }
-          }
-        }
-      }
+      Pipe {out := tile(rdAddr0, rdAddr1)}
     }
 
-    out.map { row =>
-      row.map { m =>
-        getArg(m)
-      }
-    }
+    getArg(out)
   }
 
   def main() {
-    val numin = args(unit(0)).to[T]
+    val numin = args(0).to[T]
+    val addrIn0 = args(1).to[T]
+    val addrIn1 = args(2).to[T]
 
-    val result = CharBram(numin)
+    val result = CharBram(numin, addrIn0, addrIn1)
 
-    println("expected: As many arg1's as innerPar*outerPar (" + innerPar + "*" + outerPar + "=" + innerPar*outerPar + ") :")
-    result.map{row =>
-      row.foreach{println(_)}
-    }
-    val check = result.map{row => row.map{a => a}.reduce{_+_}}.reduce{_+_}
-    val gold = List.tabulate(innerPar*outerPar){ i => numin }.reduce{_+_}
-
-    val cksum = check == gold
+    val cksum = numin == result
     println("PASS: " + cksum + " (CharBramTest)")
 
   }

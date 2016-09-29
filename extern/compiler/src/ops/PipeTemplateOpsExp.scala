@@ -427,7 +427,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 <TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">"""
       )
 
-      print_stage_prefix(s"""Hwblock: <b>${quote(sym)}</b>""")
+      print_stage_prefix(s"Hwblock",s"",s"${quote(sym)}")
 			inHwScope = true
 			emitComment("Emitting Hwblock dependencies {")
       val hwblockDeps = recursiveDeps(rhs)
@@ -482,7 +482,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
     case e@Pipe_foreach(cchain, func, inds) =>
       controlNodeStack.push(sym)
-      print_stage_prefix(s"""Pipe_foreach: <b>${quote(sym)}</b>""")
+      print_stage_prefix(s"Pipe_foreach",s"",s"${quote(sym)}")
       emitController(sym, Some(cchain))
       emitNestedIdx(cchain, inds)
       emitRegChains(sym, inds)
@@ -492,7 +492,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
     case e@Pipe_fold(cchain, accum, zero, fA, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
       controlNodeStack.push(sym)
-      print_stage_prefix(s"""Pipe_fold: <b>${quote(sym)}</b>""")
+      print_stage_prefix(s"Pipe_fold","","${quote(sym)}")
       emitController(sym, Some(cchain))
       emitNestedIdx(cchain, inds)
       emitRegChains(sym, inds)
@@ -511,7 +511,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
 		case e@Pipe_parallel(func: Block[Unit]) =>
       controlNodeStack.push(sym)
-      print_stage_prefix(s"""Pipe_parallel <b>${quote(sym)}</b>""")
+      print_stage_prefix(s"Pipe_parallel",s"",s"${quote(sym)}")
       emitController(sym, None)
       emitBlock(func, s"${quote(sym)} Parallel")
       print_stage_suffix(quote(sym))
@@ -528,7 +528,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
         case ForkJoin => s"Parpipe"
       }
 
-      print_stage_prefix(s"""Unit $smStr <b>${quote(sym)}</b>""", hadThingsInside)
+      print_stage_prefix(s"Unit $smStr",s"",s"${quote(sym)}", hadThingsInside)
       emit(s"""// Unit pipe writtenIn(${quote(sym)}) = ${writtenIn(sym)}""")
       writtenIn(sym) foreach { s =>
         val Def(d) = s
@@ -654,7 +654,8 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 		  childrenOf(sym).zipWithIndex.foreach { case (c, idx) =>
 		  	emitGlobalWire(s"""${quote(c)}_done""")
 		  	emit(s"""${quote(sym)}_sm.connectInput("s${idx}_done", ${quote(c)}_done);""")
-        emit(s"""DFEVar ${quote(c)}_en = ${quote(sym)}_sm.getOutput("s${quote(idx)}_en");""")
+        emitGlobalWire(s"""${quote(c)}_en""")
+        emit(s"""${quote(c)}_en <== ${quote(sym)}_sm.getOutput("s${quote(idx)}_en");""")
 		  	enDeclaredSet += c
 		  	doneDeclaredSet += c
 		  }
