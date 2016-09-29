@@ -5,6 +5,8 @@
 ##########
 # Length of history to maintain in pretty printer (remember to manually add enough git commits)
 hist=48
+branch=$1
+
 # App classes
 app_classes=("dense" "sparse" "unit" "characterization")
 
@@ -19,8 +21,9 @@ sparse_args_list=("960" "960"      "960"              "960"       "960"   )
 # Seconds to pause while waiting for apps to run
 delay=900
 
+
 # Override env vars to point to a separate directory for this regression test
-export TESTS_HOME=/home/mattfel/regression_tests
+export TESTS_HOME="/home/mattfel/${branch}_regression_tests"
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${TESTS_HOME}/hyperdsl
@@ -53,10 +56,10 @@ function write_branches {
 Branches Used
 -------------
 * hyperdsl => spatial
-* delite => plasticine
+* delite => spatial
 * virtualization-lms-core => spatial
 * forge => spatial
-* spatial => maxj" >> $1
+* spatial => ${branch}" >> $1
 
 } 
 
@@ -123,7 +126,7 @@ function update_log {
 			sed -i -e "1d" $perf_file
 		fi
 
-		cmd="python ${SPATIAL_HOME}/static/plotter.py $pname ${SPATIAL_HOME}/spatial.wiki/"
+		cmd="python ${SPATIAL_HOME}/static/plotter.py ${branch}_${pname} ${SPATIAL_HOME}/spatial.wiki/"
 		eval "$cmd"
 
 
@@ -221,6 +224,7 @@ fi" >> $1
 }
 
 
+
 #################
 # CLONE & BUILD #
 #################
@@ -238,8 +242,8 @@ echo "[STATUS] `date`: Cloning stuff..."
 git clone git@github.com:stanford-ppl/hyperdsl.git > /dev/null
 if [ ! -d "./hyperdsl" ]; then
   echo "hyperdsl directory does not exist!"
-  result_file=/home/mattfel/hyperdsl/spatial/spatial.wiki/MaxJ-Regression-Tests-Status.md
-  echo "Current global status on maxj branch:" > $result_file
+  result_file="/home/mattfel/hyperdsl/spatial/spatial.wiki/${branch}-Regression-Tests-Status.md"
+  echo "Current global status on ${branch} branch:" > $result_file
   echo "-------------------------------" >> $result_file
   echo "" >> $result_file
   echo "" >> $result_file
@@ -248,7 +252,8 @@ if [ ! -d "./hyperdsl" ]; then
   echo "Error cloning hyperdsl!  Could not validate anything!" >> $result_file
   # git push
   cd /home/mattfel/hyperdsl/spatial/spatial.wiki
-  git add MaxJ-Regression-Tests-Status.md
+  cmd="git add ${branch}-Regression-Tests-Status.md"
+  eval "$cmd"
   git commit -m "automated status update"
   git push
   exit 1
@@ -259,7 +264,7 @@ git fetch > /dev/null
 git checkout spatial > /dev/null
 cd delite 
 git fetch > /dev/null 
-git checkout plasticine > /dev/null 
+git checkout spatial > /dev/null 
 git pull > /dev/null
 cd ../forge 
 git fetch > /dev/null 
@@ -273,7 +278,8 @@ cd ../
 git clone git@github.com:stanford-ppl/spatial.git > /dev/null
 cd spatial 
 git fetch > /dev/null 
-git checkout maxj > /dev/null
+cmd="git checkout ${branch}"
+eval "$cmd" > /dev/null
 cd ../
 echo "[STATUS] `date`: Done cloning stuff!"
 echo "[STATUS] `date`: Making hyperdsl..."
@@ -300,8 +306,8 @@ if [ ! -d "${PUB_HOME}" ]; then
   	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
 	git fetch
 	git reset --hard
-	result_file=/home/mattfel/hyperdsl/spatial/spatial.wiki/MaxJ-Regression-Tests-Status.md
-	echo "Current global status on maxj branch:" > $result_file
+	result_file="/home/mattfel/hyperdsl/spatial/spatial.wiki/${branch}-Regression-Tests-Status.md"
+	echo "Current global status on ${branch} branch:" > $result_file
 	echo "-------------------------------" >> $result_file
 	echo "" >> $result_file
 	echo "" >> $result_file
@@ -310,7 +316,8 @@ if [ ! -d "${PUB_HOME}" ]; then
 	echo "Error building Spatial!  Could not validate anything!" >> $result_file
 	# git push
 	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
-	git add MaxJ-Regression-Tests-Status.md
+	cmd="git add ${branch}-Regression-Tests-Status.md"
+	eval "$cmd"
 	git commit -m "automated status update"
 	git push
 	exit 1
@@ -318,6 +325,7 @@ if [ ! -d "${PUB_HOME}" ]; then
 fi
 
 # Check if compile worked
+result_file="${SPATIAL_HOME}/spatial.wiki/${branch}-Regression-Tests-Status.md"
 cd ${PUB_HOME}
 echo "[STATUS] `date`: Making spatial again but faster because if it ain't broke, don't fix it..."
 fastmake="cp -r ${SPATIAL_HOME}/extern/compiler/src/ops/* ${PUB_HOME}/compiler/src/spatial/compiler/ops;cd ${PUB_HOME}/;sbt compile 2>&1 | tee -a log"
@@ -332,8 +340,7 @@ if [ "$wc" -ne 1 ]; then
 		cd $SPATIAL_HOME
 		hash=`git log --stat --name-status HEAD^..HEAD`
 		cd ${SPATIAL_HOME}/spatial.wiki
-		result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
-		echo "Current global status on maxj branch:" > $result_file
+		echo "Current global status on ${branch} branch:" > $result_file
 		echo "-------------------------------" >> $result_file
 		echo "" >> $result_file
 		echo "" >> $result_file
@@ -343,7 +350,8 @@ if [ "$wc" -ne 1 ]; then
 		echo "" >> $result_file
 		echo "Error building Spatial!  Could not validate anything!" >> $result_file
 		# git push
-		git add MaxJ-Regression-Tests-Status.md
+		cmd="git add ${branch}-Regression-Tests-Status.md"
+		eval "$cmd"
 		git commit -m "automated status update"
 		git push
 		exit 1
@@ -423,8 +431,6 @@ done
 echo "[STATUS] `date`: Waiting $delay seconds..."
 sleep $delay
 
-result_file=${SPATIAL_HOME}/spatial.wiki/MaxJ-Regression-Tests-Status.md
-
 # Get git hashes
 cd ${SPATIAL_HOME}
 hash_str=`git rev-parse HEAD`
@@ -496,8 +502,8 @@ if [ ! -z "$diff" ]; then
 fi
 
 # Update history 
-history_file=${SPATIAL_HOME}/spatial.wiki/Regression_Test_History.csv
-pretty_file=${SPATIAL_HOME}/spatial.wiki/Pretty_Regression_Test_History.csv
+history_file=${SPATIAL_HOME}/spatial.wiki/${branch}_Regression_Test_History.csv
+pretty_file=${SPATIAL_HOME}/spatial.wiki/${branch}_Pretty_Regression_Test_History.csv
 all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\*//g" | sed "s/\[🗠.*//g" | sort`)
 for aa in ${all_apps[@]}; do
 	if [[ ! "$last_aa" = "$aa" ]]; then

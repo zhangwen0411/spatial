@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import pylab
 from StringIO import StringIO
 import pandas as pd
+import os
 
 app_name = sys.argv[1]
 wiki_home = sys.argv[2]
@@ -30,6 +31,7 @@ plt.xticks(x, commits, rotation=30)
 plt.gcf().subplots_adjust(bottom=0.15, left=0.2)
 plt.xlabel("Commit")
 plt.ylabel("Cycles")
-plt.title("Estimated Cycles for " + app_name)
+date = os.popen("date").read()
+plt.title("Estimated Cycles for " + app_name + ", " + date)
 pylab.savefig(png_name)
 
