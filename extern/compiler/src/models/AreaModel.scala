@@ -436,11 +436,11 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     case _:Unit_pipe if isSequential(s) => areaOfSequential(nStages(s))
 
     // Nodes with known zero area cost
-    case Reg_read(_)    => NoArea
-    case Reg_write(_,_) => NoArea
-    case Reg_reset(_)   => NoArea
-    case Offchip_new(_) => NoArea
-    case FieldApply(_,_) => NoArea
+    case _:Reg_read[_]     => NoArea
+    case _:Reg_write[_]    => NoArea
+    case _:Reg_reset[_]    => NoArea
+    case _:Offchip_new[_]  => NoArea
+    case _:FieldApply[_]   => NoArea
     case _:DeliteStruct[_] => NoArea
 
     // Effects

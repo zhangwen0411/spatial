@@ -826,8 +826,13 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         }
       }
 
-    case e@Reg_write(EatAlias(reg), value) =>
+    case e@Reg_write(EatAlias(reg), value, en) =>
       emitComment("Reg_write {")
+
+      en match {
+        case Deff(ConstBit(true)) =>
+        case _ => throw new Exception("Enabled register write is not yet supported in MaxJ generation")
+      }
 
       assert(writersOf(reg).nonEmpty, s"Register ${quote(reg)} is not written by a controller")
 

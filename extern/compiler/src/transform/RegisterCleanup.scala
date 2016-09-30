@@ -44,7 +44,7 @@ trait RegisterCleanupTransformer extends SinglePassTransformer {
       }
       else None
 
-    case EatReflect(Reg_write(EatAlias(reg),_)) =>
+    case EatReflect(Reg_write(EatAlias(reg),_,_)) =>
       debug(s"$lhs = $rhs")
       val hasReaders = readersOf(reg).nonEmpty || isArgOut(reg)
       if (!hasReaders) debug(s"  REMOVING register write $lhs")

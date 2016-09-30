@@ -199,7 +199,7 @@ trait PIRScheduler extends Traversal with PIRCommon {
     // - 2: Update producer of value to have accumulator as output
     // - 3: Update reg to map to register of value (for later use in reads)
     // - 4: If any of first 3 options, add bypass value to scalar out, otherwise update producer
-    case Reg_write(EatAlias(reg), value) =>
+    case Reg_write(EatAlias(reg), value, Deff(ConstBit(true))) =>
       val isLocallyRead = isReadInPipe(reg, ctx.pipe)
       val isLocallyWritten = isWrittenInPipe(reg, ctx.pipe, Some(lhs)) // Always true?
       val isInnerAcc = isInnerAccum(reg) && isLocallyRead && isLocallyWritten
@@ -221,6 +221,9 @@ trait PIRScheduler extends Traversal with PIRCommon {
         else
           propagateReg(reg, ctx.reg(reg), out, ctx)
       }
+
+    case Reg_write(EatAlias(reg), value, en) => throw new Exception("Enabled register write not yet supported in PIR")
+
 
     case _ => lhs match {
       case Fixed(_) => ctx.cu.getOrAddReg(lhs){ allocateLocal(lhs, ctx.pipe) }

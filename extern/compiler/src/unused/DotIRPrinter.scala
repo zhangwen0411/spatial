@@ -422,7 +422,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
     case Reg_read(reg) =>
       emitValDef(sym, reg)
 
-    case Reg_write(reg, value) =>
+    case Reg_write(reg, value, en) =>
       emitEdge(value, reg)
 
     case Fixpt_to_fltpt(x) =>

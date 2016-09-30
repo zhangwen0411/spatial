@@ -130,7 +130,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
                 stage.nodes.foreach{stm => traverseStm(stm) } // Mirror each statement
 
                 // Write all escaping symbols to newly created registers
-                escapingValues.zip(regs).foreach{case (sym,reg) => reg_write(reg, f(sym))(sym.tp, mpos(sym.pos)) }
+                escapingValues.zip(regs).foreach{case (sym,reg) => reg_write(reg, f(sym), true)(sym.tp, mpos(sym.pos)) }
                 ()
               }
               val pipe = reflectEffect(Unit_pipe(primBlk)(ctx), summarizeEffects(primBlk) andAlso Simple())

@@ -102,7 +102,7 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
 
   // Returns written memory, optional value, optional address
   private def writerUnapply(d: Def[Any]): Option[List[LocalWrite]] = d match {
-    case EatReflect(Reg_write(reg,value))             => Some(LocalWrite(reg,value))
+    case EatReflect(Reg_write(reg,value,_))           => Some(LocalWrite(reg,value))
     case EatReflect(Bram_store(bram,addr,value))      => Some(LocalWrite(bram,value,addr))
     case EatReflect(Push_fifo(fifo,value,_))          => Some(LocalWrite(fifo,value))
     case EatReflect(Cam_store(cam,key,value))         => Some(LocalWrite(cam,value,key))
