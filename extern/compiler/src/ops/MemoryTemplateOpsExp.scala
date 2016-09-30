@@ -932,8 +932,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 emit(s"""BramLib ${quote(sym)}_${i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides}, ${distinctParents.length});""")
               }
               else if (r.depth == 2) {
-                val numReaders_for_this_duplicate = readersOf(sym).filter{q => instanceIndicesOf(q, sym).contains(i)}.length
-
+                val numReaders_for_this_duplicate = readersOf(sym).filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
                 emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
                 emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
                   ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")

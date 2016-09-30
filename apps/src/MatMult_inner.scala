@@ -58,7 +58,7 @@ trait MatMult_innerApp extends SpatialApp {
           Sequential(bm by 1, (bn by 1) par mp){ (ii,jj) =>    // MetaPipe?
             val prod = Reduce((bp by 1) par ip)(0.as[T]){ kk => tileA(ii, kk) * tileB(kk, jj) }{_+_}
             val prev = mux(k == 0, 0.as[T], tileC(ii,jj))
-            tileC(ii,jj) = prev + prod.value
+            tileC(ii,jj) = prev + prod.value // Is a unit pipe that should be recognized as accum
           }
           c(i::i+bm, j::j+bn, stPar) := tileC
         }
