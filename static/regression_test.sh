@@ -512,6 +512,13 @@ fi
 history_file=${SPATIAL_HOME}/spatial.wiki/${branch}_Regression_Test_History.csv
 pretty_file=${SPATIAL_HOME}/spatial.wiki/${branch}_Pretty_Regression_Test_History.csv
 all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\*//g" | sed "s/\[🗠.*//g" | sort`)
+last_line=(`tail -n1 < $pretty_file`)
+last_line=$(printf " %s" "${last_line[@]}")
+if [[ "$last_line" = *"$hash_str / $dhash_str"* ]]; then
+	commit_change=false
+else
+	commit_change=true
+fi
 for aa in ${all_apps[@]}; do
 	if [[ ! "$last_aa" = "$aa" ]]; then
 		# Append status to line
@@ -542,25 +549,56 @@ for aa in ${all_apps[@]}; do
 		fi
 		# Shave first if too long
 		numel=(`cat ${pretty_file} | grep "^$a\ " | grep -oh "." | wc -l`)
-		if [ $numel -gt $(($hist+23)) ]; then # 23 = chars before bars
+		chars_before_bars=(`cat ${pretty_file} | grep "^$a\ " | sed "s/,,.*/,,/g" | grep -oh "." | wc -l`)
+		if [ $numel -gt $(($hist+$chars_before_bars)) ]; then 
 			cmd="sed -i \"s/^${a}\([[:blank:]]*\),,./${a}\1,,/g\" ${pretty_file}"
 			echo "[SPATIAL NOTICE] shaving $a in pretty history"
 			eval "$cmd"	
 		fi
+
 	fi
 	last_aa=$aa
 
 done
 
+# Draw delta-commit arrows
+if [ "$commit_change" = "true" ]; then
+	arrow="↖"
+	varrow="↑"
+	marker="↰"
+else
+	arrow=" "
+	marker=" "
+fi
+cmd="sed -i \"/^(commit change)\ \+,/ s/$/$arrow/\" ${pretty_file}"
+eval "$cmd"
+cmd="sed -i \"/^(commit change)\ \+,/ s/$/$varrow /\" ${history_file}"
+eval "$cmd"
+numel1=(`cat ${history_file} | grep "^(commit change)\ " | grep -oh "." | wc -l`)
+numel2=(`cat ${history_file} | grep "^(commit change)\ " | wc -l`)
+numel=$(($numel1 / $numel2))
+if [ $numel -gt $hist ]; then
+	cmd="sed -i \"s/^(commit change)\([[:blank:]]*\),,../(commit change)\1,,/g\" ${history_file}"
+	eval "$cmd"
+fi
+numel1=(`cat ${pretty_file} | grep "^(commit change)\ " | grep -oh "." | wc -l`)
+numel2=(`cat ${pretty_file} | grep "^(commit change)\ " | wc -l`)
+numel=$(($numel1 / $numel2))
+if [ $numel -gt $(($hist+$chars_before_bars)) ]; then 
+	cmd="sed -i \"s/^(commit change)\([[:blank:]]*\),,./(commit change)\1,,/g\" ${pretty_file}"
+	eval "$cmd"	
+fi
+
+# Delete outdated line and add new one
 cd ${SPATIAL_HOME}
 lines=(`cat $history_file | wc -l`)
 dline=$(($lines-$(($hist-1))))
 sed -i -e "${dline}d" $history_file
-echo "$hash_str / $dhash_str" >> $history_file
+echo "$hash_str / $dhash_str $marker" >> $history_file
 lines=(`cat $pretty_file | wc -l`)
 dline=$(($lines-$(($hist-1))))
 sed -i -e "${dline}d" $pretty_file
-echo "$hash_str / $dhash_str" >> $pretty_file
+echo "$hash_str / $dhash_str $marker" >> $pretty_file
 
 # git push
 cd ${SPATIAL_HOME}/spatial.wiki
