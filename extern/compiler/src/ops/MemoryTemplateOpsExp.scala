@@ -287,7 +287,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
         if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
 
-        def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String) {
+        def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String, comment: String = "") {
           val controllers = accesses.flatMap{access => topControllerOf(access, mem, i) }.distinct
           val isBuffered = ports.size == 1 && accesses.nonEmpty
 
@@ -297,7 +297,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             throw UndefinedSwapControllerException(mem, i, accesses, ports.head)
           else if (isBuffered) {
             val portlist = ports.mkString{","} // TODO: Can probably use ports.head here
-            emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, new int[] { $portlist });""")
+            emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, new int[] { $portlist }); /*$comment*/""")
           }
         }
         if (d.depth > 1) { // Deprecated dblbuf
@@ -315,8 +315,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           val dummyWPorts = fullPorts -- wPorts
           val dummyRPorts = fullPorts -- rPorts
           val dummyDonePorts = fullPorts -- wPorts -- rPorts
-          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl") }
-          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl") }
+          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl","read") }
+          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
           emit(s"""${quote(mem)}_${i}${suff}.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
           emit(s"""${quote(mem)}_${i}${suff}.connectUnreadPorts(new int[] {${dummyRPorts.mkString(",")}});""")
           emit(s"""${quote(mem)}_${i}${suff}.connectUntouchedPorts(new int[] {${dummyDonePorts.mkString(",")}});""")
@@ -515,17 +515,17 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*$writeCtrl*/"
       }
       dups.foreach {case (dd, ii) =>
+        val p = portsOf(write, bram, ii).head
         if (writers.length == 1) {
           num_dims match {
             case 1 =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr)); //w3""")
+                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] ${p}); //w3""")
             case _ =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr)); //w4""")
+                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4""")
           }
         } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
-          val p = portsOf(write, bram, ii).head
           num_dims match {
             case 1 =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
@@ -949,8 +949,18 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               //   emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
               //     ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
               } else {
+                def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
+                val row_majors = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
+                if (row_majors.reduce{_&_} != row_majors.reduce{_|_}) {
+                  throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
+                }
+                val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
+                val head = write_pars.head
+                if (!(write_pars.map{a => a == head}.reduce{_&_})) {
+                  throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")                  
+                }
                 emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}", 
-                  ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${r.depth});""")
+                  ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${r.depth}, ${row_majors.head}, ${head});""")
               }
             }
           }
