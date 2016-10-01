@@ -500,7 +500,7 @@ if [ ! -z "$diff" ]; then
 		if [[ ! "$last_m" = "$m" ]]; then 
 			echo "debug3"
 			courtesy_email="The following apps on branch ${branch} went from pass to fail: ${diff[@]} when going from commits: $old_commit to $new_commit.  See https://github.com/stanford-ppl/spatial/wiki/${branch}-Regression-Tests-Status.md"
-			echo "Message: ${courtesy_email}" | mail $m -s "[SPATIAL NOTICE] Oops!" 
+			echo "Message: ${courtesy_email}" | mail $m -s "[SPATIAL NOTICE] Oops on ${branch}-branch!" 
 			# -r AppTsar@spatial-lang.com
 		fi
 		echo "[EMAIL] Sent ${tmp} to $m"
@@ -568,6 +568,7 @@ if [ "$commit_change" = "true" ]; then
 	marker="↰"
 else
 	arrow=" "
+	varrow=" "
 	marker=" "
 fi
 cmd="sed -i \"/^(commit change)\ \+,/ s/$/$arrow/\" ${pretty_file}"

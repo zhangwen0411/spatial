@@ -969,7 +969,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}", 
                   ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
                   $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
-                  ${row_majors.head | size0==1}, /*rowmajor read?*/
+                  ${row_majors.head | size1==1}, /*rowmajor read?*/
                   ${write_head}, ${read_head} /*writepar, readpar*/);""")
               }
             }
