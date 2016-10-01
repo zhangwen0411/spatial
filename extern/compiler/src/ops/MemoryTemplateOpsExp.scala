@@ -476,7 +476,9 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     val distinctParents = writers.map{writer => parentOf(writer.controlNode)}.distinct
     val allParents = writers.map{writer => parentOf(writer.controlNode)}
     if (distinctParents.length < allParents.length) {
-      throw new Exception(s"Bram $bram seems to have writers that are enabled by the same parent")
+      Console.println(s"[WARNING] Bram $bram has multiple writers enabled by the same parent.  Attempting to "
+        + "hardcode memory banks to writers to resolve this!")
+    //   throw new Exception(s"Bram $bram seems to have writers that are enabled by the same parent")
     }
     val writeCtrl = writer.controlNode
 
@@ -614,7 +616,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                   emit(s"""${quote(bram)}_${ii}.${wrType}(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w16.2""")
                 } else { // Hardcode writers to banks and hope for the best
-                  val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
+                  val bank_num = writers.map{ w => w.node }.indexOf(write)
                   emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w16.5""")
                 }

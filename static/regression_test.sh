@@ -541,7 +541,7 @@ for aa in ${all_apps[@]}; do
 		eval "$cmd"
 
 		# Shave first if too long
-		numel=(`cat ${history_file} | grep "^$a\ " | grep -oh "\," | wc -l`)
+		numel=(`cat ${history_file} | grep "^$a\ " | sed "s/^$a \+,//g" | grep -oh "\," | wc -l`)
 		if [ $numel -gt $hist ]; then
 			cmd="sed -i \"s/^${a}\([[:blank:]]*\),,[0-9]\\+,/${a}\1,,/g\" ${history_file}"
 			echo "[SPATIAL NOTICE] shaving $a in history"
@@ -574,9 +574,9 @@ cmd="sed -i \"/^(commit change)\ \+,/ s/$/$arrow/\" ${pretty_file}"
 eval "$cmd"
 cmd="sed -i \"/^(commit change)\ \+,/ s/$/$varrow /\" ${history_file}"
 eval "$cmd"
-numel1=(`cat ${history_file} | grep "^(commit change)\ " | grep -oh "." | wc -l`)
+numel1=(`cat ${history_file} | grep "^(commit change)\ " | sed "s/(commit change) \+,//g" | grep -oh "." | wc -l`)
 numel2=(`cat ${history_file} | grep "^(commit change)\ " | wc -l`)
-numel=$(($numel1 / $numel2))
+numel=$(($numel1 / $numel2 / 2))
 if [ $numel -gt $hist ]; then
 	cmd="sed -i \"s/^(commit change)\([[:blank:]]*\),,../(commit change)\1,,/g\" ${history_file}"
 	eval "$cmd"
