@@ -105,14 +105,17 @@ function update_log {
 		lines=(`cat $perf_file | wc -l`)
 		dline=$(($lines-$(($perf_hist-1))))
 		last=(`tail -n1 < $perf_file`)
-		last_color=(`echo $last | sed "s/,.*//g"`)
-		if [ "$last" = *"$2 $3"* ]; then
+		last_color=(`echo ${last[@]} | sed "s/;.*//g"`)
+		if [[ "${last[@]}" = *"$2 $3"* ]]; then
 			color=$last_color
+			echo "[SPATIAL NOTICE] Using old color $color for app $p and hash $2 $3"
 		else
-			if [ "$last" = "r" ]; then
+			if [ "$last_color" = "r" ]; then
 				color="b"
+				echo "[SPATIAL NOTICE] Using new color $color for app $p and hash $2 $3 from line ${last[@]}"
 			else
 				color="r"
+				echo "[SPATIAL NOTICE] Using new color $color for app $p and hash $2 $3 from line ${last[@]}"
 			fi
 		fi
 
@@ -148,6 +151,8 @@ export FORGE_HOME=${HYPER_HOME}/forge
 export DELITE_HOME=${HYPER_HOME}/delite
 export LMS_HOME=${HYPER_HOME}/virtualization-lms-core
 export PIR_HOME=${HYPER_HOME}/spatial/published/Spatial
+
+sleep ${3} # Backoff time to prevent those weird file IO errors
 
 cd ${PUB_HOME}
 ${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} 2>&1 | tee -a ${5}/log
@@ -494,8 +499,8 @@ if [ ! -z "$diff" ]; then
 		echo "debug2"
 		if [[ ! "$last_m" = "$m" ]]; then 
 			echo "debug3"
-			courtesy_email="The following apps went from pass to fail: ${diff[@]} when going from commits: $old_commit to $new_commit"
-			echo "Message: ${courtesy_email}" | mail $m -s "[SPATIAL NOTICE] You done messed up" 
+			courtesy_email="The following apps on branch ${branch} went from pass to fail: ${diff[@]} when going from commits: $old_commit to $new_commit.  See https://github.com/stanford-ppl/spatial/wiki/${branch}-Regression-Tests-Status.md"
+			echo "Message: ${courtesy_email}" | mail $m -s "[SPATIAL NOTICE] Oops!" 
 			# -r AppTsar@spatial-lang.com
 		fi
 		echo "[EMAIL] Sent ${tmp} to $m"

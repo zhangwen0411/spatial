@@ -542,7 +542,6 @@ object BlockReduce1D extends SpatialAppCompiler with BlockReduce1DApp // Args: 1
 trait BlockReduce1DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val N = 1920
 
   val tileSize = 96
 
@@ -575,7 +574,6 @@ trait BlockReduce1DApp extends SpatialApp {
 
   def main() = {
     val size = args(0).to[SInt]
-    // val size = N
     val src = Array.tabulate(size) { i => i }
 
     val dst = blockreduce_1d(src, size)
@@ -824,17 +822,20 @@ trait InOutArgApp extends SpatialApp {
 
 object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteApp // Args: none 
 trait MultiplexedWriteApp extends SpatialApp {
-  type Array[T] = ForgeArray[T]
+  type Array[SInt] = ForgeArray[SInt]
 
   val tileSize = 96
+  val I = 5
+  val N = 192
 
-  def main() = {
-    val N = 1920
+  def multiplexedwrtest(w: Rep[Array[SInt]], i: Rep[Array[SInt]]) = {
     val T = param(tileSize)
     val P = param(4)
-    val I = 5.as[SInt]
     val weights = OffChipMem[SInt](N)
     val inputs  = OffChipMem[SInt](N)
+    val weightsResult = OffChipMem[SInt](N*I)
+    setMem(weights, w)
+    setMem(inputs,i)
     Accel {
       val wt = BRAM[SInt](T)
       val in = BRAM[SInt](T)
@@ -844,16 +845,40 @@ trait MultiplexedWriteApp extends SpatialApp {
 
         // Some math nonsense (definitely not a correct implementation of anything)
         Pipe(I by 1){x =>
-          Pipe(T par P){j => wt(j) = wt(j) - ((wt(j) - in(j))/in(j)) }
-          val sum = Reduce(T par P)(0.as[SInt]){j => wt(j) }{_+_}
-          Pipe(T par P){j => wt(j) = (wt(j) * tileSize) / sum }
-
-          weights(i::i+T) := wt
+          Fold(1 by 1)(wt, 0.as[SInt]){ k =>
+            in
+          }{_+_}
+          weightsResult(i*I+x*T::i*I+x*T+T) := wt
         }
       }
 
     }
+    getMem(weightsResult)    
 
+  }
+
+  def printArr(a: Rep[Array[SInt]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def main() = {
+    val w = Array.tabulate[SInt](N){ i => i }
+    val i = Array.tabulate[SInt](N){ i => i*2 }
+
+    val result = multiplexedwrtest(w, i)
+
+    val gold = Array.tabulate(N/tileSize){ k => 
+      Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten 
+    }.flatten
+    printArr(gold, "gold: ");
+    printArr(result, "result: ");
+
+    val cksum = gold.zip(result){_==_}.reduce{_&&_}
+    println("PASS: " + cksum  + " (MultiplexedWriteTest)")
+
+ 
   }
 }
 
