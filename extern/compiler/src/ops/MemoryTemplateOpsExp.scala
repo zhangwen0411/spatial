@@ -520,7 +520,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           num_dims match {
             case 1 =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] ${p}); //w3""")
+                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w3""")
             case _ =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
                 stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4""")
@@ -954,13 +954,21 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 if (row_majors.reduce{_&_} != row_majors.reduce{_|_}) {
                   throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
                 }
+                val read_pars = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.length}
+                val read_head = read_pars.head
+                if (!(read_pars.map{a => a == read_head}.reduce{_&_})) {
+                  throw new Exception(s"Cannot handle multiple NBuf readers if they do not have the same access par!")
+                }
                 val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
-                val head = write_pars.head
-                if (!(write_pars.map{a => a == head}.reduce{_&_})) {
+                val write_head = write_pars.head
+                if (!(write_pars.map{a => a == write_head}.reduce{_&_})) {
                   throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")                  
                 }
                 emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}", 
-                  ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${r.depth}, ${row_majors.head}, ${head});""")
+                  ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
+                  $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
+                  ${row_majors.head | size0==1}, /*rowmajor read?*/
+                  ${write_head}, ${read_head} /*writepar, readpar*/);""")
               }
             }
           }
