@@ -30,3 +30,51 @@ trait TileCseTestApp extends SpatialApp {
     assert(result == 2034) // 400 + 2 + 1600 + 32
   }
 }
+
+object RegWriteTest extends SpatialAppCompiler with RegWriteTestApp
+trait RegWriteTestApp extends SpatialApp {
+  def main() {
+    val in1 = ArgIn[SInt]
+    val in2 = ArgIn[Bit]
+    val out = ArgOut[SInt]
+    setArg(in1, 32)
+    setArg(in2, true)
+    Accel {
+      val reg = Reg[SInt](64)
+      reg := mux(in2, in1.value, reg.value)
+      out := reg.value
+    }
+  }
+}
+
+object VectorMinTest extends SpatialAppCompiler with VectorMinTestApp
+trait VectorMinTestApp extends SpatialApp {
+  val B = 16
+
+  def main() {
+    val size = 32
+    val vec = Array.tabulate(size){i => random[SInt](10) + 16 }
+
+    val N = ArgIn[SInt]
+    setArg(N, size)
+
+    val out = ArgOut[SInt]
+    val data = OffChipMem[SInt](N)
+    setMem(data, vec)
+
+    Accel {
+      val min = Reg[SInt]
+      Fold(N by B)(min, 100){i =>
+        val fifo = FIFO[SInt](B)
+        fifo := data(i::i+B)
+        Reduce(B by 1)(100.as[SInt]){j => fifo.pop() }{(a,b) => mux(a < b, a, b) }
+      }{(a,b) => mux(a < b, a, b) }
+
+      out := min
+    }
+    val result = getArg(out)
+
+    println("array = " + vec.mkString(", "))
+    println("min = " + result)
+  }
+}

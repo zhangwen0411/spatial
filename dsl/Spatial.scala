@@ -250,6 +250,7 @@ trait SpatialDSL extends ForgeApplication
     val RegisterCleanup       = transformer("RegisterCleanup", isExtern=true)
     val Unrolling             = transformer("Unrolling", isExtern=true)
     val ConstantFolding       = traversal("ConstantFolding", isExtern=true)
+    val RewriteTransformer    = traversal("RewriteTransformer", isExtern=true)
 
     // CGRA stuff
     val PIRScheduling     = analyzer("PIRSchedule", isExtern=true)
@@ -270,7 +271,9 @@ trait SpatialDSL extends ForgeApplication
     schedule(GlobalAnalyzer)        // Values computed outside of all controllers
 
     // --- Unit Pipe Insertion
+    schedule(Printer)
     schedule(UnitPipeTransformer)   // Wrap primitives in outer pipes
+    schedule(Printer)
     schedule(GlobalAnalyzer)        // Values computed outside of all controllers (TODO: Needed again?)
 
     // --- Pre-DSE analysis
@@ -315,6 +318,8 @@ trait SpatialDSL extends ForgeApplication
     // --- Design Elaboration
     schedule(ReductionAnalyzer)     // Reduce/accumulator specialization
     schedule(Unrolling)             // Pipeline unrolling
+    schedule(Printer)
+    schedule(RewriteTransformer)
     schedule(Printer)
 
     // --- Final analysis

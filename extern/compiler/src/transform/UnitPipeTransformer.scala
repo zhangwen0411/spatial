@@ -14,6 +14,10 @@ trait UnitPipeTransformExp extends NodeMetadataOpsExp with LoweredPipeOpsExp { t
 
 /**
  * Inserts unit Pipe wrappers for primitive nodes in outer control nodes, along with registers for communication
+ *
+ * ASSUMPTION: Dynamic allocations (which can depend on local, dynamic values)
+ * cannot be read locally. e.g. a counter which is allocated based on the value of a register
+ * read cannot have a "counter read" node
  **/
 trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTools {
   val IR: UnitPipeTransformExp with SpatialExp
@@ -37,6 +41,15 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
     val nodes: ArrayBuffer[Stm] = ArrayBuffer.empty
     val regReads: ArrayBuffer[Stm] = ArrayBuffer.empty
 
+    def dynamicAllocs: ArrayBuffer[Stm] = allocs.filter{
+      case TP(s,d) => isDynamicAllocation(d)
+      case _ => false
+    }
+    def staticAllocs: ArrayBuffer[Stm] = allocs.filter{
+      case TP(s,d) => !isDynamicAllocation(d)
+      case _ => false
+    }
+
     def allocDeps = allocs.flatMap{case TP(s,d) => (syms(d) ++ readSyms(d)) }.toSet
     def deps = nodes.flatMap{case TP(s,d) => (syms(d) ++ readSyms(d)) }.toSet ++ allocDeps
 
@@ -44,7 +57,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
       if (isControl) debugs(s"$i. Control Stage")
       else           debugs(s"$i. Primitive Stage")
       debugs(s"Allocations: ")
-      allocs.foreach{case TP(s,d) => debugs(s"..$s = $d") }
+      allocs.foreach{case TP(s,d) => debugs(s"..$s = $d [dynamic: ${isDynamicAllocation(d)}]") }
       debugs(s"Nodes:")
       nodes.foreach{case TP(s,d) => debugs(s"..$s = $d") }
       debugs(s"Register reads:")
@@ -91,7 +104,8 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
               curStage.regReads += stm
             }
             else if (isAllocation(s) || isConstant(s) || isGlobal(s)) {
-              curStage.allocs += stm
+              if (isDynamicAllocation(s) && !curStage.isControl) curStage.nodes += stm
+              else curStage.allocs += stm
             }
             else {
               stages += new Stage(true)
@@ -120,11 +134,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
                 debugs(s"Created new register $reg for escaping primitive $sym")
                 reg
               }
-              stage.allocs.foreach{
-                case stm@TP(s,EatReflect(_:Counter_new)) =>
-                case stm@TP(s,EatReflect(_:Counterchain_new)) =>
-                case stm => traverseStm(stm)
-              }
+              stage.staticAllocs.foreach{stm => traverseStm(stm) }
 
               val primBlk = reifyBlock {
                 stage.nodes.foreach{stm => traverseStm(stm) } // Mirror each statement
@@ -143,20 +153,19 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
               // Replace all dependencies on effectful (Unit) symbols with dependencies on newly created Pipe
               escapingUnits.foreach{sym => register(sym -> pipe) }
 
+              // External register reads (outside unit pipe)
+              // May cause extra, unused reads (eliminated later)
               stage.regReads.foreach{case TP(s,EatReflect(Reg_read(reg))) =>
                 register(s -> reg_read(f(reg))(s.tp,mpos(s.pos)) )
               }
 
-              stage.allocs.foreach{
-                case stm@TP(s,EatReflect(_:Counter_new)) => traverseStm(stm)
-                case stm@TP(s,EatReflect(_:Counterchain_new)) => traverseStm(stm)
-                case _ =>
-              }
+              stage.dynamicAllocs.foreach{stm => traverseStm(stm) }
 
             case (stage,i) =>
-              stage.nodes.foreach{stm => traverseStm(stm) } // Mirror non-primitives to update
+              stage.nodes.foreach{stm => traverseStm(stm) }
+              stage.staticAllocs.foreach{stm => traverseStm(stm) }
               stage.regReads.foreach{stm => traverseStm(stm) }
-              stage.allocs.foreach{stm => traverseStm(stm) }
+              stage.dynamicAllocs.foreach{stm => traverseStm(stm) }
           }
         }
       }
@@ -228,6 +237,14 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
     val pipe2 = reflectEffect(Accum_fold(f(ccOuter),f(ccInner),accum2,f(zero),fA,iBlk,mBlk,ldPartBlk,ldBlk,rBlk,stBlk,indsOuter,indsInner,idx,part,acc,res,rV)(ctx,memC,numT,mT,mC), effects.star)
     setProps(pipe2, getProps(lhs))
     pipe2
+  }
+
+  override def self_mirror[A](lhs: Sym[A], rhs: Def[A]): Exp[A] = {
+    debugs(s"Mirroring $lhs = $rhs")
+    val lhs2 = super.self_mirror(lhs, rhs)
+    val rhs2 = lhs2 match {case Def(d) => d; case _ => null}
+    debugs(s"Created $lhs2 = $rhs2")
+    lhs2
   }
 
   override def transform[A:Manifest](lhs: Sym[A], rhs: Def[A])(implicit ctx: SourceContext) = rhs match {

@@ -151,6 +151,16 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:DeliteStruct[_])  => true
     case _ => false
   }
+
+  // Allocations which can depend on local, dynamic values
+  // Should OffChipMem be included here? Does it matter?
+  def isDynamicAllocation(d: Def[Any]): Boolean = d match {
+    case EatReflect(_:Counter_new)      => true
+    case EatReflect(_:Counterchain_new) => true
+    case EatReflect(_:DeliteStruct[_])  => true
+    case _ => false
+  }
+
   def isOffChipTransfer(d: Def[Any]): Boolean = d match {
     case EatReflect(_:Offchip_load_cmd[_])  => true
     case EatReflect(_:Offchip_store_cmd[_]) => true
@@ -312,6 +322,10 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
 
   def isAllocation(s: Exp[Any]): Boolean = s match {
     case Def(d) => isAllocation(d)
+    case _ => false
+  }
+  def isDynamicAllocation(s: Exp[Any]): Boolean = s match {
+    case Def(d) => isDynamicAllocation(d)
     case _ => false
   }
   def isLocalMemory(s: Exp[Any]) = isRegister(s.tp) || isBRAM(s.tp) || isFIFO(s.tp) || isCache(s.tp)

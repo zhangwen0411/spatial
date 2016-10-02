@@ -63,7 +63,7 @@ trait KmeansApp extends SpatialApp {
         // For each point in this set
         Fold(BN par P3, PR)(centTile, 0.as[T]){pt =>
           // Find the index of the closest centroid
-          val minCent = Reduce(K par P4)(pack((0.as[SInt],0.as[T]))){ct =>
+          val minCent = Reduce(K par P4)(pack((0.as[SInt],10000000.as[T]))){ct =>
             val dist = Reduce(D par P2)(0.as[T]){d => (pts(pt,d) - cts(ct,d)) ** 2 }{_+_}
             pack((ct, dist.value))
           }{(a,b) =>
