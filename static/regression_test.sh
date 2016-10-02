@@ -14,7 +14,7 @@ app_classes=("dense" "sparse" "unit" "characterization")
 dense_test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" "MatMult_outer"
 	"Kmeans"  "GEMM"      "GDA"    "SGD"   "LogReg" "OuterProduct")
 dense_args_list=("9600"       "8 192 192"     "1920"   "960"          "8 192 192"    
-	"96 8 96" "8 192 192" "384 96" "96 96" "96"     "192 192")
+	"96 8 96" "8 192 192" "96 96" "96 96" "96"     "192 192")
 sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
 sparse_args_list=("960" "960"      "960"              "960"       "960"   )    
 
@@ -499,7 +499,7 @@ if [ ! -z "$diff" ]; then
 		echo "debug2"
 		if [[ ! "$last_m" = "$m" ]]; then 
 			echo "debug3"
-			courtesy_email="The following apps on branch ${branch} went from pass to fail: ${diff[@]} when going from commits: $old_commit to $new_commit.  See https://github.com/stanford-ppl/spatial/wiki/${branch}-Regression-Tests-Status.md"
+			courtesy_email="The following apps on branch ${branch} went from pass to fail: ${diff[@]} when going from commits: $old_commit to $new_commit.  See https://github.com/stanford-ppl/spatial/wiki/${branch}-Regression-Tests-Status"
 			echo "Message: ${courtesy_email}" | mail $m -s "[SPATIAL NOTICE] Oops on ${branch}-branch!" 
 			# -r AppTsar@spatial-lang.com
 		fi
