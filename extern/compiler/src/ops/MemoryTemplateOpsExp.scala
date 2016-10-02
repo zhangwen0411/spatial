@@ -791,7 +791,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
     case e@Reg_read(EatAlias(reg)) =>
       val readers = readersOf(reg).filter(_.node == sym) // There can be more than one!
       readers.foreach{reader =>
-        Console.println(s"Would like to read $reg $sym in ${reader.controller}")
         if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
           rTreeMap(sym) match {
             case Nil =>
@@ -826,10 +825,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
             case ArgumentIn => // emit in baselib suffix
               if (!emitted_argins.contains((sym, regStr))) {
                 emitted_argins += ((sym,regStr))
-                Console.println(s"argins $emitted_argins")
               }
             case _ => // Otherwise emit here
-              emit(s"""$pre ${quote(sym)} = $regStr; // reg read""")
+              if (!emitted_reglibreads.contains((sym, regStr))) {
+                emit(s"""$pre ${quote(sym)} = $regStr; // reg read""")
+                emitted_reglibreads += ((sym, regStr))
+              }
           }
 
         }
