@@ -7,7 +7,7 @@ trait DotProductApp extends SpatialApp {
   type T = SInt
 
   val tileSize = 96
-  val innerPar = 4
+  val innerPar = 2
   val outerPar = 2
   type Array[T] = ForgeArray[T]
 

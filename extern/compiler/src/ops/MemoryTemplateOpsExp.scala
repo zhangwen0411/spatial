@@ -339,7 +339,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       emitted_argins.toList.foreach {
         case (sym, regStr) =>
           emit(s"""${maxJPre(sym)} ${quote(sym)} = $regStr; // reg read""")
-      }      
+      }
     }
     super.emitFileFooter()
   }
@@ -472,13 +472,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
     val writers = writersOf(bram)
     val writer = writers.find(_.node == write).get
-    val EatAlias(ww) = write
+    //val EatAlias(ww) = write -- This is unnecessary (can't be bound)
     val distinctParents = writers.map{writer => parentOf(writer.controlNode)}.distinct
     val allParents = writers.map{writer => parentOf(writer.controlNode)}
     if (distinctParents.length < allParents.length) {
-      Console.println(s"[WARNING] Bram $bram has multiple writers enabled by the same parent.  Attempting to "
-        + "hardcode memory banks to writers to resolve this!")
-    //   throw new Exception(s"Bram $bram seems to have writers that are enabled by the same parent")
+      throw MultipleWriteControllersException(bram, writersOf(bram))
     }
     val writeCtrl = writer.controlNode
 
@@ -488,8 +486,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         case Deff(d:Pipe_foreach) => false
         case Deff(d:ParPipeReduce[_,_]) => true
         case Deff(d:ParPipeForeach) => false
-        case Deff(d:Unit_pipe) => true // Not sure why but this makes matmult work 
-        case p => throw new Exception(s"Unknown accumulator parent type $p!")
+        case Deff(d:Unit_pipe) => true // Not sure why but this makes matmult work
+        case p => throw UnknownParentControllerException(bram, write, writeCtrl)
     }
 
 
@@ -498,17 +496,18 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     val inds = parIndicesOf(write)
     val num_dims = dimsOf(bram).length
 
-    assert(inds.nonEmpty, s"Empty par access indices for write $write of $bram")
+    if (inds.isEmpty) throw NoParIndicesException(bram, write)
+
 
     if (isAccum(bram) & isAccumCtrl) {
       val offsetStr = quote(writeCtrl) + "_offset"
-      val parentPipe = parentOf(bram).getOrElse(throw new Exception(s"Bram ${quote(bram)} does not have a parent!"))
+      val parentPipe = parentOf(bram).getOrElse(throw UndefinedParentException(bram))
       val parentCtr = parentPipe match {
         case Deff(d:Pipe_fold[_,_]) => d.cchain
         case Deff(d:Pipe_foreach) => d.cchain
         case Deff(d:ParPipeReduce[_,_]) => d.cc
         case Deff(d:ParPipeForeach) => d.cc
-        case p => throw new Exception(s"Unknown accumulator parent type $p!")
+        case p => throw UnknownAccumControllerException(bram, write, p)
       }
 
       val Def(rhss) = parentCtr
@@ -597,7 +596,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                 } else { // Hardcode writers to banks and hope for the best
                   val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
                   emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13.5""")                                    
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13.5""")
                 }
               }
             }
@@ -839,11 +838,17 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         }
       }
 
-    case e@Reg_write(EatAlias(reg), value) =>
+    case e@Reg_write(EatAlias(reg), value, en) =>
       emitComment("Reg_write {")
+
+      en match {
+        case Deff(ConstBit(true)) =>
+        case _ => throw new Exception("Enabled register write is not yet supported in MaxJ generation")
+      }
 
       assert(writersOf(reg).nonEmpty, s"Register ${quote(reg)} is not written by a controller")
 
+      Console.println(s"Checking writers of $reg (" + writersOf(reg).mkString(", ") + s") for $sym")
       val writer = writersOf(reg).find(_.node == sym).get
 
       val writeCtrl = writersOf(reg).head.controlNode  // Regs have unique writer which also drives reset

@@ -4,7 +4,7 @@
 # CONFIG #
 ##########
 # Length of history to maintain in pretty printer (remember to manually add enough git commits)
-hist=48
+hist=72
 branch=$1
 
 # App classes
@@ -561,23 +561,22 @@ for aa in ${all_apps[@]}; do
 
 done
 
-# Draw delta-commit arrows
+# Draw delta-commit arrows# Draw delta-commit arrows
 if [ "$commit_change" = "true" ]; then
 	arrow="↖"
 	varrow="↑"
 	marker="↰"
 else
 	arrow=" "
-	varrow=" "
 	marker=" "
 fi
 cmd="sed -i \"/^(commit change)\ \+,/ s/$/$arrow/\" ${pretty_file}"
 eval "$cmd"
 cmd="sed -i \"/^(commit change)\ \+,/ s/$/$varrow /\" ${history_file}"
 eval "$cmd"
-numel1=(`cat ${history_file} | grep "^(commit change)\ " | sed "s/(commit change) \+,//g" | grep -oh "." | wc -l`)
+numel1=(`cat ${history_file} | grep "^(commit change)\ " | grep -oh "." | wc -l`)
 numel2=(`cat ${history_file} | grep "^(commit change)\ " | wc -l`)
-numel=$(($numel1 / $numel2 / 2))
+numel=$(($numel1 / $numel2))
 if [ $numel -gt $hist ]; then
 	cmd="sed -i \"s/^(commit change)\([[:blank:]]*\),,../(commit change)\1,,/g\" ${history_file}"
 	eval "$cmd"
@@ -585,21 +584,28 @@ fi
 numel1=(`cat ${pretty_file} | grep "^(commit change)\ " | grep -oh "." | wc -l`)
 numel2=(`cat ${pretty_file} | grep "^(commit change)\ " | wc -l`)
 numel=$(($numel1 / $numel2))
-if [ $numel -gt $(($hist+$chars_before_bars)) ]; then 
+if [ $numel -gt $(( $hist + $chars_before_bars )) ]; then 
 	cmd="sed -i \"s/^(commit change)\([[:blank:]]*\),,./(commit change)\1,,/g\" ${pretty_file}"
 	eval "$cmd"	
 fi
 
-# Delete outdated line and add new one
+# Delete outdated lines and add new
 cd ${SPATIAL_HOME}
+stamp=(`date +"%b%d.%H:%M"`)
 lines=(`cat $history_file | wc -l`)
-dline=$(($lines-$(($hist-1))))
-sed -i -e "${dline}d" $history_file
-echo "$hash_str / $dhash_str $marker" >> $history_file
+commitlines=(`cat $history_file | grep "^[a-zA-Z]\+[0-9]\+\.[0-9]\+:[0-9]\+-" | wc -l`)
+if [ $commitlines -ge $hist ]; then
+	dline=$(($lines-$(($hist-1))))
+	sed -i -e "${dline}d" $history_file
+fi
+echo "$stamp- $hash_str / $dhash_str $marker" >> $history_file
 lines=(`cat $pretty_file | wc -l`)
-dline=$(($lines-$(($hist-1))))
-sed -i -e "${dline}d" $pretty_file
-echo "$hash_str / $dhash_str $marker" >> $pretty_file
+commitlines=(`cat $pretty_file | grep "^[a-zA-Z]\+[0-9]\+\.[0-9]\+:[0-9]\+-" | wc -l`)
+if [ $commitlines -ge $hist ]; then
+	dline=$(($lines-$(($hist-1))))
+	sed -i -e "${dline}d" $pretty_file
+fi
+echo "$stamp- $hash_str / $dhash_str $marker" >> $pretty_file
 
 # git push
 cd ${SPATIAL_HOME}/spatial.wiki

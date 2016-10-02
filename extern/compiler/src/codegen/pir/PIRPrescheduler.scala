@@ -30,14 +30,8 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     top = None
     pipes = Nil
     cuMapping.clear()
-    globals.clear()
+    globals = Set.empty
     b
-  }
-
-  // HACK: Skip parallel pipes in PIR gen
-  def parentOfHack(x: Exp[Any]): Option[Exp[Any]] = parentOf(x) match {
-    case Some(pipe@Deff(Pipe_parallel(_))) => parentOfHack(pipe)
-    case parentOpt => parentOpt
   }
 
   // --- CounterChains
@@ -126,7 +120,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     else {
       debug(s"Allocating CU for $pipe")
       val parent = parentOfHack(pipe).map(allocateCU(_))
-      val cu = BasicComputeUnit(quote(pipe), parent, styleOf(pipe))
+      val cu = BasicComputeUnit(quote(pipe), pipe, parent, styleOf(pipe))
       initCU(cu, pipe)
       pipe match {
         case Deff(e:ParPipeForeach)     => addIterators(cu, e.cc, e.inds)
@@ -152,7 +146,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val mc = DRAMCtrl(quote(pipe)+"_mc", region, mode)
       globals += mc
       val parent = parentOfHack(pipe).map(allocateCU(_))
-      val cu = TileTransferUnit(quote(pipe), parent, mc, vector, mode)
+      val cu = TileTransferUnit(quote(pipe), pipe, parent, mc, vector, mode)
       initCU(cu, pipe)
     }
   }
@@ -167,6 +161,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     case Deff(_:Unit_pipe)            => allocateBasicCU(pipe)
     case Deff(e:Offchip_load_cmd[_])  => allocateMemoryCU(pipe, e.mem, e.fifo, MemLoad)
     case Deff(e:Offchip_store_cmd[_]) => allocateMemoryCU(pipe, e.mem, e.fifo, MemStore)
+    case Def(d) => throw new Exception(s"Don't know how to generate CU for: \n  $pipe = $d")
   }
 
   def allocateWrittenSRAM(writer: Exp[Any], mem: Exp[Any], addr: Option[Exp[Any]], writerCU: ComputeUnit, stages: List[PseudoStage]) {
@@ -211,7 +206,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
   def prescheduleRegisterRead(reg: Exp[Any], reader: Exp[Any], pipe: Option[Exp[Any]]) = {
     debug(s"  Register read: $reader")
     // Register reads may be used by more than one pipe
-    readersOf(reg).filter(_.node == reader).map(_._1).foreach{readCtrl =>
+    readersOf(reg).filter(_.node == reader).map(_.controlNode).foreach{readCtrl =>
       val isCurrentPipe = pipe.map(_ == readCtrl).getOrElse(false)
       val isLocallyWritten = isWrittenInPipe(reg, readCtrl)
 

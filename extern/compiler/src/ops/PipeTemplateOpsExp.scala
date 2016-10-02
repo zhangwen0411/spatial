@@ -171,6 +171,11 @@ trait ControllerTemplateOpsExp extends ControllerTemplateOps with MemoryTemplate
 
   override def propagate(lhs: Exp[Any], rhs: Def[Any]) = rhs match {
     case Pipe_fold(c,a,z,fA,ld,st,iFunc,func,rFunc,inds,idx,acc,res,rV) =>
+      /*Console.println(s"$lhs = $rhs")
+      Console.println(s"Getting props for $func")
+      Console.println(s"block result of $func = ${getBlockResult(func)}")
+      Console.println(s"props: ${makeString(getProps(func))}")*/
+
       setProps(acc, getProps(a))
       setProps(res, getProps(rFunc))
       setProps(rV._1, getProps(func))
@@ -586,7 +591,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
         emit(s"""OffsetExpr ${quote(sym)}_offset = stream.makeOffsetAutoLoop("${quote(sym)}_offset");""")
         emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this, $numCounters));""")
         emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
-        emit(s"""    ${quote(sym)}_done <== stream.offset(${quote(sym)}_sm.getOutput("sm_done"),-${quote(sym)}_offset);""")
+        emit(s"""    ${quote(sym)}_done <== stream.offset(${quote(sym)}_sm.getOutput("sm_done"),-1-${quote(sym)}_offset);""")
 
         emit(s"""DFEVar ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
         emitGlobalWire(s"""${quote(sym)}_rst_done""")

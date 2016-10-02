@@ -230,6 +230,7 @@ trait BankingBase extends Traversal with ControllerTools {
       }
     }
   }
+
   val allowConcurrentReaders = true
   val allowConcurrentWriters = false
   val allowPipelinedReaders  = true
@@ -237,27 +238,21 @@ trait BankingBase extends Traversal with ControllerTools {
   val allowMultipleReaders   = true
   val allowMultipleWriters   = true
 
-  // Override to allow concurrent readers
   def checkConcurrentReaders(mem: Exp[Any]): Unit = checkAccesses(mem,readersOf(mem)){(a,b) =>
     if (areConcurrent(a,b)) throw ConcurrentReadersException(mem, a, b)
   }
-  // Override to allow concurrent writers
   def checkConcurrentWriters(mem: Exp[Any]): Unit = checkAccesses(mem,writersOf(mem)){(a,b) =>
     if (areConcurrent(a,b)) throw ConcurrentWritersException(mem, a, b)
   }
-  // Override to allow concurrent readers
   def checkPipelinedReaders(mem: Exp[Any]): Unit = checkAccesses(mem,readersOf(mem)){(a,b) =>
     if (arePipelined(a,b)) throw PipelinedReadersException(mem, a, b)
   }
-  // Override to allow concurrent writers
   def checkPipelinedWriters(mem: Exp[Any]): Unit = checkAccesses(mem,writersOf(mem)){(a,b) =>
     if (arePipelined(a,b)) throw PipelinedWritersException(mem, a, b)
   }
-  // Override to allow multiple readers
   def checkMultipleReaders(mem: Exp[Any]): Unit = if (readersOf(mem).length > 1) {
     throw MultipleReadersException(mem, readersOf(mem))
   }
-  // Override to allow multiple writers
   def checkMultipleWriters(mem: Exp[Any]): Unit = if (writersOf(mem).length > 1) {
     throw MultipleWritersException(mem, writersOf(mem))
   }

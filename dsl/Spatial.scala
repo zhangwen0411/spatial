@@ -262,6 +262,7 @@ trait SpatialDSL extends ForgeApplication
     importGlobalAnalysis()
     importBoundAnalysis()
 
+    schedule(Printer)
     schedule(NameAnalyzer)          // Symbol names
     schedule(LevelAnalyzer)         // Initial sanity checks and pipe style annotation fixes
     schedule(BoundAnalyzer)         // Bound analysis prior to constant folding
@@ -278,8 +279,10 @@ trait SpatialDSL extends ForgeApplication
     schedule(SpatialAffineAnalysis) // Access patterns
     schedule(Printer)
     schedule(MemoryAnalyzer)        // Get used readers/writers of each memory
+    schedule(Printer)
     schedule(RegisterCleanup)       // Remove unused registers/writes/reads created in unit pipe insertion
-    // schedule(DotPrinter)            // Graph prior to unrolling
+    schedule(Printer)
+    //schedule(DotPrinter)            // Graph prior to unrolling
 
     // --- Design Space Exploration
     schedule(DSE)                   // Design space exploration. Runs a host of other analyses:

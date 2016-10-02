@@ -28,7 +28,7 @@ trait DSE extends Traversal {
   lazy val ctrlAnalyzer = new ControlSignalAnalyzer{val IR: DSE.this.IR.type = DSE.this.IR}
   lazy val paramAnalyzer = new ParameterAnalyzer{val IR: DSE.this.IR.type = DSE.this.IR}
   lazy val bndAnalyzer = new BoundAnalyzer with QuickTraversal{val IR: DSE.this.IR.type = DSE.this.IR}
-  lazy val contention = new ContentionModel{val IR: DSE.this.IR.type = DSE.this.IR}
+  lazy val contention = new ContentionAnalyzer{val IR: DSE.this.IR.type = DSE.this.IR}
   lazy val memAnalyzer = new MemoryAnalyzer{val IR: DSE.this.IR.type = DSE.this.IR}
 
   lazy val tileSizes = paramAnalyzer.tileSizes
@@ -38,6 +38,7 @@ trait DSE extends Traversal {
   lazy val topController = ctrlAnalyzer.top
 
   override def run[A:Manifest](b: Block[A]) = {
+    debug("Starting traversal " + name)
     bndAnalyzer.run(b)
     ctrlAnalyzer.run(b)
     paramAnalyzer.run(b)

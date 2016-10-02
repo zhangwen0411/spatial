@@ -102,7 +102,7 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
 
   // Returns written memory, optional value, optional address
   private def writerUnapply(d: Def[Any]): Option[List[LocalWrite]] = d match {
-    case EatReflect(Reg_write(reg,value))             => Some(LocalWrite(reg,value))
+    case EatReflect(Reg_write(reg,value,_))           => Some(LocalWrite(reg,value))
     case EatReflect(Bram_store(bram,addr,value))      => Some(LocalWrite(bram,value,addr))
     case EatReflect(Push_fifo(fifo,value,_))          => Some(LocalWrite(fifo,value))
     case EatReflect(Cam_store(cam,key,value))         => Some(LocalWrite(cam,value,key))
@@ -148,6 +148,7 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:Offchip_new[_])   => true
     case EatReflect(_:Counter_new)      => true
     case EatReflect(_:Counterchain_new) => true
+    case EatReflect(_:DeliteStruct[_])  => true
     case _ => false
   }
   def isOffChipTransfer(d: Def[Any]): Boolean = d match {
@@ -439,11 +440,11 @@ trait ControllerTools extends Traversal {
     assert(accesses.nonEmpty)
 
     val anchor = if (readers.nonEmpty) readers.head else writers.head
-    debug(s"  anchor = $anchor")
+    //debug(s"  anchor = $anchor")
 
     val lcas = accesses.map{access =>
       val (lca,dist) = lcaWithCoarseDistance(anchor, access)
-      debug(s"    lca($anchor, $access) = $lca ($dist)")
+      //debug(s"    lca($anchor, $access) = $lca ($dist)")
       (lca,dist,access)
     }
     // Find accesses which require n-buffering, group by their controller
@@ -460,7 +461,7 @@ trait ControllerTools extends Traversal {
     // Port X: X stage(s) after first stage
     val ports = Map(lcas.map{grp => grp._3 -> (grp._2 - minDist)}:_*)
 
-    debug(s"  metapipe = $metapipe")
+    //debug(s"  metapipe = $metapipe")
     ports.foreach{case (access, port) => debug(s"    - $access : port #$port")}
 
     (metapipe, ports)

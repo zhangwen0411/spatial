@@ -139,7 +139,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
         case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
           xx match {
             case Deff(Argin_new(_)) => true
-            case _ =>  false 
+            case _ =>  false
           }
         case Deff(_) => false // None
         case _ => true // Is bound
@@ -173,7 +173,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
       case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case _ => 
+      case _ =>
     }
     set ++ ret
   }
@@ -194,20 +194,20 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
 
       var hadThingsInside = true
       styleOf(sym) match {
-        case StreamPipe => 
+        case StreamPipe =>
           emitComment(s"""StrmPipe to be emitted""")
           print_stage_prefix(s"Foreach Streampipe",s"${ctr_str}",s"${quote(sym)}")
-        case CoarsePipe => 
+        case CoarsePipe =>
           emitComment(s"""MPSM to be emitted""")
           print_stage_prefix(s"Foreach Metapipe",s"${ctr_str}",s"${quote(sym)}")
-        case InnerPipe => 
+        case InnerPipe =>
           emitComment(s"""PipeSM to be emitted""")
           print_stage_prefix(s"Foreach Innerpipe",s"${ctr_str}",s"${quote(sym)}", false)
           hadThingsInside = false
-        case SequentialPipe => 
+        case SequentialPipe =>
           emitComment(s"""SeqSM to be emitted""")
           print_stage_prefix(s"Foreach Seqpipe",s"${ctr_str}",s"${quote(sym)}")
-        case _ => 
+        case _ =>
           emitComment(s"""ParPipeForeach style: ${styleOf(sym)}""")
           print_stage_prefix(s"Foreach ${styleOf(sym)}",s"${ctr_str}",s"${quote(sym)}")
       }
@@ -232,17 +232,17 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emit("""{""")
       var hadThingsInside = true
       styleOf(sym) match {
-        case CoarsePipe => 
+        case CoarsePipe =>
           emitComment(s"""MPSM to be emitted""")
           print_stage_prefix(s"Reduce Metapipe",s"${ctr_str}",s"${quote(sym)}")
-        case InnerPipe => 
+        case InnerPipe =>
           emitComment(s"""PipeSM to be emitted""")
           print_stage_prefix(s"Reduce Innerpipe",s"${ctr_str}",s"${quote(sym)}", false)
           hadThingsInside = false
-        case SequentialPipe => 
+        case SequentialPipe =>
           emitComment(s"""SeqSM to be emitted""")
           print_stage_prefix(s"Reduce Seqpipe",s"${ctr_str}",s"${quote(sym)}")
-        case _ => 
+        case _ =>
           emitComment(s"""ParPipeReduce style: ${styleOf(sym)}""")
           print_stage_prefix(s"Reduce ${styleOf(sym)}",s"${ctr_str}",s"${quote(sym)}")
       }
@@ -291,7 +291,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emitBlock(func)
       emitComment(s"""} ${quote(sym)} func block""")
       val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
-      val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_<_).mkString(",")
+      val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
       val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
       val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
       val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this

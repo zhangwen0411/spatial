@@ -23,9 +23,9 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
   }
 
   private def latencyOfNodeInReduce(s: Exp[Any], d: Def[Any]): Long = d match {
-    case FltPt_Add(_,_) => 1
-    case Reg_write(_,_) => 0
-    case Reflect(d,_,_) => latencyOfNodeInReduce(s,d)
+    case FltPt_Add(_,_)   => 1
+    case Reg_write(_,_,_) => 0
+    case Reflect(d,_,_)   => latencyOfNodeInReduce(s,d)
     case _ => latencyOfNode(s, d)
   }
 
@@ -238,17 +238,18 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
       //System.out.println(s"Tile transfer $s: c = $c, r = $r, b = $b, p = $p")
       memoryModel(c,r.toInt,b.toInt,p.toInt)
 
-    case _:Pipe_parallel => 1
-    case _:Unit_pipe => 0
-    case _:Pipe_foreach  => 1
-    case _:Pipe_fold[_,_] => 1
-    case _:Accum_fold[_,_]  => 1
+    case _:Pipe_parallel   => 1
+    case _:Unit_pipe       => 0
+    case _:Pipe_foreach    => 1
+    case _:Pipe_fold[_,_]  => 1
+    case _:Accum_fold[_,_] => 1
 
-    case Reg_read(s) => 0
-
-    case Reg_write(_,_) => 1
-    case Reg_reset(_)   => 0
-    case Offchip_new(_) => 0
+    case _:Reg_read[_]     => 0
+    case _:Reg_write[_]    => 1
+    case _:Reg_reset[_]    => 0
+    case _:Offchip_new[_]  => 0
+    case _:FieldApply[_]   => 0
+    case _:DeliteStruct[_] => 0
 
     case Reflect(d,_,_) => latencyOfNode(s, d)
     case Reify(_,_,_) => 0
