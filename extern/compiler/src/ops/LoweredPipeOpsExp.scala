@@ -132,7 +132,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
     }
   }
 
-  def isConstOrArgOrBnd(x: Exp[Any]) = x match {
+  override def isConstOrArgOrBnd(x: Exp[Any]) = x match {
     case s@Sym(n) => {
       s match {
         case Deff(ConstFixPt(_,_,_,_)) => true

@@ -284,11 +284,60 @@ trait ScalaGenControllerTemplateOps extends ScalaGenEffect {
 trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
   val IR: LoweredPipeOpsExp with ControllerTemplateOpsExp with TpesOpsExp with ParallelOpsExp
           with PipeOpsExp with OffChipMemOpsExp with RegOpsExp with ExternCounterOpsExp
-          with ExternPrimitiveOpsExp with SpatialCodegenOps with NosynthOpsExp with DeliteTransform
+          with SpatialCodegenOps with NosynthOpsExp with MemoryAnalysisExp
+          with DeliteTransform with VectorOpsExp with SpatialExp with UnrollingTransformExp
 
  import IR._ //{__ifThenElse => _, Nosynth___ifThenElse => _, __whileDo => _,
              // Forloop => _, println => _ , _}
 
+
+  def isConstOrArgOrBnd(x: Exp[Any]) = x match {
+    case s@Sym(n) => {
+      s match {
+        case Deff(ConstFixPt(_,_,_,_)) => true
+        case Deff(ConstFltPt(_,_,_)) => true
+        case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
+          xx match {
+            case Deff(Argin_new(_)) => true
+            case _ =>  
+              if (isReduceStarter(s)) {false} else {true}
+          }
+        case Deff(_) => false // None
+        case _ => true // Is bound
+      }
+    }
+  }
+
+  def addConstOrArgOrBnd(x: Exp[Any], set: Set[Exp[Any]]) = {
+    var ret = Set[Exp[Any]]()
+    val Deff(dd) = x
+    dd match {
+      case FltPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Lsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Rsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case Bit_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case Bit_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case Bit_Xor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
+      case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case _ =>
+    }
+    set ++ ret
+  }
   // HACK alert [TODO Raghu] : This code is duplicated in MaxJManagerGen so that argin and argout
   // have a consistent name. Code is duplicated because MaxJManagerGen is currently
   // a standalone thing that does not have a means to share things.
@@ -366,11 +415,11 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
     emitValDef(sym, quote(exp))
   }
 
-  def emitBlock(y: Block[Any], blockName:String): Unit = {
+  def emitBlock(y: Block[Any], blockName:String, doNotClose:Boolean = false): Unit = {
     emitComment(s"Block ${blockName} {")
     emit("{")
     emitBlock(y)
-    emit("}")
+    emit(s"""${if (doNotClose) "" else "}"}""")
     emitComment(s"} Block ${blockName}")
   }
 
@@ -560,7 +609,54 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
     DFEVar ${quote(sym)}_redLoop_done = ${quote(sym)}_redLoopCounter.getCount() === ${quote(sym)}_loopLengthVal-1;""")
       }
 
-      emitBlock(func, s"${quote(sym)} Unitpipe")
+
+      parentOf(sym).get match {
+        case e@Deff(ParPipeReduce(_,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+          if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
+            styleOf(sym) match {
+              case InnerPipe =>
+                // Putting reduction tree in its own kernel
+                var inputVecs = Set[Sym[Any]]()
+                var consts_args_bnds_list = Set[Exp[Any]]()
+                var treeResult = ""
+                focusBlock(func){ // Send reduce tree to separate file
+                  focusExactScope(func){ stms =>
+                    stms.foreach { case TP(s,d) =>
+                      val Deff(dd) = s
+                      dd match {
+                        case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
+                          if (isReduceResult(s)) {
+                            val ts = tpstr(1)(s.tp, implicitly[SourceContext])
+                            emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
+                            treeResult = quote(s)
+                          }
+                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                        case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                          inputVecs += s
+                        case _ =>
+                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                      }
+                    }
+                  }
+                }
+
+                emitBlock(func, s"${quote(sym)} Unitpipe", true /*do not close*/)
+                val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
+                val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
+                val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+                val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
+                val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+                emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+                emit(s"}")
+              case _ =>
+                emitBlock(func, s"${quote(sym)} Unitpipe")
+              }
+            } else {
+              emitBlock(func, s"${quote(sym)} Unitpipe")
+            }
+        case _ =>
+          emitBlock(func, s"${quote(sym)} Unitpipe")
+      }
 
       print_stage_suffix(quote(sym), hadThingsInside)
       controlNodeStack.pop

@@ -233,7 +233,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
   val IR: UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DeliteTransform
           with LoweredPipeOpsExp with ControllerTemplateOpsExp with ExternPrimitiveOpsExp with ReductionAnalysisExp
 
-  import IR.{println => _, assert => _, _}
+  import IR.{println => _, assert => _, infix_until => _, _}
 
   override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
     case "SpatialVector" => "DFEVector<DFEVar>"
@@ -305,16 +305,16 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length == 1 }.flatten
           val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
           val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
-          // val fullPorts = (0 until d.depth).map{ i => i }
-          val fullPorts = d.depth match {// TODO: proper way to make this list?
-            case 1 => Set(0)
-            case 2 => Set(0,1)
-            case 3 => Set(0,1,2)
-            case 4 => Set(0,1,2,3)
-            case 5 => Set(0,1,2,3,4)
-            case 6 => Set(0,1,2,3,4,5)
-            case _ => throw new Exception(s"Cannot handle nBuf this big! How to I do 0 until d.depth properly?")
-          }
+          val fullPorts = (0 until d.depth).map{ i => i }.toSet
+          // val fullPorts = d.depth match {// TODO: proper way to make this list?
+          //   case 1 => Set(0)
+          //   case 2 => Set(0,1)
+          //   case 3 => Set(0,1,2)
+          //   case 4 => Set(0,1,2,3)
+          //   case 5 => Set(0,1,2,3,4)
+          //   case 6 => Set(0,1,2,3,4,5)
+          //   case _ => throw new Exception(s"Cannot handle nBuf this big! How to I do 0 until d.depth properly?")
+          // }
           val dummyWPorts = fullPorts -- wPorts
           val dummyRPorts = fullPorts -- rPorts
           val dummyDonePorts = fullPorts -- wPorts -- rPorts
