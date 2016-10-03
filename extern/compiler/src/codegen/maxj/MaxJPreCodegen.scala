@@ -150,7 +150,9 @@ trait MaxJPreCodegen extends Traversal  {
 					}
 			}
     case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
-      // quoteSuffix += c.asInstanceOf[Sym[Any]] -> localSuffixMap
+      withStream(newStream("metapipe_" + quote(sym))) {
+        emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
+      }
       withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
         emitReduction(sym, rhs)
       }

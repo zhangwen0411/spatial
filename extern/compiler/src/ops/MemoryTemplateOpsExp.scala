@@ -841,11 +841,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
     case e@Reg_write(EatAlias(reg), value, en) =>
       emitComment("Reg_write {")
 
-      en match {
-        case Deff(ConstBit(true)) =>
-        case _ => throw new Exception("Enabled register write is not yet supported in MaxJ generation")
-      }
-
       assert(writersOf(reg).nonEmpty, s"Register ${quote(reg)} is not written by a controller")
 
       Console.println(s"Checking writers of $reg (" + writersOf(reg).mkString(", ") + s") for $sym")
@@ -866,6 +861,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
         case _ =>
           if (isAccum(reg)) {
+            en match {
+              case Deff(ConstBit(true)) =>
+              case _ => throw new Exception("Enabled register write is not yet supported for an accumulator!")
+            }
+
+            // Not sure how to decide this now...
             val accEn = writeCtrl match {
               case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
               case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
@@ -873,12 +874,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
             val rstStr = quote(parentOf(reg).get) + "_done /*because _rst_en goes hi on each iter*/"
             writeCtrl match {
-              case p@Def(EatReflect(_:Pipe_foreach | _:ParPipeForeach)) =>
-                throw new Exception(s"Foreaches may not have accumulators ($reg in $p)")
+              // case p@Def(EatReflect(_:Pipe_foreach | _:ParPipeForeach)) => // Safe to comment this out??
+              //   throw new Exception(s"Foreaches may not have accumulators ($reg in $p)")
 
-              case p@Deff(_:Pipe_fold[_,_] | _:ParPipeReduce[_,_] | _:Unit_pipe) =>
+              case p@Deff(_:Pipe_fold[_,_] | _:ParPipeReduce[_,_] | _:Unit_pipe | _:Pipe_foreach | _:ParPipeForeach) =>
                 emit(s"// Write to accumulator register")
-                emit(s"""DFEVar ${quote(reg)}_en = $accEn;""")
+                emit(s"""DFEVar ${quote(reg)}_en = ${accEn};""")
                 reduceType(reg) match {
                   case Some(fps: ReduceFunction) => fps match {
                     case FixPtSum =>

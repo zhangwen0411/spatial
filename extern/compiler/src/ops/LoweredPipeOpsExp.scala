@@ -288,6 +288,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
         }
       }
 
+      emitRegChains(sym, inds.flatten)
       emitComment(s"""ParPipeReduce ${quote(sym)} func block {""")
       emitBlock(func)
       emitComment(s"""} ${quote(sym)} func block""")
