@@ -640,7 +640,7 @@ trait UnalignedLdApp extends SpatialApp {
   }
 }
 
-object BlockReduce2D extends SpatialAppCompiler with BlockReduce2DApp // Args: 96 384
+object BlockReduce2D extends SpatialAppCompiler with BlockReduce2DApp // Args: 192 384
 trait BlockReduce2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]

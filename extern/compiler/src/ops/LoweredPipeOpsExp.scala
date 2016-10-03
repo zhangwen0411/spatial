@@ -139,7 +139,8 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
         case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
           xx match {
             case Deff(Argin_new(_)) => true
-            case _ =>  false
+            case _ =>  
+              if (isReduceStarter(s)) {false} else {true}
           }
         case Deff(_) => false // None
         case _ => true // Is bound

@@ -479,6 +479,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
               val treeResult = reduceTree(validInputs){(x,y) => reduce(x,y) }
               reduce(treeResult, accValue)
             }
+            isReduceResult(res2) = true
+            isReduceStarter(accValue) = true
             register(res -> res2)
           }
 

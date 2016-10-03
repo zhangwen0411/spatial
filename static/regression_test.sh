@@ -334,8 +334,8 @@ fi
 # Check if compile worked
 result_file="${SPATIAL_HOME}/spatial.wiki/${branch}-Regression-Tests-Status.md"
 cd ${PUB_HOME}
-echo "[STATUS] `date`: Making spatial again but faster because if it ain't broke, don't fix it..."
-fastmake="cp -r ${SPATIAL_HOME}/extern/compiler/src/ops/* ${PUB_HOME}/compiler/src/spatial/compiler/ops;cd ${PUB_HOME}/;sbt compile 2>&1 | tee -a log"
+echo "[STATUS] `date`: Making spatial with sbt compile because I know exactly what output should be and if it ain't broke, don't fix it..."
+fastmake="cd ${PUB_HOME}/;sbt compile 2>&1 | tee -a log"
 eval "$fastmake"
 echo "[STATUS] `date`: Remake spatial done!"
 wc=$(cat log | grep "success" | wc -l)

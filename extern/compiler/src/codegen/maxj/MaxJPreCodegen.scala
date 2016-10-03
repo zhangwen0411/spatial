@@ -352,7 +352,8 @@ trait MaxJPreCodegen extends Traversal  {
         case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
           xx match {
             case Deff(Argin_new(_)) => true
-            case _ =>  false
+            case _ =>  
+              if (isReduceStarter(s)) {false} else {true}
           }
         case Deff(_) => false // None
         case _ => true // Is bound
@@ -394,7 +395,11 @@ trait MaxJPreCodegen extends Traversal  {
     case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
 
     var inputVecs = Set[Sym[Any]]()
+    var hasRegWrite = false
     var treeResult = ""
+    var finalLineReg = ""
+    var finalLineBram = ""
+    var vecs_from_lists = Set[Exp[Any]]()
     var consts_args_bnds_list = Set[Exp[Any]]()
     var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
     val treeStringPre = focusBlock(func){ // Send reduce tree to separate file
@@ -406,6 +411,14 @@ trait MaxJPreCodegen extends Traversal  {
             case Reg_read(_) =>
               first_reg_read = first_reg_read :+ ii
               s""
+            case Reg_write(_,_,_) => // TODO: hack to decide if we should pass tree result to spec accum or add right here
+              hasRegWrite = true
+              s""
+            case Vector_from_list(_) => // seems to have replaced reg_read with davids merge
+              // TODO: ask david how to actually detect tree start and tree result because this is sooo hacky!!!
+              first_reg_read = first_reg_read :+ ii
+              vecs_from_lists += s
+              s""            
             case tag @ Vec_apply(vec,idx) =>
               if (first_reg_read.length > 1) { rTreeMap(s) = sym }
               s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
@@ -415,7 +428,10 @@ trait MaxJPreCodegen extends Traversal  {
               val pre = maxJPre(s)
               if (isReduceResult(s)) {
                 treeResult = quote(s)
-                s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+                // This is so damn hacky, use first for hasRegWrite==true, and second for false
+                finalLineReg = s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+                finalLineBram = s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
+                s""
               } else {
                 s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
               }
@@ -424,7 +440,10 @@ trait MaxJPreCodegen extends Traversal  {
               val pre = maxJPre(s)
               if (isReduceResult(s)) {
                 treeResult = quote(s)
-                s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+                // This is so damn hacky, use first for hasRegWrite==true, and second for false
+                finalLineReg = s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+                finalLineBram = s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
+                s""
               } else {
                 s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
               }
@@ -518,14 +537,20 @@ trait MaxJPreCodegen extends Traversal  {
       }
     }
 
+    // // TODO: Assume last Vector_from_list node is packing a single element (tree result) into a list
+    // val Deff(dd) = vecs_from_lists.toList.last
+    // isReduceResult(vecs_from_lists.toList.last) = true
+    // val treeResult = dd match {
+    //   case Vector_from_list(node) => quote(node.head) // Assume list of one thing
+    //   case _ => throw new Exception(s"No tree result found on $sym $rhs reduction!")
+    // }
+
     val treeString = if (first_reg_read.length > 1) {
       treeStringPre.zipWithIndex.filter{
         case (entry: String, ii: Int) => ii > first_reg_read(1)
       }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
     } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
 
-    val first_comma = if (treeResult != "") { "," } else {""}
-    val second_comma = if (inputVecs.toList.length > 0 & treeResult != "") { "," } else {""}
     val res_input_arg = if (treeResult != "") {s"DFEVar ${treeResult}"} else {""}
     // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
     //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
@@ -547,6 +572,8 @@ trait MaxJPreCodegen extends Traversal  {
     // }.mkString("\n")
 
     val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.toList.sortWith(_<_).mkString(",")
+    val first_comma = if (vec_input_args != "") { "," } else {""}
+    val second_comma = if (treeResult != "") { "," } else {""}
     val trailing_args = consts_args_bnds_list.toList
     val owner_comma = if (trailing_args.length > 0 & (vec_input_args != "" | res_input_arg != "")) {","} else {""} // TODO: Super ugly hack
 
@@ -585,18 +612,20 @@ import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
 import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
 import java.util.Arrays;
 class ${quote(sym)}_reduce_kernel extends KernelLib {
-void common($vec_input_args /*1*/ ${second_comma}
+void common($vec_input_args /*1*/ ${if (vec_input_args != "" & treeResult != "") "," else ""}
                 $res_input_arg /*2*/ $owner_comma $trailing_args_string /*3*/) {
 // For now, I just regenerate constants because java is being annoying about class extensions
 $cst_genStr
 
 $treeString
+// Emit final line, depending on whether this is accumulating into reg or bram
+${if (hasRegWrite) finalLineReg else finalLineBram}
 }
 
 ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $second_comma /*2*/
                 $res_input_arg $trailing_args_comma /*3*/  $trailing_args_string) {
   super(owner);
-  common(${inputVecs.map(quote(_)).toList.sortWith(_<_).mkString(", ")} ${second_comma} ${treeResult} ${if ((treeResult != "" | inputVecs.toList.length != 0) & trailing_args.length > 0) "," else ""} ${trailing_args.map { exp => quote(exp)}.sortWith(_<_).mkString(",")});
+  common(${inputVecs.map( exp => quote(exp)).toList.sortWith(_<_).mkString(", ")} ${if (vec_input_args != "" & treeResult != "") "," else ""} ${treeResult} ${if ((treeResult != "" | inputVecs.toList.length != 0) & trailing_args.length > 0) "," else ""} ${trailing_args.map { exp => quote(exp)}.sortWith(_<_).mkString(",")});
 }
 }""")
 
