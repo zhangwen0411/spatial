@@ -57,8 +57,8 @@ trait DotProductApp extends SpatialApp {
     val a = Array.fill(N)(random[T](10))
     val b = Array.fill(N)(random[T](10))
 
-    // printArr(a, "a")
-    // printArr(b, "b")
+    printArr(a, "a")
+    printArr(b, "b")
 
     val result = dotproduct(a, b)
     val gold = a.zip(b){_*_}.reduce{_+_}
