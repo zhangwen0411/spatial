@@ -53,6 +53,14 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   case class VectorLocal(x: Exp[Any], mem: CUMemory) extends LocalMem
   case class VectorOut(x: Exp[Any], mem: GlobalMem) extends LocalMem
 
+  def isAccum(mem: LocalMem): Boolean = mem match {
+    case _:AccumReg | _:ReduceReg => true
+    case _ => false
+  }
+  def isOutput(mem: LocalMem): Boolean = mem match {
+    case _:ScalarOut | _:VectorLocal | _:VectorOut => true
+    case _ => false
+  }
   def isReadable(mem: LocalMem) = mem match {
     case _:ReadAddrWire | _:WriteAddrWire | _:LocalWriteReg => false
     case _:ScalarOut | _:VectorLocal | _:VectorOut => false
@@ -63,6 +71,11 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
     case _:VectorIn | _:InputReg => false
     case _ => true
   }
+  def isGlobal(mem: LocalMem) = mem match {
+    case _:ScalarIn | _:ScalarOut | _:VectorIn | _:VectorOut => true
+    case _ => false
+  }
+
 
   // Local memory references
   case class LocalRef(stage: Int, reg: LocalMem)
@@ -216,7 +229,7 @@ ${super.dumpString}
 }"""
     override def toString() = s"BasicComputeUnit($name, ${parent.map(_.name)})"
 
-    var isUnitCompute =false
+    var isUnitCompute = false
   }
 
   case class TileTransferUnit(
@@ -261,7 +274,7 @@ ${super.dumpString}
     var swapRead: Option[CUCounterChain] = None
     var writeCtrl: Option[CUCounterChain] = None
     var banking: Option[SRAMBanking] = None
-    var bufferDepth:Int = 1 
+    var bufferDepth:Int = 1
 
     def dumpString = s"""CUMemory($name, $size) {
   vector = $vector

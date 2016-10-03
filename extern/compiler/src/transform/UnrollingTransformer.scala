@@ -219,7 +219,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
         // Can't quite use the above method -- e.g. if accumulators are duplicated A -> A', A''
         // There's no rule that says A' -> A''
         // So for now just unrolling the same loop in multiple contexts
-        // Is this more expensive? Doesn't seem like it should be...
+        // Is unrolling multiple times more expensive? Doesn't seem like it should be...
         lanes.foreach{p =>
           debugs(s"$lhs duplicate ${p+1}/${lanes.size}")
           unroll
@@ -321,21 +321,21 @@ trait UnrollingTransformer extends MultiPassTransformer {
   }
 
   def unrollPipeFold[T,C[T]](
-    lhs:    Exp[Any],
-    cchain: Exp[CounterChain],
-    accum:  Exp[C[T]],
-    zero:   Option[Exp[T]],
-    fold:   Boolean,
-    iFunc:  Block[Index],
-    ld:     Block[T],
-    st:     Block[Unit],
-    func:   Block[T],
-    rFunc:  Block[T],
-    inds:   List[Sym[Index]],
-    idx:    Sym[Index],
-    acc:    Sym[C[T]],
-    res:    Sym[T],
-    rV:     (Sym[T],Sym[T])
+    lhs:    Exp[Any],           // Original pipe symbol
+    cchain: Exp[CounterChain],  // Counterchain
+    accum:  Exp[C[T]],          // Accumulator (external)
+    zero:   Option[Exp[T]],     // Optional identity value for reduction
+    fold:   Boolean,            // [Unused]
+    iFunc:  Block[Index],       // Address function for accumulator
+    ld:     Block[T],           // Load function for accumulator
+    st:     Block[Unit],        // Store function for accumulator
+    func:   Block[T],           // Map function
+    rFunc:  Block[T],           // Reduce function
+    inds:   List[Sym[Index]],   // Bound iterators for map loop
+    idx:    Sym[Index],         // Bound symbol corresponding to result of iFunc
+    acc:    Sym[C[T]],          // Bound symbol corresponding to accum
+    res:    Sym[T],             // Bound symbol corresponding to result of rFunc
+    rV:     (Sym[T],Sym[T])     // Bound symbols used to reify rFunc
   )(implicit ctx: SourceContext, numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
     debugs(s"Unrolling pipe-fold $lhs")
     val lanes = Unroller(cchain, inds)
@@ -392,22 +392,22 @@ trait UnrollingTransformer extends MultiPassTransformer {
     lhs:   Exp[Any],          // Original pipe symbol
     ccMap: Exp[CounterChain], // Map counterchain
     ccRed: Exp[CounterChain], // Reduction counterchain
-    accum: Exp[C[T]],
-    zero:  Option[Exp[T]],
+    accum: Exp[C[T]],         // Accumulator (external)
+    zero:  Option[Exp[T]],    // Optional identity value for reduction
     fold:  Boolean,           // [Unused]
-    iFunc: Block[Index],
-    func:  Block[C[T]],
-    ldMap: Block[T],
-    ldAcc: Block[T],
-    rFunc: Block[T],
-    st:    Block[Unit],
-    isMap: List[Sym[Index]],
-    isRed: List[Sym[Index]],
-    idx:   Sym[Index],
-    part:  Sym[C[T]],
-    acc:   Sym[C[T]],
-    res:   Sym[T],
-    rV:    (Sym[T],Sym[T])
+    iFunc: Block[Index],      // Address function for intermediate values and accumulator
+    func:  Block[C[T]],       // Map function
+    ldMap: Block[T],          // Load function for intermediate values
+    ldAcc: Block[T],          // Load function for accumulator
+    rFunc: Block[T],          // Reduction function
+    st:    Block[Unit],       // Store function for accumulator
+    isMap: List[Sym[Index]],  // Bound iterators for map loop
+    isRed: List[Sym[Index]],  // Bound iterators for reduce loop
+    idx:   Sym[Index],        // Bound symbol corresponding to result of iFunc
+    part:  Sym[C[T]],         // Bound symbol corresponding to result of func
+    acc:   Sym[C[T]],         // Bound symbol corresponding to accum
+    res:   Sym[T],            // Bound symbol corresponding to result of rFunc
+    rV:    (Sym[T],Sym[T])    // Bound symbol used to reify rFunc
   )(implicit ctx: SourceContext, numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
     debugs(s"Unrolling accum-fold $lhs")
 
@@ -486,14 +486,14 @@ trait UnrollingTransformer extends MultiPassTransformer {
           inReduction{ unrollMap(st, reduceLanes) }
           ()
         }
-        val effects = summarizeEffects(rblk).star andAlso Simple() andAlso Write(List(accum.asInstanceOf[Sym[C[T]]]))
-        val rpipe = reflectEffect(ParPipeReduce(ccRed, accum, rblk, rFunc, isRed2, acc, rV)(ctx,mT,mC), effects)
+        val effects = summarizeEffects(rblk).star andAlso Simple()
+        val rpipe = reflectEffect(ParPipeForeach(ccRed, rblk, isRed2)(ctx), effects)
         styleOf(rpipe) = InnerPipe
         tab -= 1
       }
     }
-    val effects = summarizeEffects(blk) andAlso Simple()
-    val lhs2 = reflectEffect(ParPipeForeach(ccMap, blk, isMap2)(ctx), effects)
+    val effects = summarizeEffects(blk) andAlso Simple() andAlso Write(List(accum.asInstanceOf[Sym[C[T]]]))
+    val lhs2 = reflectEffect(ParPipeReduce(ccMap, accum, blk, rFunc, isMap2, acc, rV)(ctx,mT,mC), effects)
     setProps(lhs2, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
 
     val Def(rhs2) = lhs2

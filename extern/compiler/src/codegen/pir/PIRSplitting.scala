@@ -44,9 +44,7 @@ trait PIRSplitter extends Traversal with PIRCommon {
       if (nStages > MAX_STAGES) splitComputeCU(cu) else List(cu)
   }
 
-  def splitComputeCU(cu: BasicComputeUnit): List[BasicComputeUnit] = List(cu)
-
-  /*{
+  def splitComputeCU(cu: BasicComputeUnit): List[BasicComputeUnit] = List(cu) /*{
     val MAX_OUT = if (cu.isUnitCompute) 4 else  1    // Maximum scalar output and vector outputs
 
     debug(s"Splitting CU: $cu")
@@ -54,7 +52,7 @@ trait PIRSplitter extends Traversal with PIRCommon {
       case stage: MapStage => stage.inputMems.filterNot(stage.outputMems contains _ ) // Ignore cycles
       case stage: ReduceStage =>
         val idx = cu.stages.indexOf(stage)
-        cu.stages(idx - 1).outputMems.filter(reg => reg.isInstanceOf[ReduceReg] || reg.isInstanceOf[AccumReg])
+        cu.stages(idx - 1).outputMems.filter(isAccum(_))
     }
     def outputsOf(stage: Stage) = stage.outputMems
 
