@@ -287,7 +287,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
         if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
 
-        def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String) {
+        def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String, comment: String = "") {
           val controllers = accesses.flatMap{access => topControllerOf(access, mem, i) }.distinct
           val isBuffered = ports.size == 1 && accesses.nonEmpty
 
@@ -297,11 +297,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             throw UndefinedSwapControllerException(mem, i, accesses, ports.head)
           else if (isBuffered) {
             val portlist = ports.mkString{","} // TODO: Can probably use ports.head here
-            emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, new int[] { $portlist });""")
+            emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, new int[] { $portlist }); /*$comment*/""")
           }
         }
-        if (d.depth > 2) {
-          val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
+        if (d.depth > 1) { // Deprecated dblbuf
+          val suff = if (isBRAM(mem.tp)) {""} else if (isRegister(mem.tp)) {"_lib"}
+          val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length == 1 }.flatten
+          val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
           val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
           val fullPorts = d.depth match {// TODO: proper way to make this list?
             case 1 => Set(0)
@@ -311,11 +313,16 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             case _ => throw new Exception(s"Cannot handle nBuf this big! How to I do 0 until d.depth properly?")
           }
           val dummyWPorts = fullPorts -- wPorts
+          val dummyRPorts = fullPorts -- rPorts
           val dummyDonePorts = fullPorts -- wPorts -- rPorts
-          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl") }
-          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl") }
-          emit(s"""${quote(mem)}_${i}_lib.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
-          emit(s"""${quote(mem)}_${i}_lib.connectUntouchedPorts(new int[] {${dummyDonePorts.mkString(",")}});""")
+          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl","read") }
+          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
+          emit(s"""${quote(mem)}_${i}${suff}.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
+          emit(s"""${quote(mem)}_${i}${suff}.connectUnreadPorts(new int[] {${dummyRPorts.mkString(",")}});""")
+          emit(s"""${quote(mem)}_${i}${suff}.connectUntouchedPorts(new int[] {${dummyDonePorts.mkString(",")}});""")
+          if (writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }.toList.length == 0) {
+            emit(s"""${quote(mem)}_${i}${suff}.connectDummyBroadcast();""")
+          }
         } else {
           readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectRdone") }
           writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectWdone") }
@@ -509,17 +516,17 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*$writeCtrl*/"
       }
       dups.foreach {case (dd, ii) =>
+        val p = portsOf(write, bram, ii).head
         if (writers.length == 1) {
           num_dims match {
             case 1 =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr)); //w3""")
+                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w3""")
             case _ =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr)); //w4""")
+                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4""")
           }
-        } else if (distinctParents.length == allParents.length) { // Connect writers of various parents to mux
-          val p = portsOf(write, bram, ii).head
+        } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
           num_dims match {
             case 1 =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
@@ -544,25 +551,27 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       else num_dims match {
         case 1 =>
           dups.foreach {case (dd, ii) =>
+            val p = portsOf(write, bram, ii).mkString(",")
             if (writers.length == 1) {
-              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w8""")
-            } else if (distinctParents.length == allParents.length) { // Connect writers of various parents to mux
-              val p = portsOf(write, bram, ii).head
-              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8.2""")
+              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8""")
+            } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
+              val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
+              emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8.2""")
             }
           }
         case 2 =>
           if (inds.length == 1) {
             val addrs = inds(0)
             dups.foreach {case (dd, ii) =>
+              val p = portsOf(write, bram, ii).mkString(",")
               if (writers.length == 1) {
-                emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10""")
-              } else if (distinctParents.length == allParents.length) { // Connect writers of various parents to mux
-                val p = portsOf(write, bram, ii).head
-                emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //10.2""")
+                emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10""")
+              } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
+                val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
+                emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10.2""")
               } else { // Hardcode writers to banks and hope for the best
                 val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
-                emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //10.5""")
+                emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w10.5""")
               }
             }
           }
@@ -578,10 +587,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               dups.foreach {case (dd, ii) =>
                 if (writers.length == 1) {
                   emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13""")
-                } else if (distinctParents.length == allParents.length) { // Connect writers of various parents to mux
-                  val p = portsOf(write, bram, ii).head
-                  emit(s"""${quote(bram)}_${ii}.connectWport((new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13""")                  
+                } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
+                  val p = portsOf(write, bram, ii).mkString(",")
+                  val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
+                  emit(s"""${quote(bram)}_${ii}.${wrType}((new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w13.2""")
                 } else { // Hardcode writers to banks and hope for the best
                   val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
@@ -599,12 +609,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                 if (writers.length == 1) {
                   emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w16""")
-                } else if (distinctParents.length == allParents.length) { // Connect writers of various parents to mux
-                  val p = portsOf(write, bram, ii).head
-                  emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
+                  val p = portsOf(write, bram, ii).mkString(",")
+                  val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
+                  emit(s"""${quote(bram)}_${ii}.${wrType}(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w16.2""")
                 } else { // Hardcode writers to banks and hope for the best
-                  val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
+                  val bank_num = writers.map{ w => w.node }.indexOf(write)
                   emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w16.5""")
                 }
@@ -739,12 +750,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     Console.println(s"[WARNING] Assume duplicate 0 is the inside reduction register and do not emit lib")
                   case _ =>
                     val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
-                    if (d.depth == 2) {
+                    if (false/*d.depth == 2*/) {
                       emit(s"""DblBufReg ${quote(sym)}_${i}_lib = new DblBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal)); //${d.depth} depth""")
                       val readstr = if (parOf(sym)>1) "readv" else "read"
                       emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}();""")
                       emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this);""")
-                    } else if (d.depth > 2) {
+                    } else if (d.depth > 1) {
                       emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal), ${d.depth}); //${d.depth} depth""")
                     } else {
                       emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal));""")
@@ -779,7 +790,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
     case e@Reg_read(EatAlias(reg)) =>
       val readers = readersOf(reg).filter(_.node == sym) // There can be more than one!
       readers.foreach{reader =>
-        Console.println(s"Would like to read $reg $sym in ${reader.controller}")
         if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
           rTreeMap(sym) match {
             case Nil =>
@@ -789,7 +799,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           val pre = maxJPre(sym)
           val inst = instanceIndicesOf(reader, reg).head // Reads should only have one index
           val port = portsOf(reader, reg, inst).head
-          val nbuf = if (duplicatesOf(reg)(inst).depth > 2) {s"_lib.read($port)"} else ""
+          val nbuf = if (duplicatesOf(reg)(inst).depth > 1) {s"_lib.read($port)"} else ""
 
           val regStr = regType(reg) match {
             case Regular =>
@@ -814,10 +824,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
             case ArgumentIn => // emit in baselib suffix
               if (!emitted_argins.contains((sym, regStr))) {
                 emitted_argins += ((sym,regStr))
-                Console.println(s"argins $emitted_argins")
               }
             case _ => // Otherwise emit here
-              emit(s"""$pre ${quote(sym)} = $regStr; // reg read""")
+              if (!emitted_reglibreads.contains((sym, regStr))) {
+                emit(s"""$pre ${quote(sym)} = $regStr; // reg read""")
+                emitted_reglibreads += ((sym, regStr))
+              }
           }
 
         }
@@ -876,7 +888,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                   }
                   // Assume duplicate 0 is used for reduction, all others need writes
-                  dups.foreach { case (dup, ii) => if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false));""")}
+                  dups.foreach { case (dup, ii) => 
+                    val port = portsOf(writer, reg, ii).head 
+                    if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false), $port);""")
+                  }
                 }
               case _ =>
                 emit(s"DFEVar ${quote(reg)}_en = constant.var(true)")
@@ -887,19 +902,20 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               val regname = s"${quote(reg)}_${ii}"
               regType(reg) match {
                 case _ =>
+                  val port = portsOf(writer, reg, ii).head 
                   val rstStr = quote(parentOf(reg).get) + "_rst_en"
                   // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
-                  if (dup.depth == 2) {
+                  if (false/*dup.depth == 2*/) {
                     emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false));""")
-                  } else if (dup.depth > 2) {
-                    val port = portsOf(writer, reg, ii).head
-                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false), $port);""")
+                  } else if (dup.depth > 1) {
+                    val port = portsOf(writer, reg, ii).head 
+                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false), $port);""")                    
                   }
                   else {
                     // Using an enable signal instead of "always true" is causing an illegal loop.
                     // Using a reset signal instead of "always false" is causing an illegal loop.
                     // These signals don't matter for pass-through registers anyways.
-                    emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), constant.var(false));""")
+                    emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), constant.var(false), $port);""")
                   }
               }
             }
@@ -935,15 +951,32 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
             } else {
               if (r.depth == 1) {
                 emit(s"""BramLib ${quote(sym)}_${i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides}, ${distinctParents.length});""")
-              }
-              else if (r.depth == 2) {
-                val numReaders_for_this_duplicate = readersOf(sym).filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
-                emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
-                emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
-                  ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
+              // } else if (r.depth == 2) {
+              //   val numReaders_for_this_duplicate = readersOf(sym).filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
+              //   emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
+              //   emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
+              //     ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
               } else {
-                emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, $ts, "${quote(sym)}_${i}",
-                  ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${r.depth});""")
+                def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
+                val row_majors = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
+                if (row_majors.reduce{_&_} != row_majors.reduce{_|_}) {
+                  throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
+                }
+                val read_pars = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.length}
+                val read_head = read_pars.head
+                if (!(read_pars.map{a => a == read_head}.reduce{_&_})) {
+                  throw new Exception(s"Cannot handle multiple NBuf readers if they do not have the same access par!")
+                }
+                val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
+                val write_head = write_pars.head
+                if (!(write_pars.map{a => a == write_head}.reduce{_&_})) {
+                  throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")                  
+                }
+                emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}", 
+                  ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
+                  $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
+                  ${row_majors.head | size1==1}, /*rowmajor read?*/
+                  ${write_head}, ${read_head} /*writepar, readpar*/);""")
               }
             }
           }

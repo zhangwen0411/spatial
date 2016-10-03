@@ -4,7 +4,7 @@
 # CONFIG #
 ##########
 # Length of history to maintain in pretty printer (remember to manually add enough git commits)
-hist=48
+hist=72
 branch=$1
 
 # App classes
@@ -14,7 +14,7 @@ app_classes=("dense" "sparse" "unit" "characterization")
 dense_test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" "MatMult_outer"
 	"Kmeans"  "GEMM"      "GDA"    "SGD"   "LogReg" "OuterProduct")
 dense_args_list=("9600"       "8 192 192"     "1920"   "960"          "8 192 192"    
-	"96 8 96" "8 192 192" "384 96" "96 96" "96"     "192 192")
+	"96 8 96" "8 192 192" "96 96" "96 96" "96"     "192 192")
 sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
 sparse_args_list=("960" "960"      "960"              "960"       "960"   )    
 
@@ -105,14 +105,17 @@ function update_log {
 		lines=(`cat $perf_file | wc -l`)
 		dline=$(($lines-$(($perf_hist-1))))
 		last=(`tail -n1 < $perf_file`)
-		last_color=(`echo $last | sed "s/,.*//g"`)
-		if [ "$last" = *"$2 $3"* ]; then
+		last_color=(`echo ${last[@]} | sed "s/;.*//g"`)
+		if [[ "${last[@]}" = *"$2 $3"* ]]; then
 			color=$last_color
+			echo "[SPATIAL NOTICE] Using old color $color for app $p and hash $2 $3"
 		else
-			if [ "$last" = "r" ]; then
+			if [ "$last_color" = "r" ]; then
 				color="b"
+				echo "[SPATIAL NOTICE] Using new color $color for app $p and hash $2 $3 from line ${last[@]}"
 			else
 				color="r"
+				echo "[SPATIAL NOTICE] Using new color $color for app $p and hash $2 $3 from line ${last[@]}"
 			fi
 		fi
 
@@ -148,6 +151,8 @@ export FORGE_HOME=${HYPER_HOME}/forge
 export DELITE_HOME=${HYPER_HOME}/delite
 export LMS_HOME=${HYPER_HOME}/virtualization-lms-core
 export PIR_HOME=${HYPER_HOME}/spatial/published/Spatial
+
+sleep ${3} # Backoff time to prevent those weird file IO errors
 
 cd ${PUB_HOME}
 ${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} 2>&1 | tee -a ${5}/log
@@ -329,8 +334,8 @@ fi
 # Check if compile worked
 result_file="${SPATIAL_HOME}/spatial.wiki/${branch}-Regression-Tests-Status.md"
 cd ${PUB_HOME}
-echo "[STATUS] `date`: Making spatial again but faster because if it ain't broke, don't fix it..."
-fastmake="cp -r ${SPATIAL_HOME}/extern/compiler/src/ops/* ${PUB_HOME}/compiler/src/spatial/compiler/ops;cd ${PUB_HOME}/;sbt compile 2>&1 | tee -a log"
+echo "[STATUS] `date`: Making spatial with sbt compile because I know exactly what output should be and if it ain't broke, don't fix it..."
+fastmake="cd ${PUB_HOME}/;sbt compile 2>&1 | tee -a log"
 eval "$fastmake"
 echo "[STATUS] `date`: Remake spatial done!"
 wc=$(cat log | grep "success" | wc -l)
@@ -494,8 +499,8 @@ if [ ! -z "$diff" ]; then
 		echo "debug2"
 		if [[ ! "$last_m" = "$m" ]]; then 
 			echo "debug3"
-			courtesy_email="The following apps went from pass to fail: ${diff[@]} when going from commits: $old_commit to $new_commit"
-			echo "Message: ${courtesy_email}" | mail $m -s "[SPATIAL NOTICE] You done messed up" 
+			courtesy_email="The following apps on branch ${branch} went from pass to fail: ${diff[@]} when going from commits: $old_commit to $new_commit.  See https://github.com/stanford-ppl/spatial/wiki/${branch}-Regression-Tests-Status"
+			echo "Message: ${courtesy_email}" | mail $m -s "[SPATIAL NOTICE] Oops on ${branch}-branch!" 
 			# -r AppTsar@spatial-lang.com
 		fi
 		echo "[EMAIL] Sent ${tmp} to $m"
@@ -507,6 +512,13 @@ fi
 history_file=${SPATIAL_HOME}/spatial.wiki/${branch}_Regression_Test_History.csv
 pretty_file=${SPATIAL_HOME}/spatial.wiki/${branch}_Pretty_Regression_Test_History.csv
 all_apps=(`cat ${result_file} | grep "^\*\*pass\|^<-\+failed" | sed "s/<-\+//g" | sed "s/^.*[0-9]\+\_//g" | sed "s/\*//g" | sed "s/\[🗠.*//g" | sort`)
+last_line=(`tail -n1 < $pretty_file`)
+last_line=$(printf " %s" "${last_line[@]}")
+if [[ "$last_line" = *"$hash_str / $dhash_str"* ]]; then
+	commit_change=false
+else
+	commit_change=true
+fi
 for aa in ${all_apps[@]}; do
 	if [[ ! "$last_aa" = "$aa" ]]; then
 		# Append status to line
@@ -529,7 +541,7 @@ for aa in ${all_apps[@]}; do
 		eval "$cmd"
 
 		# Shave first if too long
-		numel=(`cat ${history_file} | grep "^$a\ " | grep -oh "\," | wc -l`)
+		numel=(`cat ${history_file} | grep "^$a\ " | sed "s/^$a \+,//g" | grep -oh "\," | wc -l`)
 		if [ $numel -gt $hist ]; then
 			cmd="sed -i \"s/^${a}\([[:blank:]]*\),,[0-9]\\+,/${a}\1,,/g\" ${history_file}"
 			echo "[SPATIAL NOTICE] shaving $a in history"
@@ -537,25 +549,63 @@ for aa in ${all_apps[@]}; do
 		fi
 		# Shave first if too long
 		numel=(`cat ${pretty_file} | grep "^$a\ " | grep -oh "." | wc -l`)
-		if [ $numel -gt $(($hist+23)) ]; then # 23 = chars before bars
+		chars_before_bars=(`cat ${pretty_file} | grep "^$a\ " | sed "s/,,.*/,,/g" | grep -oh "." | wc -l`)
+		if [ $numel -gt $(($hist+$chars_before_bars)) ]; then 
 			cmd="sed -i \"s/^${a}\([[:blank:]]*\),,./${a}\1,,/g\" ${pretty_file}"
 			echo "[SPATIAL NOTICE] shaving $a in pretty history"
 			eval "$cmd"	
 		fi
+
 	fi
 	last_aa=$aa
 
 done
 
+# Draw delta-commit arrows# Draw delta-commit arrows
+if [ "$commit_change" = "true" ]; then
+	arrow="↖"
+	varrow="↑"
+	marker="↰"
+else
+	arrow=" "
+	marker=" "
+fi
+cmd="sed -i \"/^(commit change)\ \+,/ s/$/$arrow/\" ${pretty_file}"
+eval "$cmd"
+cmd="sed -i \"/^(commit change)\ \+,/ s/$/$varrow /\" ${history_file}"
+eval "$cmd"
+numel1=(`cat ${history_file} | grep "^(commit change)\ " | grep -oh "." | wc -l`)
+numel2=(`cat ${history_file} | grep "^(commit change)\ " | wc -l`)
+numel=$(($numel1 / $numel2))
+if [ $numel -gt $hist ]; then
+	cmd="sed -i \"s/^(commit change)\([[:blank:]]*\),,../(commit change)\1,,/g\" ${history_file}"
+	eval "$cmd"
+fi
+numel1=(`cat ${pretty_file} | grep "^(commit change)\ " | grep -oh "." | wc -l`)
+numel2=(`cat ${pretty_file} | grep "^(commit change)\ " | wc -l`)
+numel=$(($numel1 / $numel2))
+if [ $numel -gt $(( $hist + $chars_before_bars )) ]; then 
+	cmd="sed -i \"s/^(commit change)\([[:blank:]]*\),,./(commit change)\1,,/g\" ${pretty_file}"
+	eval "$cmd"	
+fi
+
+# Delete outdated lines and add new
 cd ${SPATIAL_HOME}
+stamp=(`date +"%b%d.%H:%M"`)
 lines=(`cat $history_file | wc -l`)
-dline=$(($lines-$(($hist-1))))
-sed -i -e "${dline}d" $history_file
-echo "$hash_str / $dhash_str" >> $history_file
+commitlines=(`cat $history_file | grep "^[a-zA-Z]\+[0-9]\+\.[0-9]\+:[0-9]\+-" | wc -l`)
+if [ $commitlines -ge $hist ]; then
+	dline=$(($lines-$(($hist-1))))
+	sed -i -e "${dline}d" $history_file
+fi
+echo "$stamp- $hash_str / $dhash_str $marker" >> $history_file
 lines=(`cat $pretty_file | wc -l`)
-dline=$(($lines-$(($hist-1))))
-sed -i -e "${dline}d" $pretty_file
-echo "$hash_str / $dhash_str" >> $pretty_file
+commitlines=(`cat $pretty_file | grep "^[a-zA-Z]\+[0-9]\+\.[0-9]\+:[0-9]\+-" | wc -l`)
+if [ $commitlines -ge $hist ]; then
+	dline=$(($lines-$(($hist-1))))
+	sed -i -e "${dline}d" $pretty_file
+fi
+echo "$stamp- $hash_str / $dhash_str $marker" >> $pretty_file
 
 # git push
 cd ${SPATIAL_HOME}/spatial.wiki

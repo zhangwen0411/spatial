@@ -155,6 +155,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
 
   var emitted_consts: Set[(Exp[Any], Def[Any])] = Set.empty
   var emitted_argins: Set[(Exp[Any], String)] = Set.empty
+  var emitted_reglibreads: Set[(Exp[Any], String)] = Set.empty
   def addEmittedConsts(xs: Exp[Any]*) = xs.foreach {
     case lhs@Def(rhs) => if (!emitted_consts.contains((lhs, rhs))) { emitted_consts += ((lhs, rhs)) }
     case _ =>
