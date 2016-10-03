@@ -422,7 +422,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       val mems = unrollMap(func, mapLanes)
       val mvalids = boundChecks(ccMap, isMap2)
 
-      if (isUnitCounter(ccRed)) withSubstScope(acc -> accum) {
+      if (isUnitCounterChain(ccRed)) withSubstScope(acc -> accum) {
         debugs(s"[Accum-fold $lhs] Unrolling unit pipe reduction")
         val rblk = reifyBlock {
           val idx2 = inlineBlock(iFunc)
@@ -465,15 +465,29 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
           debugs(s"[Accum-fold $lhs] Unrolling reduction trees and cycles")
           reduceLanes.foreach{p =>
-            val addrs = reduceLanes.parAddr(p)
-            val inputs = values.map(_.apply(p))
-            val laneValids = rvalids.zip(addrs).map{case (vec,i) => vec(i) }
-            val valids = mvalids.zip(laneValids).map{case (a,b) => a && b }
+            // Valid bit for each index
+            val indexValids = rvalids.zip(reduceLanes.parAddr(p)).map{case (vec,j) => vec(j) }
+            // Valid bit for this lane (all indices are valid)
+            val laneValid = reduceTree(indexValids){(x,y) => x && y}
+
+            debugs(s"Lane #$p:")
+            tab += 1
+            val inputs = values.map(_.apply(p)) // The pth value of each vector load
+            val valids = mvalids.map{mvalid => mvalid && laneValid }
+
+            debug("Valids:")
+            valids.foreach{case s@Def(d) => debug(s"  $s = $d")}
+
+            debugs("Inputs:")
+            inputs.foreach{case s@Def(d) => debugs(s"  $s = $d") }
 
             val validInputs = zero match {
               case Some(z) => inputs.zip(valids).map{case (in, v) => mux(v, in, z) }
               case None => throw ReductionWithoutZeroException()(ctx)
             }
+            debugs("Valid inputs: ")
+            validInputs.foreach{case s@Def(d) => debugs(s"  $s = $d") }
+
             val accValue = accValues(p)
             val res2 = inReduction {
               val treeResult = reduceTree(validInputs){(x,y) => reduce(x,y) }
@@ -482,6 +496,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
             isReduceResult(res2) = true
             isReduceStarter(accValue) = true
             register(res -> res2)
+
+            tab -= 1
           }
 
           debugs(s"[Accum-fold $lhs] Unrolling accumulator store")
