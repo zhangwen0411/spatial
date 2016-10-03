@@ -305,11 +305,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length == 1 }.flatten
           val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
           val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
+          // val fullPorts = (0 until d.depth).map{ i => i }
           val fullPorts = d.depth match {// TODO: proper way to make this list?
             case 1 => Set(0)
             case 2 => Set(0,1)
             case 3 => Set(0,1,2)
             case 4 => Set(0,1,2,3)
+            case 5 => Set(0,1,2,3,4)
+            case 6 => Set(0,1,2,3,4,5)
             case _ => throw new Exception(s"Cannot handle nBuf this big! How to I do 0 until d.depth properly?")
           }
           val dummyWPorts = fullPorts -- wPorts
@@ -485,7 +488,15 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         case Deff(d:Pipe_fold[_,_]) => true
         case Deff(d:Pipe_foreach) => false
         case Deff(d:ParPipeReduce[_,_]) => true
-        case Deff(d:ParPipeForeach) => false
+        case Deff(d:ParPipeForeach) => 
+          if (childrenOf(parentOf(writeCtrl).get).indexOf(writeCtrl) == childrenOf(parentOf(writeCtrl).get).length-1) {
+            styleOf(writeCtrl) match {
+              case InnerPipe => true
+              case _ => false
+            }
+          } else {
+            false
+          }
         case Deff(d:Unit_pipe) => true // Not sure why but this makes matmult work
         case p => throw UnknownParentControllerException(bram, write, writeCtrl)
     }
@@ -513,10 +524,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       val Def(rhss) = parentCtr
       val accEn = writeCtrl match {
         case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
-        case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*$writeCtrl*/"
+        case Deff(a) => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*wtf pipe is $a*/"
+        case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*no def node*/"
       }
       dups.foreach {case (dd, ii) =>
-        val p = portsOf(write, bram, ii).head
+        val p = portsOf(write, bram, ii).mkString(",")
         if (writers.length == 1) {
           num_dims match {
             case 1 =>
@@ -527,12 +539,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                 stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4""")
           }
         } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
+          val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
           num_dims match {
             case 1 =>
-              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
+              emit(s"""${quote(bram)}_${ii}.${wrType}(stream.offset(${quote(addr)}, -$offsetStr),
               stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w3.2""")
             case _ =>
-              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
+              emit(s"""${quote(bram)}_${ii}.${wrType}(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
                 stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4.2""")
           }
         } else { // Hardcode writers to banks and hope for the best

@@ -143,7 +143,17 @@ trait MaxJPreCodegen extends Traversal  {
 					withStream(newStream("metapipe_" + quote(sym))) {
     				emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
 					}
-				case InnerPipe =>
+				case InnerPipe => 
+          Console.println(s"childs of ${childrenOf(parentOf(sym).get)} and I am $sym")
+          parentOf(sym).get match {
+            case e@Deff(ParPipeReduce(_,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+              if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
+                withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                  emitReduction(sym, rhs)
+                }                
+              }
+            case _ =>            
+          }
 				case SequentialPipe =>
 					withStream(newStream("sequential_" + quote(sym))) {
     				emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
@@ -153,8 +163,12 @@ trait MaxJPreCodegen extends Traversal  {
       withStream(newStream("metapipe_" + quote(sym))) {
         emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
       }
-      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-        emitReduction(sym, rhs)
+      styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
+        case InnerPipe =>
+          withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+            emitReduction(sym, rhs)
+          }
+        case _ =>
       }
 
     case e@Unit_pipe(func) =>
@@ -393,203 +407,8 @@ trait MaxJPreCodegen extends Traversal  {
     }
     set ++ ret
   }
-  def emitReduction(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
-
-    var inputVecs = Set[Sym[Any]]()
-    var hasRegWrite = false
-    var treeResult = ""
-    var finalLineReg = ""
-    var finalLineBram = ""
-    var vecs_from_lists = Set[Exp[Any]]()
-    var consts_args_bnds_list = Set[Exp[Any]]()
-    var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
-    val treeStringPre = focusBlock(func){ // Send reduce tree to separate file
-      focusExactScope(func){ stms =>
-        stms.zipWithIndex.map { case (TP(s,d), ii) =>
-          val Deff(dd) = s
-          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-          dd match {
-            case Reg_read(_) =>
-              first_reg_read = first_reg_read :+ ii
-              s""
-            case Reg_write(_,_,_) => // TODO: hack to decide if we should pass tree result to spec accum or add right here
-              hasRegWrite = true
-              s""
-            case Vector_from_list(_) => // seems to have replaced reg_read with davids merge
-              // TODO: ask david how to actually detect tree start and tree result because this is sooo hacky!!!
-              first_reg_read = first_reg_read :+ ii
-              vecs_from_lists += s
-              s""            
-            case tag @ Vec_apply(vec,idx) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
-            case tag @ FltPt_Add(a,b) =>
-              // TODO: Way of doing this args & consts check that isn't stupid
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              if (isReduceResult(s)) {
-                treeResult = quote(s)
-                // This is so damn hacky, use first for hasRegWrite==true, and second for false
-                finalLineReg = s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
-                finalLineBram = s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
-                s""
-              } else {
-                s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
-              }
-            case tag @ FixPt_Add(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              if (isReduceResult(s)) {
-                treeResult = quote(s)
-                // This is so damn hacky, use first for hasRegWrite==true, and second for false
-                finalLineReg = s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
-                finalLineBram = s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
-                s""
-              } else {
-                s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
-              }
-            case tag @ FltPt_Mul(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
-            case tag @ FixPt_Mul(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
-            case FixPt_Lt(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
-            case FixPt_Leq(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
-            case FixPt_Neq(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
-            case FixPt_Eql(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
-            case FixPt_And(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
-            case FixPt_Or(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
-            case FixPt_Lsh(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
-            case FixPt_Rsh(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
-            case FltPt_Lt(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
-            case FltPt_Leq(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
-            case FltPt_Neq(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
-            case FltPt_Eql(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
-            case Bit_Not(a) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ~${quote(a)};"""
-            case Bit_And(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
-            case Bit_Or(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ${quote(a)} | ${quote(b)};"""
-            case Bit_Xor(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ${quote(a)} ^ ${quote(b)};"""
-            case Bit_Xnor(a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ~(${quote(a)} ^ ${quote(b)});"""
-            case Mux2(sel,a,b) =>
-              if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-              val pre = maxJPre(s)
-              s"""$pre ${quote(s)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;"""
-            case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
-              inputVecs += s
-              s"/* Par_bram_load */"
-            case _ =>
-              s"/* Unknown Deff $s $dd */"
-          }
-        }
-      }
-    }
-
-    // // TODO: Assume last Vector_from_list node is packing a single element (tree result) into a list
-    // val Deff(dd) = vecs_from_lists.toList.last
-    // isReduceResult(vecs_from_lists.toList.last) = true
-    // val treeResult = dd match {
-    //   case Vector_from_list(node) => quote(node.head) // Assume list of one thing
-    //   case _ => throw new Exception(s"No tree result found on $sym $rhs reduction!")
-    // }
-
-    val treeString = if (first_reg_read.length > 1) {
-      treeStringPre.zipWithIndex.filter{
-        case (entry: String, ii: Int) => ii > first_reg_read(1)
-      }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
-    } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
-
-    val res_input_arg = if (treeResult != "") {s"DFEVar ${treeResult}"} else {""}
-    // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
-    //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
-    // } else { "" }
-
-    val cst_genStr = ""
-    // val cst_genStr = consts_args_bnds_list.map { exp =>
-    //   val ts = tpstr(1)(exp.tp, implicitly[SourceContext])
-    //   exp match {
-    //     case s@Sym(_) => { s match {
-    //       case Def(ConstFixPt(num,_,_,_)) =>
-    //         s"""DFEVar ${quote(s)} = constant.var($ts, $num);"""
-    //       case Def(ConstFltPt(num,_,_)) =>
-    //         s"""DFEVar ${quote(s)} = constant.var($ts, $num);"""
-    //       case _ =>
-    //         s"""Can't handle $s yet"""
-    //     }}
-    //   }
-    // }.mkString("\n")
-
-    val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.toList.sortWith(_<_).mkString(",")
-    val first_comma = if (vec_input_args != "") { "," } else {""}
-    val second_comma = if (treeResult != "") { "," } else {""}
-    val trailing_args = consts_args_bnds_list.toList
-    val owner_comma = if (trailing_args.length > 0 & (vec_input_args != "" | res_input_arg != "")) {","} else {""} // TODO: Super ugly hack
-
-    val trailing_args_comma = if (
-      (trailing_args.length > 0) & (
-        (first_comma == "" & vec_input_args == "" & second_comma == "" & res_input_arg == "") |
-        (vec_input_args != "" & second_comma == "" & res_input_arg == "") |
-        (res_input_arg != ""))
-        ) "," else ""
-    val trailing_args_string = trailing_args.map { exp =>
-      s"""DFEVar ${quote(exp)}"""
-    }.sortWith(_<_).mkString(",")
-
-    emit(s"""package engine;
+  def emitReduction(sym: Sym[Any], rhs: Def[Any]) = {
+      emit(s"""package engine;
 import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
 import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.CounterChain;
 import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count;
@@ -613,15 +432,219 @@ import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVector;
 import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
 import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
 import java.util.Arrays;
-class ${quote(sym)}_reduce_kernel extends KernelLib {
-void common($vec_input_args /*1*/ ${if (vec_input_args != "" & treeResult != "") "," else ""}
+class ${quote(sym)}_reduce_kernel extends KernelLib {""")
+    rhs match {
+      case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+
+        // If there is no result to this kernel, then turn off isStarter and isResult metadata
+        val hasRegWrite = focusBlock(func){ focusExactScope(func){ stms => stms.zipWithIndex.map { case (TP(s,d), ii) =>
+          val Deff(dd) = s
+          dd match {
+            case Reg_write(_,_,_) => true
+            case _ => false
+          }
+        }}}.reduce{_|_}
+
+        var inputVecs = Set[Sym[Any]]()
+        var treeResult = ""
+        var finalLineReg = ""
+        var finalLineBram = ""
+        var vecs_from_lists = Set[Exp[Any]]()
+        var consts_args_bnds_list = Set[Exp[Any]]()
+        var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
+        val treeStringPre = focusBlock(func){ // Send reduce tree to separate file
+          focusExactScope(func){ stms =>
+            stms.zipWithIndex.map { case (TP(s,d), ii) =>
+              val Deff(dd) = s
+              consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+              Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+              dd match {
+                case Reg_read(_) =>
+                  first_reg_read = first_reg_read :+ ii
+                  s""
+                case Vector_from_list(_) => // seems to have replaced reg_read with davids merge
+                  // TODO: ask david how to actually detect tree start and tree result because this is sooo hacky!!!
+                  first_reg_read = first_reg_read :+ ii
+                  vecs_from_lists += s
+                  s""            
+                case tag @ Vec_apply(vec,idx) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
+                case tag @ FltPt_Add(a,b) =>
+                  // TODO: Way of doing this args & consts check that isn't stupid
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  if (isReduceResult(s)) {
+                    treeResult = quote(s)
+                    if (hasRegWrite) {
+                      s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+                    } else {
+                      s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
+                      // isReduceResult(s) = false
+                    }
+                  } else {
+                    s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
+                  }
+                case tag @ FixPt_Add(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  if (isReduceResult(s)) {
+                    treeResult = quote(s)
+                    if (hasRegWrite) {
+                      s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+                    } else {
+                      s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
+                      // isReduceResult(s) = false
+                    }
+                  } else {
+                    s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
+                  }
+                case tag @ FltPt_Mul(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
+                case tag @ FixPt_Mul(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
+                case FixPt_Lt(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
+                case FixPt_Leq(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
+                case FixPt_Neq(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
+                case FixPt_Eql(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
+                case FixPt_And(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+                case FixPt_Or(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+                case FixPt_Lsh(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+                case FixPt_Rsh(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+                case FltPt_Lt(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
+                case FltPt_Leq(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
+                case FltPt_Neq(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
+                case FltPt_Eql(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
+                case Bit_Not(a) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ~${quote(a)};"""
+                case Bit_And(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+                case Bit_Or(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} | ${quote(b)};"""
+                case Bit_Xor(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} ^ ${quote(b)};"""
+                case Bit_Xnor(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ~(${quote(a)} ^ ${quote(b)});"""
+                case Mux2(sel,a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;"""
+                case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                  inputVecs += s
+                  s"/* Par_bram_load */"
+                case _ =>
+                  s"/* Unknown Deff $s $dd */"
+              }
+            }
+          }
+        }
+
+        // // TODO: Assume last Vector_from_list node is packing a single element (tree result) into a list
+        // val Deff(dd) = vecs_from_lists.toList.last
+        // isReduceResult(vecs_from_lists.toList.last) = true
+        // val treeResult = dd match {
+        //   case Vector_from_list(node) => quote(node.head) // Assume list of one thing
+        //   case _ => throw new Exception(s"No tree result found on $sym $rhs reduction!")
+        // }
+
+        val treeString = if (first_reg_read.length > 1) {
+          treeStringPre.zipWithIndex.filter{
+            case (entry: String, ii: Int) => ii > first_reg_read(1)
+          }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
+        } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
+
+        val res_input_arg = if (treeResult != "") {s"DFEVar ${treeResult}"} else {""}
+        // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
+        //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
+        // } else { "" }
+
+
+        val cst_genStr = ""
+        // val cst_genStr = consts_args_bnds_list.map { exp =>
+        //   val ts = tpstr(1)(exp.tp, implicitly[SourceContext])
+        //   exp match {
+        //     case s@Sym(_) => { s match {
+        //       case Def(ConstFixPt(num,_,_,_)) =>
+        //         s"""DFEVar ${quote(s)} = constant.var($ts, $num);"""
+        //       case Def(ConstFltPt(num,_,_)) =>
+        //         s"""DFEVar ${quote(s)} = constant.var($ts, $num);"""
+        //       case _ =>
+        //         s"""Can't handle $s yet"""
+        //     }}
+        //   }
+        // }.mkString("\n")
+
+        val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.toList.sortWith(_<_).mkString(",")
+        val first_comma = if (vec_input_args != "") { "," } else {""}
+        val second_comma = if (treeResult != "") { "," } else {""}
+        val trailing_args = consts_args_bnds_list.toList
+        val owner_comma = if (trailing_args.length > 0 & (vec_input_args != "" | res_input_arg != "")) {","} else {""} // TODO: Super ugly hack
+
+        val trailing_args_comma = if (
+          (trailing_args.length > 0) & (
+            (first_comma == "" & vec_input_args == "" & second_comma == "" & res_input_arg == "") |
+            (vec_input_args != "" & second_comma == "" & res_input_arg == "") |
+            (res_input_arg != ""))
+            ) "," else ""
+        val trailing_args_string = trailing_args.map { exp =>
+          s"""DFEVar ${quote(exp)}"""
+        }.sortWith(_<_).mkString(",")
+        emit(s"""void common($vec_input_args /*1*/ ${if (vec_input_args != "" & treeResult != "") "," else ""}
                 $res_input_arg /*2*/ $owner_comma $trailing_args_string /*3*/) {
 // For now, I just regenerate constants because java is being annoying about class extensions
 $cst_genStr
 
 $treeString
-// Emit final line, depending on whether this is accumulating into reg or bram
-${if (hasRegWrite) finalLineReg else finalLineBram}
 }
 
 ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $second_comma /*2*/
@@ -631,6 +654,226 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
 }
 }""")
 
+      case e@ParPipeForeach(cchain, func, inds) =>
+
+        // If there is no result to this kernel, then turn off isStarter and isResult metadata
+        val hasRegWrite = focusBlock(func){ focusExactScope(func){ stms => stms.zipWithIndex.map { case (TP(s,d), ii) =>
+          val Deff(dd) = s
+          dd match {
+            case Reg_write(_,_,_) => true
+            case _ => false
+          }
+        }}}.reduce{_|_}
+
+        var inputVecs = Set[Sym[Any]]()
+        var treeResult = ""
+        var finalLineReg = ""
+        var finalLineBram = ""
+        var vecs_from_lists = Set[Exp[Any]]()
+        var consts_args_bnds_list = Set[Exp[Any]]()
+        var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
+        val treeStringPre = focusBlock(func){ // Send reduce tree to separate file
+          focusExactScope(func){ stms =>
+            stms.zipWithIndex.map { case (TP(s,d), ii) =>
+              val Deff(dd) = s
+              consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+              Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+              dd match {
+                case Reg_read(_) =>
+                  first_reg_read = first_reg_read :+ ii
+                  s""
+                case Vector_from_list(_) => // seems to have replaced reg_read with davids merge
+                  // TODO: ask david how to actually detect tree start and tree result because this is sooo hacky!!!
+                  first_reg_read = first_reg_read :+ ii
+                  vecs_from_lists += s
+                  s""            
+                case tag @ Vec_apply(vec,idx) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
+                case tag @ FltPt_Add(a,b) =>
+                  // TODO: Way of doing this args & consts check that isn't stupid
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  if (isReduceResult(s)) {
+                    treeResult = quote(s)
+                    if (hasRegWrite) {
+                      s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+                    } else {
+                      // isReduceResult(s) = false
+                      s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
+                    }
+                  } else {
+                    s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
+                  }
+                case tag @ FixPt_Add(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  if (isReduceResult(s)) {
+                    treeResult = quote(s)
+                    if (hasRegWrite) {
+                      s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+                    } else {
+                      // isReduceResult(s) = false
+                      s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
+                    }
+                  } else {
+                    s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
+                  }
+                case tag @ FltPt_Mul(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
+                case tag @ FixPt_Mul(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
+                case FixPt_Lt(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
+                case FixPt_Leq(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
+                case FixPt_Neq(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
+                case FixPt_Eql(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
+                case FixPt_And(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+                case FixPt_Or(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+                case FixPt_Lsh(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+                case FixPt_Rsh(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+                case FltPt_Lt(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
+                case FltPt_Leq(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
+                case FltPt_Neq(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
+                case FltPt_Eql(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
+                case Bit_Not(a) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ~${quote(a)};"""
+                case Bit_And(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+                case Bit_Or(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} | ${quote(b)};"""
+                case Bit_Xor(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} ^ ${quote(b)};"""
+                case Bit_Xnor(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ~(${quote(a)} ^ ${quote(b)});"""
+                case Mux2(sel,a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;"""
+                case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                  inputVecs += s
+                  s"/* Par_bram_load */"
+                case _ =>
+                  s"/* Unknown Deff $s $dd */"
+              }
+            }
+          }
+        }
+
+        // // TODO: Assume last Vector_from_list node is packing a single element (tree result) into a list
+        // val Deff(dd) = vecs_from_lists.toList.last
+        // isReduceResult(vecs_from_lists.toList.last) = true
+        // val treeResult = dd match {
+        //   case Vector_from_list(node) => quote(node.head) // Assume list of one thing
+        //   case _ => throw new Exception(s"No tree result found on $sym $rhs reduction!")
+        // }
+
+        val treeString = if (first_reg_read.length > 1) {
+          treeStringPre.zipWithIndex.filter{
+            case (entry: String, ii: Int) => ii > first_reg_read(1)
+          }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
+        } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
+
+        val res_input_arg = if (treeResult != "") {s"DFEVar ${treeResult}"} else {""}
+        // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
+        //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
+        // } else { "" }
+
+
+        val cst_genStr = ""
+        // val cst_genStr = consts_args_bnds_list.map { exp =>
+        //   val ts = tpstr(1)(exp.tp, implicitly[SourceContext])
+        //   exp match {
+        //     case s@Sym(_) => { s match {
+        //       case Def(ConstFixPt(num,_,_,_)) =>
+        //         s"""DFEVar ${quote(s)} = constant.var($ts, $num);"""
+        //       case Def(ConstFltPt(num,_,_)) =>
+        //         s"""DFEVar ${quote(s)} = constant.var($ts, $num);"""
+        //       case _ =>
+        //         s"""Can't handle $s yet"""
+        //     }}
+        //   }
+        // }.mkString("\n")
+
+        val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.toList.sortWith(_<_).mkString(",")
+        val first_comma = if (vec_input_args != "") { "," } else {""}
+        val second_comma = if (treeResult != "") { "," } else {""}
+        val trailing_args = consts_args_bnds_list.toList
+        val owner_comma = if (trailing_args.length > 0 & (vec_input_args != "" | res_input_arg != "")) {","} else {""} // TODO: Super ugly hack
+
+        val trailing_args_comma = if (
+          (trailing_args.length > 0) & (
+            (first_comma == "" & vec_input_args == "" & second_comma == "" & res_input_arg == "") |
+            (vec_input_args != "" & second_comma == "" & res_input_arg == "") |
+            (res_input_arg != ""))
+            ) "," else ""
+        val trailing_args_string = trailing_args.map { exp =>
+          s"""DFEVar ${quote(exp)}"""
+        }.sortWith(_<_).mkString(",")
+        emit(s"""void common($vec_input_args /*1*/ ${if (vec_input_args != "" & treeResult != "") "," else ""}
+                $res_input_arg /*2*/ $owner_comma $trailing_args_string /*3*/) {
+// For now, I just regenerate constants because java is being annoying about class extensions
+$cst_genStr
+
+$treeString
+}
+
+${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $second_comma /*2*/
+                $res_input_arg $trailing_args_comma /*3*/  $trailing_args_string) {
+  super(owner);
+  common(${inputVecs.map( exp => quote(exp)).toList.sortWith(_<_).mkString(", ")} ${if (vec_input_args != "" & treeResult != "") "," else ""} ${treeResult} ${if ((treeResult != "" | inputVecs.toList.length != 0) & trailing_args.length > 0) "," else ""} ${trailing_args.map { exp => quote(exp)}.sortWith(_<_).mkString(",")});
+}
+}""")
+      }
   }
 
   def emitCtrSM(name: String, par: List[Int], gap: Int, numCtrs: Int) = {

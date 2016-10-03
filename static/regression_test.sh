@@ -291,6 +291,7 @@ eval "$cmd" > /dev/null
 # cmd="git pull origin ${branch}"
 # eval "$cmd" > /dev/null
 cd ../
+start_date=(`date`)
 echo "[STATUS] `date`: Done cloning stuff!"
 echo "[STATUS] `date`: Making hyperdsl..."
 sbt compile > /dev/null 
@@ -356,7 +357,7 @@ if [ "$wc" -ne 1 ]; then
 		echo "" >> $result_file
 		echo "" >> $result_file
 		tucson_date=`ssh tucson.stanford.edu date`
-		echo -e "*Status updated on $tucson_date* \n" > $result_file
+		echo -e "*Repos pulled at $start_date*\n*Status updated on $tucson_date* \n" > $result_file
 		echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
 		echo "" >> $result_file
 		echo "Error building Spatial!  Remake seemed to fail.  Could not validate anything!" >> $result_file
@@ -461,6 +462,7 @@ old_commit=(`cat ${result_file} | grep "^commit" | awk '/commit/{i++}i==1'`)
 rm $result_file
 echo -e "
 
+*Repos pulled at $start_date*
 *Status updated on `date`*
 
 * <---- indicates relative amount of work needed before app will **pass**" > $result_file
