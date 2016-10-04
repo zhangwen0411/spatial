@@ -21,7 +21,6 @@ trait DotProductApp extends SpatialApp {
     setArg(N, a.length)
 
     val out = ArgOut[T]
-    // setArg(N, a.length)
 
     val v1 = OffChipMem[T](N)
     val v2 = OffChipMem[T](N)

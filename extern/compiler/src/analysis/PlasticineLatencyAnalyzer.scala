@@ -33,11 +33,9 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
 
   var cycleScope: List[Long] = Nil
   var totalCycles: Long = 0L
-  var scopeLevel: Int = 0
+
   val table_init = """<TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">"""
   val pipe_diagram = new PrintWriter(new File("plasticene_pipe_diagram.html" ))
-
-  def debugs(x: => Any) = debug(".."*scopeLevel + x)
 
   def print_stage_prefix(name: String, i: Int=0) {
     pipe_diagram.write("<TR>" + "<TD></TD>"*i + s"<TD>$name: ")
@@ -62,7 +60,7 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
   def latencyOfBlock(b: Block[Any], par_mask: Boolean = false): List[Long] = {
     val outerScope = cycleScope
     cycleScope = Nil
-    scopeLevel += 1
+    tab += 1
     //traverseBlock(b) -- can cause us to see things like counters as "stages"
     getControlNodes(b).zipWithIndex.foreach{ case (n, i) =>
       indent = i
@@ -71,7 +69,7 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
         case _ =>
       }
     }
-    scopeLevel -= 1
+    tab -= 1
 
     val cycles = cycleScope
     cycleScope = outerScope

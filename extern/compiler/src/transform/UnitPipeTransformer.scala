@@ -27,15 +27,6 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
   debugMode = SpatialConfig.debugging
   verboseMode = SpatialConfig.verbose
 
-  var scope = 0
-  def debugs(x: => Any) { debug(".."*scope + x) }
-
-  override def traverseBlock[A](block: Block[A]): Unit = {
-    scope += 1
-    super.traverseBlock(block)
-    scope -= 1
-  }
-
   class Stage(val isControl: Boolean) {
     val allocs: ArrayBuffer[Stm] = ArrayBuffer.empty
     val nodes: ArrayBuffer[Stm] = ArrayBuffer.empty
@@ -83,7 +74,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
   }).asInstanceOf[Exp[T]]
 
   def wrapPrimitives[T:Manifest](blk: Block[T])(implicit ctx: SourceContext): Block[T] = {
-    scope += 1
+    tab += 1
 
     val blk2 = reifyBlock {
       focusBlock(blk){
@@ -116,7 +107,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
 
           if (debugMode) {
             stages.zipWithIndex.foreach{case (stage,i) => stage.dumpStage(i) }
-            debug("")
+            debugs("")
           }
 
           stages.zipWithIndex.foreach{
@@ -171,7 +162,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
       }
       f(getBlockResult(blk))
     }
-    scope -= 1
+    tab -= 1
 
     blk2
   }

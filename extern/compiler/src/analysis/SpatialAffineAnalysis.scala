@@ -59,14 +59,19 @@ trait SpatialAffineAnalyzer extends AffineAnalyzer {
   debugMode = SpatialConfig.debugging
   verboseMode = SpatialConfig.verbose
 
-  override def traverse(lhs: Sym[Any], rhs: Def[Any]) {
-    rhs match {
-      case EatReflect(e:Scatter[_]) =>
-        accessPatternOf(lhs) = List(RandomAccess)
-      case EatReflect(e:Gather[_]) =>
-        accessPatternOf(lhs) = List(RandomAccess)
-      case _ =>
-    }
-    super.traverse(lhs,rhs)
+  override def traverse(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
+    case EatReflect(e:Scatter[_]) =>
+      accessPatternOf(lhs) = List(RandomAccess)
+    case EatReflect(e:Gather[_]) =>
+      accessPatternOf(lhs) = List(RandomAccess)
+
+    // Pipe_fold - idx is loop invariant anyway
+
+    case EatReflect(e: Accum_fold[_,_]) =>
+      // Add access pattern for bound idx variable prior to traversal
+      boundIndexPatterns += e.idx -> e.indsInner.map{i => LinearAccess(i)}
+      super.traverse(lhs, rhs)
+
+    case _ => super.traverse(lhs,rhs)
   }
 }

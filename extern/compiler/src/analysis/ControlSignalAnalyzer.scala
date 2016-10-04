@@ -299,8 +299,8 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
       aliasOf(acc) = accum
       traverseUnrolled(lhs, inds, cc)(func)
       // rFunc isn't "real" anymore
-      isAccum(accum) = true                                 // (6)
-      isInnerAccum(accum) = true
+      isAccum(accum) = true                          // (6)
+      isInnerAccum(accum) = isInnerControl(lhs)
       parentOf(accum) = lhs // Reset accumulator with reduction, not allocation
 
       propagationPairs ::= (accum, acc)
