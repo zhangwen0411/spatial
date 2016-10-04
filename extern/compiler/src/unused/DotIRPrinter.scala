@@ -15,19 +15,6 @@ import scala.language.postfixOps
 import scala.collection.mutable.Set
 
 import ppl.delite.framework.Config
-import ppl.delite.framework.analysis.IRPrinterPlus
-
-trait SpatialPrinter extends IRPrinterPlus {
-  import IR._
-  debugMode = SpatialConfig.debugging
-  verboseMode = SpatialConfig.verbose
-}
-
-trait SpatialPrinterLast extends IRPrinterPlus {
-  import IR._
-  debugMode = SpatialConfig.debugginglast || SpatialConfig.debugging
-  verboseMode = SpatialConfig.verbose
-}
 
 trait DotIRPrinter extends Traversal with QuotingExp {
 	val IR: SpatialExp with MemoryAnalysisExp

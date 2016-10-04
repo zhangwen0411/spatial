@@ -4,7 +4,7 @@ import scala.reflect.{Manifest,SourceContext}
 import scala.virtualization.lms.internal.Traversal
 import scala.virtualization.lms.common.EffectExp
 
-import ppl.delite.framework.analysis.{QuickTraversal, IRPrinterPlus}
+import ppl.delite.framework.analysis.QuickTraversal
 import ppl.delite.framework.Config
 
 import spatial.shared._
@@ -23,7 +23,7 @@ trait DSE extends Traversal {
   import IR.{infix_until => _, _}
 
   override val name = "Design Space Exploration"
-  debugMode = true
+  debugMode = SpatialConfig.enableDSE
 
   lazy val ctrlAnalyzer = new ControlSignalAnalyzer{val IR: DSE.this.IR.type = DSE.this.IR}
   lazy val paramAnalyzer = new ParameterAnalyzer{val IR: DSE.this.IR.type = DSE.this.IR}
