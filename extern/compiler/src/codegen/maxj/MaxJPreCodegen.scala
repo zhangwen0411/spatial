@@ -445,9 +445,12 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
       case e@(ParPipeReduce(_, _, _, _, _, _, _) | 
               ParPipeForeach(_, _, _) |
               Unit_pipe(_)) =>
+        var isVecResult = false
         val func = rhs match {
           case ParPipeReduce(_,_,func,_,_,_,_) => func
-          case ParPipeForeach(_,func,_) => func
+          case ParPipeForeach(_,func,_) => 
+            isVecResult = true
+            func
           case Unit_pipe(func) => func
         }
 
@@ -461,7 +464,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
         }}}.reduce{_|_}
 
         var inputVecs = Set[Sym[Any]]()
-        var treeResult = ""
+        var treeResultSyms = Set[Sym[Any]]()
         var finalLineReg = ""
         var finalLineBram = ""
         var vecs_from_lists = Set[Exp[Any]]()
@@ -477,11 +480,11 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                 case Reg_read(_) =>
                   first_reg_read = first_reg_read :+ ii
                   s""
-                case Vector_from_list(_) => // seems to have replaced reg_read with davids merge
-                  // TODO: ask david how to actually detect tree start and tree result because this is sooo hacky!!!
-                  first_reg_read = first_reg_read :+ ii
-                  vecs_from_lists += s
-                  s""            
+                // case Vector_from_list(_) => // seems to have replaced reg_read with davids merge
+                //   // TODO: ask david how to actually detect tree start and tree result because this is sooo hacky!!!
+                //   first_reg_read = first_reg_read :+ ii
+                //   vecs_from_lists += s
+                //   s""            
                 case tag @ Vec_apply(vec,idx) =>
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
@@ -490,7 +493,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   val pre = maxJPre(s)
                   if (isReduceResult(s)) {
-                    treeResult = quote(s)
+                    treeResultSyms += s
                     if (hasRegWrite) {
                       s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
                     } else {
@@ -504,7 +507,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   val pre = maxJPre(s)
                   if (isReduceResult(s)) {
-                    treeResult = quote(s)
+                    treeResultSyms += s
                     if (hasRegWrite) {
                       s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
                     } else {
@@ -594,7 +597,13 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   val pre = maxJPre(s)
                   s"""$pre ${quote(s)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;"""
-                case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                case input @ ( Par_bram_load(_,_) ) =>
+                  if (isVecResult) { // Assume there is no reg_write in ParPipeForeach stage, so use par_bram_load
+                    first_reg_read = first_reg_read :+ ii
+                  }
+                  inputVecs += s
+                  s"/* Par_bram_load */"
+                case input @ ( Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
                   inputVecs += s
                   s"/* Par_bram_load */"
                 case _ =>
@@ -614,11 +623,12 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
 
         val treeString = if (first_reg_read.length > 1) {
           treeStringPre.zipWithIndex.filter{
-            case (entry: String, ii: Int) => ii > first_reg_read(1)
+            case (entry: String, ii: Int) => ii > first_reg_read.last
           }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
         } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
 
-        val res_input_arg = if (treeResult != "") {s"DFEVar ${treeResult}"} else {""}
+        val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_<_).mkString(",")
+        val res_input_arg = if (treeResult != "") {treeResultSyms.map { a => s"DFEVar ${quote(a)}"}.mkString(",")} else {""}
         // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
         //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
         // } else { "" }

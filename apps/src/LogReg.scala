@@ -31,7 +31,7 @@ trait LogRegApp extends SpatialApp {
     val BN = param(tileSizeH); domainOf(BN) = (96,9600,96)
     val PX = param(1);  domainOf(PX) = (1,1,1)
     val P0 = param(1);  domainOf(P0) = (1,3,1)
-    val P1 = param(1);  domainOf(P1) = (1,2,1)
+    val P1 = param(innerParH);  domainOf(P1) = (1,2,1)
     val P2 = param(innerParH);  domainOf(P2) = (1,96,1)
     val P3 = param(1);  domainOf(P3) = (1,96,1)
 
@@ -53,7 +53,7 @@ trait LogRegApp extends SpatialApp {
         val yB = BRAM[Elem](BN)
         Parallel {
           xB := x(i::i+BN, 0::D, P2)
-          yB := y(i::i+BN, P3)
+          yB := y(i::i+BN, P2)
         }
         val gradient = BRAM[Elem](D)
         Fold(BN par P3, P2)(gradient, 0.as[T]){ ii =>

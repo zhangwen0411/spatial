@@ -619,11 +619,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val addr1 = inds.map{ind => quote2D(ind, 0) }
               emit(s"""// All readers share row. vectorized""")
               dups.foreach {case (dd, ii) =>
+                val p = portsOf(write, bram, ii).mkString(",")
                 if (writers.length == 1) {
                   emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w16""")
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {${p}}); //w16""")
                 } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
-                  val p = portsOf(write, bram, ii).mkString(",")
                   val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
                   emit(s"""${quote(bram)}_${ii}.${wrType}(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w16.2""")
@@ -973,13 +973,14 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               } else {
                 def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
                 val row_majors = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
-                if (row_majors.reduce{_&_} != row_majors.reduce{_|_}) {
-                  throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
-                }
+                val all_same = (row_majors.reduce{_&_} == row_majors.reduce{_|_}) 
+                // {
+                //   throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
+                // }
                 val read_pars = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.length}
                 val read_head = read_pars.head
                 if (!(read_pars.map{a => a == read_head}.reduce{_&_})) {
-                  throw new Exception(s"Cannot handle multiple NBuf readers if they do not have the same access par!")
+                  throw new Exception(s"Cannot handle multiple NBuf readers if they do not have the same access par! ($read_pars)")
                 }
                 val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
                 val write_head = write_pars.head
@@ -989,7 +990,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}", 
                   ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
                   $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
-                  ${row_majors.head | size1==1}, /*rowmajor read?*/
+                  ${all_same}, /*all_same access (row_major or col_major)*/
+                  new boolean[] {${row_majors.map{a => a | size1==1}.mkString(",")}}, /*rowmajor read?*/
                   ${write_head}, ${read_head} /*writepar, readpar*/);""")
               }
             }
