@@ -49,14 +49,10 @@ trait UnrollingTransformer extends MultiPassTransformer {
   def inReduction[T](blk: => T): T = {
     duringClone{e => if (SpatialConfig.genCGRA) reduceType(e) = None }{ blk }
   }
-
-  var tab: Int = 0
-  def debugs(x: => Any) = debug("  "*tab + x)
-  override def traverseBlock[A](block: Block[A]): Unit = {
-    tab += 1
-    super.traverseBlock(block)
-    tab -= 1
+  def withAccessIndices[T](inds: List[Exp[Index]])(blk: => T): T = {
+    duringClone{e => if (isAccess(e)) accessIndicesOf(e) = inds }{ blk }
   }
+
   /**
    * Helper class for unrolling
    * Tracks multiple substitution contexts in 'laneSubst' array
@@ -540,9 +536,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
   def self_clone[A](lhs: Sym[A], rhs: Def[A]): Exp[A] = {
     debugs(s"Cloning $lhs = $rhs")
-    tab += 1
-    getProps(lhs).foreach{props => props.data.foreach{(k,m) => debugs(readable(k) + makeString(m)) }}
-    tab -= 1
+    getProps(lhs).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
 
     // HACK!!! Check whether the result of clone is actually a new symbol. Don't set props if not
     // Assumption: If the symbol we get back from cloning/mirroring had already been created by this
@@ -564,9 +558,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       case _ =>
         debugs(s"Changed to $lhs2")
     }
-    tab += 1
-    getProps(lhs2).foreach{props => props.data.foreach{(k,m) => debugs(readable(k) + makeString(m)) }}
-    tab -= 1
+    getProps(lhs2).foreach{props => props.data.foreach{(k,m) => " -" + debugs(readable(k) + makeString(m)) }}
 
     lhs2
   }

@@ -18,22 +18,12 @@ trait StructureAnalyzer extends Traversal {
   debugMode = SpatialConfig.debugging
   verboseMode = SpatialConfig.verbose
 
-  var tab = 0
   var stage = 0
-  var hasParent = false
-
-  def debugs(x: => Any) = debug(".."*tab + x)
 
   override def traverseBlock[A](block: Block[A]) {
-    val prevTab = tab
-    val prevParent = hasParent
     val prevStage = stage
-    tab += 1
     stage = 0
-    hasParent = true
     super.traverseBlock(block)
-    tab = prevTab
-    hasParent = prevParent
     stage = prevStage
   }
 

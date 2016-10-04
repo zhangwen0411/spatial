@@ -252,6 +252,8 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case _ => false
   }
 
+  def isAccess(s: Exp[Any]) = isReader(s) || isWriter(s)
+
   // Register reads are currently "special" nodes - neither controllers nor primitives
   def isRegisterRead(s: Exp[Any]): Boolean = s match {
     case Deff(_:Reg_read[_]) => true

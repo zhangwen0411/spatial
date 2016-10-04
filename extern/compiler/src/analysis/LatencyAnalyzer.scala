@@ -48,9 +48,6 @@ trait LatencyAnalyzer extends ModelingTraversal {
 
   var cycleScope: List[Long] = Nil
   var totalCycles: Long = 0L
-  var scopeLevel: Int = 0
-
-  def debugs(x: => Any) = debug(".."*scopeLevel + x)
 
   override def resume() {
     inHwScope = true
@@ -63,7 +60,7 @@ trait LatencyAnalyzer extends ModelingTraversal {
   def latencyOfBlock(b: Block[Any], par_mask: Boolean = false): List[Long] = {
     val outerScope = cycleScope
     cycleScope = Nil
-    scopeLevel += 1
+    tab += 1
     //traverseBlock(b) -- can cause us to see things like counters as "stages"
     getControlNodes(b).zipWithIndex.foreach{ case (n, i) =>
       // indent = if (!par_mask) {i} else {0}
@@ -73,7 +70,7 @@ trait LatencyAnalyzer extends ModelingTraversal {
         case _ =>
       }
     }
-    scopeLevel -= 1
+    tab -= 1
 
     val cycles = cycleScope
     cycleScope = outerScope
