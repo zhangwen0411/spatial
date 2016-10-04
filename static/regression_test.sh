@@ -268,26 +268,30 @@ fi
 cd hyperdsl
 git submodule update --init > /dev/null
 git fetch > /dev/null
-git checkout spatial > /dev/null
+git checkout -b spatial origin/spatial > /dev/null
+# git pull origin spatial
 cd delite 
 git fetch > /dev/null 
-git checkout spatial > /dev/null 
-git pull > /dev/null
+git checkout -b spatial origin/spatial > /dev/null 
+# git pull origin spatial > /dev/null
 cd ../forge 
 git fetch > /dev/null 
-git checkout spatial > /dev/null 
-git pull > /dev/null
+git checkout -b spatial origin/spatial > /dev/null 
+# git pull origin spatial > /dev/null
 cd ../virtualization-lms-core 
 git fetch > /dev/null 
-git checkout spatial > /dev/null 
-git pull > /dev/null
+git checkout -b spatial origin/spatial > /dev/null 
+# git pull origin spatial > /dev/null
 cd ../
 git clone git@github.com:stanford-ppl/spatial.git > /dev/null
 cd spatial 
 git fetch > /dev/null 
-cmd="git checkout ${branch}"
+cmd="git checkout -b ${branch} origin/${branch}"
 eval "$cmd" > /dev/null
+# cmd="git pull origin ${branch}"
+# eval "$cmd" > /dev/null
 cd ../
+start_date=(`date`)
 echo "[STATUS] `date`: Done cloning stuff!"
 echo "[STATUS] `date`: Making hyperdsl..."
 sbt compile > /dev/null 
@@ -298,6 +302,7 @@ make > /dev/null
 echo "[STATUS] `date`: spatial done!"
 echo "[STATUS] `date`: Cloning wiki..."
 git clone git@github.com:stanford-ppl/spatial.wiki.git
+git checkout -f HEAD
 echo "[STATUS] `date`: wiki clone done!"
 
 # Check if things are OK now
@@ -352,7 +357,7 @@ if [ "$wc" -ne 1 ]; then
 		echo "" >> $result_file
 		echo "" >> $result_file
 		tucson_date=`ssh tucson.stanford.edu date`
-		echo -e "*Status updated on $tucson_date* \n" > $result_file
+		echo -e "*Repos pulled at $start_date*\n*Status updated on $tucson_date* \n" > $result_file
 		echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
 		echo "" >> $result_file
 		echo "Error building Spatial!  Remake seemed to fail.  Could not validate anything!" >> $result_file
@@ -457,6 +462,7 @@ old_commit=(`cat ${result_file} | grep "^commit" | awk '/commit/{i++}i==1'`)
 rm $result_file
 echo -e "
 
+*Repos pulled at $start_date*
 *Status updated on `date`*
 
 * <---- indicates relative amount of work needed before app will **pass**" > $result_file
@@ -577,7 +583,7 @@ eval "$cmd"
 numel1=(`cat ${history_file} | grep "^(commit change)\ " | grep -oh "." | wc -l`)
 numel2=(`cat ${history_file} | grep "^(commit change)\ " | wc -l`)
 numel=$(($numel1 / $numel2))
-if [ $numel -gt $hist ]; then
+if [ $numel -gt $(( $hist + $chars_before_bars )) ]; then
 	cmd="sed -i \"s/^(commit change)\([[:blank:]]*\),,../(commit change)\1,,/g\" ${history_file}"
 	eval "$cmd"
 fi

@@ -233,7 +233,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
   val IR: UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DeliteTransform
           with LoweredPipeOpsExp with ControllerTemplateOpsExp with ExternPrimitiveOpsExp with ReductionAnalysisExp
 
-  import IR.{println => _, assert => _, _}
+  import IR.{println => _, assert => _, infix_until => _, _}
 
   override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
     case "SpatialVector" => "DFEVector<DFEVar>"
@@ -305,13 +305,16 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length == 1 }.flatten
           val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
           val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
-          val fullPorts = d.depth match {// TODO: proper way to make this list?
-            case 1 => Set(0)
-            case 2 => Set(0,1)
-            case 3 => Set(0,1,2)
-            case 4 => Set(0,1,2,3)
-            case _ => throw new Exception(s"Cannot handle nBuf this big! How to I do 0 until d.depth properly?")
-          }
+          val fullPorts = (0 until d.depth).map{ i => i }.toSet
+          // val fullPorts = d.depth match {// TODO: proper way to make this list?
+          //   case 1 => Set(0)
+          //   case 2 => Set(0,1)
+          //   case 3 => Set(0,1,2)
+          //   case 4 => Set(0,1,2,3)
+          //   case 5 => Set(0,1,2,3,4)
+          //   case 6 => Set(0,1,2,3,4,5)
+          //   case _ => throw new Exception(s"Cannot handle nBuf this big! How to I do 0 until d.depth properly?")
+          // }
           val dummyWPorts = fullPorts -- wPorts
           val dummyRPorts = fullPorts -- rPorts
           val dummyDonePorts = fullPorts -- wPorts -- rPorts
@@ -485,7 +488,15 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         case Deff(d:Pipe_fold[_,_]) => true
         case Deff(d:Pipe_foreach) => false
         case Deff(d:ParPipeReduce[_,_]) => true
-        case Deff(d:ParPipeForeach) => false
+        case Deff(d:ParPipeForeach) => 
+          if (childrenOf(parentOf(writeCtrl).get).indexOf(writeCtrl) == childrenOf(parentOf(writeCtrl).get).length-1) {
+            styleOf(writeCtrl) match {
+              case InnerPipe => true
+              case _ => false
+            }
+          } else {
+            false
+          }
         case Deff(d:Unit_pipe) => true // Not sure why but this makes matmult work
         case p => throw UnknownParentControllerException(bram, write, writeCtrl)
     }
@@ -513,10 +524,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       val Def(rhss) = parentCtr
       val accEn = writeCtrl match {
         case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
-        case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*$writeCtrl*/"
+        case Deff(a) => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*wtf pipe is $a*/"
+        case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*no def node*/"
       }
       dups.foreach {case (dd, ii) =>
-        val p = portsOf(write, bram, ii).head
+        val p = portsOf(write, bram, ii).mkString(",")
         if (writers.length == 1) {
           num_dims match {
             case 1 =>
@@ -527,12 +539,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                 stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4""")
           }
         } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
+          val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
           num_dims match {
             case 1 =>
-              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
+              emit(s"""${quote(bram)}_${ii}.${wrType}(stream.offset(${quote(addr)}, -$offsetStr),
               stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w3.2""")
             case _ =>
-              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
+              emit(s"""${quote(bram)}_${ii}.${wrType}(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
                 stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4.2""")
           }
         } else { // Hardcode writers to banks and hope for the best
@@ -606,11 +619,11 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val addr1 = inds.map{ind => quote2D(ind, 0) }
               emit(s"""// All readers share row. vectorized""")
               dups.foreach {case (dd, ii) =>
+                val p = portsOf(write, bram, ii).mkString(",")
                 if (writers.length == 1) {
                   emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w16""")
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {${p}}); //w16""")
                 } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
-                  val p = portsOf(write, bram, ii).mkString(",")
                   val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
                   emit(s"""${quote(bram)}_${ii}.${wrType}(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w16.2""")
@@ -841,11 +854,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
     case e@Reg_write(EatAlias(reg), value, en) =>
       emitComment("Reg_write {")
 
-      en match {
-        case Deff(ConstBit(true)) =>
-        case _ => throw new Exception("Enabled register write is not yet supported in MaxJ generation")
-      }
-
       assert(writersOf(reg).nonEmpty, s"Register ${quote(reg)} is not written by a controller")
 
       Console.println(s"Checking writers of $reg (" + writersOf(reg).mkString(", ") + s") for $sym")
@@ -866,6 +874,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
         case _ =>
           if (isAccum(reg)) {
+            en match {
+              case Deff(ConstBit(true)) =>
+              case _ => throw new Exception("Enabled register write is not yet supported for an accumulator!")
+            }
+
+            // Not sure how to decide this now...
             val accEn = writeCtrl match {
               case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
               case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
@@ -873,12 +887,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
             val rstStr = quote(parentOf(reg).get) + "_done /*because _rst_en goes hi on each iter*/"
             writeCtrl match {
-              case p@Def(EatReflect(_:Pipe_foreach | _:ParPipeForeach)) =>
-                throw new Exception(s"Foreaches may not have accumulators ($reg in $p)")
+              // case p@Def(EatReflect(_:Pipe_foreach | _:ParPipeForeach)) => // Safe to comment this out??
+              //   throw new Exception(s"Foreaches may not have accumulators ($reg in $p)")
 
-              case p@Deff(_:Pipe_fold[_,_] | _:ParPipeReduce[_,_] | _:Unit_pipe) =>
+              case p@Deff(_:Pipe_fold[_,_] | _:ParPipeReduce[_,_] | _:Unit_pipe | _:Pipe_foreach | _:ParPipeForeach) =>
                 emit(s"// Write to accumulator register")
-                emit(s"""DFEVar ${quote(reg)}_en = $accEn;""")
+                emit(s"""DFEVar ${quote(reg)}_en = ${accEn};""")
                 reduceType(reg) match {
                   case Some(fps: ReduceFunction) => fps match {
                     case FixPtSum =>
@@ -959,13 +973,14 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               } else {
                 def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
                 val row_majors = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
-                if (row_majors.reduce{_&_} != row_majors.reduce{_|_}) {
-                  throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
-                }
+                val all_same = (row_majors.reduce{_&_} == row_majors.reduce{_|_}) 
+                // {
+                //   throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
+                // }
                 val read_pars = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.length}
                 val read_head = read_pars.head
                 if (!(read_pars.map{a => a == read_head}.reduce{_&_})) {
-                  throw new Exception(s"Cannot handle multiple NBuf readers if they do not have the same access par!")
+                  throw new Exception(s"Cannot handle multiple NBuf readers if they do not have the same access par! ($read_pars)")
                 }
                 val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
                 val write_head = write_pars.head
@@ -975,7 +990,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}", 
                   ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
                   $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
-                  ${row_majors.head | size1==1}, /*rowmajor read?*/
+                  ${all_same}, /*all_same access (row_major or col_major)*/
+                  new boolean[] {${row_majors.map{a => a | size1==1}.mkString(",")}}, /*rowmajor read?*/
                   ${write_head}, ${read_head} /*writepar, readpar*/);""")
               }
             }

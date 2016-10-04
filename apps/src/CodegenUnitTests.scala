@@ -841,14 +841,13 @@ trait MultiplexedWriteApp extends SpatialApp {
       val in = BRAM[SInt](T)
       Sequential(N by T){i =>
         wt := weights(i::i+T)
-        in := inputs(i::i+T)
 
         // Some math nonsense (definitely not a correct implementation of anything)
         Pipe(I by 1){x =>
-          Fold(1 by 1)(wt, 0.as[SInt]){ k =>
+          Fold(1 by 1)(wt, 0.as[SInt]){ k =>  // s0 write
             in
           }{_+_}
-          weightsResult(i*I+x*T::i*I+x*T+T) := wt
+          weightsResult(i*I+x*T::i*I+x*T+T) := wt //s1 read
         }
       }
 
@@ -868,6 +867,75 @@ trait MultiplexedWriteApp extends SpatialApp {
     val i = Array.tabulate[SInt](N){ i => i*2 }
 
     val result = multiplexedwrtest(w, i)
+
+    val gold = Array.tabulate(N/tileSize){ k => 
+      Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten 
+    }.flatten
+    printArr(gold, "gold: ");
+    printArr(result, "result: ");
+
+    val cksum = gold.zip(result){_==_}.reduce{_&&_}
+    println("PASS: " + cksum  + " (MultiplexedWriteTest)")
+
+ 
+  }
+}
+
+// TODO: Make this actually check a bubbled NBuf (i.e.- s0 = wr, s2 = wr, s4 =rd, s1s2 = n/a)
+// because I think this will break the NBuf SM since it won't detect drain completion properly
+object BubbledWriteTest extends SpatialAppCompiler with BubbledWriteApp // Args: none 
+trait BubbledWriteApp extends SpatialApp {
+  type Array[SInt] = ForgeArray[SInt]
+
+  val tileSize = 96
+  val I = 5
+  val N = 192
+
+  def bubbledwrtest(w: Rep[Array[SInt]], i: Rep[Array[SInt]]) = {
+    val T = param(tileSize)
+    val P = param(4)
+    val weights = OffChipMem[SInt](N)
+    val inputs  = OffChipMem[SInt](N)
+    val weightsResult = OffChipMem[SInt](N*I)
+    val dummyWeightsResult = OffChipMem[SInt](T)
+    val dummyOut = OffChipMem[SInt](T)
+    val dummyOut2 = OffChipMem[SInt](T)
+    setMem(weights, w)
+    setMem(inputs,i)
+    Accel {
+      val wt = BRAM[SInt](T)
+      val in = BRAM[SInt](T)
+      Sequential(N by T){i =>
+        wt := weights(i::i+T)
+        in := inputs(i::i+T)
+
+        Pipe(I by 1){x =>
+          Fold(1 by 1)(wt, 0.as[SInt]){ k =>  // s0 write
+            in
+          }{_+_}
+          dummyOut(0::T) := in // s1 do not touch
+          dummyWeightsResult(0::T) := wt // s2 read
+          dummyOut2(0::T) := in // s3 do not touch
+          weightsResult(i*I+x*T::i*I+x*T+T) := wt //s4 read
+        }
+      }
+
+    }
+    getMem(weightsResult)    
+
+  }
+
+  def printArr(a: Rep[Array[SInt]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def main() = {
+    val w = Array.tabulate[SInt](N){ i => i }
+    val i = Array.tabulate[SInt](N){ i => i*2 }
+
+    val result = bubbledwrtest(w, i)
 
     val gold = Array.tabulate(N/tileSize){ k => 
       Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten 

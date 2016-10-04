@@ -4,6 +4,7 @@ import scala.virtualization.lms.common.{ScalaGenEffect, DotGenEffect, MaxJGenEff
 import scala.reflect.{Manifest,SourceContext}
 import ppl.delite.framework.transform.{DeliteTransform}
 import java.io.{File, PrintWriter}
+import scala.collection.mutable.HashMap
 
 import spatial.compiler._
 import spatial.compiler.ops._
@@ -131,7 +132,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
     }
   }
 
-  def isConstOrArgOrBnd(x: Exp[Any]) = x match {
+  override def isConstOrArgOrBnd(x: Exp[Any]) = x match {
     case s@Sym(n) => {
       s match {
         case Deff(ConstFixPt(_,_,_,_)) => true
@@ -213,9 +214,58 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
           print_stage_prefix(s"Foreach ${styleOf(sym)}",s"${ctr_str}",s"${quote(sym)}")
       }
       emitController(sym, Some(cchain))
+      emit(s"DFEVar ${quote(sym)}_redLoop_done = constant.var(true); // Hack for new fold unrolling...")
       emitParallelizedLoop(inds, cchain)
       emitRegChains(sym, inds.flatten)
-      emitBlock(func)
+
+      parentOf(sym).get match {
+        case e@Deff(ParPipeReduce(_,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+          if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
+            styleOf(sym) match {
+              case InnerPipe =>
+                // Putting reduction tree in its own kernel
+                var inputVecs = Set[Sym[Any]]()
+                var consts_args_bnds_list = Set[Exp[Any]]()
+                var treeResultSyms = Set[Sym[Any]]()
+                focusBlock(func){ // Send reduce tree to separate file
+                  focusExactScope(func){ stms =>
+                    stms.foreach { case TP(s,d) =>
+                      val Deff(dd) = s
+                      dd match {
+                        case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
+                          if (isReduceResult(s)) {
+                            val ts = tpstr(1)(s.tp, implicitly[SourceContext])
+                            emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
+                            treeResultSyms += s
+                          }
+                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                        case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                          inputVecs += s
+                        case _ =>
+                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                      }
+                    }
+                  }
+                }
+
+                emitBlock(func)
+                val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_<_).mkString(",")
+                val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
+                val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
+                val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+                val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
+                val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+                emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+              case _ =>
+                emitBlock(func)
+              }
+            } else {
+              emitBlock(func)
+            }
+        case _ =>
+          emitBlock(func)
+      }
+
       emit("""}""")
       emitComment(s"""} ParPipeForeach ${quote(sym)}""")
       print_stage_suffix(quote(sym), hadThingsInside)
@@ -263,40 +313,50 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emitParallelizedLoop(inds, cchain)
       emitComment(s"""} ${quote(sym)} par loop""")
 
-      // Putting reduction tree in its own kernel
-      var inputVecs = Set[Sym[Any]]()
-      var consts_args_bnds_list = Set[Exp[Any]]()
-      var treeResult = ""
-      focusBlock(func){ // Send reduce tree to separate file
-        focusExactScope(func){ stms =>
-          stms.foreach { case TP(s,d) =>
-            val Deff(dd) = s
-            dd match {
-              case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                if (isReduceResult(s)) {
-                  val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                  emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
-                  treeResult = quote(s)
+      styleOf(sym) match {
+        case InnerPipe =>
+          // Putting reduction tree in its own kernel
+          var inputVecs = Set[Sym[Any]]()
+          var consts_args_bnds_list = Set[Exp[Any]]()
+          var treeResult = ""
+          focusBlock(func){ // Send reduce tree to separate file
+            focusExactScope(func){ stms =>
+              stms.foreach { case TP(s,d) =>
+                val Deff(dd) = s
+                dd match {
+                  case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
+                    if (isReduceResult(s)) {
+                      val ts = tpstr(1)(s.tp, implicitly[SourceContext])
+                      emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
+                      treeResult = quote(s)
+                    }
+                    consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                  case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                    inputVecs += s
+                  case _ =>
+                    consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
                 }
-                consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-              case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
-                inputVecs += s
-              case _ =>
-                consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+              }
             }
           }
-        }
-      }
 
-      emitComment(s"""ParPipeReduce ${quote(sym)} func block {""")
-      emitBlock(func)
-      emitComment(s"""} ${quote(sym)} func block""")
-      val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
-      val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-      val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-      val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-      val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-      emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+          emitRegChains(sym, inds.flatten)
+          emitComment(s"""ParPipeReduce ${quote(sym)} func block {""")
+          emitBlock(func)
+          emitComment(s"""} ${quote(sym)} func block""")
+
+          val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
+          val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
+          val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+          val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
+          val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+          emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+        case _ =>
+          emitRegChains(sym, inds.flatten)
+          emitComment(s"""ParPipeReduce ${quote(sym)} func block {""")
+          emitBlock(func)
+          emitComment(s"""} ${quote(sym)} func block""")
+        }
 
       val Def(EatReflect(dp)) = accum
       dp match {
