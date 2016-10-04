@@ -21,9 +21,10 @@ sparse_args_list=("960" "960"      "960"              "960"       "960"   )
 # Seconds to pause while waiting for apps to run
 delay=900
 
+random=(`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 4`) # Random chars to add to directory to avoid new workers from wiping old
 
 # Override env vars to point to a separate directory for this regression test
-export TESTS_HOME="/home/mattfel/${branch}_regression_tests"
+export TESTS_HOME="/home/mattfel/${branch}_regression_tests_${random}"
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${TESTS_HOME}/hyperdsl
@@ -143,7 +144,7 @@ function create_script {
 	echo "
 #!/bin/bash
 # Override env vars to point to a separate directory for this regression test
-export TESTS_HOME=/home/mattfel/${branch}_regression_tests
+export TESTS_HOME=/home/mattfel/${branch}_regression_tests_${random}
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${TESTS_HOME}/hyperdsl
@@ -264,6 +265,8 @@ if [ ! -d "./hyperdsl" ]; then
   eval "$cmd"
   git commit -m "automated status update"
   git push
+  sleep 3
+  rm ${TESTS_HOME}
   exit 1
 fi
 cd hyperdsl
@@ -314,6 +317,8 @@ if [ ! -d "${PUB_HOME}" ]; then
   # Use main repo's wiki for update
   if [ ! -d "/home/mattfel/hyperdsl/spatial/spatial.wiki" ]; then
   	echo "FATAL ERROR! No default wiki!"
+	sleep 3
+	rm ${TESTS_HOME}
   	exit 1
   else 
   	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
@@ -333,6 +338,8 @@ if [ ! -d "${PUB_HOME}" ]; then
 	eval "$cmd"
 	git commit -m "automated status update"
 	git push
+	sleep 3
+	rm ${TESTS_HOME}
 	exit 1
   fi
 fi
@@ -348,6 +355,8 @@ wc=$(cat log | grep "success" | wc -l)
 if [ "$wc" -ne 1 ]; then
 	if [ ! -d "${SPATIAL_HOME}/spatial.wiki" ]; then
 		echo "FATAL ERROR. No wiki dir"
+		sleep 3
+		rm ${TESTS_HOME}
 		exit 1
 	else 
 		cd $SPATIAL_HOME
@@ -367,6 +376,8 @@ if [ "$wc" -ne 1 ]; then
 		eval "$cmd"
 		git commit -m "automated status update"
 		git push
+		sleep 3
+		rm ${TESTS_HOME}
 		exit 1
 	fi
 fi
@@ -623,4 +634,7 @@ git stash pop
 git add *
 git commit -m "automated status update via cron"
 git push
+
+sleep 3
+rm ${TESTS_HOME}
 
