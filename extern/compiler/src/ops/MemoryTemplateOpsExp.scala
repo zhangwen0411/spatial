@@ -479,7 +479,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     val distinctParents = writers.map{writer => parentOf(writer.controlNode)}.distinct
     val allParents = writers.map{writer => parentOf(writer.controlNode)}
     if (distinctParents.length < allParents.length) {
-      throw MultipleWriteControllersException(bram, writersOf(bram))
+      Console.println("[WARNING] Bram $bram has multiple writers controlled by the same controller, which should only happen in CharBramTest!")
+      // throw MultipleWriteControllersException(bram, writersOf(bram))
     }
     val writeCtrl = writer.controlNode
 
