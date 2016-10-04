@@ -390,8 +390,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     if (isDummy(bram)) {
       val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
       bankOverride(read) match {
-        case -1 => emit(s"""${pre} ${quote(read)} = ${quote(bram_name)}.connectRport(${quote(addr)}); //r1.0""")
-        case b => emit(s"""${pre} ${quote(read)} = ${quote(bram_name)}.connectRport(${quote(addr)}, $b); //r1.5""")
+        case -1 => emit(s"""${pre} ${quote(read)} = ${quote(bram_name)}.connectRport(${quote(addr)}); //r1.0 ${nameOf(bram).getOrElse("")}""")
+        case b => emit(s"""${pre} ${quote(read)} = ${quote(bram_name)}.connectRport(${quote(addr)}, $b); //r1.5 ${nameOf(bram).getOrElse("")}""")
 
       }
     } else {
@@ -408,13 +408,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             addEmittedConsts(addr0)
 
             if (par)
-              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${quote(bram_name)}.connectRport(${quote(addr0)}, new int[] {$p}))); //r2""")
+              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${quote(bram_name)}.connectRport(${quote(addr0)}, new int[] {$p}))); //r2 ${nameOf(bram).getOrElse("")}""")
             else
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new int[] {$p}); //r3""")
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new int[] {$p}); //r3 ${nameOf(bram).getOrElse("")}""")
           }
           else {
             // Many addresses
-            emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr)}, new int[] {$p}); //r4""")
+            emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr)}, new int[] {$p}); //r4 ${nameOf(bram).getOrElse("")}""")
           }
         case 2 => // 2D bram
           if (inds.length == 1) {
@@ -424,9 +424,9 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             addEmittedConsts(addr0, addr1)
 
             if (par)
-              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}, new int[] {$p}))); //r5""")
+              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}, new int[] {$p}))); //r5 ${nameOf(bram).getOrElse("")}""")
             else
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}, new int[] {$p}); //r6""")
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}, new int[] {$p}); //r6 ${nameOf(bram).getOrElse("")}""")
 
           }
           else {
@@ -438,14 +438,14 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val addr0 = inds.map{ind => quote2D(ind,0) }
               val addr1 = quote2D(inds(0), 1)
               emit(s"""// All readers share column. vectorized """)
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}, new int[] {$p}); //r7""")
+              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}, new int[] {$p}); //r7 ${nameOf(bram).getOrElse("")}""")
             }
             // Same rows?
             else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
               val addr0 = quote2D(inds(0), 0)
               val addr1 = inds.map{ind => quote2D(ind, 0) }
               emit(s"""// All readers share row. vectorized""")
-              emit(s"""${pre} ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")})), new int[] {$p}); //r8""")
+              emit(s"""${pre} ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")})), new int[] {$p}); //r8 ${nameOf(bram).getOrElse("")}""")
             }
             else {
               throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
@@ -534,32 +534,32 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           num_dims match {
             case 1 =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w3""")
+                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w3 ${nameOf(bram).getOrElse("")}""")
             case _ =>
               emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4""")
+                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4 ${nameOf(bram).getOrElse("")}""")
           }
         } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
           val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
           num_dims match {
             case 1 =>
               emit(s"""${quote(bram)}_${ii}.${wrType}(stream.offset(${quote(addr)}, -$offsetStr),
-              stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w3.2""")
+              stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w3.2 ${nameOf(bram).getOrElse("")}""")
             case _ =>
               emit(s"""${quote(bram)}_${ii}.${wrType}(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
-                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4.2""")
+                stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4.2 ${nameOf(bram).getOrElse("")}""")
           }
         } else { // Hardcode writers to banks and hope for the best
           val bank_num = writersOf(bram).map{_.node}.indexOf(write)
           emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
-            stream.offset($dataStr, -$offsetStr), $accEn); //w5""")
+            stream.offset($dataStr, -$offsetStr), $accEn); //w5 ${nameOf(bram).getOrElse("")}""")
         }
       }
     }
     else { // Not accum
       if (isDummy(bram)) {
         dups.foreach {case (dd, ii) =>
-          emit(s"""${quote(bram)}_$ii.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w6""")
+          emit(s"""${quote(bram)}_$ii.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w6 ${nameOf(bram).getOrElse("")}""")
         }
       }
       else num_dims match {
@@ -567,10 +567,10 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           dups.foreach {case (dd, ii) =>
             val p = portsOf(write, bram, ii).mkString(",")
             if (writers.length == 1) {
-              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8""")
+              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8 ${nameOf(bram).getOrElse("")}""")
             } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
               val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
-              emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8.2""")
+              emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8.2 ${nameOf(bram).getOrElse("")}""")
             }
           }
         case 2 =>
@@ -579,13 +579,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             dups.foreach {case (dd, ii) =>
               val p = portsOf(write, bram, ii).mkString(",")
               if (writers.length == 1) {
-                emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10""")
+                emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10 ${nameOf(bram).getOrElse("")}""")
               } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
                 val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
-                emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10.2""")
+                emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10.2 ${nameOf(bram).getOrElse("")}""")
               } else { // Hardcode writers to banks and hope for the best
                 val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
-                emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w10.5""")
+                emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w10.5 ${nameOf(bram).getOrElse("")}""")
               }
             }
           }
@@ -601,16 +601,16 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               dups.foreach {case (dd, ii) =>
                 if (writers.length == 1) {
                   emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13""")                  
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13 ${nameOf(bram).getOrElse("")}""")                  
                 } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
                   val p = portsOf(write, bram, ii).mkString(",")
                   val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
                   emit(s"""${quote(bram)}_${ii}.${wrType}((new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w13.2""")
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w13.2 ${nameOf(bram).getOrElse("")}""")
                 } else { // Hardcode writers to banks and hope for the best
                   val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
                   emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13.5""")
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13.5 ${nameOf(bram).getOrElse("")}""")
                 }
               }
             }
@@ -623,15 +623,15 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                 val p = portsOf(write, bram, ii).mkString(",")
                 if (writers.length == 1) {
                   emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {${p}}); //w16""")
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {${p}}); //w16 ${nameOf(bram).getOrElse("")}""")
                 } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
                   val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
                   emit(s"""${quote(bram)}_${ii}.${wrType}(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w16.2""")
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w16.2 ${nameOf(bram).getOrElse("")}""")
                 } else { // Hardcode writers to banks and hope for the best
                   val bank_num = writers.map{ w => w.node }.indexOf(write)
                   emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w16.5""")
+                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w16.5 ${nameOf(bram).getOrElse("")}""")
                 }
               }
             }
@@ -841,7 +841,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               }
             case _ => // Otherwise emit here
               if (!emitted_reglibreads.contains((sym, regStr))) {
-                emit(s"""$pre ${quote(sym)} = $regStr; // reg read""")
+                emit(s"""$pre ${quote(sym)} = $regStr; // reg read ${nameOf(reg).getOrElse("")}""")
                 emitted_reglibreads += ((sym, regStr))
               }
           }
@@ -905,7 +905,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   // Assume duplicate 0 is used for reduction, all others need writes
                   dups.foreach { case (dup, ii) => 
                     val port = portsOf(writer, reg, ii).head 
-                    if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false), $port);""")
+                    if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false), $port); ${nameOf(reg).getOrElse("")}""")
                   }
                 }
               case _ =>
@@ -921,16 +921,16 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   val rstStr = quote(parentOf(reg).get) + "_rst_en"
                   // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
                   if (false/*dup.depth == 2*/) {
-                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false));""")
+                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false)); ${nameOf(reg).getOrElse("")}""")
                   } else if (dup.depth > 1) {
                     val port = portsOf(writer, reg, ii).head 
-                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false), $port);""")                    
+                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false), $port); ${nameOf(reg).getOrElse("")}""")                    
                   }
                   else {
                     // Using an enable signal instead of "always true" is causing an illegal loop.
                     // Using a reset signal instead of "always false" is causing an illegal loop.
                     // These signals don't matter for pass-through registers anyways.
-                    emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), constant.var(false), $port);""")
+                    emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), constant.var(false), $port); ${nameOf(reg).getOrElse("")}""")
                   }
               }
             }
