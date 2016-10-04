@@ -48,6 +48,7 @@ Comments
 * Expected FifoLoadStore to fail validation
 * Expected GEMM to fail validation
 * Tighten validation margin on BlackScholes
+* Fix UnalignedLd bug with calculating burst address and cmd enable for unaligned lds
 * Make SGD work on more than 1 epoch
 " >> $1
 }
@@ -357,7 +358,7 @@ if [ "$wc" -ne 1 ]; then
 		echo "" >> $result_file
 		echo "" >> $result_file
 		tucson_date=`ssh tucson.stanford.edu date`
-		echo -e "*Repos pulled at $start_date*\n*Status updated on $tucson_date* \n" > $result_file
+		echo -e "*Repos pulled at ${start_date[@]}*\n*Status updated on $tucson_date* \n" > $result_file
 		echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
 		echo "" >> $result_file
 		echo "Error building Spatial!  Remake seemed to fail.  Could not validate anything!" >> $result_file
@@ -462,7 +463,8 @@ old_commit=(`cat ${result_file} | grep "^commit" | awk '/commit/{i++}i==1'`)
 rm $result_file
 echo -e "
 
-*Repos pulled at $start_date*
+*Repos pulled at ${start_date[@]}*
+
 *Status updated on `date`*
 
 * <---- indicates relative amount of work needed before app will **pass**" > $result_file

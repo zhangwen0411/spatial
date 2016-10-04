@@ -592,26 +592,31 @@ trait BlockReduce1DApp extends SpatialApp {
   }
 }
 
-object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args: none
+object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args: 2
 trait UnalignedLdApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val N = 1920
 
   val numCols = 155
-  val paddedCols = 192
+  val paddedCols = 1920
 
-  def unaligned_1d(src: Rep[ForgeArray[T]]) = {
-
+  def unaligned_1d(src: Rep[ForgeArray[T]], ii: Rep[T]) = {
+    val iters = ArgIn[T]
     val srcFPGA = OffChipMem[T](paddedCols)
     val acc = ArgOut[T]
 
+    setArg(iters, ii)
     setMem(srcFPGA, src)
 
     Accel {
       val mem = BRAM[T](numCols)
-      Pipe { mem := srcFPGA(0::numCols) }
-      acc := Reduce(numCols by 1)(0.as[T]) { i => mem(i) }{_+_}
+      val accum = Reg[T](0)
+      Fold(iters by 1)(accum, 0.as[T]) { k => 
+        Pipe { mem := srcFPGA(k*numCols::k*numCols+numCols) }
+        Reduce(numCols by 1)(0.as[T]) { i => mem(i) }{_+_}
+      }{_+_}
+      acc := accum
     }
     getArg(acc)
   }
@@ -624,12 +629,13 @@ trait UnalignedLdApp extends SpatialApp {
 
   def main() = {
     // val size = args(unit(0)).to[SInt]
+    val ii = args(0).to[T]
     val size = paddedCols
     val src = Array.tabulate(size) { i => i }
 
-    val dst = unaligned_1d(src)
+    val dst = unaligned_1d(src, ii)
 
-    val gold = Array.tabulate(numCols) { i => i }.reduce{_+_}
+    val gold = Array.tabulate(ii*numCols) { i => i }.reduce{_+_}
 
     println("src:" + gold)
     println("dst:" + dst)
@@ -842,7 +848,7 @@ trait MultiplexedWriteApp extends SpatialApp {
       Sequential(N by T){i =>
         wt := weights(i::i+T)
         in := inputs(i::i+T)
-        
+
         // Some math nonsense (definitely not a correct implementation of anything)
         Pipe(I by 1){x =>
           Fold(1 by 1)(wt, 0.as[SInt]){ k =>  // s0 write

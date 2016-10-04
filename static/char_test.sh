@@ -4,7 +4,7 @@
 # CONFIG #
 ##########
 
-testname="CharStoreTest"
+testname="CharBramTest"
 server="max"
 start_channel=1
 file=${SPATIAL_HOME}/apps/src/CharacterizationUnitTests.scala
