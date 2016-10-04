@@ -905,7 +905,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   // Assume duplicate 0 is used for reduction, all others need writes
                   dups.foreach { case (dup, ii) => 
                     val port = portsOf(writer, reg, ii).head 
-                    if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false), $port); ${nameOf(reg).getOrElse("")}""")
+                    if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
                   }
                 }
               case _ =>
@@ -921,16 +921,16 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   val rstStr = quote(parentOf(reg).get) + "_rst_en"
                   // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
                   if (false/*dup.depth == 2*/) {
-                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false)); ${nameOf(reg).getOrElse("")}""")
+                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false)); // ${nameOf(reg).getOrElse("")}""")
                   } else if (dup.depth > 1) {
                     val port = portsOf(writer, reg, ii).head 
-                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false), $port); ${nameOf(reg).getOrElse("")}""")                    
+                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
                   }
                   else {
                     // Using an enable signal instead of "always true" is causing an illegal loop.
                     // Using a reset signal instead of "always false" is causing an illegal loop.
                     // These signals don't matter for pass-through registers anyways.
-                    emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), constant.var(false), $port); ${nameOf(reg).getOrElse("")}""")
+                    emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
                   }
               }
             }

@@ -21,7 +21,8 @@ sparse_args_list=("960" "960"      "960"              "960"       "960"   )
 # Seconds to pause while waiting for apps to run
 delay=900
 
-random=(`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 4`) # Random chars to add to directory to avoid new workers from wiping old
+# random=(`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 4`) # Random chars to add to directory to avoid new workers from wiping old
+random=(`date +"%H-%M"`) # Chars to add to directory to avoid new workers from wiping old
 
 # Override env vars to point to a separate directory for this regression test
 export TESTS_HOME="/home/mattfel/${branch}_regression_tests_${random}"
@@ -636,5 +637,5 @@ git commit -m "automated status update via cron"
 git push
 
 sleep 3
-rm ${TESTS_HOME}
+rm -rf ${TESTS_HOME}
 
