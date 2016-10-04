@@ -841,7 +841,8 @@ trait MultiplexedWriteApp extends SpatialApp {
       val in = BRAM[SInt](T)
       Sequential(N by T){i =>
         wt := weights(i::i+T)
-
+        in := inputs(i::i+T)
+        
         // Some math nonsense (definitely not a correct implementation of anything)
         Pipe(I by 1){x =>
           Fold(1 by 1)(wt, 0.as[SInt]){ k =>  // s0 write
