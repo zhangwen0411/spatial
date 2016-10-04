@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import pylab
 from StringIO import StringIO
 import pandas as pd
+from matplotlib.ticker import ScalarFormatter 
 import os
 
 app_name = sys.argv[1]
@@ -28,7 +29,7 @@ plt.scatter(x, times, c=colors, s=100)
 plt.xticks(x, commits, rotation=30)
 plt.gcf().subplots_adjust(bottom=0.2, left=0.2)
 ax=plt.gca()
-ax.ticklabel_format(useOffset=False)
+# ax.ticklabel_format(useOffset=False)
 fig.set_size_inches(38.5, 20.5)
 ax.set_ylim([-max(times)*0.01, (max(times)*(1.01))])
 plt.xlabel("Commit")
