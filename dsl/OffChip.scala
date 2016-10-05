@@ -23,8 +23,7 @@ trait OffChip {
     val offchip_load  = internal (OffChip) ("offchip_load_cmd", T, (("mem",OffChip(T)), ("fifo", FIFO(T)), ("ofs",Idx), ("len",Idx), ("par", MInt)) :: MUnit, effect = write(1), aliasHint = aliases(Nil))
     val offchip_store = internal (OffChip) ("offchip_store_cmd", T, (("mem",OffChip(T)), ("fifo", FIFO(T)), ("ofs",Idx), ("len", Idx), ("par", MInt)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
 
-    val gather  = internal (OffChip) ("gather", T, (("mem", OffChip(T)), ("local", BRAM(T)), ("addrs", BRAM(Idx)), ("len", Idx), ("par", MInt)) :: MUnit, effect = write(1), aliasHint = aliases(Nil))
-    val scatter = internal (OffChip) ("scatter", T, (("mem", OffChip(T)), ("local", BRAM(T)), ("addrs", BRAM(Idx)), ("len", Idx), ("par", MInt)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
+    // scatter and gather in MemoryTemplateOps
 
     // --- Internal
     val offchip_create = internal (OffChip) ("offchip_create", T, SList(Idx) :: OffChip(T), TNum(T)) implements composite ${
@@ -163,13 +162,6 @@ trait OffChip {
     }))
     impl (offchip_store) (codegen($cala, ${
       for (i <- 0 until $len.toInt) { if (i + $ofs.toInt < $mem.length) $mem(i + $ofs.toInt) = $fifo.dequeue() }
-    }))
-
-    impl (scatter) (codegen($cala, ${
-      for (i <- 0 until $len.toInt) { if (i < $addrs.length && $addrs(i).toInt < $mem.length) $mem( $addrs(i).toInt ) = $local(i) }
-    }))
-    impl (gather) (codegen($cala, ${
-      for (i <- 0 until $len.toInt) { if (i < $local.length && i < $addrs.length && $addrs(i).toInt < $mem.length) $local(i) = $mem( $addrs(i).toInt ) }
     }))
 
     // --- C++ Backend

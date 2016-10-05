@@ -14,8 +14,6 @@ trait PIRSplitter extends Traversal with PIRCommon {
   val IR: SpatialExp with PIRScheduleAnalysisExp
   import IR._
 
-  val MAX_STAGES = 10   // 10 compute stages total
-  val MAX_IN     = 4    // Up to 4 scalar inputs and 4 vector inputs
   // Assumed there is only up to one vector local for now
 
   override val name = "PIR Splitting"
@@ -38,17 +36,45 @@ trait PIRSplitter extends Traversal with PIRCommon {
 
   def splitCU(cu: ComputeUnit): List[ComputeUnit] = cu match {
     case tu: TileTransferUnit => List(tu)
-    case cu: BasicComputeUnit =>
-      // TODO: DEBUGGING ONLY. Remove this check later
-      val nStages = cu.stages.length + cu.writeStages.values.map(_.length).fold(0){_+_}
-      if (nStages > MAX_STAGES) splitComputeCU(cu) else List(cu)
+    case cu: BasicComputeUnit => splitComputeCU(cu)
   }
 
+  /**
+    CU splitting is graph partitioning, where each partition has a limited number of inputs, outputs, and nodes
+
+    Given a set of stages, we want to find a set of minimum cuts where each partition satisfies these limits
+
+    This is more restricted/complex than the standard graph partitioning problem as nodes and edges cannot be treated uniformly:
+    - Reduction stages represent multiple real ALU stages in the architecture (logV + 1 ?)
+    - Reduction stages cannot directly consume CU inputs (requires a bypass stage)
+    - Reduction stages cannot directly produce CU outputs (requires a bypass stage)
+    - Write address computation stages MUST be preserved/copied within the consumer CU
+    - Vector feedback edges cannot be communicated across multiple CUs (TODO: verify)
+      -> Local vector feedback and associated consumer edges MUST be preserved within a single CU
+
+    Nodes must be duplicated/created depending on how the graph is partitioned
+    Could model this as conditional costs for nodes?
+
+    Questions:
+    - Can vector feedbacks cross CUs?
+
+    - Do all physically realizable cuts have equal cost, at least to a first order?
+      i.e. should we value more "balanced" cuts higher?
+
+    - Do any existing algorithms handle conditional node weights? What about restrictions on subgraphs?
+   **/
+
   def splitComputeCU(cu: BasicComputeUnit): List[BasicComputeUnit] = List(cu) /*{
-    val MAX_OUT = if (cu.isUnitCompute) 4 else  1    // Maximum scalar output and vector outputs
+    val MAX_VECTOR_OUT   = if (cu.isUnitCompute) 4 else 1   // Maximum vector outputs
+    val MAX_SCALAR_OUT   = if (cu.isUnitCompute) 4 else 1   // Maximum scalar outputs
+    val MAX_VECTOR_IN    = if (cu.isUnitCompute) 4 else 1   // Maximum vector inputs
+    val MAX_SCALAR_IN    = if (cu.isUnitCompute) 4 else 1   // Maximum scalar inputs
+    val MAX_VECTOR_LOCAL = 1
+    val MAX_STAGES       = 10                               // 10 compute stages total
+    val REDUCE_STAGES    = 5                                // Number of stages required to do a full reduction
 
     debug(s"Splitting CU: $cu")
-    def inputsOf(stage: Stage) = stage match {
+    def inputsOf(stage: Stage): List[LocalMem] = stage match {
       case stage: MapStage => stage.inputMems.filterNot(stage.outputMems contains _ ) // Ignore cycles
       case stage: ReduceStage =>
         val idx = cu.stages.indexOf(stage)
@@ -56,11 +82,29 @@ trait PIRSplitter extends Traversal with PIRCommon {
     }
     def outputsOf(stage: Stage) = stage.outputMems
 
-    val cuOutputs = allMapStages(cu).flatMap{stage => outputsOf(stage).filter{reg => reg.isInstanceOf[ScalarOut] || reg.isInstanceOf[VectorOut] }}
-    debug(s"CU Outputs: $cuOutputs")
+    val stages = cu.stages.toSet
 
-    val outStages = cu.stages.filter{stage => outputsOf(stage).exists(cuOutputs contains _)}
-    val liveOuts = outStages.map{stage => outputsOf(stage).filter(cuOutputs contains _)}
+    def requiresSplitting(stages: Set[Stage]) = {
+      val scalarsIn  = stages.flatMap{stage => inputsOf(stage).filter{case _:ScalarIn => true; case _ => false }}
+      val scalarsOut = stages.flatMap{stage => outputsOf(stage).filter{case _:ScalarOut => true; case _ => false}}
+      val vectorsIn  = stages.flatMap{stage => inputsOf(stage).filter{case _:SRAMRead => true; case _:VectorIn => true; case _ => false }}
+      val vectorsOut = stages.flatMap{stage => outputsOf(stage).filter{case _:VectorOut => true; case _ => false }}
+      val vectorsLocal = stages.flatMap{stage => outputsOf(stage).filter{case _:VectorLocal => true; case _ => false }}
+      val nStages = stages.map{case _:MapStage => 1; case _:ReduceStage => REDUCE_STAGES }.fold(0)(_+_)
+
+      debug(s"Stages: ")
+      stages.foreach{stage => debug(s"  $stage") }
+      debug(s"Scalar inputs: $scalarsIn")
+      debug(s"Scalar outputs: $scalarsOut")
+      debug(s"Vector inputs: $vectorsIn")
+      debug(s"Vector outputs: $vectorsOut")
+      debug(s"Vector locals: $vectorsLocal")
+      debug(s"Actual stages: $nStages")
+
+      scalarsIn.size > MAX_SCALAR_IN || scalarsOut.size > MAX_SCALAR_OUT || nStages > MAX_STAGES ||
+      vectorsIn.size > MAX_VECTOR_IN || vectorsOut.size > MAX_VECTOR_OUT || vectorsLocal.size > MAX_VECTOR_LOCAL
+    }
+
 
     def getScheduleFor(stages: Set[Stage])(result: Stage*) = {
       val frontier = Queue[Stage](result:_*)

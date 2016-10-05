@@ -24,7 +24,7 @@ trait MultiWrApp extends SpatialApp {
 
     Accel {
 
-      Sequential(1 by 1) { d => 
+      Sequential(1 by 1) { d =>
         val tileC = BRAM[T](M, N)
 
         tileC := c(0::M, 0::N, param(1))

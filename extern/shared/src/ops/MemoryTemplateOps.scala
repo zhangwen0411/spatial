@@ -40,4 +40,7 @@ trait MemoryTemplateCompilerOps extends MemoryTemplateOps {
   this: Spatial =>
 
   def vector_from_list[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]]
+
+  def gather[T:Manifest](mem: Rep[OffChipMem[T]],local: Rep[BRAM[T]],addrs: Rep[BRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext): Rep[Unit]
+  def scatter[T:Manifest](mem: Rep[OffChipMem[T]],local: Rep[BRAM[T]],addrs: Rep[BRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext): Rep[Unit]
 }
