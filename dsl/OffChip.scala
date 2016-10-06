@@ -264,7 +264,7 @@ trait OffChip {
 
             offchip_load_cmd(mem, fifo, memOfs/*_downcast*/, len/*_upcast*/, p)
 
-            Pipe(len/*ctr_max*/ par p){i =>
+            Pipe(len/*_upcast*/ par p){i =>
               val localAddr = localOfs.take(localOfs.length - 1) :+ (localOfs.last + i)
               $local(localAddr/*,en = i > start_bound & i < end_bound*/) = fifo.pop()
             }
@@ -287,7 +287,7 @@ trait OffChip {
 
             offchip_load_cmd(mem, fifo, memOfs/*_downcast*/, len/*_upcast*/, p)
 
-            Pipe(len/*ctr_max*/ par p){i => $local(i/*, en = i > start_bound & i < end_bound*/) = fifo.pop() }
+            Pipe(len/*_upcast*/ par p){i => $local(i/*, en = i > start_bound & i < end_bound*/) = fifo.pop() }
           }
         }
       }
