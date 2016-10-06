@@ -1014,6 +1014,52 @@ trait SequentialWritesApp extends SpatialApp {
   }
 }
 
+object ChangingCtrMax extends SpatialAppCompiler with ChangingCtrMaxApp // Args: none 
+trait ChangingCtrMaxApp extends SpatialApp {
+  type T = SInt
+  type Array[T] = ForgeArray[T]
+
+  val tileSize = 96
+  val N = 5
+
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def changingctrmax() = {
+    val result = OffChipMem[T](96)
+    Accel {
+      val rMem = BRAM[T](96)
+      Sequential(96 by 1) { i =>
+        val accum = Reduce(i+1 by 1)(0.as[SInt]){ j =>
+          j
+        }{_+_}
+        Pipe{rMem(i) = accum}
+      }
+      result(0::96) := rMem 
+    }
+    getMem(result)
+  }
+
+  def main() = {
+    val i = args(0).to[SInt]
+
+    val result = changingctrmax()
+
+    // Use strange if (i==0) b/c iter1: 0 by 1 and iter2: 1 by 1 both reduce to 0
+    val gold = Array.tabulate(tileSize) { i => if (i==0) 0 else (i-1)*i/2} 
+
+    printArr(gold, "gold: ")
+    printArr(result, "result: ")
+    val cksum = result.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum  + " (ChangingCtrMax)")
+
+  }
+}
+
+
 // object GroupByReduce extends SpatialAppCompiler with GroupByReduceApp // Args: none
 // trait GroupByReduceApp extends SpatialApp {
 

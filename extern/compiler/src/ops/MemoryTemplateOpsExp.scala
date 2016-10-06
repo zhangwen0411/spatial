@@ -240,6 +240,33 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     case _ => super.remap(m)
   }
 
+  override def consumesMemFifo(node: Exp[Any]) = {
+    parentOf(node) match {
+      case Some(parent) => childrenOf(parent).map { n => n match {
+        case Deff(Offchip_load_cmd(mem, fifo, ofs, len, par)) => true
+        case _ => false
+      }}.reduce{_|_}
+      case None => false
+    }
+  }
+
+  def getTrashBool(node: Exp[Any]) = {
+    val ctr = node match {
+      case Deff(d:Pipe_foreach) => d.cchain
+      case Deff(d:ParPipeForeach) => 
+        val Deff(Counterchain_new(counters)) = d.cc
+        counters(0)
+      case Deff(d) => throw new Exception(s"Unknown tileld consumer $d from $node!")
+    }
+    val Def(EatReflect(Counter_new(start, end, step, _))) = ctr
+    val c = bound(end).get.toInt
+    if (parOf(ctr) == 1) {
+      s"${quote(ctr)} < ${quote(end)}"
+    } else {
+      s"${quote(ctr)}[${parOf(ctr)-1}] < ${quote(end)}"
+    }
+  }
+
   // Current TileLd/St templates expect that LMem addresses are
   // statically known during graph build time in MaxJ. That can be
   // changed, but until then we have to assign LMem addresses
@@ -526,20 +553,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     if (isAccum(bram) & isAccumCtrl) {
       val offsetStr = quote(writeCtrl) + "_offset"
       val parentPipe = parentOf(bram).getOrElse(throw UndefinedParentException(bram))
-      val parentCtr = parentPipe match {
-        case Deff(d:Pipe_fold[_,_]) => d.cchain
-        case Deff(d:Pipe_foreach) => d.cchain
-        case Deff(d:ParPipeReduce[_,_]) => d.cc
-        case Deff(d:ParPipeForeach) => d.cc
-        case p => throw UnknownAccumControllerException(bram, write, p)
-      }
 
       var addr0Dbg = ""
       var addr1Dbg = ""
       var dataDbg = ""
       var dupDbg = ""
 
-      val Def(rhss) = parentCtr
       val accEn = writeCtrl match {
         case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
         case Deff(a) => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*wtf pipe is $a*/"
@@ -586,93 +605,95 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           emit(s"""// debug.simPrintf(${quote(writeCtrl)}_datapath_en,"${quote(bram)}_${ii} wr %f @ %d\\n", $dataStr, ${quote(addr)});""")
 
         }
-      }
-      else num_dims match {
-        case 1 =>
-          dups.foreach {case (dd, ii) =>
-            val p = portsOf(write, bram, ii).mkString(",")
-            if (writers.length == 1) {
-              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8 ${nameOf(bram).getOrElse("")}""")
-              emit(s"""// debug.simPrintf(${quote(writeCtrl)}_datapath_en,"${quote(bram)}_${ii} wr %f @ %d on {$p}\\n", $dataStr, ${quote(addr)});""")
-            } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
-              val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
-              emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8.2 ${nameOf(bram).getOrElse("")}""")
-              emit(s"""// debug.simPrintf(${quote(writeCtrl)}_datapath_en,"${quote(bram)}_${ii} wr %f @ %d on {$p}\\n", $dataStr, ${quote(addr)});""")
-            }
-          }
-        case 2 =>
-          if (inds.length == 1) {
-            val addrs = inds(0)
+      } else {
+        val enable = if (false/*consumesMemFifo(writeCtrl)*/) {s"${quote(writeCtrl)}_datapath_en & ${getTrashBool(writeCtrl)}"} else {s"${quote(writeCtrl)}_datapath_en"}
+        num_dims match {
+          case 1 =>
             dups.foreach {case (dd, ii) =>
               val p = portsOf(write, bram, ii).mkString(",")
               if (writers.length == 1) {
-                emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10 ${nameOf(bram).getOrElse("")}""")
-                emit(s"""// debug.simPrintf(${quote(writeCtrl)}_datapath_en,"${quote(bram)}_${ii} wr %f @ %d %d on {$p}\\n", $dataStr, ${quote(addrs(0))}, ${quote(addrs(1))});""")
+                emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${enable}, new int[] {$p}); //w8 ${nameOf(bram).getOrElse("")}""")
+                emit(s"""// debug.simPrintf(${enable},"${quote(bram)}_${ii} wr %f @ %d on {$p}\\n", $dataStr, ${quote(addr)});""")
               } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
                 val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
-                emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10.2 ${nameOf(bram).getOrElse("")}""")
-                emit(s"""// debug.simPrintf(${quote(writeCtrl)}_datapath_en,"${quote(bram)}_${ii} wr %f @ %d %d on {$p}\\n", $dataStr, ${quote(addrs(0))}, ${quote(addrs(1))});""")
-              } else { // Hardcode writers to banks and hope for the best
-                val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
-                emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w10.5 ${nameOf(bram).getOrElse("")}""")
-                emit(s"""// debug.simPrintf(${quote(writeCtrl)}_datapath_en,"${quote(bram)}_${ii} wr %f @ %d %d on {$p}\\n", $dataStr, ${quote(addrs(0))}, ${quote(addrs(1))});""")
+                emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addr)}, ${dataStr}, ${enable}, new int[] {$p}); //w8.2 ${nameOf(bram).getOrElse("")}""")
+                emit(s"""// debug.simPrintf(${enable},"${quote(bram)}_${ii} wr %f @ %d on {$p}\\n", $dataStr, ${quote(addr)});""")
               }
             }
-          }
-          else {
-            // TODO: This may not quite be right
-            def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
-            // Many addresses
-            // Same columns?
-            if (inds.map{ind => quote2D(ind, 1)}.distinct.length == 1) {
-              val addr0 = inds.map{ind => quote2D(ind,0) }
-              val addr1 = quote2D(inds(0), 1)
-              emit(s"""// All readers share column. vectorized """)
-              dups.foreach {case (dd, ii) =>
-                if (writers.length == 1) {
-                  emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13 ${nameOf(bram).getOrElse("")}""")                  
-                } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
-                  val p = portsOf(write, bram, ii).mkString(",")
-                  val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
-                  emit(s"""${quote(bram)}_${ii}.${wrType}((new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w13.2 ${nameOf(bram).getOrElse("")}""")
-                } else { // Hardcode writers to banks and hope for the best
-                  val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
-                  emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13.5 ${nameOf(bram).getOrElse("")}""")
-                }
-                emit(s"""// debug.simPrintf(${quote(writeCtrl)}_datapath_en,"${quote(bram)}_${ii} wr %f @ %d %d\\n", ${dataStr}[0], ${quote(addr0(0))}, ${addr1});""")
-              }
-            }
-            // Same rows?
-            else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
-              val addr0 = quote2D(inds(0), 0)
-              val addr1 = inds.map{ind => quote2D(ind, 0) }
-              emit(s"""// All readers share row. vectorized""")
+          case 2 =>
+            if (inds.length == 1) {
+              val addrs = inds(0)
               dups.foreach {case (dd, ii) =>
                 val p = portsOf(write, bram, ii).mkString(",")
                 if (writers.length == 1) {
-                  emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {${p}}); //w16 ${nameOf(bram).getOrElse("")}""")
+                  emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${enable}, new int[] {$p}); //w10 ${nameOf(bram).getOrElse("")}""")
+                  emit(s"""// debug.simPrintf(${enable},"${quote(bram)}_${ii} wr %f @ %d %d on {$p}\\n", $dataStr, ${quote(addrs(0))}, ${quote(addrs(1))});""")
                 } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
                   val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
-                  emit(s"""${quote(bram)}_${ii}.${wrType}(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w16.2 ${nameOf(bram).getOrElse("")}""")
+                  emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${enable}, new int[] {$p}); //w10.2 ${nameOf(bram).getOrElse("")}""")
+                  emit(s"""// debug.simPrintf(${enable},"${quote(bram)}_${ii} wr %f @ %d %d on {$p}\\n", $dataStr, ${quote(addrs(0))}, ${quote(addrs(1))});""")
                 } else { // Hardcode writers to banks and hope for the best
-                  val bank_num = writers.map{ w => w.node }.indexOf(write)
-                  emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
-                  ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w16.5 ${nameOf(bram).getOrElse("")}""")
+                  val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
+                  emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${enable}); //w10.5 ${nameOf(bram).getOrElse("")}""")
+                  emit(s"""// debug.simPrintf(${enable},"${quote(bram)}_${ii} wr %f @ %d %d on {$p}\\n", $dataStr, ${quote(addrs(0))}, ${quote(addrs(1))});""")
                 }
-                emit(s"""// debug.simPrintf(${quote(writeCtrl)}_datapath_en,"${quote(bram)}_${ii} wr %f @ %d %d on {$p}\\n", ${dataStr}[0], ${addr0}, ${quote(addr1(0))});""")
               }
             }
             else {
-              throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
+              // TODO: This may not quite be right
+              def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
+              // Many addresses
+              // Same columns?
+              if (inds.map{ind => quote2D(ind, 1)}.distinct.length == 1) {
+                val addr0 = inds.map{ind => quote2D(ind,0) }
+                val addr1 = quote2D(inds(0), 1)
+                emit(s"""// All readers share column. vectorized """)
+                dups.foreach {case (dd, ii) =>
+                  if (writers.length == 1) {
+                    emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                    ${dataStr}, ${enable}); //w13 ${nameOf(bram).getOrElse("")}""")                  
+                  } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
+                    val p = portsOf(write, bram, ii).mkString(",")
+                    val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
+                    emit(s"""${quote(bram)}_${ii}.${wrType}((new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                    ${dataStr}, ${enable}, new int[] {$p}); //w13.2 ${nameOf(bram).getOrElse("")}""")
+                  } else { // Hardcode writers to banks and hope for the best
+                    val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
+                    emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                    ${dataStr}, ${enable}); //w13.5 ${nameOf(bram).getOrElse("")}""")
+                  }
+                  emit(s"""// debug.simPrintf(${enable},"${quote(bram)}_${ii} wr %f @ %d %d\\n", ${dataStr}[0], ${quote(addr0(0))}, ${addr1});""")
+                }
+              }
+              // Same rows?
+              else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
+                val addr0 = quote2D(inds(0), 0)
+                val addr1 = inds.map{ind => quote2D(ind, 0) }
+                emit(s"""// All readers share row. vectorized""")
+                dups.foreach {case (dd, ii) =>
+                  val p = portsOf(write, bram, ii).mkString(",")
+                  if (writers.length == 1) {
+                    emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                    ${dataStr}, ${enable}, new int[] {${p}}); //w16 ${nameOf(bram).getOrElse("")}""")
+                  } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
+                    val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
+                    emit(s"""${quote(bram)}_${ii}.${wrType}(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                    ${dataStr}, ${enable}, new int[] {$p}); //w16.2 ${nameOf(bram).getOrElse("")}""")
+                  } else { // Hardcode writers to banks and hope for the best
+                    val bank_num = writers.map{ w => w.node }.indexOf(write)
+                    emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                    ${dataStr}, ${enable}); //w16.5 ${nameOf(bram).getOrElse("")}""")
+                  }
+                  emit(s"""// debug.simPrintf(${enable},"${quote(bram)}_${ii} wr %f @ %d %d on {$p}\\n", ${dataStr}[0], ${addr0}, ${quote(addr1(0))});""")
+                }
+              }
+              else {
+                throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
+              }
             }
-          }
-        case _ =>
-          throw new Exception("MaxJ generation of more than 2D BRAMs is currently unsupported.")
+          case _ =>
+            throw new Exception("MaxJ generation of more than 2D BRAMs is currently unsupported.")
+        }
       }
     }
     emitComment("} Bram_store")
@@ -1086,7 +1107,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     case Par_pop_fifo(fifo, par) =>
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, ${quote(par)});""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
-      emit(s"""${quote(fifo)}_readEn <== ${reader}_ctr_en;""")
+      val readEn = s"${reader}_ctr_en" // if (consumesMemFifo(readersOf(fifo).head.controlNode)) { s"${reader}_ctr_en | ${reader}_trash_en"} else {s"${reader}_ctr_en}"}
+      emit(s"""${quote(fifo)}_readEn <== ${readEn};""")
       emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
 
     case Pop_fifo(fifo) =>
