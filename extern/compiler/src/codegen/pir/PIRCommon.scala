@@ -81,7 +81,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     def ref(reg: LocalMem, out: Boolean, stage: Int = stageNum): LocalRef = reg match {
       // If the previous stage computed the read address for this load, use the registered output
       // of the memory directly. Otherwise, use the previous stage
-      case InputReg(mem) =>
+      case SRAMRead(mem) =>
         debug(s"Referencing SRAM $mem in stage $stage")
         debug(s"  Previous stage: $prevStage")
         debug(s"  SRAM read addr: ${mem.readAddr.get}")
@@ -168,6 +168,8 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
       cu.srams.flatMap{sram => sram.vector.flatMap{case vec: VectorMem => Some(vec); case _ => None }}.toSet
     case _ => Set.empty
   }
+
+
 
 
   // Create a vector for communication to/from a given memory

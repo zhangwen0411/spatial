@@ -44,12 +44,12 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   case class ReduceReg(x: Exp[Any]) extends LocalMem
   case class AccumReg(x: Exp[Any], init: ConstReg) extends LocalMem
   case class TempReg(x: Exp[Any]) extends LocalMem
+  case class SRAMRead(mem: CUMemory) extends LocalMem
 
   case class ScalarIn(x: Exp[Any], mem: GlobalMem) extends LocalMem
   case class ScalarOut(x: Exp[Any], mem: GlobalMem) extends LocalMem
 
   case class VectorIn(mem: VectorMem) extends LocalMem
-  case class InputReg(mem: CUMemory) extends LocalMem
   case class VectorLocal(x: Exp[Any], mem: CUMemory) extends LocalMem
   case class VectorOut(x: Exp[Any], mem: GlobalMem) extends LocalMem
 
@@ -57,8 +57,12 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
     case _:AccumReg | _:ReduceReg => true
     case _ => false
   }
-  def isOutput(mem: LocalMem): Boolean = mem match {
-    case _:ScalarOut | _:VectorLocal | _:VectorOut => true
+  def isCUOutput(mem: LocalMem): Boolean = mem match {
+    case _:ScalarOut | _:VectorOut => true
+    case _ => false
+  }
+  def isCUInput(mem: LocalMem): Boolean = mem match {
+    case _:VectorIn | _:ScalarIn => true
     case _ => false
   }
   def isReadable(mem: LocalMem) = mem match {
@@ -68,7 +72,7 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   }
   def isWritable(mem: LocalMem) = mem match {
     case _:ConstReg | _:CounterReg | _:ScalarIn => false
-    case _:VectorIn | _:InputReg => false
+    case _:VectorIn | _:SRAMRead => false
     case _ => true
   }
   def isGlobal(mem: LocalMem) = mem match {

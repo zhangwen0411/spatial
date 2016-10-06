@@ -278,7 +278,7 @@ trait PIRGen extends Traversal with PIRCommon {
     case ScalarOut(_, mc:DRAMCtrl) => s"${quote(mc)}.saddr"    // Output to memory address
 
     case VectorIn(mem)                => quote(mem)           // Global vector read
-    case InputReg(mem)                => quote(mem)           // Local vector read
+    case SRAMRead(mem)                => quote(mem)           // Local vector read
     case VectorLocal(_, mem)          => quote(mem)           // Local vector write
     case VectorOut(_, vec: VectorMem) => quote(vec)           // Global vector write
 
@@ -304,7 +304,7 @@ trait PIRGen extends Traversal with PIRCommon {
     case LocalRef(stage, reg: ScalarOut) => s"CU.scalarOut(stage($stage), ${quote(reg)})"
 
     case LocalRef(stage, reg: VectorIn)  => s"CU.vecIn(stage($stage), ${quote(reg)})"
-    case LocalRef(stage, reg: InputReg)    => if (stage >= 0) s"CU.load(stage($stage), ${quote(reg)})" else s"${quote(reg)}.load"
+    case LocalRef(stage, reg: SRAMRead)    => if (stage >= 0) s"CU.load(stage($stage), ${quote(reg)})" else s"${quote(reg)}.load"
     case LocalRef(stage, reg: VectorLocal) => s"CU.store(stage($stage), ${quote(reg)})"
     case LocalRef(stage, reg: VectorOut)   => s"CU.vecOut(stage($stage), ${quote(reg)})"
   }

@@ -109,7 +109,7 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(Par_bram_store(bram,addr,value))  => Some(LocalWrite(bram,value,addr))
     case EatReflect(Par_push_fifo(fifo,value,_,_))    => Some(LocalWrite(fifo,value))
     case EatReflect(Offchip_load_cmd(mem,fifo,_,_,_)) => Some(LocalWrite(fifo))
-    case EatReflect(Gather(mem,local,addrs,_,_))      => Some(LocalWrite(local))
+    case EatReflect(Gather(mem,local,addrs,_,_,_))    => Some(LocalWrite(local))
     case _ => None
   }
 
@@ -122,8 +122,8 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(Par_bram_load(bram,addr))          => Some(LocalRead(bram,addr))
     case EatReflect(Par_pop_fifo(fifo,_))              => Some(LocalRead(fifo))
     case EatReflect(Offchip_store_cmd(mem,fifo,_,_,_)) => Some(LocalRead(fifo))
-    case EatReflect(Gather(mem,local,addrs,_,_))       => Some(LocalRead(addrs))
-    case EatReflect(Scatter(mem,local,addrs,_,_))      => Some(LocalRead(local) ++ LocalRead(addrs))
+    case EatReflect(Gather(mem,local,addrs,_,_,_))     => Some(LocalRead(addrs))
+    case EatReflect(Scatter(mem,local,addrs,_,_,_))    => Some(LocalRead(local) ++ LocalRead(addrs))
     case _ => None
   }
 
@@ -133,8 +133,8 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case Deff(Counter_new(_,_,_,par))         => List(par)
     case Deff(Offchip_load_cmd(_,_,_,_,par))  => List(par)
     case Deff(Offchip_store_cmd(_,_,_,_,par)) => List(par)
-    case Deff(Scatter(_,_,_,_,par))           => List(par)
-    case Deff(Gather(_,_,_,_,par))            => List(par)
+    case Deff(Scatter(_,_,_,_,par,_))         => List(par)
+    case Deff(Gather(_,_,_,_,par,_))          => List(par)
     case _ => super.parFactors(e)
   }
 

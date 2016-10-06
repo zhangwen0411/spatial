@@ -48,6 +48,7 @@ function write_comments {
 Comments
 --------
 * Expected FifoLoadStore to fail validation
+* Fix parallel ScatterGather to support interleaved banking rather than strided
 * Expected GEMM to fail validation
 * Tighten validation margin on BlackScholes
 * Fix UnalignedLd bug with calculating burst address and cmd enable for unaligned lds
@@ -513,7 +514,7 @@ csvemails=(`echo ${email[@]} | sed 's/ /,/g'`)
 diff=($(comm -12 <(for X in "${new_fail[@]}"; do echo "${X}"; done|sort)  <(for X in "${old_pass[@]}"; do echo "${X}"; done|sort)))
 last_m=""
 echo "[SPATIAL NOTICE] The following apps got messed up: ${diff[@]}"
-if [ ! -z "$diff" ]; then 
+if [ ! -z "$diff" ] && [ *"$old_commit"* != *"$new_commit"* ]; then 
 	echo "debug1"
 	for m in ${emails[@]}; do
 		echo "debug2"

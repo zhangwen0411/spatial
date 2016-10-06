@@ -955,13 +955,13 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
       }
     }
 
-    val trashStr = if (false/*consumesMemFifo(sym)*/) {
-      val ctr = counters(0)
-      val Def(EatReflect(Counter_new(start, end, step, _))) = ctr
-      val c = trashCount(bound(end).get.toInt, sym)
-      s" + ${c}"
-    } else {""}
-    emit(s"""DFEVar[] ${quote(sym)}_max = {${maxes.map(m=>s"${quote(m)}").mkString(",")}${trashStr}};""")
+    // val trashStr = if (false/*consumesMemFifo(sym)*/) {
+    //   val ctr = counters(0)
+    //   val Def(EatReflect(Counter_new(start, end, step, _))) = ctr
+    //   val c = trashCount(bound(end).get.toInt, sym)
+    //   s" + ${c}"
+    // } else {""}
+    emit(s"""DFEVar[] ${quote(sym)}_max = {${maxes.map(m=>s"${quote(m)}").mkString(",")}};""")
 
     // Connect strides
     val strides = counters.zipWithIndex.map { case (ctr, i) =>

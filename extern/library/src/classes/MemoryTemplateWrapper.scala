@@ -43,4 +43,11 @@ trait MemoryTemplateWrapper extends ControllerTemplateWrapper with ExternPrimiti
   def indicesManifest: Manifest[Indices] = manifest[RecordImpl]
 
   def vector_from_list[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]] = elems.toArray
+
+  def gather[T:Manifest](mem: Rep[OffChipMem[T]],local: Rep[BRAM[T]],addrs: Rep[BRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
+    for (i <- 0 until len.toInt) { if (i < local.length && i < addrs.length && addrs(i).toInt < mem.length) local(i) = mem( addrs(i).toInt ) }
+  }
+  def scatter[T:Manifest](mem: Rep[OffChipMem[T]],local: Rep[BRAM[T]],addrs: Rep[BRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
+    for (i <- 0 until len.toInt) { if (i < addrs.length && addrs(i).toInt < mem.length) mem( addrs(i).toInt ) = local(i) }
+  }
 }

@@ -693,8 +693,8 @@ trait BlockReduce2DApp extends SpatialApp {
     val numHorizontal = numRows/tileSize
     val numVertical = numCols/tileSize
     val numBlocks = numHorizontal*numVertical
-    // val gold = Array.tabulate(tileSize){i => 
-    //   Array.tabulate(tileSize){j => 
+    // val gold = Array.tabulate(tileSize){i =>
+    //   Array.tabulate(tileSize){j =>
 
     //     flatsrc(i*tileSize*tileSize + j*tileSize) }}.flatten
     // }.reduce{(a,b) => a.zip(b){_+_}}
@@ -703,8 +703,8 @@ trait BlockReduce2DApp extends SpatialApp {
     val a2 = Array.tabulate(tileSize) { i => i }
     val a3 = Array.tabulate(numHorizontal) { i => i }
     val a4 = Array.tabulate(numVertical) { i => i }
-    val gold = Array.tabulate(tileSize) { i => Array.tabulate(tileSize) {j => 
-      Array.tabulate(numHorizontal) { case ii => Array.tabulate(numVertical) {case jj => 
+    val gold = Array.tabulate(tileSize) { i => Array.tabulate(tileSize) {j =>
+      Array.tabulate(numHorizontal) { case ii => Array.tabulate(numVertical) {case jj =>
           i*tileSize*numVertical + j + ii*tileSize*numVertical*tileSize + jj*tileSize
         }}.flatten.reduce{_+_}
       }}.flatten
@@ -735,7 +735,7 @@ trait ScatterGatherApp extends SpatialApp {
   val tileSize = 384
   val maxNumAddrs = 1536
   val offchip_dataSize = maxNumAddrs*6
-  val par = 2
+  val par = 1
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
@@ -748,14 +748,14 @@ trait ScatterGatherApp extends SpatialApp {
 
     Accel {
       val addrs = BRAM[T](maxNumAddrs)
-      Sequential (maxNumAddrs by tileSize) { i => 
+      Sequential (maxNumAddrs by tileSize) { i =>
         val gathered = BRAM[T](maxNumAddrs)
         Pipe {addrs := srcAddrs(i::i + tileSize, param(par))}
         Pipe {gathered := gatherData(addrs, tileSize, param(par))}
         Pipe {scatterResult(addrs, tileSize, param(par)) := gathered}
       }
     }
-      
+
     getMem(scatterResult)
   }
 
@@ -769,12 +769,12 @@ trait ScatterGatherApp extends SpatialApp {
     // val size = args(unit(0)).to[SInt]
     val size = maxNumAddrs
     val dataSize = offchip_dataSize
-    val addrs = Array.tabulate[SInt](size) { i => 
+    val addrs = Array.tabulate[SInt](size) { i =>
       // i*2 // for debug
       if (i == 5) 199 else if (i == 6) offchip_dataSize-2 else if (i == 7) 191 else if (i==8) 203
         else if (i == 9) 381 else if (i == 10) offchip_dataSize-97 else if (i == 15) 97
         else if (i == 16) 11 else if (i == 17) 99 else if (i == 18) 245
-        else if (i == 94) 3 else if (i == 95) 1 else if (i == 83) 101 
+        else if (i == 94) 3 else if (i == 95) 1 else if (i == 83) 101
         else if (i == 70) 203 else if (i == 71) (offchip_dataSize-1) else i*2
     }
     val offchip_data = Array.fill(dataSize) {random[SInt](dataSize)}
@@ -827,7 +827,7 @@ trait InOutArgApp extends SpatialApp {
   }
 }
 
-object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteApp // Args: none 
+object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteApp // Args: none
 trait MultiplexedWriteApp extends SpatialApp {
   type Array[SInt] = ForgeArray[SInt]
 
@@ -860,7 +860,7 @@ trait MultiplexedWriteApp extends SpatialApp {
       }
 
     }
-    getMem(weightsResult)    
+    getMem(weightsResult)
 
   }
 
@@ -876,8 +876,8 @@ trait MultiplexedWriteApp extends SpatialApp {
 
     val result = multiplexedwrtest(w, i)
 
-    val gold = Array.tabulate(N/tileSize){ k => 
-      Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten 
+    val gold = Array.tabulate(N/tileSize){ k =>
+      Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten
     }.flatten
     printArr(gold, "gold: ");
     printArr(result, "result: ");
@@ -885,13 +885,13 @@ trait MultiplexedWriteApp extends SpatialApp {
     val cksum = gold.zip(result){_==_}.reduce{_&&_}
     println("PASS: " + cksum  + " (MultiplexedWriteTest)")
 
- 
+
   }
 }
 
 // TODO: Make this actually check a bubbled NBuf (i.e.- s0 = wr, s2 = wr, s4 =rd, s1s2 = n/a)
 // because I think this will break the NBuf SM since it won't detect drain completion properly
-object BubbledWriteTest extends SpatialAppCompiler with BubbledWriteApp // Args: none 
+object BubbledWriteTest extends SpatialAppCompiler with BubbledWriteApp // Args: none
 trait BubbledWriteApp extends SpatialApp {
   type Array[SInt] = ForgeArray[SInt]
 
@@ -929,7 +929,7 @@ trait BubbledWriteApp extends SpatialApp {
       }
 
     }
-    getMem(weightsResult)    
+    getMem(weightsResult)
 
   }
 
@@ -945,8 +945,8 @@ trait BubbledWriteApp extends SpatialApp {
 
     val result = bubbledwrtest(w, i)
 
-    val gold = Array.tabulate(N/tileSize){ k => 
-      Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten 
+    val gold = Array.tabulate(N/tileSize){ k =>
+      Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten
     }.flatten
     printArr(gold, "gold: ");
     printArr(result, "result: ");
@@ -954,12 +954,12 @@ trait BubbledWriteApp extends SpatialApp {
     val cksum = gold.zip(result){_==_}.reduce{_&&_}
     println("PASS: " + cksum  + " (MultiplexedWriteTest)")
 
- 
+
   }
 }
 
 
-object SequentialWrites extends SpatialAppCompiler with SequentialWritesApp // Args: none 
+object SequentialWrites extends SpatialAppCompiler with SequentialWritesApp // Args: none
 trait SequentialWritesApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -991,7 +991,7 @@ trait SequentialWritesApp extends SpatialApp {
         d
       } {_+_}
 
-      dst(0::T) := in 
+      dst(0::T) := in
     }
     getMem(dst)
   }

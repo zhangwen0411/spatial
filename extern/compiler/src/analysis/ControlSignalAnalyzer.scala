@@ -271,6 +271,11 @@ trait ControlSignalAnalyzer extends Traversal {
       isAccum(a) = true                                    // (6)
       parentOf(a) = lhs  // Reset accumulator with reduction, not allocation
 
+
+    // Scatter and gather are very high level nodes right now
+    case e:Scatter[_] => parFactorOf(e.i) = e.par
+    case e:Gather[_]  => parFactorOf(e.i) = e.par
+
     case _ => blocks(rhs).foreach{blk => traverseBlock(blk)}
   }
 }

@@ -57,8 +57,9 @@ trait UnrollingTransformer extends MultiPassTransformer {
    * Helper class for unrolling
    * Tracks multiple substitution contexts in 'laneSubst' array
    **/
-  case class Unroller(cchain: Exp[CounterChain], inds: List[Exp[Index]], unrolledInds: Option[List[List[Sym[Index]]]] = None) {
-    val Ps = parsOf(cchain)
+  case class Unroller(cchain: Exp[CounterChain], inds: List[Exp[Index]], inner: Boolean, unrolledInds: Option[List[List[Sym[Index]]]] = None) {
+    // Don't unroll inner loops for CGRA generation
+    val Ps = if (inner && SpatialConfig.genCGRA) inds.map{i => 1} else parsOf(cchain)
     val P = Ps.reduce(_*_)
     val N = Ps.length
     val prods = List.tabulate(N){i => Ps.slice(i+1,N).fold(1)(_*_) }
@@ -186,6 +187,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
     case EatReflect(e:Pipe_foreach)    => unrollControllers(lhs,rhs,lanes){ unrollPipeForeachNode(lhs, e) }
     case EatReflect(e:Pipe_fold[_,_])  => unrollControllers(lhs,rhs,lanes){ unrollPipeFoldNode(lhs, e) }
     case EatReflect(e:Accum_fold[_,_]) => unrollControllers(lhs,rhs,lanes){ unrollAccumFoldNode(lhs, e) }
+    case EatReflect(e:Scatter[_])      => unrollControllers(lhs,rhs,lanes){ unrollScatterNode(lhs, e) }
+    case EatReflect(e:Gather[_])       => unrollControllers(lhs,rhs,lanes){ unrollGatherNode(lhs, e) }
     case d if isControlNode(lhs)       => unrollControllers(lhs,rhs,lanes){ self_clone(lhs, rhs) }
 
     case EatReflect(Reg_new(_)) =>
@@ -272,7 +275,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
   )(implicit ctx: SourceContext) = {
     debugs(s"Unrolling foreach $lhs")
 
-    val lanes = Unroller(cchain, inds)
+    val lanes = Unroller(cchain, inds, isInnerControl(lhs))
     val blk = reifyBlock { unrollMap(func, lanes); () }
     val inds2 = lanes.indices
 
@@ -334,7 +337,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
     rV:     (Sym[T],Sym[T])     // Bound symbols used to reify rFunc
   )(implicit ctx: SourceContext, numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
     debugs(s"Unrolling pipe-fold $lhs")
-    val lanes = Unroller(cchain, inds)
+    val lanes = Unroller(cchain, inds, isInnerControl(lhs))
     val inds2 = lanes.indices
 
     val blk = reifyBlock {
@@ -409,7 +412,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
     def reduce(x: Exp[T], y: Exp[T]) = withSubstScope(rV._1 -> x, rV._2 -> y){ inlineBlock(rFunc)(mT) }
 
-    val mapLanes = Unroller(ccMap, isMap)
+    val mapLanes = Unroller(ccMap, isMap, false)
     val isMap2 = mapLanes.indices
     val partial = getBlockResult(func)
 
@@ -436,7 +439,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       else {
         debugs(s"[Accum-fold $lhs] Unrolling pipe-reduce reduction")
         tab += 1
-        val reduceLanes = Unroller(ccRed, isRed)
+        val reduceLanes = Unroller(ccRed, isRed, true)
         val isRed2 = reduceLanes.indices
 
         val rblk = reifyBlock {
@@ -451,7 +454,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
           debugs(s"[Accum-fold $lhs] Unrolling map loads")
           val values = mems.map{mem => withSubstScope(partial -> mem, part -> mem){
-            val loadLanes = Unroller(ccRed, isRed, Some(isRed2))
+            val loadLanes = Unroller(ccRed, isRed, true, Some(isRed2))
             loadLanes.foreach{p => register(idx -> idx2(p) ) }
             inReduction{ unrollMap(ldMap, loadLanes)(mT) }
           }}
@@ -530,6 +533,50 @@ trait UnrollingTransformer extends MultiPassTransformer {
     unrollAccumFold(lhs,f(ccMap),f(ccRed),f(accum),zero.map(f(_)),fold,iFunc2,func,ldMap,ldAcc2,rFunc2,st2,isMap,isRed,idx,part,acc2,res,rV2)(rhs.ctx,rhs.numT,rhs.mT,rhs.mC)
   }
 
+  // TODO: can probably unify this for scatter and gather
+  def unrollScatter[T](
+    lhs:   Exp[Any],
+    mem:   Exp[OffChipMem[T]],
+    local: Exp[BRAM[T]],
+    addrs: Exp[BRAM[Index]],
+    len:   Exp[Index],
+    par:   Int
+  )(implicit ctx: SourceContext, mT: Manifest[T]) = {
+    val blk = reifyBlock {
+      (0 until par).foreach{i =>
+        val scatter = reflectWrite(mem)(Scatter(mem,local,addrs,len,Const(1),fresh[Index])(ctx, mT))
+        setProps(scatter, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
+      }
+    }
+    val parallel = reflectEffect(Pipe_parallel(blk), summarizeEffects(blk) andAlso Simple())
+    styleOf(parallel) = ForkJoin
+  }
+  def unrollScatterNode[T](lhs: Sym[Any], rhs: Scatter[T]) = {
+    val Scatter(mem, local, addrs, len, Fixed(p), i) = rhs
+    unrollScatter(lhs, f(mem), f(local), f(addrs), f(len), p.toInt)(rhs.ctx, rhs.mT)
+  }
+
+  def unrollGather[T](
+    lhs:   Exp[Any],
+    mem:   Exp[OffChipMem[T]],
+    local: Exp[BRAM[T]],
+    addrs: Exp[BRAM[Index]],
+    len:   Exp[Index],
+    par:   Int
+  )(implicit ctx: SourceContext, mT: Manifest[T]) = {
+    val blk = reifyBlock {
+      (0 until par).foreach{i =>
+        val scatter = reflectWrite(local)(Gather(mem,local,addrs,len,Const(1),fresh[Index])(ctx, mT))
+        setProps(scatter, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
+      }
+    }
+    val parallel = reflectEffect(Pipe_parallel(blk), summarizeEffects(blk) andAlso Simple())
+    styleOf(parallel) = ForkJoin
+  }
+  def unrollGatherNode[T](lhs: Sym[Any], rhs: Gather[T]) = {
+    val Gather(mem, local, addrs, len, Fixed(p), i) = rhs
+    unrollGather(lhs, f(mem), f(local), f(addrs), f(len), p.toInt)(rhs.ctx, rhs.mT)
+  }
 
 
   override def self_mirror[A](lhs: Sym[A], rhs: Def[A]): Exp[A] = self_clone(lhs, rhs)
@@ -598,6 +645,8 @@ trait UnrollingTransformer extends MultiPassTransformer {
     case Deff(e:Pipe_foreach)    => Some(unrollPipeForeachNode(lhs, e))
     case Deff(e:Pipe_fold[_,_])  => Some(unrollPipeFoldNode(lhs, e))
     case Deff(e:Accum_fold[_,_]) => Some(unrollAccumFoldNode(lhs, e))
+    case Deff(e:Scatter[_]) => Some(unrollScatterNode(lhs, e))
+    case Deff(e:Gather[_]) => Some(unrollGatherNode(lhs, e))
     case _ => None
   }
 

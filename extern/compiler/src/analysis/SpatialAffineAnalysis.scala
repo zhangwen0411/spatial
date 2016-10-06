@@ -61,9 +61,9 @@ trait SpatialAffineAnalyzer extends AffineAnalyzer {
 
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
     case EatReflect(e:Scatter[_]) =>
-      accessPatternOf(lhs) = List(RandomAccess)
+      accessPatternOf(lhs) = List(LinearAccess(e.i))
     case EatReflect(e:Gather[_]) =>
-      accessPatternOf(lhs) = List(RandomAccess)
+      accessPatternOf(lhs) = List(LinearAccess(e.i))
 
     // Pipe_fold - idx is loop invariant anyway
 

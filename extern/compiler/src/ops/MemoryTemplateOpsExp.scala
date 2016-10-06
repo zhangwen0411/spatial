@@ -67,14 +67,47 @@ trait MemoryTemplateOpsExp extends MemoryTemplateTypesExp with ExternPrimitiveOp
   // --- Nodes
   case class Vector_from_list[T](elems: List[Exp[T]])(implicit val mT: Manifest[T], val ctx: SourceContext) extends Def[Vector[T]]
 
+  case class Gather[T](mem: Exp[OffChipMem[T]],local: Exp[BRAM[T]],addrs: Exp[BRAM[FixPt[Signed,B32,B0]]],len: Exp[FixPt[Signed,B32,B0]],par: Exp[Int], i: Sym[FixPt[Signed,B32,B0]])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
+  case class Scatter[T](mem: Exp[OffChipMem[T]],local: Exp[BRAM[T]],addrs: Exp[BRAM[FixPt[Signed,B32,B0]]],len: Exp[FixPt[Signed,B32,B0]],par: Exp[Int], i: Sym[FixPt[Signed,B32,B0]])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
+
   // --- Internal API
   def vector_from_list[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]] = reflectPure(Vector_from_list(elems))
+
+  def gather[T:Manifest](mem: Rep[OffChipMem[T]],local: Rep[BRAM[T]],addrs: Rep[BRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
+    reflectWrite[Unit](local)(Gather[T](mem,local,addrs,len,par,fresh[FixPt[Signed,B32,B0]])(ctx, implicitly[Manifest[T]]))
+  }
+  def scatter[T:Manifest](mem: Rep[OffChipMem[T]],local: Rep[BRAM[T]],addrs: Rep[BRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
+    reflectWrite[Unit](mem)(Scatter[T](mem,local,addrs,len,par,fresh[FixPt[Signed,B32,B0]])(ctx, implicitly[Manifest[T]]))
+  }
 
   // --- Mirroring
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
     case e@Vector_from_list(elems) => reflectPure(Vector_from_list(f(elems))(e.mT, e.ctx))(mtype(manifest[A]), pos)
     case Reflect(e@Vector_from_list(elems), u, es) => reflectMirrored(Reflect(Vector_from_list(f(elems))(e.mT,e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case Reflect(e@Gather(mem,local,addrs,len,p,i), u, es) => reflectMirrored(Reflect(Gather(f(mem),f(local),f(addrs),f(len),f(p),i)(e.ctx,e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case Reflect(e@Scatter(mem,local,addrs,len,p,i), u, es) => reflectMirrored(Reflect(Scatter(f(mem),f(local),f(addrs),f(len),f(p),i)(e.ctx,e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
     case _ => super.mirror(e, f)
+  }
+
+  override def syms(e: Any): List[Sym[Any]] = e match {
+    case Scatter(mem,local,addrs,len,p,i) => syms(mem) ::: syms(local) ::: syms(addrs) ::: syms(len) ::: syms(p)
+    case Gather(mem,local,addrs,len,p,i) => syms(mem) ::: syms(local) ::: syms(addrs) ::: syms(len) ::: syms(p)
+    case _ => super.syms(e)
+  }
+  override def readSyms(e: Any): List[Sym[Any]] = e match {
+    case Scatter(mem,local,addrs,len,p,i) => readSyms(mem) ::: readSyms(local) ::: readSyms(addrs) ::: readSyms(len) ::: readSyms(p)
+    case Gather(mem,local,addrs,len,p,i) => readSyms(mem) ::: readSyms(local) ::: readSyms(addrs) ::: readSyms(len) ::: readSyms(p)
+    case _ => super.readSyms(e)
+  }
+  override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
+    case Scatter(mem,local,addrs,len,p,i) => freqNormal(mem) ::: freqNormal(local) ::: freqNormal(addrs) ::: freqNormal(len) ::: freqNormal(p)
+    case Gather(mem,local,addrs,len,p,i) => freqNormal(mem) ::: freqNormal(local) ::: freqNormal(addrs) ::: freqNormal(len) ::: freqNormal(p)
+    case _ => super.symsFreq(e)
+  }
+  override def boundSyms(e: Any): List[Sym[Any]] = e match {
+    case Scatter(mem,local,addrs,len,p,i) => List(i)
+    case Gather(mem,local,addrs,len,p,i) => List(i)
+    case _ => super.boundSyms(e)
   }
 }
 
@@ -98,6 +131,16 @@ trait ScalaGenMemoryTemplateOps extends ScalaGenEffect with ScalaGenControllerTe
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Vector_from_list(elems) =>
       emitValDef(sym, "Array" + elems.map(quote).mkString("(", ",", ")"))
+
+    case Scatter(mem,local,addrs,len,par,i) =>
+      stream.println("val "+quote(sym)+" = {")
+      stream.println("for ("+quote(i)+" <- 0 until "+quote(len)+".toInt) { if ("+quote(i)+" < "+quote(addrs)+".length && "+quote(addrs)+"("+quote(i)+").toInt < "+quote(mem)+".length) "+quote(mem)+"( "+quote(addrs)+"("+quote(i)+").toInt ) = "+quote(local)+"("+quote(i)+") }" + "")
+      stream.println("}")
+
+    case Gather(mem,local,addrs,len,par,i) =>
+      stream.println("val "+quote(sym)+" = {")
+      stream.println("for ("+quote(i)+" <- 0 until "+quote(len)+".toInt) { if ("+quote(i)+" < "+quote(local)+".length && "+quote(i)+" < "+quote(addrs)+".length && "+quote(addrs)+"("+quote(i)+").toInt < "+quote(mem)+".length) "+quote(local)+"("+quote(i)+") = "+quote(mem)+"( "+quote(addrs)+"("+quote(i)+").toInt ) }" + "")
+      stream.println("}")
 
     case _ => super.emitNode(sym, rhs)
   }
@@ -528,7 +571,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         case Deff(d:Pipe_fold[_,_]) => true
         case Deff(d:Pipe_foreach) => false
         case Deff(d:ParPipeReduce[_,_]) => true
-        case Deff(d:ParPipeForeach) => 
+        case Deff(d:ParPipeForeach) =>
           if (childrenOf(parentOf(writeCtrl).get).indexOf(writeCtrl) == childrenOf(parentOf(writeCtrl).get).length-1) {
             styleOf(writeCtrl) match {
               case InnerPipe => true
@@ -606,7 +649,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
         }
       } else {
-        val enable = if (false/*consumesMemFifo(writeCtrl)*/) {s"${quote(writeCtrl)}_datapath_en & ${getTrashBool(writeCtrl)}"} else {s"${quote(writeCtrl)}_datapath_en"}
+        val enable = if (consumesMemFifo(writeCtrl)) {s"${quote(writeCtrl)}_datapath_en & ${getTrashBool(writeCtrl)}"} else {s"${quote(writeCtrl)}_datapath_en"}
         num_dims match {
           case 1 =>
             dups.foreach {case (dd, ii) =>
@@ -705,11 +748,13 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         alwaysGen { emit(s"""int ${quote(sym)} = ${getNextLMemAddr()};""") }
         emitComment(s""" Offchip_new(${quote(size)}) }""")
 
-    case Gather(mem,local,addrs,len,par) =>
+    case Gather(mem,local,addrs,len,_,i) =>
+      val worker = childrenOf(parentOf(sym).get).indexOf(sym)
+      val par = childrenOf(parentOf(sym).get).length
       print_stage_prefix(s"Gather par${quote(par)}",s"",s"${quote(sym)}", false)
       val access = writersOf(local).find(_.node == sym).get
       val i = instanceIndicesOf(access, addrs).head
-      val parStr = if (quote(par) == "1") {
+      val parStr = if (par == 1) {
 //         emit(s"""DFEVar ${quote(sym)}_waddr = ${quote(addrs)}_$i.type.newInstance(this);
 // DFEVar ${quote(sym)}_wdata = ${quote(local)}_0.type.newInstance(this); // Assume duplicate _0 exists
 // DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
@@ -718,36 +763,36 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         s"${quote(par)},"
       }
 
-      (0 until bound(par).get.toInt).foreach { case worker => 
-        emit("{")
-        emit(s"""DFEVector<DFEVar> ${quote(sym)}_waddr = new DFEVectorType<DFEVar>(${quote(addrs)}_$i.type, 1).newInstance(this);
-  DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0.type, 1).newInstance(this);
-  DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
+      emit("{")
+      emit(s"""DFEVector<DFEVar> ${quote(sym)}_waddr = new DFEVectorType<DFEVar>(${quote(addrs)}_$i.type, 1).newInstance(this);
+DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0.type, 1).newInstance(this);
+DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
-        emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
-        emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
-        emit(s"""GatherLib ${quote(sym)} = new GatherLib(
-          this,
-          ${quote(sym)}_en, ${quote(sym)}_done, $worker, $parStr
-          ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
-          ${quote(addrs)}_$i, ${quote(len)},
-          ${quote(mem)},  "${quote(mem)}_${quote(sym)}_in",
-          ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
-        val wType = if ((quote(par) == "1")) {"connectWport("} else {s"connectBankWport($worker,"}
-        duplicatesOf(local).zipWithIndex.foreach { case (m,i) =>
-          emit(s"""${quote(local)}_$i.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
-        }
-        emit("}")
+      emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
+      emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
+      emit(s"""GatherLib ${quote(sym)} = new GatherLib(
+        this,
+        ${quote(sym)}_en, ${quote(sym)}_done, ${bound(worker).get.toInt}, $parStr
+        ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
+        ${quote(addrs)}_$i, ${quote(len)},
+        ${quote(mem)},  "${quote(mem)}_${quote(sym)}_in",
+        ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
+      val wType = if ((par == 1)) {"connectWport("} else {s"connectBankWport($worker,"}
+      duplicatesOf(local).zipWithIndex.foreach { case (m,i) =>
+        emit(s"""${quote(local)}_$i.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
       }
+      emit("}")
       print_stage_suffix(quote(sym),false)
 
-    case Scatter(mem,local,addrs,len,par) =>
+    case Scatter(mem,local,addrs,len,_,i) =>
+      val worker = childrenOf(parentOf(sym).get).indexOf(sym)
+      val par = childrenOf(parentOf(sym).get).length
       print_stage_prefix(s"Scatter par${quote(par)}",s"",s"${quote(sym)}", false)
       val localReader = readersOf(local).find(_.node == sym).get
       val addrsReader = readersOf(addrs).find(_.node == sym).get
       val i = instanceIndicesOf(addrsReader, addrs).head
       val j = instanceIndicesOf(localReader, local).head
-      val parStr = if (quote(par) == "1") {
+      val parStr = if (par == 1) {
 //         emit(s"""DFEVar ${quote(sym)}_waddr = ${quote(addrs)}_$i.type.newInstance(this);
 // DFEVar ${quote(sym)}_wdata = ${quote(local)}_0.type.newInstance(this); // Assume duplicate _0 exists
 // DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
@@ -755,19 +800,16 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       } else {
         s"${quote(par)},"
       }
-
-      (0 until bound(par).get.toInt).foreach { case worker => 
-        emit("{")
-        emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
-        emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
-        emit(s"""ScatterLib ${quote(sym)} = new ScatterLib(
-          this,
-          ${quote(sym)}_en, ${quote(sym)}_done, ${worker}, ${parStr}
-          ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
-          ${quote(addrs)}_$i, ${quote(local)}_$j, ${quote(len)},
-          ${quote(mem)}, "${quote(mem)}_${quote(sym)}_out");""")
-        emit("}")
-      }
+      emit("{")
+      emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
+      emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
+      emit(s"""ScatterLib ${quote(sym)} = new ScatterLib(
+        this,
+        ${quote(sym)}_en, ${quote(sym)}_done, ${bound(worker).get.toInt}, ${parStr}
+        ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
+        ${quote(addrs)}_$i, ${quote(local)}_$j, ${quote(len)},
+        ${quote(mem)}, "${quote(mem)}_${quote(sym)}_out");""")
+      emit("}")
       print_stage_suffix(quote(sym),false)
 
     case Offchip_load_cmd(mem, fifo, ofs, len, par) =>
@@ -987,13 +1029,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val regname = s"${quote(reg)}_${ii}"
               regType(reg) match {
                 case _ =>
-                  val port = portsOf(writer, reg, ii).head 
+                  val port = portsOf(writer, reg, ii).head
                   val rstStr = quote(parentOf(reg).get) + "_rst_en"
                   // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
                   if (false/*dup.depth == 2*/) {
                     emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false)); // ${nameOf(reg).getOrElse("")}""")
                   } else if (dup.depth > 1) {
-                    val port = portsOf(writer, reg, ii).head 
                     emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
                   }
                   else {
@@ -1044,7 +1085,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               } else {
                 def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
                 val row_majors = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
-                val all_same = (row_majors.reduce{_&_} == row_majors.reduce{_|_}) 
+                val all_same = (row_majors.reduce{_&_} == row_majors.reduce{_|_})
                 // {
                 //   throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
                 // }
@@ -1056,9 +1097,9 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
                 val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
                 val write_head = write_pars.head
                 if (!(write_pars.map{a => a == write_head}.reduce{_&_})) {
-                  throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")                  
+                  throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")
                 }
-                emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}", 
+                emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}",
                   ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
                   $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
                   ${all_same}, /*all_same access (row_major or col_major)*/
@@ -1107,7 +1148,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     case Par_pop_fifo(fifo, par) =>
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, ${quote(par)});""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
-      val readEn = s"${reader}_ctr_en" // if (consumesMemFifo(readersOf(fifo).head.controlNode)) { s"${reader}_ctr_en | ${reader}_trash_en"} else {s"${reader}_ctr_en}"}
+      val readEn = s"${reader}_ctr_en"
       emit(s"""${quote(fifo)}_readEn <== ${readEn};""")
       emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
 
