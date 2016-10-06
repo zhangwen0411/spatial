@@ -597,7 +597,7 @@ eval "$cmd"
 numel1=(`cat ${history_file} | grep "^(commit change)\ " | grep -oh "." | wc -l`)
 numel2=(`cat ${history_file} | grep "^(commit change)\ " | wc -l`)
 numel=$(($numel1 / $numel2))
-if [ $numel -gt $(( $hist + $chars_before_bars )) ]; then
+if [ $numel -gt $(( $hist * 2 + $chars_before_bars )) ]; then
 	cmd="sed -i \"s/^(commit change)\([[:blank:]]*\),,../(commit change)\1,,/g\" ${history_file}"
 	eval "$cmd"
 fi

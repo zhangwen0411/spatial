@@ -234,6 +234,24 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 
+    case FixPt_Div(a,b) =>
+      val pre = maxJPre(sym)
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""$pre ${quote(sym)} = ${quote(a)} / ${quote(b)};""")
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
+    case FltPt_Div(a,b) =>
+      val pre = maxJPre(sym)
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""$pre ${quote(sym)} = ${quote(a)} / ${quote(b)};""")
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
     case FixPt_Mul(a,b) =>
       val pre = maxJPre(sym)
       rTreeMap(sym) match {

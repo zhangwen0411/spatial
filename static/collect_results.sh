@@ -8,7 +8,7 @@
 ##########
 # CONFIG #
 ##########
-test_name="CharStoreTest" # Label for data to be scraped
+test_name="CharStoreTest2" # Label for data to be scraped
 testname_as_prefix="false" # Flag indicating if test_name is a prefix (for printing to csv with multiple tests)
 base_dir="./${test_name}" # Move whatever maxj/ you want to scrape to this dir
 insertion_file="/home/mattfel/characterization/${test_name}.csv" # Specify file that holds current unpopulated table
@@ -17,14 +17,13 @@ server="maxeler" # Specify server
 # stop_channel=30 # Used if mv via script
 
 
-
-
 ##########
 # SCRIPT #
 ##########
 
 echo "Make sure /mnt/${server} is mounted"
 sleep 2
+echo "Results will appear at ${insertion_file}"
 
 # Handle local files
 fname="${insertion_file}.populated"

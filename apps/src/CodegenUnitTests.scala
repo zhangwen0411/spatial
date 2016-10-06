@@ -735,6 +735,7 @@ trait ScatterGatherApp extends SpatialApp {
   val tileSize = 384
   val maxNumAddrs = 1536
   val offchip_dataSize = maxNumAddrs*6
+  val par = 2
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
@@ -749,9 +750,9 @@ trait ScatterGatherApp extends SpatialApp {
       val addrs = BRAM[T](maxNumAddrs)
       Sequential (maxNumAddrs by tileSize) { i => 
         val gathered = BRAM[T](maxNumAddrs)
-        Pipe {addrs := srcAddrs(i::i + tileSize, param(1))}
-        Pipe {gathered := gatherData(addrs, tileSize)}
-        Pipe {scatterResult(addrs, tileSize) := gathered}
+        Pipe {addrs := srcAddrs(i::i + tileSize, param(par))}
+        Pipe {gathered := gatherData(addrs, tileSize, param(par))}
+        Pipe {scatterResult(addrs, tileSize, param(par)) := gathered}
       }
     }
       
@@ -1012,3 +1013,65 @@ trait SequentialWritesApp extends SpatialApp {
 
   }
 }
+
+// object GroupByReduce extends SpatialAppCompiler with GroupByReduceApp // Args: none
+// trait GroupByReduceApp extends SpatialApp {
+
+//   val T = FixPt(32,0,false)
+//   val D4bit = FixPt(2,2,false)
+//   val M8bit = FixPt(4,4,false) // Fix2Float in Node.scala
+//   var dim = 96
+//   var par = 1
+
+
+//   def main(args: String*) = {
+//     if (!(args.size == 2)) {
+//       println(args.size)
+//       println("\nUsage: GroupByReduce <dim>")
+//       sys.exit(0)
+//     }
+//     dim = args(0).toInt
+//     par = args(1).toInt
+
+//     // Get sizes of data structures from host
+//     val B = ArgIn("B"); bound(B, dim)
+
+//     // Declare off-chip data arrays
+//     val keys = OffChipArray(T)("keys", B)
+//     val values = OffChipArray(T)("values", B)
+//     val result = OffChipArray(T)("groups", B)
+//     val accum = OffChipArray(T)("accums", B)
+
+//     // LOAD THE DATA
+//     val kTile = BRAM(T, "ktile", dim, false)
+//     val vTile = BRAM(T, "vtile", dim, false)
+//     val kLd = TileMemLd(keys, B, Const(0), Const(0), kTile, 1, dim)
+//     kLd.withForce(Const(true))
+//     val vLd = TileMemLd(values, B, Const(0), Const(0), vTile, 1, dim)
+//     vLd.withForce(Const(true))
+//     val ldPipe = Parallel(kLd, vLd)    
+
+
+//     /*
+//     SECTION FOR NON-PAR
+//     */
+//     // GROUP BY REDUCE
+//     val rTile = BRAM(T, "rtile", dim, false)
+//     val acTile = BRAM(T, "actile", dim, false)
+//     val grbr = GrpByRdc(par, dim, kTile, vTile, rTile, acTile)
+//     val gbrPipe = Parallel(grbr)
+    
+
+//     // STORE OFFCHIP
+//     val st = TileMemSt(1, result, B, Const(0), Const(0), rTile, 1, dim)
+//     st.withForce(Const(true))
+//     val st2 = TileMemSt(1, accum, B, Const(0), Const(0), acTile, 1, dim)
+//     st2.withForce(Const(true))
+
+//     val topCtr = Ctr((Const(1),1))
+//     // val last = List(ldPipe) ++ List(grpBlock._1) ++ List(st) ++ List(st2)
+//     val last = List(ldPipe) ++ List(gbrPipe) ++ List(st) ++ List(st2)
+//     val topCtrl = Sequential(topCtr,last:_*)
+
+//     topCtrl
+//   }

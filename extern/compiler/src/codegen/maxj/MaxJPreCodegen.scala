@@ -488,6 +488,12 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                 case tag @ Vec_apply(vec,idx) =>
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
+                case tag @ FixPt_Div(a,b) => 
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  s"""${maxJPre(s)} ${quote(s)} = ${quote(a)} / ${quote(b)};"""
+                case tag @ FltPt_Div(a,b) => 
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  s"""${maxJPre(s)} ${quote(s)} = ${quote(a)} / ${quote(b)};"""
                 case tag @ FltPt_Add(a,b) =>
                   // TODO: Way of doing this args & consts check that isn't stupid
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }

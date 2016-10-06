@@ -745,6 +745,8 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
     }
 
+    val childrenSet = Set[String]()
+    val percentDSet = Set[String]()
     /* Control Signals to Children Controllers */
     if (!isInnerPipe(sym)) {
 		  childrenOf(sym).zipWithIndex.foreach { case (c, idx) =>
@@ -752,10 +754,15 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 		  	emit(s"""${quote(sym)}_sm.connectInput("s${idx}_done", ${quote(c)}_done);""")
         emitGlobalWire(s"""${quote(c)}_en""")
         emit(s"""${quote(c)}_en <== ${quote(sym)}_sm.getOutput("s${quote(idx)}_en");""")
+        childrenSet += (s"${quote(c)}_en, ${quote(c)}_done")
+        percentDSet += (s"${idx}: %d %d")
 		  	enDeclaredSet += c
 		  	doneDeclaredSet += c
 		  }
     }
+
+    emit(s"""// debug.simPrintf(${quote(sym)}_en, "pipe ${quote(sym)}: ${percentDSet.toList.mkString(",   ")}\\n", ${childrenSet.toList.mkString(",")});""")
+
 
     if (styleOf(sym)!=ForkJoin) {
       if (cchain.isDefined) {
