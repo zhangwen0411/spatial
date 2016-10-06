@@ -1033,7 +1033,7 @@ trait ChangingCtrMaxApp extends SpatialApp {
     Accel {
       val rMem = BRAM[T](96)
       Sequential(96 by 1) { i =>
-        val accum = Reduce(i+1 by 1)(0.as[SInt]){ j =>
+        val accum = Reduce(i by 1)(0.as[SInt]){ j =>
           j
         }{_+_}
         Pipe{rMem(i) = accum}
