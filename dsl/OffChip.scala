@@ -256,12 +256,13 @@ trait OffChip {
             offchip_store_cmd(mem, fifo, memOfs, len, p)
           }
           else {
-            offchip_load_cmd(mem, fifo, memOfs, len, p)
-
             // val el_per_burst = 384*8/tp(mem).bits // Get number of elements in a burst
             // val start_bound = memOfs % el_per_burst // Figure out number of elements to ignore before we get desired data
+            // val memOfs_downcast = memOfs - start_bound // Figure out burst-aligned memOfs
             // val end_bound = start_bound + len // Figure out number of elements before we should ignore again
-            // val ctr_max = (end_bound - (end_bound % el_per_burst)) + el_per_burst // Upcast memory request to nearest burst alignment
+            // val len_upcast = (end_bound - (end_bound % el_per_burst)) + el_per_burst // Upcast memory request to nearest burst alignment
+
+            offchip_load_cmd(mem, fifo, memOfs/*_downcast*/, len/*_upcast*/, p)
 
             Pipe(len/*ctr_max*/ par p){i =>
               val localAddr = localOfs.take(localOfs.length - 1) :+ (localOfs.last + i)
@@ -278,12 +279,13 @@ trait OffChip {
             offchip_store_cmd(mem, fifo, memOfs, len, p)
           }
           else {
-            offchip_load_cmd(mem, fifo, memOfs, len, p)
-
             // val el_per_burst = 384*8/tp(mem).bits // Get number of elements in a burst
             // val start_bound = memOfs % el_per_burst // Figure out number of elements to ignore before we get desired data
+            // val memOfs_downcast = memOfs - start_bound // Figure out burst-aligned memOfs
             // val end_bound = start_bound + len // Figure out number of elements before we should ignore again
-            // val ctr_max = (end_bound - (end_bound % el_per_burst)) + el_per_burst // Upcast memory request to nearest burst alignment
+            // val len_upcast = (end_bound - (end_bound % el_per_burst)) + el_per_burst // Upcast memory request to nearest burst alignment
+
+            offchip_load_cmd(mem, fifo, memOfs/*_downcast*/, len/*_upcast*/, p)
 
             Pipe(len/*ctr_max*/ par p){i => $local(i/*, en = i > start_bound & i < end_bound*/) = fifo.pop() }
           }
