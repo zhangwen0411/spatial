@@ -476,7 +476,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val addr1 = quote2D(inds(0), 1)
               emit(s"""// All readers share column. vectorized """)
               emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}, new int[] {$p}); //r7 ${nameOf(bram).getOrElse("")}""")
-              emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(bram_name)} %f @ %d from port {$p}\\n", ${quote(read)}[0], ${quote(addr0)}[0], ${quote(addr1)}[0]);""")
+              emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(bram_name)} %f @ %d from port {$p}\\n", ${quote(read)}[0], ${quote(addr0.head)}[0], ${quote(addr1)}[0]);""")
             }
             // Same rows?
             else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
@@ -484,7 +484,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val addr1 = inds.map{ind => quote2D(ind, 0) }
               emit(s"""// All readers share row. vectorized""")
               emit(s"""${pre} ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")})), new int[] {$p}); //r8 ${nameOf(bram).getOrElse("")}""")
-              emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(bram_name)} %f @ %d from port {$p}\\n", ${quote(read)}[0], ${quote(addr0)}[0], ${quote(addr1)}[0]);""")
+              emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(bram_name)} %f @ %d from port {$p}\\n", ${quote(read)}[0], ${quote(addr0)}[0], ${quote(addr1.head)}[0]);""")
             }
             else {
               throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
