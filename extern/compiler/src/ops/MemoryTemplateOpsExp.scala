@@ -777,7 +777,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         ${quote(addrs)}_$i, ${quote(len)},
         ${quote(mem)},  "${quote(mem)}_${quote(sym)}_in",
         ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
-      val wType = if ((par == 1)) {"connectWport("} else {s"connectBankWport($worker,"}
+      val wType = if ((par == 1)) {"connectWport("} else {s"connectDirectWport($worker,"}
       duplicatesOf(local).zipWithIndex.foreach { case (m,i) =>
         emit(s"""${quote(local)}_$i.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
       }

@@ -735,7 +735,7 @@ trait ScatterGatherApp extends SpatialApp {
   val tileSize = 384
   val maxNumAddrs = 1536
   val offchip_dataSize = maxNumAddrs*6
-  val par = 1
+  val par = 2
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
@@ -752,7 +752,7 @@ trait ScatterGatherApp extends SpatialApp {
         val gathered = BRAM[T](maxNumAddrs)
         Pipe {addrs := srcAddrs(i::i + tileSize, param(par))}
         Pipe {gathered := gatherData(addrs, tileSize, param(par))}
-        Pipe {scatterResult(addrs, tileSize, param(par)) := gathered}
+        Pipe {scatterResult(addrs, tileSize, param(par)) := gathered} // What to do about parallel scatter when sending to same burst simultaneously???
       }
     }
 
@@ -767,15 +767,17 @@ trait ScatterGatherApp extends SpatialApp {
 
   def main() = {
     // val size = args(unit(0)).to[SInt]
+
     val size = maxNumAddrs
     val dataSize = offchip_dataSize
     val addrs = Array.tabulate[SInt](size) { i =>
       // i*2 // for debug
-      if (i == 5) 199 else if (i == 6) offchip_dataSize-2 else if (i == 7) 191 else if (i==8) 203
+      if (i == 4) 199 else if (i == 6) offchip_dataSize-2 else if (i == 7) 191 else if (i==8) 203
         else if (i == 9) 381 else if (i == 10) offchip_dataSize-97 else if (i == 15) 97
         else if (i == 16) 11 else if (i == 17) 99 else if (i == 18) 245
         else if (i == 94) 3 else if (i == 95) 1 else if (i == 83) 101
-        else if (i == 70) 203 else if (i == 71) (offchip_dataSize-1) else i*2
+        else if (i == 70) 203 else if (i == 71) (offchip_dataSize-1) 
+        else if (i % 2 == 0) i*2 else i*2 + offchip_dataSize/2
     }
     val offchip_data = Array.fill(dataSize) {random[SInt](dataSize)}
     // val offchip_data = Array.tabulate (dataSize) { i => i}
