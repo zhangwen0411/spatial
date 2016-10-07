@@ -649,7 +649,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
         }
       } else {
-        val enable = if (consumesMemFifo(writeCtrl)) {s"${quote(writeCtrl)}_datapath_en & ${getTrashBool(writeCtrl)}"} else {s"${quote(writeCtrl)}_datapath_en"}
+        // val enable = if (consumesMemFifo(writeCtrl)) {s"${quote(writeCtrl)}_datapath_en & ${getTrashBool(writeCtrl)}"} else {s"${quote(writeCtrl)}_datapath_en"}
+        val enable = s"${quote(writeCtrl)}_datapath_en"
         num_dims match {
           case 1 =>
             dups.foreach {case (dd, ii) =>
