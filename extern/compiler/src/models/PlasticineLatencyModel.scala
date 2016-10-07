@@ -82,7 +82,7 @@ trait PlasticineLatencyModel {
     case Reg_new(_) => 0
     case Argin_new(_) => 0
     case Argout_new(_) => 0
-    case Bram_new(_,_) => 0
+    case Sram_new(_,_) => 0
     case Fifo_new(_,_) => 0
     case Cam_new(_,_) => 0
 
@@ -96,8 +96,8 @@ trait PlasticineLatencyModel {
     case Cam_store(cam,key,value) => 1
 
     // TODO: Not a function of number of banks?
-    case Bram_load(ram, _) => 0 //if (isDblBuf(ram)) 2 else 1
-    case Bram_store(ram, _, _) => 0 //if (isDblBuf(ram)) 2 else 1
+    case Sram_load(ram, _) => 0 //if (isDblBuf(ram)) 2 else 1
+    case Sram_store(ram, _, _) => 0 //if (isDblBuf(ram)) 2 else 1
 
     case _:Counter_new => 0
     case _:Counterchain_new => 0
@@ -151,7 +151,7 @@ trait PlasticineLatencyModel {
     case Fltpt_to_fixpt(x) => 1 // Supported?
 
     // TODO
-    case Offchip_store_cmd(mem,stream,ofs,len,par) =>
+    case BurstStore(mem,stream,ofs,len,par) =>
       val c = contentionOf(s)
       val p = 16.0 //bound(par).get
       val size = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip store"); 96.0}
@@ -165,7 +165,7 @@ trait PlasticineLatencyModel {
       //System.out.println(s"Sizes: $sizes, base cycles: $baseCycles, ofactor: $oFactor, smallOverhead: $smallOverhead, overhead: $overhead")
       Math.ceil(baseCycles*overhead).toLong
 
-    case Offchip_load_cmd(mem,stream,ofs,len,par) =>
+    case BurstLoad(mem,stream,ofs,len,par) =>
       val c = contentionOf(s)
       val ts = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip load"); 96.0}
       val b = ts  // TODO - max of this and max command size
@@ -174,16 +174,16 @@ trait PlasticineLatencyModel {
       //System.out.println(s"Tile transfer $s: c = $c, r = $r, b = $b, p = $p")
       memoryModel(c,r.toInt,b.toInt,p.toInt)
 
-    case _:Pipe_parallel   => 1
-    case _:Unit_pipe       => 0
-    case _:Pipe_foreach    => 1
-    case _:Pipe_fold[_,_]  => 1
-    case _:Accum_fold[_,_] => 1
+    case _:ParallelPipe   => 1
+    case _:UnitPipe       => 0
+    case _:OpForeach    => 1
+    case _:OpReduce[_,_]  => 1
+    case _:OpMemReduce[_,_] => 1
 
     case _:Reg_read[_]    => 0
     case _:Reg_write[_]   => 0
     case _:Reg_reset[_]   => 0
-    case _:Offchip_new[_] => 0
+    case _:Dram_new[_] => 0
 
     case Reflect(d,_,_) => latencyOfNode(s, d)
     case Reify(_,_,_) => 0

@@ -10,18 +10,18 @@ import spatial.shared._
 object TileCseTest extends SpatialAppCompiler with TileCseTestApp
 trait TileCseTestApp extends SpatialApp {
   def main() {
-    val dram = OffChipMem[SInt](100, 100)
+    val dram = DRAM[SInt](100, 100)
 
     setMem(dram, Array.tabulate(100*100){i => i})
 
     val out  = ArgOut[SInt]
     Accel {
-      val bram1 = BRAM[SInt](32, 32)
-      val bram2 = BRAM[SInt](16, 16)
+      val sram1 = SRAM[SInt](32, 32)
+      val sram2 = SRAM[SInt](16, 16)
 
-      bram1 := dram(4::36,2::34)
-      bram2 := dram(16::32,32::48)
-      out := bram1(0,0) + bram2(0,0)
+      sram1 := dram(4::36,2::34)
+      sram2 := dram(16::32,32::48)
+      out := sram1(0,0) + sram2(0,0)
     }
 
     val result = getArg(out)
@@ -59,7 +59,7 @@ trait VectorMinTestApp extends SpatialApp {
     setArg(N, size)
 
     val out = ArgOut[SInt]
-    val data = OffChipMem[SInt](N)
+    val data = DRAM[SInt](N)
     setMem(data, vec)
 
     Accel {

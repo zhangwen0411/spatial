@@ -24,18 +24,18 @@ trait OuterProductApp extends SpatialApp {
     setArg(sizeA, M)
     setArg(sizeB, N)
 
-    val vec1 = OffChipMem[T](sizeA)
-    val vec2 = OffChipMem[T](sizeB)
-    val out = OffChipMem[T](sizeA, sizeB)
+    val vec1 = DRAM[T](sizeA)
+    val vec2 = DRAM[T](sizeB)
+    val out = DRAM[T](sizeA, sizeB)
 
     setMem(vec1, a)
     setMem(vec2, b)
 
     Accel {
       Pipe(sizeA by tileSizeA, sizeB by tileSizeB par outerPar){ (i,j) =>
-        val b1 = BRAM[T](tileSizeA)
-        val b2 = BRAM[T](tileSizeB)
-        val outTile = BRAM[T](tileSizeA, tileSizeB)
+        val b1 = SRAM[T](tileSizeA)
+        val b2 = SRAM[T](tileSizeB)
+        val outTile = SRAM[T](tileSizeA, tileSizeB)
         Parallel {
           b1 := vec1(i::i+tileSizeA)
           b2 := vec2(j::j+tileSizeB)

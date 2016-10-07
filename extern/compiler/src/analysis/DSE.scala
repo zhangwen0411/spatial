@@ -93,7 +93,7 @@ trait DSE extends Traversal {
 
     val numericFactors = tileSizes ++ parParams
 
-    // HACK: All par factors for readers and writers of a given BRAM must be equal or one
+    // HACK: All par factors for readers and writers of a given SRAM must be equal or one
     /*for ((mem,factors) <- accFactors) {
       val distFactors = factors.distinct
       if (distFactors.length > 1) restrict ::= REqualOrOne(distFactors)

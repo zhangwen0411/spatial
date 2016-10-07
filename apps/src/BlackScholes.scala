@@ -68,22 +68,22 @@ trait BlackScholesApp extends SpatialApp {
   }
 
   def blackscholes(
-    otype:      Rep[OffChipMem[UInt]],
-    sptprice:   Rep[OffChipMem[Flt]],
-    strike:     Rep[OffChipMem[Flt]],
-    rate:       Rep[OffChipMem[Flt]],
-    volatility: Rep[OffChipMem[Flt]],
-    otime:      Rep[OffChipMem[Flt]],
-    optprice:   Rep[OffChipMem[Flt]]
+    otype:      Rep[DRAM[UInt]],
+    sptprice:   Rep[DRAM[Flt]],
+    strike:     Rep[DRAM[Flt]],
+    rate:       Rep[DRAM[Flt]],
+    volatility: Rep[DRAM[Flt]],
+    otime:      Rep[DRAM[Flt]],
+    optprice:   Rep[DRAM[Flt]]
   ): Rep[Unit] = {
 
     Pipe((numOptions by ts) par op) { i =>
-      val otypeRAM      = BRAM[UInt](ts)
-      val sptpriceRAM   = BRAM[Flt](ts)
-      val strikeRAM     = BRAM[Flt](ts)
-      val rateRAM       = BRAM[Flt](ts)
-      val volatilityRAM = BRAM[Flt](ts)
-      val otimeRAM      = BRAM[Flt](ts)
+      val otypeRAM      = SRAM[UInt](ts)
+      val sptpriceRAM   = SRAM[Flt](ts)
+      val strikeRAM     = SRAM[Flt](ts)
+      val rateRAM       = SRAM[Flt](ts)
+      val volatilityRAM = SRAM[Flt](ts)
+      val otimeRAM      = SRAM[Flt](ts)
 
       Parallel {
         otypeRAM := otype(i::i+ts, ip)
@@ -94,7 +94,7 @@ trait BlackScholesApp extends SpatialApp {
         otimeRAM := otime(i::i+ts, ip)
       }
 
-      val optpriceRAM = BRAM[Flt](ts)
+      val optpriceRAM = SRAM[Flt](ts)
       Pipe((ts by 1) par ip){ j =>
         val price = BlkSchlsEqEuroNoDiv(sptpriceRAM(j), strikeRAM(j), rateRAM(j), volatilityRAM(j), otimeRAM(j), otypeRAM(j))
         optpriceRAM(j) = price
@@ -117,13 +117,13 @@ trait BlackScholesApp extends SpatialApp {
     domainOf(ip) = (1,96,1)
 
     setArg(numOptions, N)
-    val types  = OffChipMem[UInt](numOptions)
-    val prices = OffChipMem[Flt](numOptions)
-    val strike = OffChipMem[Flt](numOptions)
-    val rate   = OffChipMem[Flt](numOptions)
-    val vol    = OffChipMem[Flt](numOptions)
-    val time   = OffChipMem[Flt](numOptions)
-    val optprice = OffChipMem[Flt](numOptions)
+    val types  = DRAM[UInt](numOptions)
+    val prices = DRAM[Flt](numOptions)
+    val strike = DRAM[Flt](numOptions)
+    val rate   = DRAM[Flt](numOptions)
+    val vol    = DRAM[Flt](numOptions)
+    val time   = DRAM[Flt](numOptions)
+    val optprice = DRAM[Flt](numOptions)
 
     val sotype      = Array.fill(N)(random[UInt](2))
     val ssptprice   = Array.fill(N)(random[Flt])
@@ -148,7 +148,7 @@ trait BlackScholesApp extends SpatialApp {
       BlkSchlsEqEuroNoDiv(ssptprice(j), sstrike(j), srate(j), svolatility(j), sotime(j), sotype(j))
     )
     val gold = inds_array
-    // val gold = (inds_array) map { i => 
+    // val gold = (inds_array) map { i =>
     //   val rate = srate(i)
     //   val strike = sstrike(i)
     //   val sptprice = ssptprice(i)

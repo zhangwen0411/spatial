@@ -22,13 +22,13 @@ trait CharLoad extends SpatialApp {
 
     setArg(N, iters)
 
-    val srcFPGA = OffChipMem[SInt](tileSize0, tileSize1)
+    val srcFPGA = DRAM[SInt](tileSize0, tileSize1)
     setMem(srcFPGA, srcHost)
 
     Accel {
       Sequential (N by 1) { ii =>
         val dummy = List.tabulate(outerPar){i =>
-          BRAM[SInt](tileSize0, tileSize1)
+          SRAM[SInt](tileSize0, tileSize1)
         }
         dummy.foreach {dum =>
           isDummy(dum) = true
@@ -88,12 +88,12 @@ trait CharStore extends SpatialApp {
     val num = ArgIn[SInt]
     setArg(N, iters)
     setArg(num, numin)
-    val dstFPGA = List.tabulate(outerPar){i => OffChipMem[SInt](tileSize0, tileSize1) }
+    val dstFPGA = List.tabulate(outerPar){i => DRAM[SInt](tileSize0, tileSize1) }
 
     Accel {
       Sequential (N by 1) { ii =>
         val dummy = List.tabulate(outerPar){i =>
-          BRAM[SInt](tileSize0, tileSize1)
+          SRAM[SInt](tileSize0, tileSize1)
         }
         dummy.foreach {dum =>
           isDummy(dum) = true
@@ -155,7 +155,7 @@ trait CharBram extends SpatialApp {
     val out = List.tabulate(outerPar){i => List.tabulate(innerPar) {j => ArgOut[SInt] }}
 
     Accel {
-      val tile = BRAM[T](tileDim0, tileDim1)
+      val tile = SRAM[T](tileDim0, tileDim1)
       Pipe (tileDim0 by 1 par spar0) { i =>
         Pipe (tileDim1 by 1 par spar1) { j =>
           tile(i,j) = num

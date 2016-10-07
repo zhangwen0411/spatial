@@ -91,7 +91,7 @@ trait SpatialMetadata {
 
     /**
      * Staged N-D memory dimensions
-     * Used for tracking dimensions of OffChipMems, BRAM, FIFO, etc.
+     * Used for tracking dimensions of DRAMs, SRAMs, FIFO, etc.
      * User facing: No
      * Set: dimsOf(Rep[Any]) = List[Rep[Index]]
      * Get: dimsOf(Rep[Any])  // Returns List[Rep[Index]]. Error if undefined

@@ -3,35 +3,35 @@ import spatial.library._
 import spatial.shared._
 
 
-         
-
-/*     
-     
-     
 
 
-     
+/*
+
+
+
+
+
          Minibatch impelementation:
-                             _                            
-                            | |                           
-                            |M|                           
-                            | |                           
-                            | |                           
-                            | |                           
-                            | |                           
-                  D         |_|                                                     
-             _____________   _       _                  _                          
-            |             | |^|     | |                | |                            
-          N |      X      | |Y|  -  |Y|  =>            |Y_err                                 
-            |_____________| |_|     |_|                |_|                           
-                                                ____    _        _      _  
-                                               |    |  | |      | |    | | 
-                                               |    |  | |      |M|    |M| 
-                                               |    |  |Δ|  +   | | -> | | 
-                                               | X_T|  | |      | |    | | 
-                                               |    |  | |      | |    | | 
-                                               |    |  | |      | |    | | 
-                                               |____|  |_|      |_|    |_| 
+                             _
+                            | |
+                            |M|
+                            | |
+                            | |
+                            | |
+                            | |
+                  D         |_|
+             _____________   _       _                  _
+            |             | |^|     | |                | |
+          N |      X      | |Y|  -  |Y|  =>            |Y_err
+            |_____________| |_|     |_|                |_|
+                                                ____    _        _      _
+                                               |    |  | |      | |    | |
+                                               |    |  | |      |M|    |M|
+                                               |    |  |Δ|  +   | | -> | |
+                                               | X_T|  | |      | |    | |
+                                               |    |  | |      | |    | |
+                                               |    |  | |      | |    | |
+                                               |____|  |_|      |_|    |_|
 
 
 */
@@ -56,18 +56,18 @@ trait SGDApp extends SpatialApp {
   //   setArg(A, alpha)
   //   setArg(E, epochs)
 
-  //   val x = OffChipMem[T](N*D)
-  //   val y = OffChipMem[T](N)
-  //   val result = OffChipMem[T](D)
+  //   val x = DRAM[T](N*D)
+  //   val y = DRAM[T](N)
+  //   val result = DRAM[T](D)
 
   //   setMem(x, x_in)
   //   setMem(y, y_in)
 
   //   Accel {
-  //     val x_tile = BRAM[T](D)
-  //     val y_tile = BRAM[T](N)
-  //     val update = BRAM[T](D)
-  //     val model = BRAM[T](D)
+  //     val x_tile = SRAM[T](D)
+  //     val y_tile = SRAM[T](N)
+  //     val update = SRAM[T](D)
+  //     val model = SRAM[T](D)
   //     val y_err = Reg[T](0)
   //     y_tile := y(0::D, param(1))
   //     Sequential(E by 1) { e =>
@@ -87,7 +87,7 @@ trait SGDApp extends SpatialApp {
   //   }
 
   //   getMem(result)
-  
+
   // }
 
   def sgd_minibatch(x_in: Rep[Array[T]], y_in: Rep[Array[T]], alpha: Rep[T], epochs: Rep[SInt]) = {
@@ -99,19 +99,19 @@ trait SGDApp extends SpatialApp {
     setArg(A, alpha)
     setArg(E, epochs)
 
-    val x = OffChipMem[T](N, D)
-    val y = OffChipMem[T](N)
-    val result = OffChipMem[T](D)
+    val x = DRAM[T](N, D)
+    val y = DRAM[T](N)
+    val result = DRAM[T](D)
 
     setMem(x, x_in)
     setMem(y, y_in)
 
     Accel {
-      val x_tile = BRAM[T](N,D)
-      val y_tile = BRAM[T](N)
-      val update = BRAM[T](D)
-      val model = BRAM[T](D)
-      val y_err = BRAM[T](N)
+      val x_tile = SRAM[T](N,D)
+      val y_tile = SRAM[T](N)
+      val update = SRAM[T](D)
+      val model = SRAM[T](D)
+      val y_err = SRAM[T](N)
       Sequential(E by 1) { e =>
         Parallel {
           Pipe {x_tile := x(0::N, 0::D, param(1))}
@@ -132,7 +132,7 @@ trait SGDApp extends SpatialApp {
     }
 
     getMem(result)
-  
+
 
   }
 
@@ -161,7 +161,7 @@ trait SGDApp extends SpatialApp {
     (0 until E) foreach { i =>
       val y_hat = sX.zip(sY){ case (row, y) => row.zip(gold) {_*_}.reduce{_+_} }
       val y_err = y_hat.zip(sY){case (a,b) => a - b}
-      val update = id.map{ j => 
+      val update = id.map{ j =>
         val col = sX.map{_(j)}
         col.zip(y_err){case (a,b) => a*b}.reduce{_+_}
       }

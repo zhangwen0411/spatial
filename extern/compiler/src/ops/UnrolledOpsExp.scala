@@ -9,7 +9,7 @@ import scala.collection.mutable.HashMap
 import spatial.compiler._
 import spatial.compiler.ops._
 
-trait LoweredPipeOpsExp extends ExternPrimitiveTypesExp with MemoryTemplateOpsExp {
+trait UnrolledOpsExp extends ExternPrimitiveTypesExp with MemoryOpsExp {
   this: SpatialExp =>
 
   val controller_tree = new PrintWriter(new File("controller_tree.html" ))
@@ -30,13 +30,13 @@ trait LoweredPipeOpsExp extends ExternPrimitiveTypesExp with MemoryTemplateOpsEx
   }
 
   // --- Nodes
-  case class ParPipeForeach(
+  case class UnrolledForeach(
     cc:   Exp[CounterChain],
     func: Block[Unit],
     inds: List[List[Sym[FixPt[Signed,B32,B0]]]]
   )(implicit val ctx: SourceContext) extends Def[Pipeline]
 
-  case class ParPipeReduce[T,C[T]](
+  case class UnrolledReduce[T,C[T]](
     cc:    Exp[CounterChain],
     accum: Exp[C[T]],
     func:  Block[Unit],
@@ -50,40 +50,40 @@ trait LoweredPipeOpsExp extends ExternPrimitiveTypesExp with MemoryTemplateOpsEx
 
   // --- Mirroring
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
-    case e@ParPipeForeach(cc,func,i) => reflectPure(ParPipeForeach(f(cc),f(func),i)(e.ctx))(mtype(manifest[A]),pos)
-    case Reflect(e@ParPipeForeach(cc,func,i), u, es) => reflectMirrored(Reflect(ParPipeForeach(f(cc),f(func),i)(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]),pos)
+    case e@UnrolledForeach(cc,func,i) => reflectPure(UnrolledForeach(f(cc),f(func),i)(e.ctx))(mtype(manifest[A]),pos)
+    case Reflect(e@UnrolledForeach(cc,func,i), u, es) => reflectMirrored(Reflect(UnrolledForeach(f(cc),f(func),i)(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]),pos)
 
-    case e@ParPipeReduce(cc,a,b,r,i,acc,rV) => reflectPure(ParPipeReduce(f(cc),f(a),f(b),f(r),i,acc,rV)(e.ctx,e.mT,e.mC))(mtype(manifest[A]),pos)
-    case Reflect(e@ParPipeReduce(cc,a,b,r,i,acc,rV), u, es) => reflectMirrored(Reflect(ParPipeReduce(f(cc),f(a),f(b),f(r),i,acc,rV)(e.ctx,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@UnrolledReduce(cc,a,b,r,i,acc,rV) => reflectPure(UnrolledReduce(f(cc),f(a),f(b),f(r),i,acc,rV)(e.ctx,e.mT,e.mC))(mtype(manifest[A]),pos)
+    case Reflect(e@UnrolledReduce(cc,a,b,r,i,acc,rV), u, es) => reflectMirrored(Reflect(UnrolledReduce(f(cc),f(a),f(b),f(r),i,acc,rV)(e.ctx,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
 
     case _ => super.mirror(e,f)
   }
 
   // --- Dependencies
   override def syms(e: Any): List[Sym[Any]] = e match {
-    case ParPipeForeach(cc,func,inds) => syms(cc) ::: syms(func)
-    case ParPipeReduce(cc,accum,func,rFunc,inds,acc,rV) => syms(cc) ::: syms(accum) ::: syms(func) ::: syms(rFunc)
+    case UnrolledForeach(cc,func,inds) => syms(cc) ::: syms(func)
+    case UnrolledReduce(cc,accum,func,rFunc,inds,acc,rV) => syms(cc) ::: syms(accum) ::: syms(func) ::: syms(rFunc)
     case _ => super.syms(e)
   }
   override def readSyms(e: Any): List[Sym[Any]] = e match {
-    case ParPipeForeach(cc,func,inds) => readSyms(cc) ::: readSyms(func)
-    case ParPipeReduce(cc,accum,func,rFunc,inds,acc,rV) => readSyms(cc) ::: readSyms(accum) ::: readSyms(func) ::: readSyms(rFunc)
+    case UnrolledForeach(cc,func,inds) => readSyms(cc) ::: readSyms(func)
+    case UnrolledReduce(cc,accum,func,rFunc,inds,acc,rV) => readSyms(cc) ::: readSyms(accum) ::: readSyms(func) ::: readSyms(rFunc)
     case _ => super.readSyms(e)
   }
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
-    case ParPipeForeach(cc,func,inds) => freqNormal(cc) ::: freqCold(func)
-    case ParPipeReduce(cc,accum,func,rFunc,inds,acc,rV) => freqNormal(cc) ::: freqNormal(accum) ::: freqCold(func) ::: freqNormal(rFunc)
+    case UnrolledForeach(cc,func,inds) => freqNormal(cc) ::: freqCold(func)
+    case UnrolledReduce(cc,accum,func,rFunc,inds,acc,rV) => freqNormal(cc) ::: freqNormal(accum) ::: freqCold(func) ::: freqNormal(rFunc)
     case _ => super.symsFreq(e)
   }
   override def boundSyms(e: Any): List[Sym[Any]] = e match {
-    case ParPipeForeach(cc,func,inds) => inds.flatten ::: effectSyms(func)
-    case ParPipeReduce(cc,accum,func,rFunc,inds,acc,rV) => inds.flatten ::: effectSyms(func) ::: effectSyms(rFunc) ::: List(acc, rV._1, rV._2)
+    case UnrolledForeach(cc,func,inds) => inds.flatten ::: effectSyms(func)
+    case UnrolledReduce(cc,accum,func,rFunc,inds,acc,rV) => inds.flatten ::: effectSyms(func) ::: effectSyms(rFunc) ::: List(acc, rV._1, rV._2)
     case _ => super.boundSyms(e)
   }
 }
 
-trait ScalaGenLoweredPipeOps extends ScalaGenEffect {
-  val IR: LoweredPipeOpsExp with SpatialCodegenOps
+trait ScalaGenUnrolledOps extends ScalaGenEffect {
+  val IR: UnrolledOpsExp with SpatialCodegenOps
   import IR._
 
   def emitParallelizedLoop(iters: List[List[Sym[FixPt[Signed,B32,B0]]]], cchain: Exp[CounterChain])(emitBlk: => Unit) = {
@@ -98,11 +98,11 @@ trait ScalaGenLoweredPipeOps extends ScalaGenEffect {
   }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case e@ParPipeForeach(cchain, func, inds) =>
+    case e@UnrolledForeach(cchain, func, inds) =>
       emitParallelizedLoop(inds, cchain){ emitBlock(func) }
       emitValDef(sym, "()")
 
-    case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
       emitValDef(acc, quote(accum))
       emitParallelizedLoop(inds, cchain){ emitBlock(func) }
       emitValDef(sym, "()")
@@ -111,9 +111,9 @@ trait ScalaGenLoweredPipeOps extends ScalaGenEffect {
   }
 }
 
-trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
-  val IR: LoweredPipeOpsExp with ControllerTemplateOpsExp with TpesOpsExp with ParallelOpsExp
-          with PipeOpsExp with OffChipMemOpsExp with RegOpsExp with ExternCounterOpsExp
+trait MaxJGenUnrolledOps extends MaxJGenControllerTemplateOps {
+  val IR: UnrolledOpsExp with ControllerOpsExp with TpesOpsExp with ParallelOpsExp
+          with PipeOpsExp with DRAMOpsExp with RegOpsExp with ExternCounterOpsExp
           with SpatialCodegenOps with NosynthOpsExp with MemoryAnalysisExp
           with DeliteTransform with VectorOpsExp with SpatialExp with UnrollingTransformExp
   import IR._
@@ -140,7 +140,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
         case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
           xx match {
             case Deff(Argin_new(_)) => true
-            case _ =>  
+            case _ =>
               if (isReduceStarter(s)) {false} else {true}
           }
         case Deff(_) => false // None
@@ -182,9 +182,9 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
 
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case e@ParPipeForeach(cchain, func, inds) =>
+    case e@UnrolledForeach(cchain, func, inds) =>
       controlNodeStack.push(sym)
-      emitComment(s"""ParPipeForeach ${quote(sym)} = ParPipeForeach(${quote(cchain)}) {""")
+      emitComment(s"""UnrolledForeach ${quote(sym)} = UnrolledForeach(${quote(cchain)}) {""")
       emit("""{""")
 
       // Ctr analysis for controller_tree diagram
@@ -210,7 +210,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
           emitComment(s"""SeqSM to be emitted""")
           print_stage_prefix(s"Foreach Seqpipe",s"${ctr_str}",s"${quote(sym)}")
         case _ =>
-          emitComment(s"""ParPipeForeach style: ${styleOf(sym)}""")
+          emitComment(s"""UnrolledForeach style: ${styleOf(sym)}""")
           print_stage_prefix(s"Foreach ${styleOf(sym)}",s"${ctr_str}",s"${quote(sym)}")
       }
       emitController(sym, Some(cchain))
@@ -219,7 +219,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       emitRegChains(sym, inds.flatten)
 
       parentOf(sym).get match {
-        case e@Deff(ParPipeReduce(_,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+        case e@Deff(UnrolledReduce(_,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
           if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
             styleOf(sym) match {
               case InnerPipe =>
@@ -239,7 +239,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
                             treeResultSyms += s
                           }
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                        case input @ ( Par_sram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
                           inputVecs += s
                         case _ =>
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
@@ -249,7 +249,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
                 }
 
                 emitBlock(func)
-                val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_<_).mkString(",")
+                val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
                 val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
                 val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
                 val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
@@ -267,11 +267,11 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
       }
 
       emit("""}""")
-      emitComment(s"""} ParPipeForeach ${quote(sym)}""")
+      emitComment(s"""} UnrolledForeach ${quote(sym)}""")
       print_stage_suffix(quote(sym), hadThingsInside)
       controlNodeStack.pop
 
-    case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
       controlNodeStack.push(sym)
       val Def(EatReflect(Counterchain_new(diagram_counters))) = cchain
       var ctr_str = diagram_counters.map { ctr =>
@@ -279,7 +279,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
         s"${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
       }
 
-      emitComment(s"""ParPipeReduce ${quote(sym)} = ParPipeReduce(${quote(cchain)}, ${quote(accum)}) {""")
+      emitComment(s"""UnrolledReduce ${quote(sym)} = UnrolledReduce(${quote(cchain)}, ${quote(accum)}) {""")
       emit("""{""")
       var hadThingsInside = true
       styleOf(sym) match {
@@ -294,22 +294,22 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
           emitComment(s"""SeqSM to be emitted""")
           print_stage_prefix(s"Reduce Seqpipe",s"${ctr_str}",s"${quote(sym)}")
         case _ =>
-          emitComment(s"""ParPipeReduce style: ${styleOf(sym)}""")
+          emitComment(s"""UnrolledReduce style: ${styleOf(sym)}""")
           print_stage_prefix(s"Reduce ${styleOf(sym)}",s"${ctr_str}",s"${quote(sym)}")
       }
 
-      // The body of ParPipeReduce uses 'acc' to refer to the accumulator
+      // The body of UnrolledReduce uses 'acc' to refer to the accumulator
       // The rest of the world uses 'accum'. Make sure their metadata matches up here
       // FIXME: This should be unnecessary in codegen
       val Def(d) = accum  // CHEATING!
       duplicatesOf(acc) = duplicatesOf(accum)
       readersOf(acc) = readersOf(accum)
 
-      emitComment(s"""ParPipeReduce ${quote(sym)} controller {""")
+      emitComment(s"""UnrolledReduce ${quote(sym)} controller {""")
       emitController(sym, Some(cchain))
       emitComment(s"""} ${quote(sym)} controller""")
 
-      emitComment(s"""ParPipeReduce ${quote(sym)} par loop {""")
+      emitComment(s"""UnrolledReduce ${quote(sym)} par loop {""")
       emitParallelizedLoop(inds, cchain)
       emitComment(s"""} ${quote(sym)} par loop""")
 
@@ -331,7 +331,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
                       treeResult = quote(s)
                     }
                     consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                  case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                  case input @ ( Par_sram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
                     inputVecs += s
                   case _ =>
                     consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
@@ -341,7 +341,7 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
           }
 
           emitRegChains(sym, inds.flatten)
-          emitComment(s"""ParPipeReduce ${quote(sym)} func block {""")
+          emitComment(s"""UnrolledReduce ${quote(sym)} func block {""")
           emitBlock(func)
           emitComment(s"""} ${quote(sym)} func block""")
 
@@ -353,14 +353,14 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
           emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
         case _ =>
           emitRegChains(sym, inds.flatten)
-          emitComment(s"""ParPipeReduce ${quote(sym)} func block {""")
+          emitComment(s"""UnrolledReduce ${quote(sym)} func block {""")
           emitBlock(func)
           emitComment(s"""} ${quote(sym)} func block""")
         }
 
       val Def(EatReflect(dp)) = accum
       dp match {
-        case a@Bram_new(_,_) =>
+        case a@Sram_new(_,_) =>
           // emitNode(accum.asInstanceOf[Sym[Any]], d)
         /* NOT SURE WHAT THIS SECTION DOES! -Matt*/
         case Reg_new(init) =>
@@ -368,11 +368,11 @@ trait MaxJGenLoweredPipeOps extends MaxJGenControllerTemplateOps {
         //     emit(s"""${quote(accum)}_${i}_lib.write(${quote(acc)}_0, constant.var(true), constant.var(false));""")
         //   }
         case _ =>
-          throw new Exception(s"""Unknown accum in ParPipeReduce on ${dp}!""")
+          throw new Exception(s"""Unknown accum in UnrolledReduce on ${dp}!""")
       }
 
       emit("""}""")
-      emitComment(s"""} ParPipeReduce ${quote(sym)}""")
+      emitComment(s"""} UnrolledReduce ${quote(sym)}""")
       print_stage_suffix(quote(sym), hadThingsInside)
       controlNodeStack.pop
 

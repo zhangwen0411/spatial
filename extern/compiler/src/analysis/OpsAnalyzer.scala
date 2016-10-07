@@ -41,16 +41,16 @@ trait OpsAnalyzer extends ModelingTraversal {
         inHwScope = false
         body
 
-      case EatReflect(Pipe_parallel(func)) =>
+      case EatReflect(ParallelPipe(func)) =>
         opsInBlock(func)
 
-      case EatReflect(Unit_pipe(func)) =>
+      case EatReflect(UnitPipe(func)) =>
         val body = opsInBlock(func)
         debug(s"Pipe $lhs: ")
         debug(s"  body: $body")
         body
 
-      case EatReflect(Pipe_foreach(cchain, func, _)) =>
+      case EatReflect(OpForeach(cchain, func, _)) =>
         val P = parsOf(cchain).reduce(_*_)
         val N = nIters(cchain)
         val body = opsInBlock(func)
@@ -59,7 +59,7 @@ trait OpsAnalyzer extends ModelingTraversal {
         debug(s"  body: $body")
         body * P * N
 
-      case EatReflect(e@Pipe_fold(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,idx,_,_,_)) =>
+      case EatReflect(e@OpReduce(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,idx,_,_,_)) =>
         val P = parsOf(cchain).reduce(_*_)
         val N = nIters(cchain)
         val body = opsInBlock(func) * N * P
@@ -76,7 +76,7 @@ trait OpsAnalyzer extends ModelingTraversal {
         debug(s"  store: $store")
         body + reduce + icalc + load + store
 
-      case EatReflect(e@Accum_fold(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,_,_,idx,_,_,_,_)) =>
+      case EatReflect(e@OpMemReduce(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,_,_,idx,_,_,_,_)) =>
         val Pm = parsOf(ccOuter).reduce(_*_)
         val Pr = parsOf(ccInner).reduce(_*_)
         val Nm = nIters(ccOuter)

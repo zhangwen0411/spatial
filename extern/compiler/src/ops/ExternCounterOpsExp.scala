@@ -129,6 +129,17 @@ trait ScalaGenExternCounterOps extends ScalaGenEffect {
   }
 }
 
+trait CGenExternCounterOps extends CGenEffect {
+  val IR: ExternCounterOpsExp
+  import IR._
+
+  override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
+    case "SpatialCounter" => "int32_t"
+    case "SpatialCounterChain" => "int32_t*"
+    case _ => super.remap(m)
+  }
+}
+
 trait MaxJGenExternCounterOps extends MaxJGenEffect {
   val IR: ExternCounterOpsExp with SpatialMetadataOpsExp
   import IR._

@@ -23,10 +23,10 @@ trait SimpleAccumMem extends SpatialApp {
 
 
     Accel {
-      val accumMem = BRAM[T](rTileSize)
+      val accumMem = SRAM[T](rTileSize)
 
       Pipe.fold(rTileSize par innerPar, outerAccumPar)(accumMem){ r =>
-        val xTile = BRAM[T](rTileSize)
+        val xTile = SRAM[T](rTileSize)
         Pipe.foreach(rTileSize par innerPar) { ii =>
           xTile(ii) = x.value * ii
         }

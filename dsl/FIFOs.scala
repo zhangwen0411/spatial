@@ -10,7 +10,6 @@ trait FIFOs {
   def importFIFOs() {
     val T = tpePar("T")
     val FIFO         = lookupTpe("FIFO")
-    val BRAM         = lookupTpe("BRAM")
     val Tile         = lookupTpe("Tile")
     val SparseTile   = lookupTpe("SparseTile")
     val Indices      = lookupTpe("Indices")
@@ -58,7 +57,7 @@ trait FIFOs {
 
       infix ("count") (Nil :: Idx) implements composite ${ count_fifo($self) }
 
-      /** Streams a Tile of an OffChipMem to this FIFO.
+      /** Streams a Tile of a DRAM memory to this FIFO.
        * @param tile
        **/
       infix (":=") (Tile(T) :: MUnit, TNum(T), effect = write(0)) implements redirect ${ streamTile($1, $self, false) }

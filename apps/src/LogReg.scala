@@ -35,30 +35,30 @@ trait LogRegApp extends SpatialApp {
     val P2 = param(innerParH);  domainOf(P2) = (1,96,1)
     val P3 = param(1);  domainOf(P3) = (1,96,1)
 
-    val x = OffChipMem[Elem](N, D)
-    val y = OffChipMem[Elem](N)
-    val theta = OffChipMem[Elem](D)
+    val x = DRAM[Elem](N, D)
+    val y = DRAM[Elem](N)
+    val theta = DRAM[Elem](D)
 
     setMem(x, x_in)
     setMem(y, y_in)
     setMem(theta, tt)
 
     Accel {
-      val btheta = BRAM[Elem](D)
+      val btheta = SRAM[Elem](D)
       btheta := theta(0::D, P2)
 
-      val gradAcc = BRAM[Elem](D)
+      val gradAcc = SRAM[Elem](D)
       Fold(N by BN par P0, P1)(gradAcc, 0.as[T]){ i =>
-        val xB = BRAM[Elem](BN, D)
-        val yB = BRAM[Elem](BN)
+        val xB = SRAM[Elem](BN, D)
+        val yB = SRAM[Elem](BN)
         Parallel {
           xB := x(i::i+BN, 0::D, P2)
           yB := y(i::i+BN, P2)
         }
-        val gradient = BRAM[Elem](D)
+        val gradient = SRAM[Elem](D)
         Fold(BN par P3, P2)(gradient, 0.as[T]){ ii =>
           val pipe2Res = Reg[Elem]
-          val subRam   = BRAM[Elem](D)
+          val subRam   = SRAM[Elem](D)
 
           val dotAccum = Reduce(D par P2)(0.as[T]){ j => xB(ii,j) * btheta(j) }{_+_}
           Pipe { pipe2Res := (yB(ii) - sigmoid(dotAccum.value)) }
@@ -67,7 +67,7 @@ trait LogRegApp extends SpatialApp {
         }{_+_}
       }{_+_}
 
-      val newTheta = BRAM[Elem](D)
+      val newTheta = SRAM[Elem](D)
       Pipe (D par P2) { j => newTheta(j) = gradAcc(j)*A + btheta(j) }
       theta(0::D, P2) := newTheta
     }

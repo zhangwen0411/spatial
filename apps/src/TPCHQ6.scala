@@ -13,7 +13,7 @@ trait TPCHQ6Trait extends TPCHBaseTrait {
     tic(lineItems.size)
 
     //FIXME: infix_&& fails to resolve automatically
-    val q = lineItems Where (l => infix_&&(l.l_shipdate >= Date("1994-01-01"), infix_&&(l.l_shipdate < Date("1995-01-01"), infix_&&(l.l_discount >= 0.05, infix_&&(l.l_discount <= 0.07, l.l_quantity < 24))))) 
+    val q = lineItems Where (l => infix_&&(l.l_shipdate >= Date("1994-01-01"), infix_&&(l.l_shipdate < Date("1995-01-01"), infix_&&(l.l_discount >= 0.05, infix_&&(l.l_discount <= 0.07, l.l_quantity < 24)))))
     val revenue = q.Sum(l => l.l_extendedprice * l.l_discount)
 
     toc(revenue)
@@ -53,10 +53,10 @@ trait TPCHQ6_App extends SpatialApp {
     setArg(dataSize, datesIn.length)
 
 
-    val dates  = OffChipMem[UInt](dataSize)
-    val quants = OffChipMem[UInt](dataSize)
-    val discts = OffChipMem[FT](dataSize)
-    val prices = OffChipMem[FT](dataSize)
+    val dates  = DRAM[UInt](dataSize)
+    val quants = DRAM[UInt](dataSize)
+    val discts = DRAM[FT](dataSize)
+    val prices = DRAM[FT](dataSize)
     val minDateIn = MIN_DATE
     val maxDateIn = MAX_DATE
     val out = ArgOut[FT]
@@ -76,10 +76,10 @@ trait TPCHQ6_App extends SpatialApp {
 
       val acc = Reg[FT]
       Fold(dataSize by ts par op)(acc, 0.as[FT]){ i =>
-        val datesTile  = BRAM[UInt](ts)
-        val quantsTile = BRAM[UInt](ts)
-        val disctsTile = BRAM[FT](ts)
-        val pricesTile = BRAM[FT](ts)
+        val datesTile  = SRAM[UInt](ts)
+        val quantsTile = SRAM[UInt](ts)
+        val disctsTile = SRAM[FT](ts)
+        val pricesTile = SRAM[FT](ts)
         Parallel {
           datesTile  := dates(i::i+ts, ip)
           quantsTile := quants(i::i+ts, ip)
@@ -128,7 +128,7 @@ trait TPCHQ6_App extends SpatialApp {
 
     println("expected " + gold)
     println("result " + result)
-    
+
     val cksum = gold == result
     println("PASS: " + cksum + " (TPCHQ6)")
   }

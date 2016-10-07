@@ -36,20 +36,20 @@ trait StructureAnalyzer extends Traversal {
     // Recursive traversal
     lhs match {
       case Deff(Hwblock(blk))         => traverseBlock(blk)
-      case Deff(Pipe_parallel(blk))   => traverseBlock(blk)
-      case Deff(Unit_pipe(blk))       => traverseBlock(blk)
-      case Deff(e:Pipe_foreach)       => traverseBlock(e.func)
-      case Deff(e:ParPipeForeach)     => traverseBlock(e.func)
-      case Deff(e:ParPipeReduce[_,_]) => traverseBlock(e.func)
+      case Deff(ParallelPipe(blk))   => traverseBlock(blk)
+      case Deff(UnitPipe(blk))       => traverseBlock(blk)
+      case Deff(e:OpForeach)       => traverseBlock(e.func)
+      case Deff(e:UnrolledForeach)     => traverseBlock(e.func)
+      case Deff(e:UnrolledReduce[_,_]) => traverseBlock(e.func)
 
-      case Deff(e:Pipe_fold[_,_]) if isOuterControl(lhs) =>
+      case Deff(e:OpReduce[_,_]) if isOuterControl(lhs) =>
         tab += 1
         debugs("0. [Map Stage]")
         traverseBlock(e.func)
         debugs("1. [Reduce Stage]")
         tab -= 1
 
-      case Deff(e:Accum_fold[_,_]) =>
+      case Deff(e:OpMemReduce[_,_]) =>
         tab += 1
         debugs("0. [Map Stage]")
         traverseBlock(e.func)

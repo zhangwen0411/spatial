@@ -88,7 +88,7 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     //System.out.println(s"Delay line: w = $width x l = $length (${width*length}) ")
     val nregs = width*length
     if (nregs < 256) FPGAResources(regs = nregs*par)
-    else             areaOfBRAM(width*par, List(length), List(SimpleInstance))
+    else             areaOfSRAM(width*par, List(length), List(SimpleInstance))
   }
   def areaOfDelayLine(width: Int, length: Long, par: Int): FPGAResources = {
     if(length > Int.MaxValue) throw new Exception(s"Casting delay line length to Int would result in overflow")
@@ -108,7 +108,7 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
   val REG_RAM_DEPTH = 5  // Non-inclusive
 
   /**
-   * Area resources required for a BRAM with word size nbits, and with given depth,
+   * Area resources required for an SRAM with word size nbits, and with given depth,
    * number of banks, and double buffering
    *
    * (NoBanking, Strided(1)) =>
@@ -164,7 +164,7 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     memoryResources + controlResources
   }
 
-  private def areaOfBRAM(nbits: Int, dims: List[Int], instances: List[MemInstance]) = {
+  private def areaOfSRAM(nbits: Int, dims: List[Int], instances: List[MemInstance]) = {
     instances.map{inst => areaOfMemInstance(nbits, dims, inst) }.reduce{_+_}
   }
 
@@ -256,18 +256,18 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     case Argout_new(_) => areaOfArg(nbits(s))
     case Reg_new(_) => FPGAResources(regs = nbits(s))
 
-    case e@Bram_new(depth, _) =>
+    case e@Sram_new(depth, _) =>
       val dims = dimsOf(s).zipWithIndex.map{case (d,i) => bound(d).getOrElse{throw InvalidMemoryDimensionException(i)(mpos(s.pos)) }.toInt }
-      areaOfBRAM(nbits(e._mT), dims, duplicatesOf(s))
+      areaOfSRAM(nbits(e._mT), dims, duplicatesOf(s))
 
     // ISSUE #33: Need characterization
-    case e@Bram_load(ram, _) =>
+    case e@Sram_load(ram, _) =>
       val decode = 0
       val bits = nbits(e._mT)
       FPGAResources(lut3=decode+bits, regs=decode+bits)
 
     // ISSUE #33: Need characterization
-    case e@Bram_store(ram, _, _) =>
+    case e@Sram_store(ram, _, _) =>
       val decode = 0
       val bits = nbits(e._mT)
       FPGAResources(lut3=decode+bits, regs=decode+bits)
@@ -387,7 +387,7 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
 
     // ISSUE #33: New templates - needs recharacterization
     // Tile Store
-    case Offchip_store_cmd(mem,stream,ofs,len,p) =>
+    case BurstStore(mem,stream,ofs,len,p) =>
       //val nonConstDims = (dimsOf(tt.mem) ++ tt.memOfs).filterNot{case Fixed(_) => true; case _ => false}.length
       //val dsp = if (nonConstDims > 1) 3 else 0
       //val p = parsOf(cc).reduce{_*_}
@@ -403,7 +403,7 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
       //FPGAResources(lut3=378,lut4=38,lut5=58,lut6=569,lut7=4, regs=3878, dsps=dsp, bram=46, streams=1)
 
     // Tile Load
-    case Offchip_load_cmd(mem,stream,ofs,len,p) =>
+    case BurstLoad(mem,stream,ofs,len,p) =>
       //val p = parsOf(cc).reduce{_*_}
       //val nonConstDims = (dimsOf(tt.mem) ++ tt.memOfs).filterNot{case Fixed(_) => true; case _ => false}.length
       //val dsp = if (nonConstDims > 1) 4 else 0
@@ -413,33 +413,33 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
       // New template
       FPGAResources(lut3=410, lut4=50, lut5=70, lut6=53, regs=920, dsps=0, bram=0, streams=1) // ~353 ALMs
 
-    case _:Pipe_parallel => FPGAResources(lut4=9*nStages(s)/2, regs = nStages(s) + 3)
+    case _:ParallelPipe => FPGAResources(lut4=9*nStages(s)/2, regs = nStages(s) + 3)
 
-    case e:Pipe_foreach if isInnerPipe(s)  => NoArea
-    case e:Pipe_foreach if isStreamPipe(s) => areaOfStreamPipe(nStages(s))
-    case e:Pipe_foreach if isMetaPipe(s)   => areaOfMetaPipe(nStages(s)) + areaOfCounterRegs(s, e.cchain)
-    case e:Pipe_foreach if isSequential(s) => areaOfSequential(nStages(s))
+    case e:OpForeach if isInnerPipe(s)  => NoArea
+    case e:OpForeach if isStreamPipe(s) => areaOfStreamPipe(nStages(s))
+    case e:OpForeach if isMetaPipe(s)   => areaOfMetaPipe(nStages(s)) + areaOfCounterRegs(s, e.cchain)
+    case e:OpForeach if isSequential(s) => areaOfSequential(nStages(s))
 
-    case e:Pipe_fold[_,_] if isInnerPipe(s)  => NoArea
-    case e:Pipe_fold[_,_] if isStreamPipe(s) => areaOfStreamPipe(nStages(s))
-    case e:Pipe_fold[_,_] if isMetaPipe(s)   => areaOfMetaPipe(nStages(s)) + areaOfCounterRegs(s, e.cchain)
-    case e:Pipe_fold[_,_] if isSequential(s) => areaOfSequential(nStages(s))
+    case e:OpReduce[_,_] if isInnerPipe(s)  => NoArea
+    case e:OpReduce[_,_] if isStreamPipe(s) => areaOfStreamPipe(nStages(s))
+    case e:OpReduce[_,_] if isMetaPipe(s)   => areaOfMetaPipe(nStages(s)) + areaOfCounterRegs(s, e.cchain)
+    case e:OpReduce[_,_] if isSequential(s) => areaOfSequential(nStages(s))
 
-    case e:Accum_fold[_,_] if isInnerPipe(s)  => NoArea // Should not exist
-    case e:Accum_fold[_,_] if isStreamPipe(s) => areaOfStreamPipe(nStages(s))
-    case e:Accum_fold[_,_] if isMetaPipe(s)   => areaOfMetaPipe(nStages(s)) + areaOfCounterRegs(s, e.ccOuter)
-    case e:Accum_fold[_,_] if isSequential(s) => areaOfSequential(nStages(s))
+    case e:OpMemReduce[_,_] if isInnerPipe(s)  => NoArea // Should not exist
+    case e:OpMemReduce[_,_] if isStreamPipe(s) => areaOfStreamPipe(nStages(s))
+    case e:OpMemReduce[_,_] if isMetaPipe(s)   => areaOfMetaPipe(nStages(s)) + areaOfCounterRegs(s, e.ccOuter)
+    case e:OpMemReduce[_,_] if isSequential(s) => areaOfSequential(nStages(s))
 
-    case _:Unit_pipe if isInnerPipe(s)  => NoArea
-    case _:Unit_pipe if isStreamPipe(s) => NoArea // Should not exist
-    case _:Unit_pipe if isMetaPipe(s)   => NoArea // Should not exist
-    case _:Unit_pipe if isSequential(s) => areaOfSequential(nStages(s))
+    case _:UnitPipe if isInnerPipe(s)  => NoArea
+    case _:UnitPipe if isStreamPipe(s) => NoArea // Should not exist
+    case _:UnitPipe if isMetaPipe(s)   => NoArea // Should not exist
+    case _:UnitPipe if isSequential(s) => areaOfSequential(nStages(s))
 
     // Nodes with known zero area cost
     case _:Reg_read[_]     => NoArea
     case _:Reg_write[_]    => NoArea
     case _:Reg_reset[_]    => NoArea
-    case _:Offchip_new[_]  => NoArea
+    case _:Dram_new[_]  => NoArea
     case _:FieldApply[_]   => NoArea
     case _:DeliteStruct[_] => NoArea
 

@@ -26,22 +26,22 @@ trait SpatialAffineAnalysisExp extends AffineAnalysisExp {
   }
   // List of loop scopes. Each scope contains a list of iterators and blocks to traverse for loop nodes
   override def loopUnapply(x: Exp[Any]): Option[List[(List[Sym[Index]], List[Block[Any]])]] = x match {
-    case Deff(Pipe_foreach(cchain, func, inds)) =>
+    case Deff(OpForeach(cchain, func, inds)) =>
       Some( List(inds -> List(func)) )
-    case Deff(Pipe_fold(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV)) =>
+    case Deff(OpReduce(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV)) =>
       Some( List(inds -> List(iFunc,ld,st,func,rFunc)) )
-    case Deff(Accum_fold(c1,c2,a,zero,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV)) =>
+    case Deff(OpMemReduce(c1,c2,a,zero,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV)) =>
       Some( List(inds1 -> List(func), (inds1 ++ inds2) -> List(iFunc,ld1,ld2,rFunc,st)) )
     case _ => None
   }
   // Memory being read + list of addresses (for N-D access)
   override def readUnapply(x: Exp[Any]): Option[(Exp[Any], List[Exp[Index]])] = x match {
-    case Deff(Bram_load(bram,addr)) => Some((bram, accessIndicesOf(x)))
+    case Deff(Sram_load(sram,addr)) => Some((sram, accessIndicesOf(x)))
     case _ => None
   }
   // Memory being written + list of addresses (for N-D access)
   override def writeUnapply(x: Exp[Any]): Option[(Exp[Any], List[Exp[Index]])] = x match {
-    case Deff(Bram_store(bram,addr,y)) => Some((bram, accessIndicesOf(x)))
+    case Deff(Sram_store(sram,addr,y)) => Some((sram, accessIndicesOf(x)))
     case _ => None
   }
   // Usually None, but allows other exceptions for symbols being loop invariant
@@ -65,9 +65,9 @@ trait SpatialAffineAnalyzer extends AffineAnalyzer {
     case EatReflect(e:Gather[_]) =>
       accessPatternOf(lhs) = List(LinearAccess(e.i))
 
-    // Pipe_fold - idx is loop invariant anyway
+    // OpReduce - idx is loop invariant anyway
 
-    case EatReflect(e: Accum_fold[_,_]) =>
+    case EatReflect(e: OpMemReduce[_,_]) =>
       // Add access pattern for bound idx variable prior to traversal
       boundIndexPatterns += e.idx -> e.indsInner.map{i => LinearAccess(i)}
       super.traverse(lhs, rhs)

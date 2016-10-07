@@ -112,13 +112,13 @@ trait PIRScheduler extends Traversal with PIRCommon {
 
   // Addresses only, not values
   def writeAddrToStage(lhs: Exp[Any], rhs: Def[Any], ctx: CUContext) = rhs match {
-    case Bram_store(bram, addr, value) =>
-      ctx.memories(bram).foreach{sram =>
+    case Sram_store(sram, addr, value) =>
+      ctx.memories(sram).foreach{sram =>
         sram.writeAddr = Some(allocateAddrReg(sram, addr, ctx, write=true))
       }
 
-    case Par_bram_store(bram, addrs, values) =>
-      ctx.memories(bram).foreach{sram =>
+    case Par_sram_store(sram, addrs, values) =>
+      ctx.memories(sram).foreach{sram =>
         sram.writeAddr = Some(allocateAddrReg(sram, addrs, ctx, write=true))
       }
 
@@ -151,18 +151,18 @@ trait PIRScheduler extends Traversal with PIRCommon {
       val vector = allocateGlobal(fifo).asInstanceOf[VectorMem]
       ctx.addReg(lhs, VectorIn(vector))
 
-    // Create a reference to this BRAM and
-    case Bram_load(EatAlias(bram), addr) =>
-      val sram = ctx.mem(bram,lhs)
+    // Create a reference to this SRAM
+    case Sram_load(EatAlias(sram), addr) =>
+      val sram = ctx.mem(sram,lhs)
       ctx.addReg(lhs, SRAMRead(sram))
       sram.readAddr = Some(allocateAddrReg(sram, addr, ctx, write=false, local=true))
 
-    case Par_bram_load(EatAlias(bram), addrs) =>
-      val sram = ctx.mem(bram,lhs)
+    case Par_sram_load(EatAlias(sram), addrs) =>
+      val sram = ctx.mem(sram,lhs)
       ctx.addReg(lhs, SRAMRead(sram))
       sram.readAddr = Some(allocateAddrReg(sram, addrs, ctx, write=false, local=true))
 
-    case Vector_from_list(elems) =>
+    case ListVector(elems) =>
       if (elems.length != 1) stageError("Expected parallelization of 1 in inner loop in PIR generation")
       ctx.addReg(lhs, ctx.reg(elems.head))
 
@@ -185,10 +185,10 @@ trait PIRScheduler extends Traversal with PIRCommon {
     case Par_push_fifo(EatAlias(fifo),values,ens,_) =>
       bufferWrite(fifo,values,None,ctx)
 
-    case Bram_store(EatAlias(bram), addr, value) =>
-      bufferWrite(bram,value,Some(addr),ctx)
-    case Par_bram_store(EatAlias(bram), addrs, values) =>
-      bufferWrite(bram,values,Some(addrs),ctx)
+    case Sram_store(EatAlias(sram), addr, value) =>
+      bufferWrite(sram,value,Some(addr),ctx)
+    case Par_sram_store(EatAlias(sram), addrs, values) =>
+      bufferWrite(sram,values,Some(addrs),ctx)
 
     // Cases: 1. Inner Accumulator (read -> write)
     //        2. Outer Accumulator (read -> write)
@@ -301,13 +301,13 @@ trait PIRScheduler extends Traversal with PIRCommon {
       val input = ins.head
       val accum = ins.last
       val inputReg = ctx.reg(input)
-      propagateReg(input, inputReg, ReduceReg(fresh[Any]), ctx)
+      val usedInput = propagateReg(input, inputReg, ReduceReg(fresh[Any]), ctx)
       val zero = accum match {
         case Deff(Reg_read(acc)) => allocateConst(resetValue(acc))
         case _ => ConstReg("0l")
       }
       val acc = ReduceReg(out)
-      val stage = ReduceStage(op, zero, acc)
+      val stage = ReduceStage(op, zero, ctx.refIn(usedInput), acc)
       ctx.addReg(out, acc)
       ctx.addStage(stage)
     }

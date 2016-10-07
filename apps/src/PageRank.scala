@@ -34,10 +34,10 @@ trait PageRankApp extends SpatialApp {
     //println("dvl: " + dvl.mkString(","))
     //println("del: " + del.mkString(","))
     //println("sob: " + sob.mkString(","))
-    val vertList = OffChipMem[Index](NV, 2) // [pointer, size]
-    val edgeList = OffChipMem[Index](NE) // srcs of edges
-    val outBounds = OffChipMem[Index](NE) // number of outbound links for each src in edgeList
-    val pageRank = OffChipMem[Elem](NV, 2) // [PR iter even, PR iter odd]
+    val vertList = DRAM[Index](NV, 2) // [pointer, size]
+    val edgeList = DRAM[Index](NE) // srcs of edges
+    val outBounds = DRAM[Index](NE) // number of outbound links for each src in edgeList
+    val pageRank = DRAM[Elem](NV, 2) // [PR iter even, PR iter odd]
 
     setArg(numIter, NI)
     setArg(damp, DF)
@@ -55,16 +55,16 @@ trait PageRankApp extends SpatialApp {
         val oldPrIdx = iter % 2.as[Index]
         val newPrIdx = (iter + 1.as[Index]) % 2.as[Index]
         Pipe(NV by tileSize){ ivt =>
-          val prOldB = BRAM[Elem](tileSize)
-          val prNewB = BRAM[Elem](tileSize)
-          val vB = BRAM[Index](tileSize, 2)
+          val prOldB = SRAM[Elem](tileSize)
+          val prNewB = SRAM[Elem](tileSize)
+          val vB = SRAM[Index](tileSize, 2)
           prOldB := pageRank(ivt::ivt+tileSize, oldPrIdx::oldPrIdx+1.as[SInt])
           vB := vertList(ivt::ivt+tileSize, 0::2)
           Pipe(tileSize by 1){ iv =>
-            val eB = BRAM[Index](maxNumEdge)
-            val oB = BRAM[Index](maxNumEdge)
-            val eprB = BRAM[Elem](maxNumEdge)
-            val idxB = BRAM[Index](maxNumEdge)
+            val eB = SRAM[Index](maxNumEdge)
+            val oB = SRAM[Index](maxNumEdge)
+            val eprB = SRAM[Elem](maxNumEdge)
+            val idxB = SRAM[Index](maxNumEdge)
             val pt = vB(iv,0)
             val numEdge = vB(iv,1)
             //println("iv:" + iv)
@@ -72,17 +72,17 @@ trait PageRankApp extends SpatialApp {
             //println("numEdge:" + numEdge)
             Parallel {
               eB := edgeList(pt::pt+numEdge)
-              //printBram(eB)
+              //printSRAM(eB)
               oB := outBounds(pt::pt+numEdge)
-              //printBram(oB)
+              //printSRAM(oB)
             }
             //TODO: Flatten idx in app, move into spatial
             Pipe (numEdge by 1) { ie =>
               idxB(ie) = eB(ie) * 2.as[SInt] + oldPrIdx
             }
-            //printBram(idxB)
+            //printSRAM(idxB)
             eprB := pageRank(idxB, numEdge)
-            //printBram(eprB)
+            //printSRAM(eprB)
             val sum = Pipe.reduce(numEdge by 1)(0.as[Elem]){ ie =>
               eprB(ie) / oB(ie).to[Elem]
             }{_+_}
@@ -92,7 +92,7 @@ trait PageRankApp extends SpatialApp {
               prNewB(iv) = pr
             }
           }
-          //printBram(prNewB)
+          //printSRAM(prNewB)
           pageRank(ivt::ivt+tileSize, newPrIdx::newPrIdx+1.as[SInt]) := prNewB
         }
       }

@@ -41,25 +41,25 @@ trait KmeansApp extends SpatialApp {
     setArg(K, numCents)
     setArg(D, numDims)
 
-    val points = OffChipMem[T](N, D)    // Input points
-    val centroids = OffChipMem[T](K, D) // Output centroids
+    val points = DRAM[T](N, D)    // Input points
+    val centroids = DRAM[T](K, D) // Output centroids
     setMem(points, points_in)
 
     Accel {
-      val cts = BRAM[T](MAXK, MAXD)
+      val cts = SRAM[T](MAXK, MAXD)
 
       // Load initial centroids (from points)
       cts := points(0::K,0::D, P0)
 
       val DM1 = D.value - 1
 
-      val newCents = BRAM[T](MAXK,MAXD)
+      val newCents = SRAM[T](MAXK,MAXD)
       // For each set of points
       Fold(N by BN par P1, PR)(newCents, 0.as[T]){i =>
-        val pts = BRAM[T](BN, BD)
+        val pts = SRAM[T](BN, BD)
         pts := points(i::i+BN, 0::BD, P0)
 
-        val centTile = BRAM[T](MAXK, MAXD)
+        val centTile = SRAM[T](MAXK, MAXD)
         // For each point in this set
         Fold(BN par P3, PR)(centTile, 0.as[T]){pt =>
           // Find the index of the closest centroid
@@ -71,7 +71,7 @@ trait KmeansApp extends SpatialApp {
           }
 
           // Store this point to the set of accumulators
-          val localCent = BRAM[T](MAXK,MAXD)
+          val localCent = SRAM[T](MAXK,MAXD)
           Pipe(K by 1, D par P2){(ct,d) =>
             val elem = mux(d == DM1, 1.as[T], pts(pt, d))
             localCent(ct, d) = mux(ct == minCent.value._1, elem, 0.as[T])
@@ -80,11 +80,11 @@ trait KmeansApp extends SpatialApp {
         }{_+_} // Add the current point to the accumulators for this centroid
       }{_+_}
 
-      val centCount = BRAM[T](MAXK)
+      val centCount = SRAM[T](MAXK)
       Pipe(K by 1 par PX){ct => centCount(ct) = newCents(ct,DM1) }
 
       // Average each new centroid
-      val centsOut = BRAM[T](MAXK, MAXD)
+      val centsOut = SRAM[T](MAXK, MAXD)
       Pipe(K by 1, D par PX){(ct,d) =>
         centsOut(ct, d) = newCents(ct,d) / centCount(ct)
       }
@@ -161,22 +161,22 @@ trait KmeansApp extends SpatialApp {
     setArg(K, numCents)
     setArg(D, numDims)
 
-    val points = OffChipMem[SInt](N, D)    // Input points
-    val centroids = OffChipMem[SInt](K, D) // Output centroids
+    val points = DRAM[SInt](N, D)    // Input points
+    val centroids = DRAM[SInt](K, D) // Output centroids
     setMem(points, points_in)
 
     Accel {
-      val cts = BRAM[SInt](MAXK, dTileSize)
-      val newCents = BRAM[SInt](MAXK, dTileSize)
-      val centCount = BRAM[UInt](MAXK)
-      val centsOut = BRAM[SInt](MAXK, dTileSize)
+      val cts = SRAM[SInt](MAXK, dTileSize)
+      val newCents = SRAM[SInt](MAXK, dTileSize)
+      val centCount = SRAM[UInt](MAXK)
+      val centsOut = SRAM[SInt](MAXK, dTileSize)
 
       // Load initial centroids (from points)
       cts := points(0::K,0::dTileSize, P0)
 
       // For each set of points
       Pipe(N by BN par PX){i =>
-        val pts = BRAM[SInt](BN, BD)
+        val pts = SRAM[SInt](BN, BD)
         pts := points(i::i+BN, 0::BD, P0)
 
         // For each point in this set

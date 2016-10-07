@@ -17,7 +17,7 @@ trait Vectors {
 
     // --- Internals
     internal (Vector) ("vector_create_from_list", T, SList(T) :: Vector(T)) implements composite ${
-      val vec = vector_from_list($0)
+      val vec = vectorize($0)
       dimsOf(vec) = List($0.length.as[Index])
       lenOf(vec) = $0.length
       vec
@@ -52,12 +52,12 @@ trait Vectors {
 
 
     // --- Rewrite rules
-    rewrite (vector_slice) using pattern((${vec@Def(EatReflect(Vector_from_list(elems)))},${start},${end}) -> ${
+    rewrite (vector_slice) using pattern((${vec@Deff(ListVector(elems))},${start},${end}) -> ${
       if (start >= end) throw EmptyVectorException()
       if (end >= elems.length) throw InvalidVectorSliceException(vec)
       vector_create_from_list(elems.slice(start, end)).asInstanceOf[Rep[Vector[T]]]
     })
-    rewrite (vector_apply) using pattern((${vec@Def(EatReflect(Vector_from_list(elems)))}, ${i}) -> ${
+    rewrite (vector_apply) using pattern((${vec@Deff(ListVector(elems))}, ${i}) -> ${
       if (i < 0 && i >= elems.length) throw InvalidVectorApplyException(vec, i)
       elems(i).asInstanceOf[Rep[T]]
     })

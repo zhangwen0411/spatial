@@ -8,4 +8,4 @@ import spatial.shared.ops._
 import spatial.library._
 import spatial.library.classes._
 
-trait LoweredPipeWrapper { this: SpatialBase with SpatialClasses => }
+trait UnrolledWrapper { this: SpatialBase with SpatialClasses => }

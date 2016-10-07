@@ -100,14 +100,14 @@ trait AreaAnalyzer extends ModelingTraversal {
         inHwScope = false
         body
 
-      case EatReflect(Pipe_parallel(func)) => areaOfBlock(func,false,1) + areaOf(lhs)
-      case EatReflect(Unit_pipe(func)) =>
+      case EatReflect(ParallelPipe(func)) => areaOfBlock(func,false,1) + areaOf(lhs)
+      case EatReflect(UnitPipe(func)) =>
         val body = areaOfBlock(func, isInnerPipe(lhs), 1)
         debug(s"Pipe $lhs: ")
         debug(s"  body: $body")
         body + areaOf(lhs)
 
-      case EatReflect(Pipe_foreach(cchain, func, _)) =>
+      case EatReflect(OpForeach(cchain, func, _)) =>
         val P = parsOf(cchain).reduce(_*_)
 
         val body = areaOfBlock(func, isInnerPipe(lhs), P)
@@ -116,7 +116,7 @@ trait AreaAnalyzer extends ModelingTraversal {
         debug(s"  body: $body")
         body + areaOf(lhs)
 
-      case EatReflect(e@Pipe_fold(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,idx,_,_,_)) =>
+      case EatReflect(e@OpReduce(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,idx,_,_,_)) =>
         val P = parsOf(cchain).reduce(_*_)
 
         val body = areaOfBlock(func, isInnerPipe(lhs), P) // map duplicated P times
@@ -146,7 +146,7 @@ trait AreaAnalyzer extends ModelingTraversal {
 
         body + internal + internalDelays + icalc + load + cycle + store + areaOf(lhs)
 
-      case EatReflect(e@Accum_fold(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,_,_,idx,_,_,_,_)) =>
+      case EatReflect(e@OpMemReduce(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,_,_,idx,_,_,_,_)) =>
         val Pm = parsOf(ccOuter).reduce(_*_) // Parallelization factor for map
         val Pr = parsOf(ccInner).reduce(_*_) // Parallelization factor for reduce
 

@@ -23,18 +23,18 @@ trait MatMult_innerApp extends SpatialApp {
     setArg(N,nn)
     setArg(P,pp)
 
-    val a = OffChipMem[T](M, P)
-    val b = OffChipMem[T](P, N)
-    val c = OffChipMem[T](M, N)
+    val a = DRAM[T](M, P)
+    val b = DRAM[T](P, N)
+    val c = DRAM[T](M, N)
 
     val bm        = param(tileSizeM);   domainOf(bm) = (1,1536,1)
     val bn        = param(tileSizeN);   domainOf(bn) = (96,1536,96)
     val bp        = param(tileSizeP);   domainOf(bp) = (96,1536,96)
-    val op  = param(2);   
-    val mp = param(1);   
-    val ip  = param(2);   
-    val upMidPar  = param(1);   
-    val stPar     = param(1);   
+    val op  = param(2);
+    val mp = param(1);
+    val ip  = param(2);
+    val upMidPar  = param(1);
+    val stPar     = param(1);
 
     domainOf(op)  = (1,6,1)
     domainOf(mp) = (1,96,1)
@@ -48,9 +48,9 @@ trait MatMult_innerApp extends SpatialApp {
     Accel {
       Pipe(M by bm, (N by bn) par op){(i,j) =>
         Pipe((P by bp) par upMidPar){k =>
-          val tileA = BRAM[T](bm, bp)
-          val tileB = BRAM[T](bp, bn)
-          val tileC = BRAM[T](bm, bn)
+          val tileA = SRAM[T](bm, bp)
+          val tileB = SRAM[T](bp, bn)
+          val tileC = SRAM[T](bm, bn)
           Parallel {
             tileA := a(i::i+bm, k::k+bp, param(1))
             tileB := b(k::k+bp, j::j+bn, param(1))

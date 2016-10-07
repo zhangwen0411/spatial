@@ -15,68 +15,68 @@ import spatial.shared._
 
  (outerPar tiles)           offchip ←|→ onchip
           (innerPar ldPar)
-            ↓↓↓                                    Dummy Memories 
+            ↓↓↓                                    Dummy Memories
             _____tileSize1_____      .             .....tileSize1.....
        i → |                   | ------------->   .□□□                .    Write □□□ to offchip args
            |                   |     .   tileSize0.                   .          □□□
            |...................|     .            .....................          □□□
        i → |                   | ----------.       ...................
-           |                   |     .     '-->   .□□□                .      □ = (onChip_addr xor offChip_addr)       
+           |                   |     .     '-->   .□□□                .      □ = (onChip_addr xor offChip_addr)
            |...................|     .            .                   .
        i → |                   | ----------.      .....................
            |                   |     .     |       ...................
            |___________________|     .     '-->   .□□□                .
-                                     .            .                   .     
+                                     .            .                   .
                                      .            .....................
-           
-                         
+
+
   #################
   # CharStoreTest #
   #################
 
- Do this for N iterations: 
+ Do this for N iterations:
 
  (outerPar tiles)
            Dummy Memories     onchip ←|→ offchip
-          (innerPar ldPar)            .                                
-            ↓↓↓                       .        ___________________                                                  
-           .....tileSize1.....        .       |                   | ↑                            
-  □ argIn .□□□                .       .       |                   | N*dim0                                
-          .                   .       .       |...................| ↓                                
-          .....................       .       |                   |                                 
-           ...................        .       |                   |                             
-          .□□□                .       .       |...................|                              
-          .                   .       .       |                   |                              
-          .....................       .       |                   |                              
-           ...................        .       |___________________|                             
-          .□□□                .       .                                 
-          .                   .       .                                      
-          .....................       .                                 
+          (innerPar ldPar)            .
+            ↓↓↓                       .        ___________________
+           .....tileSize1.....        .       |                   | ↑
+  □ argIn .□□□                .       .       |                   | N*dim0
+          .                   .       .       |...................| ↓
+          .....................       .       |                   |
+           ...................        .       |                   |
+          .□□□                .       .       |...................|
+          .                   .       .       |                   |
+          .....................       .       |                   |
+           ...................        .       |___________________|
+          .□□□                .       .
+          .                   .       .
+          .....................       .
 
 
-                         
+
   ################
   # CharBramTest #
   ################
 
-                    Write argin to entire BRAM
+                    Write argin to entire SRAM
                       Then write first entry from each bank to argOut
-                      
-              i    
-              ↓↓↓↓                        
-              ___________________                                                  
-         j → |                   |                             
-           → |                   |                                 
-           → |                   |                                 
-             |                   |                                 
-             |      BRAM         |                             
-             |                   |                              
-             |                   |                              
-             |                   |                              
-             |___________________|                             
-                                       
-                                            
-                                       
+
+              i
+              ↓↓↓↓
+              ___________________
+         j → |                   |
+           → |                   |
+           → |                   |
+             |                   |
+             |      SRAM         |
+             |                   |
+             |                   |
+             |                   |
+             |___________________|
+
+
+
 
 */
 object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp // Args: 5
@@ -98,13 +98,13 @@ trait CharLoadTestApp extends SpatialApp {
 
     setArg(N, iters)
 
-    val srcFPGA = OffChipMem[SInt](tileSize0, tileSize1)
+    val srcFPGA = DRAM[SInt](tileSize0, tileSize1)
     setMem(srcFPGA, srcHost)
 
     Accel {
       Sequential (N by 1) { ii =>
         val dummy = List.tabulate(outerPar){i =>
-          BRAM[SInt](tileSize0, tileSize1)
+          SRAM[SInt](tileSize0, tileSize1)
         }
         dummy.foreach {dum =>
           isDummy(dum) = true
@@ -142,8 +142,8 @@ trait CharLoadTestApp extends SpatialApp {
     val src = Array.tabulate[T](dim0*dim1*outerPar) { i => i }
     val result = CharLoad(src, iters)
 
-    // val gold = List.tabulate(outerPar) { i => 
-    //   List.tabulate(innerPar) {j => 
+    // val gold = List.tabulate(outerPar) { i =>
+    //   List.tabulate(innerPar) {j =>
     //     i * dim0 * dim1 + j
     //   }
     // }
@@ -176,12 +176,12 @@ trait CharStore extends SpatialApp {
     val num = ArgIn[SInt]
     setArg(N, iters)
     setArg(num, numin)
-    val dstFPGA = List.tabulate(outerPar){i => OffChipMem[SInt](dim0, dim1) }
+    val dstFPGA = List.tabulate(outerPar){i => DRAM[SInt](dim0, dim1) }
 
     Accel {
       Sequential (N by 1) { ii =>
         val dummy = List.tabulate(outerPar){i =>
-          BRAM[SInt](tileSize0, tileSize1)
+          SRAM[SInt](tileSize0, tileSize1)
         }
         dummy.foreach {dum =>
           isDummy(dum) = true
@@ -254,7 +254,7 @@ trait CharBram extends SpatialApp {
     val out = ArgOut[SInt]
 
     Accel {
-      val tile = BRAM[T](tileDim0, tileDim1)
+      val tile = SRAM[T](tileDim0, tileDim1)
       hardcodeEnsembles(tile) = true
       Pipe (tileDim0 by 1 par spar0) { i =>
         Pipe (tileDim1 by 1 par spar1) { j =>

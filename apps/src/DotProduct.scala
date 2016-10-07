@@ -22,16 +22,16 @@ trait DotProductApp extends SpatialApp {
 
     val out = ArgOut[T]
 
-    val v1 = OffChipMem[T](N)
-    val v2 = OffChipMem[T](N)
+    val v1 = DRAM[T](N)
+    val v2 = DRAM[T](N)
     setMem(v1, a)
     setMem(v2, b)
 
     Accel {
       val reg = Reg[T]
       Fold(N by B par P1)(reg, 0.as[T]){ i =>
-        val b1 = BRAM[T](B)
-        val b2 = BRAM[T](B)
+        val b1 = SRAM[T](B)
+        val b2 = SRAM[T](B)
         Parallel {
           b1 := v1(i::i+B, P3)
           b2 := v2(i::i+B, P3)

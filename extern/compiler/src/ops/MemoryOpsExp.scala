@@ -12,80 +12,94 @@ import spatial.shared.ops._
 import spatial.compiler._
 import spatial.compiler.ops._
 
-trait BlockRAM[T]
-trait SparseTile[T]
-trait SpatialFIFO[T]
+trait SpatialReg[T]
 trait SpatialCAM[K,V]
+trait SpatialSRAM[T]
+trait SpatialFIFO[T]
+trait SpatialDRAM[T]
+trait SpatialCache[T]
 trait SpatialVector[T]
-trait CACHE[T]
-trait Register[T]
-trait DRAM[T]
 
 trait SpatialPipeline
 trait SpatialIndices
 
-trait MemoryTemplateTypesExp extends MemoryTemplateTypes with BaseExp {
-  type OffChipMem[T] = DRAM[T]
-  type BRAM[T] = BlockRAM[T]
-  type STile[T] = SparseTile[T]
-  type FIFO[T] = SpatialFIFO[T]
-  type CAM[K,V] = SpatialCAM[K,V]
+trait MemoryTypesExp extends MemoryTemplateTypes with BaseExp {
+
+  type Reg[T]    = SpatialReg[T]
+  type CAM[K,V]  = SpatialCAM[K,V]
+  type SRAM[T]   = SpatialSRAM[T]
+  type FIFO[T]   = SpatialFIFO[T]
+  type DRAM[T]   = SpatialDRAM[T]
+  type Cache[T]  = SpatialCache[T]
   type Vector[T] = SpatialVector[T]
-  type Cache[T] = CACHE[T]
-  type Reg[T] = Register[T]
 
-  type Pipeline = SpatialPipeline
-  type Indices = SpatialIndices
+  type Indices   = SpatialIndices
+  type Pipeline  = SpatialPipeline
 
-  def isPipeline[T:Manifest] = isSubtype(manifest[T].runtimeClass, classOf[SpatialPipeline])
-  def isRegister[T:Manifest] = isSubtype(manifest[T].runtimeClass, classOf[Register[_]])
-  def isBRAM[T:Manifest]     = isSubtype(manifest[T].runtimeClass, classOf[BlockRAM[_]])
-  def isSparseTile[T:Manifest] = isSubtype(manifest[T].runtimeClass, classOf[SparseTile[_]])
-  def isFIFO[T:Manifest]     = isSubtype(manifest[T].runtimeClass, classOf[SpatialFIFO[_]])
-  def isCache[T:Manifest]    = isSubtype(manifest[T].runtimeClass, classOf[CACHE[_]])
+  def isReg[T:Manifest]      = isSubtype(manifest[T].runtimeClass, classOf[SpatialReg[_]])
   def isCAM[T:Manifest]      = isSubtype(manifest[T].runtimeClass, classOf[SpatialCAM[_,_]])
+  def isSRAM[T:Manifest]     = isSubtype(manifest[T].runtimeClass, classOf[SpatialSRAM[_]])
+  def isFIFO[T:Manifest]     = isSubtype(manifest[T].runtimeClass, classOf[SpatialFIFO[_]])
+  def isDRAM[T:Manifest]     = isSubtype(manifest[T].runtimeClass, classOf[SpatialDRAM[_]])
+  def isCache[T:Manifest]    = isSubtype(manifest[T].runtimeClass, classOf[SpatialCache[_]])
   def isVector[T:Manifest]   = isSubtype(manifest[T].runtimeClass, classOf[SpatialVector[_]])
 
-  def offchipMemManifest[T:Manifest]: Manifest[OffChipMem[T]] = manifest[DRAM[T]]
-  def bramManifest[T:Manifest]: Manifest[BRAM[T]] = manifest[BlockRAM[T]]
-  def stileManifest[T:Manifest]: Manifest[STile[T]] = manifest[SparseTile[T]]
-  def fifoManifest[T:Manifest]: Manifest[FIFO[T]] = manifest[SpatialFIFO[T]]
-  def camManifest[K:Manifest,V:Manifest]: Manifest[CAM[K,V]] = manifest[SpatialCAM[K,V]]
-  def vectorManifest[T:Manifest]: Manifest[Vector[T]] = manifest[SpatialVector[T]]
-  def cacheManifest[T:Manifest]: Manifest[Cache[T]] = manifest[CACHE[T]]
-  def regManifest[T:Manifest]: Manifest[Reg[T]] = manifest[Register[T]]
-  def pipelineManifest: Manifest[Pipeline] = manifest[SpatialPipeline]
+  def isIndices[T:Manifest]  = isSubtype(manifest[T].runtimeClass, classOf[SpatialIndices])
+  def isPipeline[T:Manifest] = isSubtype(manifest[T].runtimeClass, classOf[SpatialPipeline])
 
-  // TODO: Should be refined manifest? But how to know how many fields to fill in?
+  def regManifest[T:Manifest]: Manifest[Reg[T]] = manifest[SpatialReg[T]]
+  def camManifest[K:Manifest,V:Manifest]: Manifest[CAM[K,V]] = manifest[SpatialCAM[K,V]]
+  def sramManifest[T:Manifest]: Manifest[SRAM[T]] = manifest[SpatialSRAM[T]]
+  def fifoManifest[T:Manifest]: Manifest[FIFO[T]] = manifest[SpatialFIFO[T]]
+  def dramManifest[T:Manifest]: Manifest[DRAM[T]] = manifest[SpatialDRAM[T]]
+  def cacheManifest[T:Manifest]: Manifest[Cache[T]] = manifest[SpatialCache[T]]
+  def vectorManifest[T:Manifest]: Manifest[Vector[T]] = manifest[SpatialVector[T]]
+
   def indicesManifest: Manifest[Indices] = manifest[SpatialIndices]
+  def pipelineManifest: Manifest[Pipeline] = manifest[SpatialPipeline]
 }
 
-trait MemoryTemplateOpsExp extends MemoryTemplateTypesExp with ExternPrimitiveOpsExp with EffectExp with BRAMOpsExp {
+
+trait MemoryOpsExp extends MemoryTypesExp with ExternPrimitiveOpsExp with SRAMOpsExp {
   this: SpatialExp =>
 
   val stream_offset_guess = 20
   // --- Nodes
-  case class Vector_from_list[T](elems: List[Exp[T]])(implicit val mT: Manifest[T], val ctx: SourceContext) extends Def[Vector[T]]
+  case class ListVector[T](elems: List[Exp[T]])(implicit val mT: Manifest[T], val ctx: SourceContext) extends Def[Vector[T]]
 
-  case class Gather[T](mem: Exp[OffChipMem[T]],local: Exp[BRAM[T]],addrs: Exp[BRAM[FixPt[Signed,B32,B0]]],len: Exp[FixPt[Signed,B32,B0]],par: Exp[Int], i: Sym[FixPt[Signed,B32,B0]])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
-  case class Scatter[T](mem: Exp[OffChipMem[T]],local: Exp[BRAM[T]],addrs: Exp[BRAM[FixPt[Signed,B32,B0]]],len: Exp[FixPt[Signed,B32,B0]],par: Exp[Int], i: Sym[FixPt[Signed,B32,B0]])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
+  case class Gather[T](mem: Exp[DRAM[T]],local: Exp[SRAM[T]],addrs: Exp[SRAM[FixPt[Signed,B32,B0]]],len: Exp[FixPt[Signed,B32,B0]],par: Exp[Int], i: Sym[FixPt[Signed,B32,B0]])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
+  case class Scatter[T](mem: Exp[DRAM[T]],local: Exp[SRAM[T]],addrs: Exp[SRAM[FixPt[Signed,B32,B0]]],len: Exp[FixPt[Signed,B32,B0]],par: Exp[Int], i: Sym[FixPt[Signed,B32,B0]])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
+
+  case class BurstLoad[T](mem: Exp[DRAM[T]], fifo: Rep[FIFO[T]], ofs: Rep[Index], len: Rep[Index], par: Rep[Int])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
+  case class BurstStore[T](mem: Exp[DRAM[T]], fifo: Rep[FIFO[T]], ofs: Rep[Index], len: Rep[Index], par: Rep[Int])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
 
   // --- Internal API
-  def vector_from_list[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]] = reflectPure(Vector_from_list(elems))
+  def vectorize[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]] = reflectPure(ListVector(elems))
 
-  def gather[T:Manifest](mem: Rep[OffChipMem[T]],local: Rep[BRAM[T]],addrs: Rep[BRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
+  def gather[T:Manifest](mem: Rep[DRAM[T]],local: Rep[SRAM[T]],addrs: Rep[SRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
     reflectWrite[Unit](local)(Gather[T](mem,local,addrs,len,par,fresh[FixPt[Signed,B32,B0]])(ctx, implicitly[Manifest[T]]))
   }
-  def scatter[T:Manifest](mem: Rep[OffChipMem[T]],local: Rep[BRAM[T]],addrs: Rep[BRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
+  def scatter[T:Manifest](mem: Rep[DRAM[T]],local: Rep[SRAM[T]],addrs: Rep[SRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
     reflectWrite[Unit](mem)(Scatter[T](mem,local,addrs,len,par,fresh[FixPt[Signed,B32,B0]])(ctx, implicitly[Manifest[T]]))
   }
 
+  def burst_load[T:Manifest](mem: Rep[DRAM[T]], fifo: Rep[FIFO[T]], ofs: Rep[Index], len: Rep[Index], par: Rep[Int])(implicit ctx: SourceContext): Rep[Unit] = {
+    reflectWrite[Unit](fifo)(BurstLoad[T](mem,fifo,ofs,len,par)(ctx, implicitly[Manifest[T]]))
+  }
+
+  def burst_store[T:Manifest](mem: Rep[DRAM[T]], fifo: Rep[FIFO[T]], ofs: Rep[Index], len: Rep[Index], par: Rep[Int])(implicit ctx: SourceContext): Rep[Unit] = {
+    reflectWrite[Unit](mem)(BurstStore[T](mem,fifo,ofs,len,par)(ctx, implicitly[Manifest[T]]))
+  }
+
+
   // --- Mirroring
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
-    case e@Vector_from_list(elems) => reflectPure(Vector_from_list(f(elems))(e.mT, e.ctx))(mtype(manifest[A]), pos)
-    case Reflect(e@Vector_from_list(elems), u, es) => reflectMirrored(Reflect(Vector_from_list(f(elems))(e.mT,e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@ListVector(elems) => reflectPure(ListVector(f(elems))(e.mT, e.ctx))(mtype(manifest[A]), pos)
+    case Reflect(e@ListVector(elems), u, es) => reflectMirrored(Reflect(ListVector(f(elems))(e.mT,e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
     case Reflect(e@Gather(mem,local,addrs,len,p,i), u, es) => reflectMirrored(Reflect(Gather(f(mem),f(local),f(addrs),f(len),f(p),i)(e.ctx,e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
     case Reflect(e@Scatter(mem,local,addrs,len,p,i), u, es) => reflectMirrored(Reflect(Scatter(f(mem),f(local),f(addrs),f(len),f(p),i)(e.ctx,e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case Reflect(e@BurstLoad(mem,fifo,ofs,len,p), u, es) => reflectMirrored(Reflect(BurstLoad(f(mem),f(fifo),f(ofs),f(len),f(p))(e.ctx,e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case Reflect(e@BurstStore(mem,fifo,ofs,len,p), u, es) => reflectMirrored(Reflect(BurstStore(f(mem),f(fifo),f(ofs),f(len),f(p))(e.ctx,e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
     case _ => super.mirror(e, f)
   }
 
@@ -109,27 +123,36 @@ trait MemoryTemplateOpsExp extends MemoryTemplateTypesExp with ExternPrimitiveOp
     case Gather(mem,local,addrs,len,p,i) => List(i)
     case _ => super.boundSyms(e)
   }
+
+  override def aliasSyms(e: Any): List[Sym[Any]] = e match {
+    case e:Gather[_] => Nil
+    case e:Scatter[_] => Nil
+    case e:BurstLoad[_] => Nil
+    case e:BurstStore[_] => Nil
+    case _ => super.aliasSyms(e)
+  }
+
 }
 
 // Defines type remappings required in Scala gen (should be same as in library)
-trait ScalaGenMemoryTemplateOps extends ScalaGenEffect with ScalaGenControllerTemplateOps {
-  val IR: ControllerTemplateOpsExp with SpatialCodegenOps
+trait ScalaGenMemoryOps extends ScalaGenEffect {
+  val IR: MemoryOpsExp with SpatialCodegenOps
   import IR._
 
   override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
-    case "BlockRAM" => "Array[" + remap(m.typeArguments(0)) + "]"
-    case "SpatialFIFO" => "scala.collection.mutable.Queue[" + remap(m.typeArguments(0)) + "]"
+    case "SpatialReg"  => "Array[" + remap(m.typeArguments(0)) + "]"
     case "SpatialCAM"  => "scala.collection.mutable.HashMap[" + remap(m.typeArguments(0)) + ", " + remap(m.typeArguments(1)) + "]"
+    case "SpatialSRAM" => "Array[" + remap(m.typeArguments(0)) + "]"
+    case "SpatialFIFO" => "scala.collection.mutable.Queue[" + remap(m.typeArguments(0)) + "]"
+    case "SpatialDRAM" => "Array[" + remap(m.typeArguments(0)) + "]"
+    case "SpatialCache"  => "Array[" + remap(m.typeArguments(0)) + "]"
     case "SpatialVector" => "Array[" + remap(m.typeArguments(0)) + "]"
-    case "CACHE"     => "Array[" + remap(m.typeArguments(0)) + "]"
-    case "Register" => "Array[" + remap(m.typeArguments(0)) + "]"
-    case "DRAM"     => "Array[" + remap(m.typeArguments(0)) + "]"
     case "SpatialPipeline" => "Unit"
     case _ => super.remap(m)
   }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case Vector_from_list(elems) =>
+    case ListVector(elems) =>
       emitValDef(sym, "Array" + elems.map(quote).mkString("(", ",", ")"))
 
     case Scatter(mem,local,addrs,len,par,i) =>
@@ -142,19 +165,29 @@ trait ScalaGenMemoryTemplateOps extends ScalaGenEffect with ScalaGenControllerTe
       stream.println("for ("+quote(i)+" <- 0 until "+quote(len)+".toInt) { if ("+quote(i)+" < "+quote(local)+".length && "+quote(i)+" < "+quote(addrs)+".length && "+quote(addrs)+"("+quote(i)+").toInt < "+quote(mem)+".length) "+quote(local)+"("+quote(i)+") = "+quote(mem)+"( "+quote(addrs)+"("+quote(i)+").toInt ) }" + "")
       stream.println("}")
 
+    case BurstLoad(mem,fifo,ofs,len,par) =>
+      stream.println("val "+quote(sym)+" = {")
+      stream.println("for (i <- 0 until "+quote(len)+".toInt) { if (i + "+quote(ofs)+".toInt < "+quote(mem)+".length) "+quote(fifo)+".enqueue( "+quote(mem)+"(i + "+quote(ofs)+".toInt) ) else "+quote(fifo)+".enqueue("+quote(mem)+"(0)) }" + "")
+      stream.println("}")
+
+    case BurstStore(mem,fifo,ofs,len,par) =>
+      stream.println("val "+quote(sym)+" = {")
+      stream.println("for (i <- 0 until "+quote(len)+".toInt) { if (i + "+quote(ofs)+".toInt < "+quote(mem)+".length) "+quote(mem)+"(i + "+quote(ofs)+".toInt) = "+quote(fifo)+".dequeue() }" + "")
+      stream.println("}")
+
     case _ => super.emitNode(sym, rhs)
   }
 }
 
-trait CGenMemoryTemplateOps extends CGenEffect {
-  val IR: ControllerTemplateOpsExp with SpatialIdentifiers with OffChipMemOpsExp
+trait CGenMemoryOps extends CGenEffect {
+  val IR: ControllerOpsExp with SpatialIdentifiers with DRAMOpsExp
   with NosynthOpsExp
   import IR._
 
   // Current TileLd/St templates expect that LMem addresses are
   // statically known during graph build time in MaxJ. That can be
   // changed, but until then we have to assign LMem addresses
-  // statically. Assigning each OffChipArray a 384MB chunk now
+  // statically. Assigning each DRAM memory a 384MB chunk now
   val burstSize = 384
   var nextLMemAddr: Long = burstSize * 1024 * 1024
   def getNextLMemAddr() = {
@@ -189,22 +222,13 @@ trait CGenMemoryTemplateOps extends CGenEffect {
 
 
   override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
-    case "BlockRAM" => remapWithRef(m.typeArguments(0))
-    case "SpatialVector" => remapWithRef(m.typeArguments(0))
+    case "SpatialReg" => remapWithRef(m.typeArguments(0))
+    // case "SpatialCAM" => ???
+    case "SpatialSRAM" => remapWithRef(m.typeArguments(0))
     // case "SpatialFIFO" => ???
-    case "Register" => remapWithRef(m.typeArguments(0))
-    case "DRAM"     => "maxjLmem"
-
-    case "SpatialCounter" => "int32_t"
-    case "SpatialCounterChain" => "int32_t*"
+    case "SpatialDRAM"   => "maxjLmem"
+    case "SpatialVector" => remapWithRef(m.typeArguments(0))
     case "SpatialPipeline" => "void"
-
-    case "SpatialBit" => "bool"
-    case "Signed" => ""
-    case "Unsign" => "u"
-    case "FixedPoint" => remap(m.typeArguments(0)) + "int" + bitsToStringInt(remap(m.typeArguments(1)).toInt + remap(m.typeArguments(2)).toInt) + "_t"
-    case "FloatPoint" => bitsToFloatType(remap(m.typeArguments(0)).toInt + remap(m.typeArguments(1)).toInt)
-    case bx(n) => n
     case _ => super.remap(m)
   }
 
@@ -257,7 +281,7 @@ public:
       fprintf(stderr, "Starting FPGA -> CPU copy\\n");
       Top_readLMem_run(engine, &${quote(fpgamem)}_rdAct);
       fprintf(stderr, "FPGA -> CPU copy done\\n");""")
-    case Offchip_new(size) =>
+    case Dram_new(size) =>
       emitValDef(sym, s"""new maxjLmem(${getNextLMemAddr()}, ${quote(size)})""")
 
     case Forloop(start, end, step, body, idx) =>
@@ -272,9 +296,10 @@ public:
   }
 }
 
-trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with MaxJGenControllerTemplateOps {
+
+trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with MaxJGenControllerOps {
   val IR: UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DeliteTransform
-          with LoweredPipeOpsExp with ControllerTemplateOpsExp with ExternPrimitiveOpsExp with ReductionAnalysisExp
+          with UnrolledOpsExp with ControllerOpsExp with ExternPrimitiveOpsExp with ReductionAnalysisExp
 
   import IR.{println => _, assert => _, infix_until => _, _}
 
@@ -286,7 +311,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
   // Current TileLd/St templates expect that LMem addresses are
   // statically known during graph build time in MaxJ. That can be
   // changed, but until then we have to assign LMem addresses
-  // statically. Assigning each OffChipArray a 384MB chunk now
+  // statically. Assigning each DRAM memory a 384MB chunk now
   val burstSize = 384
   var nextLMemAddr: Long = burstSize * 1024 * 1024
   def getNextLMemAddr() = {
@@ -302,7 +327,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     super.initializeGenerator(buildDir)
   }
 
-  val brams = Set[Exp[BRAM[Any]]]()
+  val srams = Set[Exp[SRAM[Any]]]()
   val regs = Set[Exp[Reg[Any]]]()
 
   def emitBufferControlSignals() {
@@ -311,12 +336,12 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     // Quote duplicate
     // TODO: Change to common "quote duplicate" method?
     def quoteDuplicate(mem: Exp[Any], i: Int): String = {
-      if      (isBRAM(mem.tp))     s"""${quote(mem)}_${i}"""
-      else if (isRegister(mem.tp)) s"""${quote(mem)}_${i}_lib"""
+      if      (isSRAM(mem.tp)) s"""${quote(mem)}_${i}"""
+      else if (isReg(mem.tp))  s"""${quote(mem)}_${i}_lib"""
       else throw new Exception("Cannot double buffer type " + mem.tp)
     }
 
-    val nonBoundMemories = (brams ++ regs).map(aliasOf(_)).filter{case Def(_) => true; case _ => false}
+    val nonBoundMemories = (srams ++ regs).map(aliasOf(_)).filter{case Def(_) => true; case _ => false}
 
     nonBoundMemories.foreach{mem =>
       val buffers = duplicatesOf(mem).zipWithIndex.filter{case (d,i) => d.depth > 1}
@@ -344,7 +369,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           }
         }
         if (d.depth > 1) { // Deprecated dblbuf
-          val suff = if (isBRAM(mem.tp)) {""} else if (isRegister(mem.tp)) {"_lib"}
+          val suff = if (isSRAM(mem.tp)) {""} else if (isReg(mem.tp)) {"_lib"}
           val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length == 1 }.flatten
           val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
           val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
@@ -390,60 +415,58 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     super.emitFileFooter()
   }
 
-  def getBanking(bram: MemInstance) = {
-    val bnks = bram.banking.map(_.banks)
-    bram.banking.length match {
+  def getBanking(sram: MemInstance) = {
+    val bnks = sram.banking.map(_.banks)
+    sram.banking.length match {
       case 1 => bnks(0)
       case 2 => bnks.mkString("new int[] {", ",", "}")
-      case _ => throw new Exception(s"Can't handle ${bram.banking.length}-D memory!")
+      case _ => throw new Exception(s"Can't handle ${sram.banking.length}-D memory!")
     }
   }
-  def getStride(bram: MemInstance) = {
-    val strds = bram.banking.map{
+  def getStride(sram: MemInstance) = {
+    val strds = sram.banking.map{
       case DiagonalBanking(strides, _) => throw new Exception(s"Can't handle Diagonal banking yet")
       case StridedBanking(stride, _) => stride
       case _ => 1
     }
-    bram.banking.length match {
+    sram.banking.length match {
       case 1 => strds(0)
       case 2 => strds.mkString("new int[] {", ",", "}")
-      case _ => throw new Exception(s"Can't handle ${bram.banking.length}-D memory!")
+      case _ => throw new Exception(s"Can't handle ${sram.banking.length}-D memory!")
     }
 
   }
 
-  def isBoundSym(x: Sym[Any]) = {
-    x match {
-      case Def(_) => false // Is not a bound sym
-      case _ => true
-    }
+  def isBoundSym(x: Sym[Any]) = x match {
+    case Def(_) => false // Is not a bound sym
+    case _ => true
   }
 
-  def bramLoad(read: Sym[Any], bram: Exp[BRAM[Any]], addr: Exp[Any], par: Boolean = false) {
+  def sramLoad(read: Sym[Any], sram: Exp[SRAM[Any]], addr: Exp[Any], par: Boolean = false) {
     emitComment("Bram_load {")
-    val dups = duplicatesOf(bram)
-    val readers = readersOf(bram)
+    val dups = duplicatesOf(sram)
+    val readers = readersOf(sram)
     val reader = readers.find{_.node == read}.get   // Corresponding reader for this read node
-    val b_i = instanceIndicesOf(reader, bram).head    // Instance indices should have exactly one index for reads
-    val p = portsOf(read, bram, b_i).head
+    val b_i = instanceIndicesOf(reader, sram).head    // Instance indices should have exactly one index for reads
+    val p = portsOf(read, sram, b_i).head
 
-    val bram_name = s"${quote(bram)}_${b_i}"
-    val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
-    val num_dims = dimsOf(bram).length
-    if (isDummy(bram)) {
-      val pre = if (!par) maxJPre(bram) else "DFEVector<DFEVar>"
+    val sram_name = s"${quote(sram)}_${b_i}"
+    val pre = if (!par) maxJPre(sram) else "DFEVector<DFEVar>"
+    val num_dims = dimsOf(sram).length
+    if (isDummy(sram)) {
+      val pre = if (!par) maxJPre(sram) else "DFEVector<DFEVar>"
       bankOverride(read) match {
-        case -1 => emit(s"""${pre} ${quote(read)} = ${quote(bram_name)}.connectRport(${quote(addr)}); //r1.0""")
-        case b => emit(s"""${pre} ${quote(read)} = ${quote(bram_name)}.connectRport(${quote(addr)}, $b); //r1.5""")
+        case -1 => emit(s"""${pre} ${quote(read)} = ${quote(sram_name)}.connectRport(${quote(addr)}); //r1.0""")
+        case b => emit(s"""${pre} ${quote(read)} = ${quote(sram_name)}.connectRport(${quote(addr)}, $b); //r1.5""")
 
       }
     } else {
 
       val inds = parIndicesOf(read)
-      assert(inds.nonEmpty, s"Empty par access indices for read $read of $bram")
+      assert(inds.nonEmpty, s"Empty par access indices for read $read of $sram")
 
       num_dims match {
-        case 1 => // 1D bram
+        case 1 => // 1D sram
           if (inds.length == 1) {
             // One address
             // Spit out DFEVar if not already done
@@ -451,15 +474,15 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             addEmittedConsts(addr0)
 
             if (par)
-              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${quote(bram_name)}.connectRport(${quote(addr0)}, new int[] {$p}))); //r2""")
+              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${sram_name}.type, 1).newInstance(this, Arrays.asList(${quote(sram_name)}.connectRport(${quote(addr0)}, new int[] {$p}))); //r2""")
             else
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new int[] {$p}); //r3""")
+              emit(s"""$pre ${quote(read)} = ${sram_name}.connectRport(${quote(addr0)}, new int[] {$p}); //r3""")
           }
           else {
             // Many addresses
-            emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr)}, new int[] {$p}); //r4""")
+            emit(s"""$pre ${quote(read)} = ${sram_name}.connectRport(${quote(addr)}, new int[] {$p}); //r4""")
           }
-        case 2 => // 2D bram
+        case 2 => // 2D sram
           if (inds.length == 1) {
             // One address
             val addr0 = inds(0)(0)
@@ -467,9 +490,9 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             addEmittedConsts(addr0, addr1)
 
             if (par)
-              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${bram_name}.type, 1).newInstance(this, Arrays.asList(${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}, new int[] {$p}))); //r5""")
+              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${sram_name}.type, 1).newInstance(this, Arrays.asList(${sram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}, new int[] {$p}))); //r5""")
             else
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}, new int[] {$p}); //r6""")
+              emit(s"""$pre ${quote(read)} = ${sram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}, new int[] {$p}); //r6""")
 
           }
           else {
@@ -481,21 +504,21 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val addr0 = inds.map{ind => quote2D(ind,0) }
               val addr1 = quote2D(inds(0), 1)
               emit(s"""// All readers share column. vectorized """)
-              emit(s"""$pre ${quote(read)} = ${bram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}, new int[] {$p}); //r7""")
+              emit(s"""$pre ${quote(read)} = ${sram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}, new int[] {$p}); //r7""")
             }
             // Same rows?
             else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
               val addr0 = quote2D(inds(0), 0)
               val addr1 = inds.map{ind => quote2D(ind, 0) }
               emit(s"""// All readers share row. vectorized""")
-              emit(s"""${pre} ${quote(read)} = ${bram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")})), new int[] {$p}); //r8""")
+              emit(s"""${pre} ${quote(read)} = ${sram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")})), new int[] {$p}); //r8""")
             }
             else {
               throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
             }
           }
         case _ =>
-          throw new Exception("MaxJ generation of more than 2D BRAMs is currently unsupported.")
+          throw new Exception("MaxJ generation of more than 2D SRAMs is currently unsupported.")
       }
     }
 
@@ -511,27 +534,27 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
   }
 
-  def bramStore(write: Sym[Any], bram: Exp[BRAM[Any]], addr: Exp[Any], value: Exp[Any]) {
+  def sramStore(write: Sym[Any], sram: Exp[SRAM[Any]], addr: Exp[Any], value: Exp[Any]) {
     emitComment("Bram_store {")
     val dataStr = quote(value)
-    val allDups = duplicatesOf(bram)
+    val allDups = duplicatesOf(sram)
 
-    val writers = writersOf(bram)
+    val writers = writersOf(sram)
     val writer = writers.find(_.node == write).get
     //val EatAlias(ww) = write -- This is unnecessary (can't be bound)
     val distinctParents = writers.map{writer => parentOf(writer.controlNode)}.distinct
     val allParents = writers.map{writer => parentOf(writer.controlNode)}
     if (distinctParents.length < allParents.length) {
-      throw MultipleWriteControllersException(bram, writersOf(bram))
+      throw MultipleWriteControllersException(sram, writersOf(sram))
     }
     val writeCtrl = writer.controlNode
 
     // Figure out if this Ctrl is an accumulation, since we need to do this now that there can be many writers
     val isAccumCtrl = writeCtrl match {
-        case Deff(d:Pipe_fold[_,_]) => true
-        case Deff(d:Pipe_foreach) => false
-        case Deff(d:ParPipeReduce[_,_]) => true
-        case Deff(d:ParPipeForeach) =>
+        case Deff(d:OpReduce[_,_]) => true
+        case Deff(d:OpForeach) => false
+        case Deff(d:UnrolledReduce[_,_]) => true
+        case Deff(d:UnrolledForeach) =>
           if (childrenOf(parentOf(writeCtrl).get).indexOf(writeCtrl) == childrenOf(parentOf(writeCtrl).get).length-1) {
             styleOf(writeCtrl) match {
               case InnerPipe => true
@@ -540,94 +563,94 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           } else {
             false
           }
-        case Deff(d:Unit_pipe) => true // Not sure why but this makes matmult work
-        case p => throw UnknownParentControllerException(bram, write, writeCtrl)
+        case Deff(d:UnitPipe) => true // Not sure why but this makes matmult work
+        case p => throw UnknownParentControllerException(sram, write, writeCtrl)
     }
 
 
-    val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(writer,bram).contains(dup._2) }
+    val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(writer,sram).contains(dup._2) }
 
     val inds = parIndicesOf(write)
-    val num_dims = dimsOf(bram).length
+    val num_dims = dimsOf(sram).length
 
-    if (inds.isEmpty) throw NoParIndicesException(bram, write)
+    if (inds.isEmpty) throw NoParIndicesException(sram, write)
 
 
-    if (isAccum(bram) & isAccumCtrl) {
+    if (isAccum(sram) & isAccumCtrl) {
       val offsetStr = quote(writeCtrl) + "_offset"
-      val parentPipe = parentOf(bram).getOrElse(throw UndefinedParentException(bram))
+      val parentPipe = parentOf(sram).getOrElse(throw UndefinedParentException(sram))
       val parentCtr = parentPipe match {
-        case Deff(d:Pipe_fold[_,_]) => d.cchain
-        case Deff(d:Pipe_foreach) => d.cchain
-        case Deff(d:ParPipeReduce[_,_]) => d.cc
-        case Deff(d:ParPipeForeach) => d.cc
-        case p => throw UnknownAccumControllerException(bram, write, p)
+        case Deff(d:OpReduce[_,_]) => d.cchain
+        case Deff(d:OpForeach) => d.cchain
+        case Deff(d:UnrolledReduce[_,_]) => d.cc
+        case Deff(d:UnrolledForeach) => d.cc
+        case p => throw UnknownAccumControllerException(sram, write, p)
       }
 
       val Def(rhss) = parentCtr
       val accEn = writeCtrl match {
-        case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
+        case Deff(_: UnitPipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
         case Deff(a) => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*wtf pipe is $a*/"
         case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*no def node*/"
       }
       dups.foreach {case (dd, ii) =>
-        val p = portsOf(write, bram, ii).mkString(",")
+        val p = portsOf(write, sram, ii).mkString(",")
         if (writers.length == 1) {
           num_dims match {
             case 1 =>
-              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
+              emit(s"""${quote(sram)}_${ii}.connectWport(stream.offset(${quote(addr)}, -$offsetStr),
                 stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w3""")
             case _ =>
-              emit(s"""${quote(bram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
+              emit(s"""${quote(sram)}_${ii}.connectWport(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
                 stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4""")
           }
         } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
-          val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
+          val wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
           num_dims match {
             case 1 =>
-              emit(s"""${quote(bram)}_${ii}.${wrType}(stream.offset(${quote(addr)}, -$offsetStr),
+              emit(s"""${quote(sram)}_${ii}.${wrType}(stream.offset(${quote(addr)}, -$offsetStr),
               stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w3.2""")
             case _ =>
-              emit(s"""${quote(bram)}_${ii}.${wrType}(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
+              emit(s"""${quote(sram)}_${ii}.${wrType}(stream.offset(${quote(inds(0)(0))}, -$offsetStr), stream.offset(${quote(inds(0)(1))}, -$offsetStr),
                 stream.offset($dataStr, -$offsetStr), stream.offset($accEn, -$offsetStr), new int[] {$p}); //w4.2""")
           }
         } else { // Hardcode writers to banks and hope for the best
-          val bank_num = writersOf(bram).map{_.node}.indexOf(write)
-          emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
+          val bank_num = writersOf(sram).map{_.node}.indexOf(write)
+          emit(s"""${quote(sram)}_${ii}.connectBankWport(${bank_num}, stream.offset(${quote(addr)}, -$offsetStr),
             stream.offset($dataStr, -$offsetStr), $accEn); //w5""")
         }
       }
     }
     else { // Not accum
-      if (isDummy(bram)) {
+      if (isDummy(sram)) {
         dups.foreach {case (dd, ii) =>
-          emit(s"""${quote(bram)}_$ii.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w6""")
+          emit(s"""${quote(sram)}_$ii.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w6""")
         }
       }
       else num_dims match {
         case 1 =>
           dups.foreach {case (dd, ii) =>
-            val p = portsOf(write, bram, ii).mkString(",")
+            val p = portsOf(write, sram, ii).mkString(",")
             if (writers.length == 1) {
-              emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8""")
+              emit(s"""${quote(sram)}_${ii}.connectWport(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8""")
             } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
-              val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
-              emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8.2""")
+              val wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
+              emit(s"""${quote(sram)}_${ii}.${wrType}(${quote(addr)}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w8.2""")
             }
           }
         case 2 =>
           if (inds.length == 1) {
             val addrs = inds(0)
             dups.foreach {case (dd, ii) =>
-              val p = portsOf(write, bram, ii).mkString(",")
+              val p = portsOf(write, sram, ii).mkString(",")
               if (writers.length == 1) {
-                emit(s"""${quote(bram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10""")
+                emit(s"""${quote(sram)}_${ii}.connectWport(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10""")
               } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
-                val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
-                emit(s"""${quote(bram)}_${ii}.${wrType}(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10.2""")
+                val wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
+                emit(s"""${quote(sram)}_${ii}.${wrType}(${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w10.2""")
               } else { // Hardcode writers to banks and hope for the best
                 val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
-                emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w10.5""")
+                emit(s"""${quote(sram)}_${ii}.connectBankWport(${bank_num}, ${quote(addrs(0))}, ${quote(addrs(1))}, ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w10.5""")
               }
             }
           }
@@ -642,16 +665,16 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               emit(s"""// All readers share column. vectorized """)
               dups.foreach {case (dd, ii) =>
                 if (writers.length == 1) {
-                  emit(s"""${quote(bram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                  emit(s"""${quote(sram)}_${ii}.connectWport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13""")
                 } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
-                  val p = portsOf(write, bram, ii).mkString(",")
-                  val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
-                  emit(s"""${quote(bram)}_${ii}.${wrType}((new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                  val p = portsOf(write, sram, ii).mkString(",")
+                  val wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
+                  emit(s"""${quote(sram)}_${ii}.${wrType}((new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w13.2""")
                 } else { // Hardcode writers to banks and hope for the best
                   val bank_num = writers.map{ w => w.controlNode }.indexOf(write)
-                  emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
+                  emit(s"""${quote(sram)}_${ii}.connectBankWport(${bank_num}, new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.mkString(",")})), ${addr1},
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w13.5""")
                 }
               }
@@ -662,17 +685,17 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
               val addr1 = inds.map{ind => quote2D(ind, 0) }
               emit(s"""// All readers share row. vectorized""")
               dups.foreach {case (dd, ii) =>
-                val p = portsOf(write, bram, ii).mkString(",")
+                val p = portsOf(write, sram, ii).mkString(",")
                 if (writers.length == 1) {
-                  emit(s"""${quote(bram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                  emit(s"""${quote(sram)}_${ii}.connectWport(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {${p}}); //w16""")
                 } else if (distinctParents.length > 1) { // Connect writers of various parents to mux
-                  val wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
-                  emit(s"""${quote(bram)}_${ii}.${wrType}(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                  val wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport"} else {"connectWport"}
+                  emit(s"""${quote(sram)}_${ii}.${wrType}(${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en, new int[] {$p}); //w16.2""")
                 } else { // Hardcode writers to banks and hope for the best
                   val bank_num = writers.map{ w => w.node }.indexOf(write)
-                  emit(s"""${quote(bram)}_${ii}.connectBankWport(${bank_num}, ${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
+                  emit(s"""${quote(sram)}_${ii}.connectBankWport(${bank_num}, ${addr0}, new DFEVectorType<DFEVar>(${addr1(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.mkString(",")})),
                   ${dataStr}, ${quote(writeCtrl)}_datapath_en); //w16.5""")
                 }
               }
@@ -682,17 +705,17 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
             }
           }
         case _ =>
-          throw new Exception("MaxJ generation of more than 2D BRAMs is currently unsupported.")
+          throw new Exception("MaxJ generation of more than 2D SRAMs is currently unsupported.")
       }
     }
     emitComment("} Bram_store")
   }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case Offchip_new(size) =>
-        emitComment(s""" Offchip_new(${quote(size)}) {""")
+    case Dram_new(size) =>
+        emitComment(s""" Dram_new(${quote(size)}) {""")
         alwaysGen { emit(s"""int ${quote(sym)} = ${getNextLMemAddr()};""") }
-        emitComment(s""" Offchip_new(${quote(size)}) }""")
+        emitComment(s""" Dram_new(${quote(size)}) }""")
 
     case Gather(mem,local,addrs,len,par,i) =>
       print_stage_prefix(s"Gather",s"",s"${quote(sym)}", false)
@@ -742,7 +765,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         ${quote(mem)}, "${quote(mem)}_${quote(sym)}_out");""")
       print_stage_suffix(quote(sym),false)
 
-    case Offchip_load_cmd(mem, fifo, ofs, len, par) =>
+    case Dram_load_cmd(mem, fifo, ofs, len, par) =>
       print_stage_prefix(s"Offchip Load",s"",s"${quote(sym)}", false)
       withStream(baseStream) {
         emit(s"""DFEVar ${quote(fifo)}_trashEn = dfeBool().newInstance(this); // Send stream to trash for when read is not burst-aligned""")
@@ -769,10 +792,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       emit(s"""${quote(fifo)}_wdata <== ${quote(fifo)}_rdata;""")
       print_stage_suffix(quote(sym), false)
 
-    case Offchip_store_cmd(mem, fifo, ofs, len, par) =>
+    case BurstStore(mem, fifo, ofs, len, par) =>
       // TODO: Offchip stores with burst not aligned
       print_stage_prefix(s"Offchip Store",s"",s"${quote(sym)}", false)
-      emit(s"""// ${quote(sym)}: Offchip_store_cmd(${quote(mem)},${quote(fifo)}, ${quote(ofs)}, ${quote(len)}, ${quote(par)})""")
+      emit(s"""// ${quote(sym)}: BurstStore(${quote(mem)},${quote(fifo)}, ${quote(ofs)}, ${quote(len)}, ${quote(par)})""")
       emit(s"""MemoryCmdStLib ${quote(sym)} = new MemoryCmdStLib(
           this,
           ${quote(sym)}_en, ${quote(sym)}_done,
@@ -861,8 +884,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
             case Regular =>
               val suffix = {
                 if (!controlNodeStack.isEmpty) controlNodeStack.top match {
-                  case Deff(n: ParPipeReduce[_,_]) => if (n.acc == reg) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
-                  case top@Deff(Unit_pipe(_)) => if (isAccum(reg) && writtenIn(top).contains(reg)) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
+                  case Deff(n: UnrolledReduce[_,_]) => if (n.acc == reg) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
+                  case top@Deff(UnitPipe(_)) => if (isAccum(reg) && writtenIn(top).contains(reg)) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
                   case _ => ""
                 }
                 else ""
@@ -924,16 +947,16 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
             // Not sure how to decide this now...
             val accEn = writeCtrl match {
-              case Deff(_: Unit_pipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
+              case Deff(_: UnitPipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
               case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
             }
 
             val rstStr = quote(parentOf(reg).get) + "_done /*because _rst_en goes hi on each iter*/"
             writeCtrl match {
-              // case p@Def(EatReflect(_:Pipe_foreach | _:ParPipeForeach)) => // Safe to comment this out??
+              // case p@Def(EatReflect(_:OpForeach | _:UnrolledForeach)) => // Safe to comment this out??
               //   throw new Exception(s"Foreaches may not have accumulators ($reg in $p)")
 
-              case p@Deff(_:Pipe_fold[_,_] | _:ParPipeReduce[_,_] | _:Unit_pipe | _:Pipe_foreach | _:ParPipeForeach) =>
+              case p@Deff(_:OpReduce[_,_] | _:UnrolledReduce[_,_] | _:UnitPipe | _:OpForeach | _:UnrolledForeach) =>
                 emit(s"// Write to accumulator register")
                 emit(s"""DFEVar ${quote(reg)}_en = ${accEn};""")
                 reduceType(reg) match {
@@ -980,24 +1003,24 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       }
       emitComment(s"} Reg_write // regType ${regType(reg)}, numDuplicates = ${allDups.length}")
 
-    case Bram_new(size, zero) =>
+    case Sram_new(size, zero) =>
       if (!isBoundSym(sym)) { // TODO: I don't think I need this anymore
-        brams += sym.asInstanceOf[Sym[BRAM[Any]]]
+        srams += sym.asInstanceOf[Sym[SRAM[Any]]]
 
         val distinctParents = writersOf(sym).map{writer => parentOf(writer.controlNode)}.distinct
         val allParents = writersOf(sym).map{writer => parentOf(writer.controlNode)}
 
         withStream(baseStream) {
-          emitComment("Bram_new {")
+          emitComment("Sram_new {")
           val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-          //TODO: does templete assume bram has 2 dimension?
+          //TODO: does templete assume sram has 2 dimension?
           val dims = dimsOf(sym)
           val sizes = dims.map{dim => bound(dim).get.toInt}
           val size0 = sizes(0)
           val size1 = sizes.size match {
             case 1 => 1
             case 2 => sizes(1)
-            case _ => throw new Exception("MaxJ generation does not yet support BRAMs with more than 2 dimensions.")
+            case _ => throw new Exception("MaxJ generation does not yet support SRAMs with more than 2 dimensions.")
           }
           val dups = duplicatesOf(sym)
           dups.zipWithIndex.foreach { case (r, i) =>
@@ -1039,23 +1062,23 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               }
             }
           }
-          emitComment("} Bram_new")
+          emitComment("} Sram_new")
         }
       } else {
         Console.println(s"$sym is a bound sym!")
       }
 
-    case Bram_load(EatAlias(bram), addr) =>
-      bramLoad(sym, bram.asInstanceOf[Exp[BRAM[Any]]], addr)
+    case Sram_load(EatAlias(sram), addr) =>
+      sramLoad(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr)
 
-    case Par_bram_load(EatAlias(bram), addr) =>
-      bramLoad(sym, bram.asInstanceOf[Exp[BRAM[Any]]], addr, true)
+    case Par_sram_load(EatAlias(sram), addr) =>
+      sramLoad(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, true)
 
-    case Bram_store(EatAlias(bram), addr, value) =>
-      bramStore(sym, bram.asInstanceOf[Exp[BRAM[Any]]], addr, value)
+    case Sram_store(EatAlias(sram), addr, value) =>
+      sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value)
 
-    case Par_bram_store(EatAlias(bram), addr, value) =>
-      bramStore(sym, bram.asInstanceOf[Exp[BRAM[Any]]], addr, value)
+    case Par_sram_store(EatAlias(sram), addr, value) =>
+      sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value)
 
     case Fifo_new(size, zero) =>  // FIFO is always parallel
       val duplicates = duplicatesOf(sym)
@@ -1096,7 +1119,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 
-    case Vector_from_list(elems) =>
+    case ListVector(elems) =>
       val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])
       emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map(quote).mkString(",")}));""")
 

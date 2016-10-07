@@ -147,6 +147,18 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
   }).asInstanceOf[Exp[A]]
 }
 
+trait CGenExternPrimitiveOps extends CGenEffect {
+  val IR: ExternPrimitiveOpsExp with SpatialCodegenOps
+
+  override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
+    case "SpatialBit" => "bool"
+    case "Signed" => ""
+    case "Unsign" => "u"
+    case "FixedPoint" => remap(m.typeArguments(0)) + "int" + bitsToStringInt(remap(m.typeArguments(1)).toInt + remap(m.typeArguments(2)).toInt) + "_t"
+    case "FloatPoint" => bitsToFloatType(remap(m.typeArguments(0)).toInt + remap(m.typeArguments(1)).toInt)
+    case bx(n) => n
+  }
+}
 
 trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
   val IR:UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DeliteTransform
@@ -442,7 +454,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
 
   override def emitFileFooter() = {
     emit(s"""// Emit consts""")
-    emitted_consts.foreach { 
+    emitted_consts.foreach {
       case ((s, d)) =>
         d match {
           case ConstFixPt(x,_,_,_) =>
@@ -567,11 +579,12 @@ case class FixedPointRange[S:Manifest,I:Manifest,F:Manifest](start: FixedPoint[S
   private val fullStep = parStep * step
   private val vecOffsets = Array.tabulate(par){p => FixedPoint[S,I,F](p) * step}
 
-  def foreach(func: Array[FixedPoint[S,I,F]] => Unit) = {
+  def foreach(func: (Array[FixedPoint[S,I,F]], Array[Boolean]) => Unit) = {
     var i = start
     while (i < end) {
-      val vec = vecOffsets.map{ofs => ofs + i}
-      func(vec)
+      val vec = vecOffsets.map{ofs => ofs + i} // Create current vector
+      val valids = vec.map{ix => ix < end}     // Valid bits
+      func(vec, valids)
       i += fullStep
     }
   }

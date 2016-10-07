@@ -63,8 +63,8 @@ trait DotIRPrinter extends Traversal with QuotingExp {
 			case _ =>
 				var tstr = s.tp.erasure.getSimpleName()
 				tstr = tstr.replace("Spatial","")
-			  if (isRegister(s.tp)) {
-					tstr = tstr.replace("Register", regType(s) match {
+			  if (isReg(s.tp)) {
+					tstr = tstr.replace("Reg", regType(s) match {
 						case Regular => "Reg"
 						case ArgumentIn => "ArgIn"
 						case ArgumentOut => "ArgOut"
@@ -78,8 +78,8 @@ trait DotIRPrinter extends Traversal with QuotingExp {
 						case SequentialPipe => "Sequential"
 					})
 				}
-        else if (isBRAM(s.tp)) {
-          tstr = tstr.replace("BlockRAM", "BRAM")
+        else if (isSRAM(s.tp)) {
+          tstr = tstr.replace("SpatialSRAM", "SRAM")
         }
 
         tstr + nameOf(s).map{n => "_"+n}.getOrElse("") + "_x" + id
@@ -209,7 +209,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
     case _:Argout_new[_] =>
       emit(s"""${quote(sym)} [label="${quote(sym)}" shape="Msquare" style="filled" fillcolor=$regFillColor ]""")
 
-    case Offchip_new(size) =>
+    case Dram_new(size) =>
       if (!emittedSize.contains(size)) hackGen(size)
       var label = s""" "${quote(sym)} """
       if (quote(size).forall(_.isDigit)) {
@@ -264,7 +264,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
 				emitCtrChain(sym, rhs)
 			}
 
-		case e@Pipe_parallel(func) =>
+		case e@ParallelPipe(func) =>
       emit(s"""subgraph cluster_${quote(sym)} {""")
       emit(s"""	label = "parallel ${quote(sym)}"""")
       emit(s"""	style = "filled, bold"""")
@@ -273,7 +273,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitBlock(func)
 			emit(s"""}""")
 
-    case e@Unit_pipe(func) =>
+    case e@UnitPipe(func) =>
       emit(s"""subgraph cluster_${quote(sym)} {""")
       emit(s""" label = "pipe ${quote(sym)}"""")
       emit(s""" style = "filled, bold"""")
@@ -282,7 +282,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitBlock(func)
       emit(s"""}""")
 
-    case e@Pipe_foreach(cchain, func, inds) =>
+    case e@OpForeach(cchain, func, inds) =>
 			emitNestedIdx(cchain, inds)
       emit(s"""subgraph cluster_${quote(sym)} {""")
       emit(s"""label="${quote(sym)}"""")
@@ -293,7 +293,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitBlock(func, quote(sym) + "_foreachFunc", "foreachFunc", foreachFillColor)             // Map function
       emit("}")
 
-    case e@Pipe_fold(cchain, accum, zero, fA, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
+    case e@OpReduce(cchain, accum, zero, fA, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
 			emitValDef(acc, accum)
       emitNestedIdx(cchain, inds)
       emit(s"""subgraph cluster_${quote(sym)} {""")
@@ -314,7 +314,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitBlock(stFunc, quote(sym) + "_stFunc", "stFunc" , stFillColor)
       emit("}")
 
-    case e@Accum_fold(ccOuter, ccInner, accum, zero, fA, iFunc, func, ldPart, ldFunc, rFunc, stFunc, indsOuter, indsInner, idx, part, acc, res, rV) =>
+    case e@OpMemReduce(ccOuter, ccInner, accum, zero, fA, iFunc, func, ldPart, ldFunc, rFunc, stFunc, indsOuter, indsInner, idx, part, acc, res, rV) =>
       emitValDef(acc, accum)
       emitNestedIdx(ccOuter, indsOuter)
       emit(s"""subgraph cluster_${quote(sym)} {""")
@@ -364,10 +364,10 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       if (isDblBuf(sym)) {
         emit(s"""$qsym [margin=0 rankdir="LR" label="{<st> | <ld>}" xlabel="$qsym """")
         emit(s"""shape="record" color=$dblbufBorderColor  style="filled"""")
-        emit(s"""fillcolor=$bramFillColor ]""")
+        emit(s"""fillcolor=$sramFillColor ]""")
       }
       else {
-        emit(s"""$qsym [label="$qsym " shape="square" style="filled" fillcolor=$bramFillColor ]""")
+        emit(s"""$qsym [label="$qsym " shape="square" style="filled" fillcolor=$sramFillColor ]""")
       }
     case Push_fifo(fifo,value,en) =>
       emitEdge(value,fifo, "data")
@@ -379,30 +379,30 @@ trait DotIRPrinter extends Traversal with QuotingExp {
     case Count_fifo(fifo) =>
       emitValDef(sym, fifo)
 
-		case Bram_new(size, zero) =>
+		case Sram_new(size, zero) =>
       val qsym = quote(sym)
       if (isDblBuf(sym)) {
       	emit(s"""$qsym [margin=0 rankdir="LR" label="{<st> | <ld>}" xlabel="$qsym """")
         emit(s"""shape="record" color=$dblbufBorderColor  style="filled"""")
-        emit(s"""fillcolor=$bramFillColor ]""")
+        emit(s"""fillcolor=$sramFillColor ]""")
       }
       else {
-        emit(s"""$qsym [label="$qsym " shape="square" style="filled" fillcolor=$bramFillColor ]""")
+        emit(s"""$qsym [label="$qsym " shape="square" style="filled" fillcolor=$sramFillColor ]""")
       }
 
-    case Bram_load(bram,addr) =>
-      emitEdge(addr, bram, "addr")
-			emitValDef(sym, bram)
+    case Sram_load(sram,addr) =>
+      emitEdge(addr, sram, "addr")
+			emitValDef(sym, sram)
 
-    case Bram_store(bram,addr,value) =>
-      emitEdge(addr, bram, "addr")
-      emitEdge(value, bram, "data")
+    case Sram_store(sram,addr,value) =>
+      emitEdge(addr, sram, "addr")
+      emitEdge(value, sram, "data")
 
-    case e@Offchip_store_cmd(mem,stream,ofs,len,p) =>
+    case e@BurstStore(mem,stream,ofs,len,p) =>
       emitEdge(stream, mem, "data")
       emitEdge(ofs, mem, "addr")
 
-    case e@Offchip_load_cmd(mem,stream,ofs,len,p) =>
+    case e@BurstLoad(mem,stream,ofs,len,p) =>
       emitEdge(ofs, mem, "addr")
       emitEdge(mem, stream, "data")
 
@@ -468,7 +468,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitEdge(a, sym, "a")
       emitEdge(b, sym, "b")
 
-    case ParPipeForeach(cc,func,inds) =>
+    case UnrolledForeach(cc,func,inds) =>
       emitParallelNestedIdx(cc, inds)
       emit(s"""subgraph cluster_${quote(sym)} {""")
       emit(s"""label="${quote(sym)}"""")
@@ -479,7 +479,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitBlock(func, quote(sym) + "_foreach", "foreach", foreachFillColor)             // Map function
       emit("}")
 
-    case ParPipeReduce(cc,accum,func,rFunc,inds,acc,rV) =>
+    case UnrolledReduce(cc,accum,func,rFunc,inds,acc,rV) =>
       emitValDef(acc, accum)
       emitParallelNestedIdx(cc, inds)
       emit(s"""subgraph cluster_${quote(sym)} {""")
@@ -535,7 +535,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
 	// Memories
   val vectorFillColor = s""""#8bd645""""
   val fifoFillColor = s""""70C6E6""""
-	val bramFillColor = s""""#70C6E6""""
+	val sramFillColor = s""""#70C6E6""""
 	val cacheFillColor = s""""#B3A582""""
 	val dramFillColor = s""""#685643""""
 	val regFillColor = s""""#8bd645""""

@@ -86,7 +86,7 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
         inHwScope = false
         body
 
-      case EatReflect(Pipe_parallel(func)) =>
+      case EatReflect(ParallelPipe(func)) =>
         debugs(s"Parallel $lhs: ")
         print_stage_prefix(s"parallel $lhs", 0)
         val blks = latencyOfBlock(func, true)
@@ -95,7 +95,7 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
         blks.max + latencyOf(lhs)
 
       // --- Pipe
-      case EatReflect(Unit_pipe(func)) if isInnerPipe(lhs) =>
+      case EatReflect(UnitPipe(func)) if isInnerPipe(lhs) =>
         debugs(s"Pipe $lhs: ")
         val pipe = latencyOfPipe(func)
         pipe_diagram.write(s"""<TR>""" + """<TD></TD>"""*indent*0)
@@ -104,7 +104,7 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
         debugs(s"- pipe = $pipe")
         pipe + latencyOf(lhs)
 
-      case EatReflect(Pipe_foreach(cchain, func, _)) if isInnerPipe(lhs) =>
+      case EatReflect(OpForeach(cchain, func, _)) if isInnerPipe(lhs) =>
         val N = Math.ceil(nIters(cchain,ignorePar=true).toDouble / model.LANES).toLong
         debugs(s"Foreach $lhs (N = $N):")
         val pipe = latencyOfPipe(func)
@@ -116,7 +116,7 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
         debugs(s"- pipe = $pipe")
         pipe + N - 1 + latencyOf(lhs)
 
-      case EatReflect(Pipe_fold(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,_,_,_,rV)) if isInnerPipe(lhs) =>
+      case EatReflect(OpReduce(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,_,_,_,rV)) if isInnerPipe(lhs) =>
         val N = Math.ceil(nIters(cchain,ignorePar=true).toDouble / model.LANES).toLong
         val P = model.LANES
 
@@ -138,7 +138,7 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
         body + internal + N*cycle + latencyOf(lhs)
 
       // --- Sequential
-      case EatReflect(Unit_pipe(func)) if isSequential(lhs) =>
+      case EatReflect(UnitPipe(func)) if isSequential(lhs) =>
         debugs(s"Outer Pipe $lhs:")
         print_stage_prefix(s"unit_pipe $lhs", 0)
         val stages = latencyOfBlock(func)
@@ -149,7 +149,7 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
 
 
       // --- Metapipeline and Sequential
-      case EatReflect(Pipe_foreach(cchain, func, _)) =>
+      case EatReflect(OpForeach(cchain, func, _)) =>
         val N = nIters(cchain)
         debugs(s"Outer Foreach $lhs (N = $N):")
         print_stage_prefix(s"foreach $lhs", 0)
@@ -160,19 +160,19 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
         if (isMetaPipe(lhs)) { stages.max * (N - 1) + stages.sum + latencyOf(lhs) }
         else                 { stages.sum * N + latencyOf(lhs) }
 
-      case EatReflect(Pipe_fold(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,_,_,_,_)) =>
+      case EatReflect(OpReduce(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,_,_,_,_)) =>
         val N = nIters(cchain)
         val P = parsOf(cchain).reduce(_*_)
         debugs(s"Outer Reduce $lhs (N = $N):")
 
-        print_stage_prefix(s"pipe_fold_map $lhs", 0)
+        print_stage_prefix(s"OpReduce_map $lhs", 0)
         val mapStages = latencyOfBlock(func)
         print_stage_suffix(mapStages.sum)
         val internal = latencyOfPipe(rFunc) * P //* reductionTreeHeight(P)
         val cycle = latencyOfCycle(iFunc) + latencyOfCycle(ld) + latencyOfCycle(rFunc) + latencyOfCycle(st)
 
         val reduceStage = internal + cycle
-        pipe_diagram.write(s"<TR><TD>pipe_fold_reduce $lhs <p> latency $reduceStage </TD></TR>")
+        pipe_diagram.write(s"<TR><TD>OpReduce_reduce $lhs <p> latency $reduceStage </TD></TR>")
         val stages = mapStages :+ reduceStage
 
         if (debugMode) stages.reverse.zipWithIndex.foreach{case (s,i) => debugs(s"- $i. $s")}
@@ -180,7 +180,7 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
         if (isMetaPipe(lhs)) { stages.max * (N - 1) + stages.sum + latencyOf(lhs) }
         else                 { stages.sum * N + latencyOf(lhs) }
 
-      case EatReflect(Accum_fold(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,_,_,_,_,_,_,_)) =>
+      case EatReflect(OpMemReduce(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,_,_,_,_,_,_,_)) =>
         val Nm = nIters(ccOuter)
         val Nr = nIters(ccInner)
         val Pm = parsOf(ccOuter).reduce(_*_) // Parallelization factor for map
@@ -188,14 +188,14 @@ trait PlasticineLatencyAnalyzer extends ModelingTraversal {
 
         debugs(s"Block Reduce $lhs (Nm = $Nm, Nr = $Nr)")
 
-        print_stage_prefix(s"accum_fold_map $lhs", 0)
+        print_stage_prefix(s"OpMemReduce_map $lhs", 0)
         val mapStages: List[Long] = latencyOfBlock(func)
         print_stage_suffix(mapStages.sum)
         val internal: Long = latencyOfPipe(iFunc) + latencyOfPipe(ld1) + latencyOfPipe(rFunc) * Pm
         val accumulate: Long = latencyOfPipe(ld2) + latencyOfPipe(rFunc) + latencyOfPipe(st)
 
         val reduceStage: Long = internal + accumulate + Nr - 1
-        pipe_diagram.write(s"<TR><TD>accum_fold_reduce $lhs <p> latency $reduceStage </TD></TR>")
+        pipe_diagram.write(s"<TR><TD>OpMemReduce_reduce $lhs <p> latency $reduceStage </TD></TR>")
         val stages = mapStages :+ reduceStage
 
         if (debugMode) stages.reverse.zipWithIndex.foreach{case (s,i) => debugs(s"- $i. $s")}

@@ -18,9 +18,7 @@ trait MaxJManagerGen {
 
   def quote(x: Exp[Any]) = x match {
 		case s@Sym(n) => {
-			val tstr = s.tp.erasure.getSimpleName()
-                  .replace("Spatial","")
-                  .replace("BlockRAM", "BRAM")
+			val tstr = s.tp.erasure.getSimpleName().replace("Spatial","")
       val customStr = tstr match {
         case "Pipeline" => styleOf(s) match {
           case CoarsePipe => "metapipe"
@@ -301,15 +299,15 @@ s"""
     emit("    // Setup LMEM -> DFE streams (input streams to DFE)")
     emit("    // Setup DFE -> LMEM (output streams from DFE)")
     memStreams.foreach{
-      case tt@Def(EatReflect(Offchip_store_cmd(mem,stream,ofs,len,p))) =>
+      case tt@Def(EatReflect(BurstStore(mem,stream,ofs,len,p))) =>
         val streamName = s"${quote(mem)}_${quote(tt)}"
-        emit(s"""// Offchip_store_cmd $streamName""")
+        emit(s"""// BurstStore $streamName""")
         emit(s"""    DFELink ${streamName}_out = addStreamToOnCardMemory("${streamName}_out", k.getOutput("${streamName}_out_cmd"));""")
         emit(s"""    ${streamName}_out <== k.getOutput("${streamName}_out");""")
 
-      case tt@Def(EatReflect(Offchip_load_cmd(mem,stream,ofs,len,p))) =>
+      case tt@Def(EatReflect(BurstLoad(mem,stream,ofs,len,p))) =>
      	  val streamName = s"${quote(mem)}_${quote(tt)}"
-        emit(s"""// Offchip_load_cmd $streamName""")
+        emit(s"""// BurstLoad $streamName""")
         emit(s"""    DFELink ${streamName}_in = addStreamFromOnCardMemory("${streamName}_in", k.getOutput("${streamName}_in_cmd"));""")
         emit(s"""    k.getInput("${streamName}_in") <== ${streamName}_in;""")
       case tt@Def(EatReflect(Scatter(mem,local,addrs,len,par,i))) =>

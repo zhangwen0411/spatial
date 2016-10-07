@@ -8,10 +8,10 @@ import spatial.shared.ops._
 import spatial.library._
 import spatial.library.classes._
 
-trait ControllerTemplateWrapper {
+trait ControllerWrapper {
   this: SpatialBase with SpatialClasses =>
 
-  def loop(cchain: Rep[CounterChain], idx: Int, indices: List[FixPt[Signed,B32,B0]], func: Rep[Indices] => Rep[Unit]): Rep[Unit] = {
+  private def loop(cchain: Rep[CounterChain], idx: Int, indices: List[FixPt[Signed,B32,B0]], func: Rep[Indices] => Rep[Unit]): Rep[Unit] = {
     val ctr = cchain(idx)
     if (idx >= cchain.length - 1) {
       for (i <- ctr) { func(indices_create(indices :+ i.head)) }
@@ -20,7 +20,7 @@ trait ControllerTemplateWrapper {
       for (i <- ctr) { loop(cchain, idx+1, indices :+ i.head, func) }
     }
   }
-  def loopList(cchain: Rep[CounterChain], idx: Int, indices: List[FixPt[Signed,B32,B0]], func: List[Rep[FixPt[Signed,B32,B0]]] => Rep[Unit]): Rep[Unit] = {
+  private def loopList(cchain: Rep[CounterChain], idx: Int, indices: List[FixPt[Signed,B32,B0]], func: List[Rep[FixPt[Signed,B32,B0]]] => Rep[Unit]): Rep[Unit] = {
     val ctr = cchain(idx)
     if (idx >= cchain.length - 1) {
       for (i <- ctr) { func(indices :+ i.head) }
@@ -30,12 +30,14 @@ trait ControllerTemplateWrapper {
     }
   }
 
+  def parallel_pipe(func: => Rep[Unit])(implicit ctx: SourceContext): Rep[Pipeline] = func
+  def unit_pipe(func: => Rep[Unit])(implicit ctx: SourceContext): Rep[Pipeline] = func
 
-  def pipe_foreach(cchain: Rep[CounterChain], func: Rep[Indices] => Rep[Unit])(implicit ctx: SourceContext): Rep[Pipeline] = {
+  def foreach_op(cchain: Rep[CounterChain], func: Rep[Indices] => Rep[Unit])(implicit ctx: SourceContext): Rep[Pipeline] = {
     loop(cchain, 0, Nil, func)
   }
 
-  def pipe_fold[T,C[T]](cchain: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Rep[Indices] => Rep[T], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline]  = {
+  def reduce_op[T,C[T]](cchain: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Rep[Indices] => Rep[T], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline]  = {
     def iFunc(c: Rep[C[T]], i: Rep[Indices]): Rep[FixPt[Signed,B32,B0]] = __mem.flatIdx(c, i)
     def ldFunc(c: Rep[C[T]], i: Rep[FixPt[Signed,B32,B0]]): Rep[T] = __mem.ld(c, i)
     def stFunc(c: Rep[C[T]], i: Rep[FixPt[Signed,B32,B0]], x: Rep[T]): Rep[Unit] = __mem.st(c, i, x)
@@ -46,7 +48,7 @@ trait ControllerTemplateWrapper {
     })
   }
 
-  def accum_fold[T,C[T]](cchain: Rep[CounterChain], cchainRed: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Rep[Indices] => Rep[C[T]], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline] = {
+  def memreduce_op[T,C[T]](cchain: Rep[CounterChain], cchainRed: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Rep[Indices] => Rep[C[T]], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline] = {
     def iFunc(c: Rep[C[T]], i: Rep[Indices]): Rep[FixPt[Signed,B32,B0]] = __mem.flatIdx(c, i)
     def ldFunc(c: Rep[C[T]], i: Rep[FixPt[Signed,B32,B0]]): Rep[T] = __mem.ld(c, i)
     def stFunc(c: Rep[C[T]], i: Rep[FixPt[Signed,B32,B0]], x: Rep[T]) = __mem.st(c, i, x)
@@ -66,11 +68,4 @@ trait ControllerTemplateWrapper {
     })
   }
 
-
-  /*def accum_reduce[T,C[T]](cchain: Rep[CounterChain], cchainRed: Rep[CounterChain], func: Rep[Indices] => Rep[C[T]], rFunc: (Rep[T],Rep[T]) => Rep[T])(implicit ctx: SourceContext, __mem: Mem[T,C], __mT: Manifest[T], __mC: Manifest[C[T]]): (Rep[C[T]], Rep[Pipeline]) = {
-    val inds = indices_create(List.fill(lenOf(cchain))(FixedPoint[Signed,B32,B0](0)))
-    val accum = __mem.empty(func(inds))
-    val pipe = accum_fold(cchain, cchainRed, accum, func, rFunc, false)
-    (accum, pipe)
-  }*/
 }

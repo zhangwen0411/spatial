@@ -78,7 +78,7 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     case Reg_new(_) => 0
     case Argin_new(_) => 0
     case Argout_new(_) => 0
-    case Bram_new(_,_) => 0
+    case Sram_new(_,_) => 0
     case Fifo_new(_,_) => 0
     case Cam_new(_,_) => 0
 
@@ -92,9 +92,9 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     case Cam_store(cam,key,value) => 1
 
     // TODO: Not a function of number of banks?
-    case Bram_load(ram, _) => 1
+    case Sram_load(ram, _) => 1
 
-    case Bram_store(ram, _, _) => 1 // TODO
+    case Sram_store(ram, _, _) => 1 // TODO
 
     case _:Counter_new => 0
     case _:Counterchain_new => 0
@@ -215,7 +215,7 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
       (6)
 
     // TODO
-    case Offchip_store_cmd(mem,stream,ofs,len,par) =>
+    case BurstStore(mem,stream,ofs,len,par) =>
       val c = contentionOf(s)
       val p = bound(par).get
       val size = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip store")(mpos(s.pos)); 96.0}
@@ -229,7 +229,7 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
       //System.out.println(s"Sizes: $sizes, base cycles: $baseCycles, ofactor: $oFactor, smallOverhead: $smallOverhead, overhead: $overhead")
       Math.ceil(baseCycles*overhead).toLong
 
-    case Offchip_load_cmd(mem,stream,ofs,len,par) =>
+    case BurstLoad(mem,stream,ofs,len,par) =>
       val c = contentionOf(s)
       val ts = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip load")(mpos(s.pos)); 96.0}
       val b = ts  // TODO - max of this and max command size
@@ -238,16 +238,16 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
       //System.out.println(s"Tile transfer $s: c = $c, r = $r, b = $b, p = $p")
       memoryModel(c,r.toInt,b.toInt,p.toInt)
 
-    case _:Pipe_parallel   => 1
-    case _:Unit_pipe       => 0
-    case _:Pipe_foreach    => 1
-    case _:Pipe_fold[_,_]  => 1
-    case _:Accum_fold[_,_] => 1
+    case _:ParallelPipe   => 1
+    case _:UnitPipe       => 0
+    case _:OpForeach    => 1
+    case _:OpReduce[_,_]  => 1
+    case _:OpMemReduce[_,_] => 1
 
     case _:Reg_read[_]     => 0
     case _:Reg_write[_]    => 1
     case _:Reg_reset[_]    => 0
-    case _:Offchip_new[_]  => 0
+    case _:Dram_new[_]  => 0
     case _:FieldApply[_]   => 0
     case _:DeliteStruct[_] => 0
 

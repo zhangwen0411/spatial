@@ -3,7 +3,7 @@ package dsls
 package spatial
 
 @dsl
-trait Memories extends Regs with BRAMs with FIFOs with CAMs with OffChip with Caches {
+trait Memories extends Regs with SRAMs with FIFOs with CAMs with DRAMs with Caches {
   this: SpatialDSL =>
 
   object TMem extends TypeClassSignature {
@@ -15,10 +15,10 @@ trait Memories extends Regs with BRAMs with FIFOs with CAMs with OffChip with Ca
   def importMemories() {
     importMemOps()
     importRegs()
-    importBRAMs()
-    importFIFOs()
     importCAMs()
-    importOffChip()
+    importSRAMs()
+    importFIFOs()
+    importDRAMs()
     importTiles()
     importSparseTiles()
     importCaches()

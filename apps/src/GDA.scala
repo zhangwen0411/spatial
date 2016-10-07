@@ -31,11 +31,11 @@ trait GDA_App extends SpatialApp {
     setArg(R, rows)
     setArg(C, cols)
 
-    val x     = OffChipMem[T](R, C)
-    val y     = OffChipMem[SInt](R)
-    val mu0   = OffChipMem[T](C)
-    val mu1   = OffChipMem[T](C)
-    val sigma = OffChipMem[T](C, C)
+    val x     = DRAM[T](R, C)
+    val y     = DRAM[SInt](R)
+    val mu0   = DRAM[T](C)
+    val mu1   = DRAM[T](C)
+    val sigma = DRAM[T](C, C)
 
     setMem(x, xCPU)
     setMem(y, yCPU)
@@ -43,27 +43,27 @@ trait GDA_App extends SpatialApp {
     setMem(mu1, mu1CPU)
 
     Accel {
-      val mu0Tile = BRAM[T](MAXC)
-      val mu1Tile = BRAM[T](MAXC)
+      val mu0Tile = SRAM[T](MAXC)
+      val mu1Tile = SRAM[T](MAXC)
       Parallel {
         mu0Tile := mu0(0::C, subLoopPar)  // Load mu0
         mu1Tile := mu1(0::C, subLoopPar)  // Load mu1
       }
 
-      val sigmaOut = BRAM[T](MAXC, MAXC)
+      val sigmaOut = SRAM[T](MAXC, MAXC)
 
       Fold(R by rTileSize par op, outerAccumPar)(sigmaOut, 0.as[T]){ r =>
-        val yTile = BRAM[SInt](rTileSize)
-        val xTile = BRAM[T](rTileSize, MAXC)
+        val yTile = SRAM[SInt](rTileSize)
+        val xTile = SRAM[T](rTileSize, MAXC)
         Parallel {
           yTile := y(r::r+rTileSize, subLoopPar)
           xTile := x(r::r+rTileSize, 0::C, subLoopPar)  // Load tile of x
         }
 
-        val sigmaBlk = BRAM[T](MAXC,MAXC)
+        val sigmaBlk = SRAM[T](MAXC,MAXC)
         Fold(rTileSize par ip)(sigmaBlk, 0.as[Flt]){rr =>
-          val subTile = BRAM[T](MAXC)
-          val sigmaTile = BRAM[T](MAXC, MAXC)
+          val subTile = SRAM[T](MAXC)
+          val sigmaTile = SRAM[T](MAXC, MAXC)
           Pipe(C par subLoopPar){ cc =>
             subTile(cc) = xTile(rr,cc) - mux(yTile(rr) == 1, mu1Tile(cc), mu0Tile(cc))
           }

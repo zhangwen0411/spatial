@@ -134,7 +134,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
                 escapingValues.zip(regs).foreach{case (sym,reg) => reg_write(reg, f(sym), true)(sym.tp, mpos(sym.pos)) }
                 ()
               }
-              val pipe = reflectEffect(Unit_pipe(primBlk)(ctx), summarizeEffects(primBlk) andAlso Simple())
+              val pipe = reflectEffect(UnitPipe(primBlk)(ctx), summarizeEffects(primBlk) andAlso Simple())
               styleOf(pipe) = InnerPipe
 
               // Replace substitutions of original symbol with register reads
@@ -175,26 +175,26 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
     setProps(pipe2, getProps(lhs))
     pipe2
   }
-  def wrapPrimitives_UnitPipe(lhs: Sym[Any], rhs: Unit_pipe)(implicit ctx: SourceContext) = {
-    val Unit_pipe(func) = rhs
+  def wrapPrimitives_UnitPipe(lhs: Sym[Any], rhs: UnitPipe)(implicit ctx: SourceContext) = {
+    val UnitPipe(func) = rhs
     debugs(s"$lhs = $rhs")
     val wrappedBlk = wrapPrimitives(func)
-    val pipe2 = reflectEffect(Unit_pipe(wrappedBlk)(ctx), summarizeEffects(wrappedBlk) andAlso Simple())
+    val pipe2 = reflectEffect(UnitPipe(wrappedBlk)(ctx), summarizeEffects(wrappedBlk) andAlso Simple())
     setProps(pipe2, getProps(lhs))
     pipe2
   }
 
-  def wrapPrimitives_PipeForeach(lhs: Sym[Any], rhs: Pipe_foreach)(implicit ctx: SourceContext) = {
-    val Pipe_foreach(cchain, func, inds) = rhs
+  def wrapPrimitives_Foreach(lhs: Sym[Any], rhs: OpForeach)(implicit ctx: SourceContext) = {
+    val OpForeach(cchain, func, inds) = rhs
     debugs(s"$lhs = $rhs")
     val wrappedBlk = wrapPrimitives(func)
-    val pipe2 = reflectEffect(Pipe_foreach(f(cchain), wrappedBlk, inds)(ctx), summarizeEffects(wrappedBlk).star andAlso Simple())
+    val pipe2 = reflectEffect(OpForeach(f(cchain), wrappedBlk, inds)(ctx), summarizeEffects(wrappedBlk).star andAlso Simple())
     setProps(pipe2, getProps(lhs))
     pipe2
   }
 
-  def wrapPrimitives_PipeFold[T,C[T]](lhs: Sym[Any], rhs: Pipe_fold[T,C])(implicit ctx: SourceContext, memC: Mem[T,C], numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
-    val Pipe_fold(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) = rhs
+  def wrapPrimitives_Reduce[T,C[T]](lhs: Sym[Any], rhs: OpReduce[T,C])(implicit ctx: SourceContext, memC: Mem[T,C], numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
+    val OpReduce(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) = rhs
     val accum2 = f(accum)
     debugs(s"$lhs = $rhs")
     val mBlk = wrapPrimitives(func)
@@ -206,13 +206,13 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
     val effects = summarizeEffects(iBlk) andAlso summarizeEffects(mBlk) andAlso summarizeEffects(ldBlk) andAlso
                   summarizeEffects(rBlk) andAlso summarizeEffects(stBlk) andAlso Write(List(accum2.asInstanceOf[Sym[C[T]]]))
 
-    val pipe2 = reflectEffect(Pipe_fold(f(cchain),accum2,f(zero),fA,iBlk,ldBlk,stBlk,mBlk,rBlk,inds,idx,acc,res,rV)(ctx,memC,numT,mT,mC), effects.star)
+    val pipe2 = reflectEffect(OpReduce(f(cchain),accum2,f(zero),fA,iBlk,ldBlk,stBlk,mBlk,rBlk,inds,idx,acc,res,rV)(ctx,memC,numT,mT,mC), effects.star)
     setProps(pipe2, getProps(lhs))
     pipe2
   }
 
-  def wrapPrimitives_AccumFold[T,C[T]](lhs: Sym[Any], rhs: Accum_fold[T,C])(implicit ctx: SourceContext, memC: Mem[T,C], numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
-    val Accum_fold(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,indsOuter,indsInner,idx,part,acc,res,rV) = rhs
+  def wrapPrimitives_MemReduce[T,C[T]](lhs: Sym[Any], rhs: OpMemReduce[T,C])(implicit ctx: SourceContext, memC: Mem[T,C], numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
+    val OpMemReduce(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,indsOuter,indsInner,idx,part,acc,res,rV) = rhs
     val accum2 = f(accum)
     val iBlk = f(iFunc)
     debugs(s"$lhs = $rhs")
@@ -225,7 +225,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
     val effects = summarizeEffects(iBlk) andAlso summarizeEffects(mBlk) andAlso summarizeEffects(ldPartBlk) andAlso
                   summarizeEffects(ldBlk) andAlso summarizeEffects(rBlk) andAlso summarizeEffects(stBlk) andAlso Write(List(accum2.asInstanceOf[Sym[C[T]]]))
 
-    val pipe2 = reflectEffect(Accum_fold(f(ccOuter),f(ccInner),accum2,f(zero),fA,iBlk,mBlk,ldPartBlk,ldBlk,rBlk,stBlk,indsOuter,indsInner,idx,part,acc,res,rV)(ctx,memC,numT,mT,mC), effects.star)
+    val pipe2 = reflectEffect(OpMemReduce(f(ccOuter),f(ccInner),accum2,f(zero),fA,iBlk,mBlk,ldPartBlk,ldBlk,rBlk,stBlk,indsOuter,indsInner,idx,part,acc,res,rV)(ctx,memC,numT,mT,mC), effects.star)
     setProps(pipe2, getProps(lhs))
     pipe2
   }
@@ -239,13 +239,13 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
   }
 
   override def transform[A:Manifest](lhs: Sym[A], rhs: Def[A])(implicit ctx: SourceContext) = rhs match {
-    case EatReflect(Pipe_parallel(func)) => None
+    case EatReflect(ParallelPipe(func)) => None
 
     case EatReflect(e: Hwblock) if isOuterControl(lhs) => Some(wrapPrimitives_Hwblock(lhs, e)(e.__pos))
-    case EatReflect(e: Unit_pipe) if isOuterControl(lhs) => Some(wrapPrimitives_UnitPipe(lhs, e)(e.__pos))
-    case EatReflect(e: Pipe_foreach) if isOuterControl(lhs) => Some(wrapPrimitives_PipeForeach(lhs, e)(e.ctx))
-    case EatReflect(e: Pipe_fold[_,_]) if isOuterControl(lhs) => Some(wrapPrimitives_PipeFold(lhs, e)(e.ctx, e.memC, e.numT, e.mT, e.mC))
-    case EatReflect(e: Accum_fold[_,_]) if isOuterControl(lhs) => Some(wrapPrimitives_AccumFold(lhs, e)(e.ctx, e.memC, e.numT, e.mT, e.mC))
+    case EatReflect(e: UnitPipe) if isOuterControl(lhs) => Some(wrapPrimitives_UnitPipe(lhs, e)(e.__pos))
+    case EatReflect(e: OpForeach) if isOuterControl(lhs) => Some(wrapPrimitives_Foreach(lhs, e)(e.ctx))
+    case EatReflect(e: OpReduce[_,_]) if isOuterControl(lhs) => Some(wrapPrimitives_Reduce(lhs, e)(e.ctx, e.memC, e.numT, e.mT, e.mC))
+    case EatReflect(e: OpMemReduce[_,_]) if isOuterControl(lhs) => Some(wrapPrimitives_MemReduce(lhs, e)(e.ctx, e.memC, e.numT, e.mT, e.mC))
     case _ => None
   }
 }

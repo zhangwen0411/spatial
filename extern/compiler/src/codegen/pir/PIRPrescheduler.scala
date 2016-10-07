@@ -89,13 +89,13 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
 
   // --- Compute Units
   def controllersHack(pipe: Exp[Any]): List[Exp[Any]] = pipe match {
-    case Deff(_:Pipe_parallel) => childrenOf(pipe).flatMap{child => controllersHack(child)}
+    case Deff(_:ParallelPipe) => childrenOf(pipe).flatMap{child => controllersHack(child)}
     case _ => List(pipe)
   }
 
   // TODO: This assumes linear stage order. Switch to more general dataflow graph after parallel is removed
   def pipeDependencies(pipe: Exp[Any]): List[Exp[Any]] = parentOf(pipe) match {
-    case Some(parent@Deff(_:Pipe_parallel)) => pipeDependencies(parent)
+    case Some(parent@Deff(_:ParallelPipe)) => pipeDependencies(parent)
     case Some(parent) =>
       val childs = childrenOf(parent).map{child => controllersHack(child) }
       val idx = childs.indexWhere(_ contains pipe )
@@ -123,9 +123,9 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val cu = BasicComputeUnit(quote(pipe), pipe, parent, styleOf(pipe))
       initCU(cu, pipe)
       pipe match {
-        case Deff(e:ParPipeForeach)     => addIterators(cu, e.cc, e.inds)
-        case Deff(e:ParPipeReduce[_,_]) => addIterators(cu, e.cc, e.inds)
-        case Deff(_:Unit_pipe | _:Hwblock) =>
+        case Deff(e:UnrolledForeach)     => addIterators(cu, e.cc, e.inds)
+        case Deff(e:UnrolledReduce[_,_]) => addIterators(cu, e.cc, e.inds)
+        case Deff(_:UnitPipe | _:Hwblock) =>
           cu.isUnitCompute = isInnerPipe(pipe)
           cu.cchains += UnitCounterChain(quote(pipe)+"_unitCC")
 
@@ -156,11 +156,11 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
    **/
   def allocateCU(pipe: Exp[Any]) = pipe match {
     case Deff(_:Hwblock)              => allocateBasicCU(pipe)
-    case Deff(_:ParPipeForeach)       => allocateBasicCU(pipe)
-    case Deff(_:ParPipeReduce[_,_])   => allocateBasicCU(pipe)
-    case Deff(_:Unit_pipe)            => allocateBasicCU(pipe)
-    case Deff(e:Offchip_load_cmd[_])  => allocateMemoryCU(pipe, e.mem, e.fifo, MemLoad)
-    case Deff(e:Offchip_store_cmd[_]) => allocateMemoryCU(pipe, e.mem, e.fifo, MemStore)
+    case Deff(_:UnrolledForeach)       => allocateBasicCU(pipe)
+    case Deff(_:UnrolledReduce[_,_])   => allocateBasicCU(pipe)
+    case Deff(_:UnitPipe)            => allocateBasicCU(pipe)
+    case Deff(e:BurstLoad[_])  => allocateMemoryCU(pipe, e.mem, e.fifo, MemLoad)
+    case Deff(e:BurstStore[_]) => allocateMemoryCU(pipe, e.mem, e.fifo, MemStore)
     case Def(d) => throw new Exception(s"Don't know how to generate CU for: \n  $pipe = $d")
   }
 
@@ -282,7 +282,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       case reader@LocalReader(reads) if !isControlNode(reader) =>
         debug(s"  $reader [READER]")
         reads.foreach{case (EatAlias(mem),addr) =>
-          if (isRegister(mem.tp)) {
+          if (isReg(mem.tp)) {
             prescheduleRegisterRead(mem, reader, Some(pipe))
             val isLocallyRead = isReadInPipe(mem, pipe, Some(reader))
             val isLocallyWritten = isWrittenInPipe(mem, pipe)
@@ -320,20 +320,20 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val cu = allocateCU(lhs)
       prescheduleStages(lhs, func)
 
-    case ParPipeForeach(cc, func, inds) =>
+    case UnrolledForeach(cc, func, inds) =>
       val cu = allocateCU(lhs)
       prescheduleStages(lhs, func)
 
-    case ParPipeReduce(cc, accum, func, rFunc, inds, acc, rV) =>
+    case UnrolledReduce(cc, accum, func, rFunc, inds, acc, rV) =>
       val cu = allocateCU(lhs)
       prescheduleStages(lhs, func)
 
-    case Unit_pipe(func) =>
+    case UnitPipe(func) =>
       val cu = allocateCU(lhs)
       prescheduleStages(lhs, func)
 
     // NOTE: Need to generate offset calculation as a codegen hack right now.
-    case Offchip_load_cmd(mem,EatAlias(fifo),ofs,len,p) =>
+    case BurstLoad(mem,EatAlias(fifo),ofs,len,p) =>
       debug(s"Traversing $lhs = $rhs")
       val cu = allocateCU(lhs).asInstanceOf[TileTransferUnit]
       val lenIn = cu.getOrAddReg(len){ allocateLocal(len, lhs) }
@@ -362,7 +362,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val ofsCalc = OpStage(FixAdd, List(ofs, i), memAddr)
       cu.computePseudoStages ++= List(ofsCalc)
 
-    case Offchip_store_cmd(mem,EatAlias(fifo),ofs,len,p) =>
+    case BurstStore(mem,EatAlias(fifo),ofs,len,p) =>
       debug(s"Traversing $lhs = $rhs")
       val cu = allocateCU(lhs).asInstanceOf[TileTransferUnit]
       val lenIn = cu.getOrAddReg(len){ allocateLocal(len, lhs) }
