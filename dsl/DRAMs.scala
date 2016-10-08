@@ -246,11 +246,17 @@ trait DRAMs {
             burst_store(mem, fifo, memOfs, len, p)
           }
           else {
-            burst_load(mem, fifo, memOfs, len, p)
+            // val el_per_burst = 384*8/tp(mem).bits // Get number of elements in a burst
+            // val start_bound = memOfs % el_per_burst // Figure out number of elements to ignore before we get desired data
+            // val memOfs_downcast = memOfs - start_bound // Figure out burst-aligned memOfs
+            // val end_bound = start_bound + len // Figure out number of elements before we should ignore again
+            // val len_upcast = (end_bound - (end_bound % el_per_burst)) + el_per_burst // Upcast memory request to nearest burst alignment
 
-            Pipe(len par p){i =>
+            burst_load(mem, fifo, memOfs/*_downcast*/, len/*_upcast*/, p)
+
+            Pipe(len/*_upcast*/ par p){i =>
               val localAddr = localOfs.take(localOfs.length - 1) :+ (localOfs.last + i)
-              $local(localAddr) = fifo.pop()
+              $local(localAddr/*,en = i > start_bound & i < end_bound*/) = fifo.pop()
             }
           }
         }
@@ -263,8 +269,15 @@ trait DRAMs {
             burst_store(mem, fifo, memOfs, len, p)
           }
           else {
-            burst_load(mem, fifo, memOfs, len, p)
-            Pipe(len par p){i => $local(i) = fifo.pop() }
+            // val el_per_burst = 384*8/tp(mem).bits // Get number of elements in a burst
+            // val start_bound = memOfs % el_per_burst // Figure out number of elements to ignore before we get desired data
+            // val memOfs_downcast = memOfs - start_bound // Figure out burst-aligned memOfs
+            // val end_bound = start_bound + len // Figure out number of elements before we should ignore again
+            // val len_upcast = (end_bound - (end_bound % el_per_burst)) + el_per_burst // Upcast memory request to nearest burst alignment
+
+            burst_load(mem, fifo, memOfs/*_downcast*/, len/*_upcast*/, p)
+
+            Pipe(len/*_upcast*/ par p){i => $local(i/*, en = i > start_bound & i < end_bound*/) = fifo.pop() }
           }
         }
       }

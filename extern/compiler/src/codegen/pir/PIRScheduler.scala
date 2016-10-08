@@ -152,13 +152,13 @@ trait PIRScheduler extends Traversal with PIRCommon {
       ctx.addReg(lhs, VectorIn(vector))
 
     // Create a reference to this SRAM
-    case Sram_load(EatAlias(sram), addr) =>
-      val sram = ctx.mem(sram,lhs)
+    case Sram_load(EatAlias(ram), addr) =>
+      val sram = ctx.mem(ram,lhs)
       ctx.addReg(lhs, SRAMRead(sram))
       sram.readAddr = Some(allocateAddrReg(sram, addr, ctx, write=false, local=true))
 
-    case Par_sram_load(EatAlias(sram), addrs) =>
-      val sram = ctx.mem(sram,lhs)
+    case Par_sram_load(EatAlias(ram), addrs) =>
+      val sram = ctx.mem(ram,lhs)
       ctx.addReg(lhs, SRAMRead(sram))
       sram.readAddr = Some(allocateAddrReg(sram, addrs, ctx, write=false, local=true))
 

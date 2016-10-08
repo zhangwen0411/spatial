@@ -19,8 +19,8 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
   type Idx = FixPt[Signed,B32,B0]
 
   // --- Nodes
-  case class ParallelPipe(func: Block[Unit])(implicit ctx: SourceContext) extends Def[Pipeline]
-  case class UnitPipe(func: Block[Unit])(implicit ctx: SourceContext) extends Def[Pipeline]
+  case class ParallelPipe(func: Block[Unit])(implicit val ctx: SourceContext) extends Def[Pipeline]
+  case class UnitPipe(func: Block[Unit])(implicit val ctx: SourceContext) extends Def[Pipeline]
 
 
   case class OpForeach(
@@ -81,13 +81,13 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
   def parallel_pipe(func: => Rep[Unit])(implicit ctx: SourceContext) = {
     val blk = reifyEffects(func)
     val effects = summarizeEffects(blk)
-    reflectEffect[Unit](ParallelPipe(blk)(ctx), effects andAlso Simple())
+    reflectEffect(ParallelPipe(blk)(ctx), effects andAlso Simple())
   }
 
   def unit_pipe(func: => Rep[Unit])(implicit ctx: SourceContext) = {
     val blk = reifyEffects(func)
     val effects = summarizeEffects(blk)
-    reflectEffect[Unit](UnitPipe(blk)(ctx), effects andAlso Simple())
+    reflectEffect(UnitPipe(blk)(ctx), effects andAlso Simple())
   }
 
   def foreach_op(cchain: Rep[CounterChain], func: Rep[Indices] => Rep[Unit])(implicit ctx: SourceContext): Rep[Pipeline] = {
@@ -182,11 +182,11 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
     case e@OpMemReduce(c1,c2,a,z,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV) => reflectPure(OpMemReduce(f(c1),f(c2),f(a),f(z),fA,f(iFunc),f(func),f(ld1),f(ld2),f(rFunc),f(st),inds1,inds2,idx,part,acc,res,rV)(e.ctx,e.memC,e.numT, e.mT,e.mC))(mtype(manifest[A]), pos)
     case Reflect(e@OpMemReduce(c1,c2,a,z,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV), u, es) => reflectMirrored(Reflect(OpMemReduce(f(c1),f(c2),f(a),f(z),fA,f(iFunc),f(func),f(ld1),f(ld2),f(rFunc),f(st),inds1,inds2,idx,part,acc,res,rV)(e.ctx,e.memC,e.numT,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
 
-    case mn@ParallelPipe(__arg0) => reflectPure(ParallelPipe(f(__arg0))(mn.__pos))(mtype(manifest[A]), pos)
-    case Reflect(mn@ParallelPipe(__arg0), u, es) => reflectMirrored(Reflect(ParallelPipe(f(__arg0))(mn.__pos), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@ParallelPipe(blk) => reflectPure(ParallelPipe(f(blk))(e.ctx))(mtype(manifest[A]), pos)
+    case Reflect(e@ParallelPipe(blk), u, es) => reflectMirrored(Reflect(ParallelPipe(f(blk))(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
 
-    case mn@UnitPipe(__arg0) => reflectPure(UnitPipe(f(__arg0))(mn.__pos))(mtype(manifest[A]), pos)
-    case Reflect(mn@UnitPipe(__arg0), u, es) => reflectMirrored(Reflect(UnitPipe(f(__arg0))(mn.__pos), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@UnitPipe(blk) => reflectPure(UnitPipe(f(blk))(e.ctx))(mtype(manifest[A]), pos)
+    case Reflect(e@UnitPipe(blk), u, es) => reflectMirrored(Reflect(UnitPipe(f(blk))(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
 
     case _ => super.mirror(e, f)
   }
@@ -247,8 +247,23 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
   }
 }
 
-trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
-  val IR: LoweredPipeOpsExp with ControllerTemplateOpsExp with TpesOpsExp with ParallelOpsExp
+trait ScalaGenControllerOps extends ScalaGenEffect {
+  val IR: ControllerOpsExp with SpatialCodegenOps
+  import IR._
+
+  override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
+    case ParallelPipe(blk) =>
+      emitBlock(blk)
+      stream.println(s"val ${quote(sym)} = ()")
+
+    case UnitPipe(blk) =>
+      emitBlock(blk)
+      stream.println(s"val ${quote(sym)} = ()")
+  }
+}
+
+trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
+  val IR: UnrolledOpsExp with ControllerOpsExp with TpesOpsExp with ParallelOpsExp
           with PipeOpsExp with DRAMOpsExp with RegOpsExp with ExternCounterOpsExp
           with SpatialCodegenOps with NosynthOpsExp with MemoryAnalysisExp
           with DeliteTransform with VectorOpsExp with SpatialExp with UnrollingTransformExp
@@ -256,6 +271,21 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
  import IR._ //{__ifThenElse => _, Nosynth___ifThenElse => _, __whileDo => _,
              // Forloop => _, println => _ , _}
 
+  def consumesMemFifo(node: Exp[Any]) = {
+    childrenOf(parentOf(node).get).map{ n => n match {
+        case Deff(BurstLoad(mem, fifo, ofs, len, par)) => true
+        case _ => false
+      }
+    }.reduce{_|_}
+  }
+
+  def trashCount(i: Int, node: Exp[Any]) = {
+    if (consumesMemFifo(node)) {
+      96 - i%96 // TODO: Pass info about word size.  Assume 32-bit for now
+    } else {
+      0
+    }
+  }
 
   def isConstOrArgOrBnd(x: Exp[Any]) = x match {
     case s@Sym(n) => {
@@ -409,14 +439,14 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 	var argToExp = HashMap[Exp[Reg[Any]],Exp[Any]]()
   override def preProcess[A:Manifest](body: Block[A]) = {
     val argInPass = new MaxJArgInPass {
-      val IR: MaxJGenControllerTemplateOps.this.IR.type = MaxJGenControllerTemplateOps.this.IR
+      val IR: MaxJGenControllerOps.this.IR.type = MaxJGenControllerOps.this.IR
     }
     argInPass.run(body)
     expToArg = argInPass.expToArg
     argToExp = argInPass.argToExp
 
     val regChainPass = new RegChainPass {
-      val IR: MaxJGenControllerTemplateOps.this.IR.type = MaxJGenControllerTemplateOps.this.IR
+      val IR: MaxJGenControllerOps.this.IR.type = MaxJGenControllerOps.this.IR
     }
     regChainPass.run(body)
     quoteSuffix = regChainPass.quoteSuffix
@@ -709,6 +739,8 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
     }
 
+    val childrenSet = Set[String]()
+    val percentDSet = Set[String]()
     /* Control Signals to Children Controllers */
     if (!isInnerPipe(sym)) {
 		  childrenOf(sym).zipWithIndex.foreach { case (c, idx) =>
@@ -716,10 +748,15 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 		  	emit(s"""${quote(sym)}_sm.connectInput("s${idx}_done", ${quote(c)}_done);""")
         emitGlobalWire(s"""${quote(c)}_en""")
         emit(s"""${quote(c)}_en <== ${quote(sym)}_sm.getOutput("s${quote(idx)}_en");""")
+        childrenSet += (s"${quote(c)}_en, ${quote(c)}_done")
+        percentDSet += (s"${idx}: %d %d")
 		  	enDeclaredSet += c
 		  	doneDeclaredSet += c
 		  }
     }
+
+    emit(s"""// debug.simPrintf(${quote(sym)}_en, "pipe ${quote(sym)}: ${percentDSet.toList.mkString(",   ")}\\n", ${childrenSet.toList.mkString(",")});""")
+
 
     if (styleOf(sym)!=ForkJoin) {
       if (cchain.isDefined) {
@@ -743,11 +780,12 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
       styleOf(sym) match {
         case InnerPipe =>
           emit(s"""${quote(sym)}_sm.connectInput("sm_maxIn_$i", ${quote(end)});""")
+          // emit(s"""${quote(sym)}_sm.connectInput("sm_trashCnt", constant.var(dfeUInt(32), ${trashCount(bound(end).get.toInt, sym)}));""")
+          // emit(s"""DFEVar ${quote(sym)}_trash_en = ${quote(sym)}_sm.getOutput("trashEn");""")
           emit(s"""DFEVar ${quote(ctr)}_max_$i = ${quote(sym)}_sm.getOutput("ctr_maxOut_$i");""")
         case ForkJoin => throw new Exception("Cannot have counter chain control logic for fork-join (parallel) controller!")
         case _ =>
           emit(s"""DFEVar ${quote(ctr)}_max_$i = ${quote(end)};""")
-
       }
     }
 
@@ -756,7 +794,12 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
         emitGlobalWire(s"""${quote(cchain)}_done""")
         doneDeclaredSet += cchain
         emit(s"""${quote(sym)}_sm.connectInput("ctr_done", ${quote(cchain)}_done);""")
-        emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
+        if (consumesMemFifo(sym)) {
+          emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
+        } else {
+          emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
+        }
+
       case ForkJoin => throw new Exception("Cannot have counter chain control logic for fork-join (parallel) controller!")
       case _ =>
         emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_en;""")
@@ -778,13 +821,13 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
-              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr),
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym,
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
-              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
 
 
@@ -798,13 +841,13 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
-              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr),
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym,
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
-              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
 
           case n@UnrolledReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
@@ -816,7 +859,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
             val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
             emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
             val rstStr = s"${quote(sym)}_done"
-            emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
+            emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
 
 
           case n:OpReduce[_,_] =>
@@ -835,7 +878,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
               val ctrEn = s"${quote(sym)}_datapath_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
-              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             } else {
               emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
               emit(s"""CounterChain ${quote(sym)}_redLoopChain =
@@ -846,24 +889,24 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
               val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
-              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
         }
       case CoarsePipe =>
         val ctrEn = s"${quote(childrenOf(sym).head)}_done"
         emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
         val rstStr = s"${quote(sym)}_done"
-        emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
+        emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
       case SequentialPipe =>
         val ctrEn = s"${quote(childrenOf(sym).last)}_done"
         emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
         val rstStr = s"${quote(sym)}_done"
-		    emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr))
+		    emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
     }
 
   }
 
-  def emitCustomCounterChain(cchain: Exp[CounterChain], en: Option[String], rstStr: Option[String], done: Option[String]=None) = {
+  def emitCustomCounterChain(cchain: Exp[CounterChain], en: Option[String], rstStr: Option[String], parent: Exp[Any], done: Option[String]=None) = {
     val sym = cchain
     emitComment("CustomCounterChain {")
     if (!enDeclaredSet.contains(sym)) {
@@ -890,6 +933,13 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
         case None => quote(end)
       }
     }
+
+    // val trashStr = if (false/*consumesMemFifo(sym)*/) {
+    //   val ctr = counters(0)
+    //   val Def(EatReflect(Counter_new(start, end, step, _))) = ctr
+    //   val c = trashCount(bound(end).get.toInt, sym)
+    //   s" + ${c}"
+    // } else {""}
     emit(s"""DFEVar[] ${quote(sym)}_max = {${maxes.map(m=>s"${quote(m)}").mkString(",")}};""")
 
     // Connect strides

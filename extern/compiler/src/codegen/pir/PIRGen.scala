@@ -319,7 +319,7 @@ trait PIRGen extends Traversal with PIRCommon {
         emit(s"""Stage(stage($i), operands=List($ins), op=$op, results=List($outs))""")
         i += 1
 
-      case ReduceStage(op,init,acc) =>
+      case ReduceStage(op,init,in,acc) =>
         emit(s"""val (rs$r, ${quote(acc)}) = Stage.reduce(op=$op, init=${quote(init)})""")
         allocatedReduce += acc
         r += 1

@@ -12,7 +12,7 @@ import spatial.library._
 import spatial.library.classes._
 
 trait MemoryWrapper extends ControllerWrapper with ExternPrimitiveWrapper {
-  this: SpatialBase with SpatialClasses =>
+  this: SpatialBase with SpatialClasses with SpatialExceptionsCompilerOps =>
 
   type Reg[T] = Array[T]
   type CAM[K,V] = HashMap[K,V]
@@ -37,16 +37,16 @@ trait MemoryWrapper extends ControllerWrapper with ExternPrimitiveWrapper {
   def isIndices[T:Manifest]: Boolean = throw UnknownLibraryManifest(manifest[T])
   def isPipeline[T:Manifest]: Boolean = throw UnknownLibraryManifest(manifest[T])
 
-  implicit def regManifest[T:Manifest]: Manifest[Reg[T]] = manifest[Array[T]]
-  implicit def camManifest[K:Manifest,V:Manifest]: Manifest[CAM[K,V]] = manifest[HashMap[K,V]]
-  implicit def sramManifest[T:Manifest]: Manifest[SRAM[T]] = manifest[Array[T]]
-  implicit def fifoManifest[T:Manifest]: Manifest[FIFO[T]] = manifest[Queue[T]]
-  implicit def dramManifest[T:Manifest]: Manifest[DRAM[T]] = manifest[Array[T]]
-  implicit def cacheManifest[T:Manifest]: Manifest[Cache[T]] = manifest[Array[T]]
-  implicit def vectorManifest[T:Manifest]: Manifest[Vector[T]] = manifest[Array[T]]
+  def regManifest[T:Manifest]: Manifest[Reg[T]] = manifest[Array[T]]
+  def camManifest[K:Manifest,V:Manifest]: Manifest[CAM[K,V]] = manifest[HashMap[K,V]]
+  def sramManifest[T:Manifest]: Manifest[SRAM[T]] = manifest[Array[T]]
+  def fifoManifest[T:Manifest]: Manifest[FIFO[T]] = manifest[Queue[T]]
+  def dramManifest[T:Manifest]: Manifest[DRAM[T]] = manifest[Array[T]]
+  def cacheManifest[T:Manifest]: Manifest[Cache[T]] = manifest[Array[T]]
+  def vectorManifest[T:Manifest]: Manifest[Vector[T]] = manifest[Array[T]]
 
-  implicit def indicesManifest: Manifest[Indices] = manifest[RecordImpl]
-  implicit def pipelineManifest: Manifest[Pipeline] = manifest[Unit]
+  def indicesManifest: Manifest[Indices] = manifest[RecordImpl]
+  def pipelineManifest: Manifest[Pipeline] = manifest[Unit]
 
   def vectorize[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]] = elems.toArray
 

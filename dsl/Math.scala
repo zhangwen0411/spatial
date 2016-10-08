@@ -411,10 +411,10 @@ trait SpatialMath {
       @ val pre = maxJPre(sym)
       $pre $sym = $0 - $1 ;
     }))
-    impl (div_flt) (codegen(maxj, ${
-      @ val pre = maxJPre(sym)
-      $pre $sym = $0 / $1 ;
-    }))
+    // impl (div_flt) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 / $1 ;
+    // }))
     impl (add_flt) (codegen(maxj, ${
       @ val pre = maxJPre(sym)
       $pre $sym = $0 + $1 ;

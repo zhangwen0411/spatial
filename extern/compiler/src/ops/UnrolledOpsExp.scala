@@ -111,7 +111,7 @@ trait ScalaGenUnrolledOps extends ScalaGenEffect {
   }
 }
 
-trait MaxJGenUnrolledOps extends MaxJGenControllerTemplateOps {
+trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
   val IR: UnrolledOpsExp with ControllerOpsExp with TpesOpsExp with ParallelOpsExp
           with PipeOpsExp with DRAMOpsExp with RegOpsExp with ExternCounterOpsExp
           with SpatialCodegenOps with NosynthOpsExp with MemoryAnalysisExp

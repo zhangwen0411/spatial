@@ -46,7 +46,7 @@ trait MaxJManagerGen {
 //  }
 
   /**
-   * The following three methods are largely duplicated in CGenMemoryTemplateOps.
+   * The following three methods are largely duplicated in CGenMemoryOps.
    * The only differences are that BlockRAM and DRAM aren't remapped in the Manager,
    * and 'float' and 'double' types are remapped to capitalized versions (non-caps
    * versions are reserved keywords)
@@ -65,7 +65,7 @@ trait MaxJManagerGen {
   }
 
   def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
-    case "Register" => remap(m.typeArguments(0))
+    case "SpatialReg" => remap(m.typeArguments(0))
     case "SpatialBit" => "uint8_t"
     case "Signed" => ""
     case "Unsign" => "u"
@@ -310,24 +310,22 @@ s"""
         emit(s"""// BurstLoad $streamName""")
         emit(s"""    DFELink ${streamName}_in = addStreamFromOnCardMemory("${streamName}_in", k.getOutput("${streamName}_in_cmd"));""")
         emit(s"""    k.getInput("${streamName}_in") <== ${streamName}_in;""")
-      case tt@Def(EatReflect(Scatter(mem,local,addrs,len,par,i))) =>
+      case tt@Def(EatReflect(Scatter(mem,local,addrs,len,par,_))) =>
         val streamName = s"${quote(mem)}_${quote(tt)}"
         emit(s"""// Scatter $streamName""")
-        val Exact(p) = par
-        (0 until p.toInt) foreach { i: Int =>
-	      emit(s"""    DFELink ${streamName}_out_rd_${i} = addStreamFromOnCardMemory("${streamName}_out_rd_${i}", k.getOutput("${streamName}_out_rd_cmd_${i}"));""")
-	      emit(s"""    k.getInput("${streamName}_out_rd_${i}") <== ${streamName}_out_rd_${i};""")
-	      emit(s"""    DFELink ${streamName}_out_$i = addStreamToOnCardMemory("${streamName}_out_$i", k.getOutput("${streamName}_out_cmd_$i"));""")
-	      emit(s"""    ${streamName}_out_$i <== k.getOutput("${streamName}_out_$i");""")
-        }
-      case tt@Def(EatReflect(Gather(mem,local,addrs,len,par,i))) =>
-     	  val streamName = s"${quote(mem)}_${quote(tt)}"
+	    val p = childrenOf(parentOf(tt).get).length
+	    val i = childrenOf(parentOf(tt).get).indexOf(tt)
+        emit(s"""    DFELink ${streamName}_out_rd_${i} = addStreamFromOnCardMemory("${streamName}_out_rd_${i}", k.getOutput("${streamName}_out_rd_cmd_${i}"));""")
+        emit(s"""    k.getInput("${streamName}_out_rd_${i}") <== ${streamName}_out_rd_${i};""")
+        emit(s"""    DFELink ${streamName}_out_$i = addStreamToOnCardMemory("${streamName}_out_$i", k.getOutput("${streamName}_out_cmd_$i"));""")
+        emit(s"""    ${streamName}_out_$i <== k.getOutput("${streamName}_out_$i");""")
+      case tt@Def(EatReflect(Gather(mem,local,addrs,len,_,i))) =>
+     	val streamName = s"${quote(mem)}_${quote(tt)}"
+	    val p = childrenOf(parentOf(tt).get).length
+	    val i = childrenOf(parentOf(tt).get).indexOf(tt)
         emit(s"""// Gather $streamName""")
-        val Exact(p) = par
-        (0 until p.toInt) foreach { i: Int =>
-          emit(s"""    DFELink ${streamName}_in_$i = addStreamFromOnCardMemory("${streamName}_in_$i", k.getOutput("${streamName}_in_cmd_$i"));""")
-          emit(s"""    k.getInput("${streamName}_in_$i") <== ${streamName}_in_$i;""")
-        }
+        emit(s"""    DFELink ${streamName}_in_$i = addStreamFromOnCardMemory("${streamName}_in_$i", k.getOutput("${streamName}_in_cmd_$i"));""")
+        emit(s"""    k.getInput("${streamName}_in_$i") <== ${streamName}_in_$i;""")
 
     }
     emit(mConstructorEpilogue)
@@ -338,7 +336,7 @@ s"""
     emit(mWriteIntf)
   }
 
-  def emitDefaultInterface(argInOuts: Set[Sym[Register[_]]]) = {
+  def emitDefaultInterface(argInOuts: Set[Sym[Reg[_]]]) = {
     emit(mDefaultIntfPreamble)
     argInOuts.foreach { a =>
 			regType(a) match {
@@ -355,7 +353,7 @@ s"""
     emit(mDefaultIntfEpilogue)
   }
 
-  def emitManager(stream:PrintWriter, argInOuts:Set[Sym[Register[_]]], memStreams:Set[Sym[Any]]) = {
+  def emitManager(stream:PrintWriter, argInOuts:Set[Sym[Reg[_]]], memStreams:Set[Sym[Any]]) = {
 		this.stream = stream
     initPass()
     //println(s"""tileTransfers: """)

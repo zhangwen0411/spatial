@@ -59,7 +59,7 @@ trait MaxJPreCodegen extends Traversal  {
       maxJManagerGen.quote(x)
   }
 
-	val argInOuts  = Set.empty[Sym[Register[_]]]
+	val argInOuts  = Set.empty[Sym[Reg[_]]]
 	val memStreams = Set.empty[Sym[Any]]
 
   override def preprocess[A:Manifest](b: Block[A]): Block[A] = {
@@ -442,7 +442,7 @@ import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
 import java.util.Arrays;
 class ${quote(sym)}_reduce_kernel extends KernelLib {""")
     rhs match {
-      case _:UnrolledReduce | _:UnrolledForeach | _:UnitPipe =>
+      case _:UnrolledReduce[_,_] | _:UnrolledForeach | _:UnitPipe =>
         var isVecResult = false
         val func = rhs match {
           case UnrolledReduce(_,_,func,_,_,_,_) => func
@@ -486,6 +486,12 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                 case tag @ Vec_apply(vec,idx) =>
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
+                case tag @ FixPt_Div(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  s"""${maxJPre(s)} ${quote(s)} = ${quote(a)} / ${quote(b)};"""
+                case tag @ FltPt_Div(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  s"""${maxJPre(s)} ${quote(s)} = ${quote(a)} / ${quote(b)};"""
                 case tag @ FltPt_Add(a,b) =>
                   // TODO: Way of doing this args & consts check that isn't stupid
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }

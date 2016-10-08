@@ -275,17 +275,17 @@ trait SpatialMisc {
      * @param sram
      * @param array
      **/
-    val set_sram = direct (Tst) ("set", T, (SRAM(T), MArray(T)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
+    val set_sram = direct (Tst) ("setSRAM", T, (SRAM(T), MArray(T)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
     /** Get content of SRAM in an array format (debugging purpose only)
      * @param sram
      **/
-    val get_sram = direct (Tst) ("get", T, SRAM(T) :: MArray(T), effect = simple, aliasHint = aliases(Nil))
+    val get_sram = direct (Tst) ("getSRAM", T, SRAM(T) :: MArray(T), effect = simple, aliasHint = aliases(Nil))
 
     /** Print content of a SRAM (debugging purpose only)
      * @param sram
      **/
     direct (Tst) ("printSRAM", T, SRAM(T) :: MUnit, effect = simple) implements composite ${
-      println(nameOf($0) + ": "+ get($0).mkString(","))
+      println(nameOf($0) + ": "+ getSRAM($0).mkString(","))
     }
     /** Print content of a DRAM (debugging purpose only)
      * @param sram
@@ -299,13 +299,13 @@ trait SpatialMisc {
 
 
     // --- Memory transfers
-    direct (Tst) ("set", T, (DRAM(T), MArray(T)) :: MUnit, effect = write(0)) implements composite ${ set_mem($0, $1) }
-    direct (Tst) ("get", T, DRAM(T) :: MArray(T)) implements composite ${
+    direct (Tst) ("setMem", T, (DRAM(T), MArray(T)) :: MUnit, effect = write(0)) implements composite ${ set_mem($0, $1) }
+    direct (Tst) ("getMem", T, DRAM(T) :: MArray(T)) implements composite ${
       val arr = Array.empty[T](sizeOf($0))
       get_mem($0, arr)
       arr // could call unsafeImmutable here if desired
     }
-    direct (Tst) ("set", T, (Reg(T), T) :: MUnit, effect = write(0)) implements composite ${
+    direct (Tst) ("setArg", T, (Reg(T), T) :: MUnit, effect = write(0)) implements composite ${
       if (regType($0) != ArgumentIn) throw InvalidSetArgRegisterException($0)
       set_arg($0, $1)
     }
@@ -313,7 +313,7 @@ trait SpatialMisc {
       direct (Tst) ("setArg", T, (Reg(T), ST) :: MUnit, effect = write(0)) implements composite ${ setArg($0, $1.as[T]) }
     }
 
-    direct (Tst) ("get", T, Reg(T) :: T) implements composite ${
+    direct (Tst) ("getArg", T, Reg(T) :: T) implements composite ${
       if (regType($0) != ArgumentOut) throw InvalidGetArgRegisterException($0)
       get_arg($0)
     }

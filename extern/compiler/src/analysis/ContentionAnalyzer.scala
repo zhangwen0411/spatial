@@ -26,16 +26,16 @@ trait ContentionAnalyzer {
   }
 
   def calcContention(x: Exp[Any]): Int = x match {
-    case Deff(_:Hwblock)              => outerContention(x, 1)
-    case Deff(_:ParallelPipe)         => childrenOf(x).map(calcContention).sum
-    case Deff(_:UnitPipe)             => outerContention(x, 1)
-    case Deff(e:OpForeach)            => outerContention(x, parsOf(e.cchain).reduce{_*_})
-    case Deff(e:OpReduce[_,_])        => outerContention(x, parsOf(e.cchain).reduce{_*_})
-    case Deff(e:OpMemReduce[_,_])     => outerContention(x, parsOf(e.ccOuter).reduce{_*_})
-    case Deff(_:Dram_load_cmd[_])     => 1
+    case Deff(_:Hwblock)          => outerContention(x, 1)
+    case Deff(_:ParallelPipe)     => childrenOf(x).map(calcContention).sum
+    case Deff(_:UnitPipe)         => outerContention(x, 1)
+    case Deff(e:OpForeach)        => outerContention(x, parsOf(e.cchain).reduce{_*_})
+    case Deff(e:OpReduce[_,_])    => outerContention(x, parsOf(e.cchain).reduce{_*_})
+    case Deff(e:OpMemReduce[_,_]) => outerContention(x, parsOf(e.ccOuter).reduce{_*_})
+    case Deff(_:BurstLoad[_])     => 1
     case Deff(_:BurstStore[_])    => 1
-    case Deff(_:Scatter[_])           => 1
-    case Deff(_:Gather[_])            => 1
+    case Deff(_:Scatter[_])       => 1
+    case Deff(_:Gather[_])        => 1
     case _ => 0
   }
 
@@ -52,16 +52,16 @@ trait ContentionAnalyzer {
   }
 
   def markContention(x: Exp[Any], parent: Int): Unit = x match {
-    case Deff(_:Hwblock)           => markPipe(x, parent)
-    case Deff(_:ParallelPipe)      => childrenOf(x).foreach{child => markContention(child,parent)}
-    case Deff(_:UnitPipe)          => markPipe(x, parent)
-    case Deff(_:OpForeach)         => markPipe(x, parent)
-    case Deff(_:OpReduce[_,_])     => markPipe(x, parent)
-    case Deff(_:OpMemReduce[_,_])  => markPipe(x, parent)
-    case Deff(_:Dram_load_cmd[_])  => contentionOf(x) = parent
-    case Deff(_:BurstStore[_]) => contentionOf(x) = parent
-    case Deff(_:Scatter[_])        => contentionOf(x) = parent
-    case Deff(_:Gather[_])         => contentionOf(x) = parent
+    case Deff(_:Hwblock)          => markPipe(x, parent)
+    case Deff(_:ParallelPipe)     => childrenOf(x).foreach{child => markContention(child,parent)}
+    case Deff(_:UnitPipe)         => markPipe(x, parent)
+    case Deff(_:OpForeach)        => markPipe(x, parent)
+    case Deff(_:OpReduce[_,_])    => markPipe(x, parent)
+    case Deff(_:OpMemReduce[_,_]) => markPipe(x, parent)
+    case Deff(_:BurstLoad[_])     => contentionOf(x) = parent
+    case Deff(_:BurstStore[_])    => contentionOf(x) = parent
+    case Deff(_:Scatter[_])       => contentionOf(x) = parent
+    case Deff(_:Gather[_])        => contentionOf(x) = parent
     case _ => // do nothing
   }
 

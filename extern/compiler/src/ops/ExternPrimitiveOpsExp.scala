@@ -2,7 +2,7 @@ package spatial.compiler.ops
 
 import java.io.{File,FileWriter,PrintWriter}
 import scala.virtualization.lms.internal.{Traversal}
-import scala.virtualization.lms.common.{BaseExp, EffectExp, ScalaGenEffect, DotGenEffect, MaxJGenEffect}
+import scala.virtualization.lms.common.{BaseExp, EffectExp, ScalaGenEffect, CGenEffect, MaxJGenEffect}
 import ppl.delite.framework.transform.{DeliteTransform}
 import scala.reflect.{Manifest,SourceContext}
 
@@ -149,6 +149,19 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
 
 trait CGenExternPrimitiveOps extends CGenEffect {
   val IR: ExternPrimitiveOpsExp with SpatialCodegenOps
+  import IR._
+
+  def bitsToStringInt(x: Int) = x match {
+    case n: Int if n <= 8 => "8"
+    case n: Int if n <= 16 => "16"
+    case n: Int if n <= 32 => "32"
+    case _ => "64"
+  }
+
+  def bitsToFloatType(bits: Int) = bits match {
+    case n: Int if n <= 32 => "float"
+    case _ => "double"
+  }
 
   override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
     case "SpatialBit" => "bool"
@@ -157,6 +170,7 @@ trait CGenExternPrimitiveOps extends CGenEffect {
     case "FixedPoint" => remap(m.typeArguments(0)) + "int" + bitsToStringInt(remap(m.typeArguments(1)).toInt + remap(m.typeArguments(2)).toInt) + "_t"
     case "FloatPoint" => bitsToFloatType(remap(m.typeArguments(0)).toInt + remap(m.typeArguments(1)).toInt)
     case bx(n) => n
+    case _ => super.remap(m)
   }
 }
 
@@ -242,6 +256,24 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           } else {
             emit(s"""$pre ${quote(sym)} = ${quote(a)}; // ignore ${quote(b)} b/c accumulator""")
           }
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
+    case FixPt_Div(a,b) =>
+      val pre = maxJPre(sym)
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""$pre ${quote(sym)} = ${quote(a)} / ${quote(b)};""")
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
+    case FltPt_Div(a,b) =>
+      val pre = maxJPre(sym)
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""$pre ${quote(sym)} = ${quote(a)} / ${quote(b)};""")
         case m =>
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }

@@ -75,26 +75,27 @@ trait PIRSplitter extends Traversal with PIRCommon {
     val rawStageCosts = stages.map{
       case stage:MapStage => 1
       case ReduceStage(op,init,in,acc) =>
-        val bypassInputCost  = if (allOuts.contains(in)) 0 else 1     // Needs bypass added at input
+        val bypassInputCost  = if (allOuts.contains(in.reg)) 0 else 1     // Needs bypass added at input
         val bypassOutputCost = if (liveOuts.contains(acc)) 1 else 0   // Needs bypass added at output
         REDUCE_STAGES + bypassOutputCost + bypassInputCost
     }
     val readSRAMs = allIns.flatMap{case SRAMRead(mem) => Some(mem); case _ => None}
 
-
+    // TODO: SRAM cost?
+    rawStageCosts.fold(0){_+_}
   }
 
-  def partitionCost(stages: Set[Stage])(implicit cu: BasicComputeUnit) = {
+  def partitionCost(stages: Set[Stage], unstages: Set[Stage])(implicit cu: BasicComputeUnit) = {
     val scalarsIn  = stages.flatMap{stage => inputsOf(stage).filter{case _:ScalarIn => true; case _ => false }}
     val scalarsOut = stages.flatMap{stage => outputsOf(stage).filter{case _:ScalarOut => true; case _ => false}}
     val vectorsIn  = stages.flatMap{stage => inputsOf(stage).filter{case _:SRAMRead => true; case _:VectorIn => true; case _ => false }}
     val vectorsOut = stages.flatMap{stage => outputsOf(stage).filter{case _:VectorOut => true; case _ => false }}
     val vectorsLocal = stages.flatMap{stage => outputsOf(stage).filter{case _:VectorLocal => true; case _ => false }}
-    val compute = computeCost(stages)
+    val compute = computeCost(stages, unstages)
     new SplitCost(scalarsIn.size, scalarsOut.size, vectorsIn.size, vectorsOut.size, vectorsLocal.size, compute)
   }
 
-  def splitComputeCU(cu: BasicComputeUnit): List[BasicComputeUnit] = {
+  def splitComputeCU(cu: BasicComputeUnit): List[BasicComputeUnit] = List(cu) /*{
     debug(s"Splitting CU: $cu")
 
 
@@ -190,6 +191,6 @@ trait PIRSplitter extends Traversal with PIRCommon {
     }
 
     bfs(outStages, liveOuts)*/
-  }
+  }*/
 
 }

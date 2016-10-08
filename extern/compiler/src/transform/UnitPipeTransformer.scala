@@ -10,7 +10,7 @@ import spatial.compiler.ops._
 
 import scala.collection.mutable.ArrayBuffer
 
-trait UnitPipeTransformExp extends NodeMetadataOpsExp with LoweredPipeOpsExp { this: SpatialExp => }
+trait UnitPipeTransformExp extends NodeMetadataOpsExp with UnrolledOpsExp { this: SpatialExp => }
 
 /**
  * Inserts unit Pipe wrappers for primitive nodes in outer control nodes, along with registers for communication
@@ -242,7 +242,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
     case EatReflect(ParallelPipe(func)) => None
 
     case EatReflect(e: Hwblock) if isOuterControl(lhs) => Some(wrapPrimitives_Hwblock(lhs, e)(e.__pos))
-    case EatReflect(e: UnitPipe) if isOuterControl(lhs) => Some(wrapPrimitives_UnitPipe(lhs, e)(e.__pos))
+    case EatReflect(e: UnitPipe) if isOuterControl(lhs) => Some(wrapPrimitives_UnitPipe(lhs, e)(e.ctx))
     case EatReflect(e: OpForeach) if isOuterControl(lhs) => Some(wrapPrimitives_Foreach(lhs, e)(e.ctx))
     case EatReflect(e: OpReduce[_,_]) if isOuterControl(lhs) => Some(wrapPrimitives_Reduce(lhs, e)(e.ctx, e.memC, e.numT, e.mT, e.mC))
     case EatReflect(e: OpMemReduce[_,_]) if isOuterControl(lhs) => Some(wrapPrimitives_MemReduce(lhs, e)(e.ctx, e.memC, e.numT, e.mT, e.mC))

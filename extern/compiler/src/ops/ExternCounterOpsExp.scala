@@ -1,6 +1,6 @@
 package spatial.compiler.ops
 
-import scala.virtualization.lms.common.{BaseExp, ScalaGenEffect, DotGenEffect, MaxJGenEffect}
+import scala.virtualization.lms.common.{BaseExp, ScalaGenEffect, CGenEffect, MaxJGenEffect}
 import scala.virtualization.lms.internal.{Traversal}
 import scala.reflect.{Manifest,SourceContext}
 import scala.collection.mutable.Set

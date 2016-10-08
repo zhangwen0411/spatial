@@ -117,12 +117,12 @@ trait OpsModel extends NodeMetadataOpsExp {
     case Fltpt_to_fixpt(_) => FLOP // ???
 
     case e@BurstStore(mem,stream,ofs,len,p) =>
-      val bits = nbits(e._mT)
+      val bits = nbits(e.mT)
       val size = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip load")(mpos(s.pos)); 96.0}
       AppStatistics(dataOut=bits*size.toLong)
 
     case e@BurstLoad(mem,stream,ofs,len,p) =>
-      val bits = nbits(e._mT)
+      val bits = nbits(e.mT)
       val size = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip store")(mpos(s.pos)); 96.0}
       AppStatistics(dataIn=bits*size.toLong)
 

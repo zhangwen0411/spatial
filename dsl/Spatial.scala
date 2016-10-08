@@ -331,7 +331,7 @@ trait SpatialDSL extends ForgeApplication
 
     // External groups
     extern(grp("Memory"), targets = List($cala, cpp, maxj), withTypes = true)
-    extern(grp("Controller"), targets = List($cala, cpp, maxj))
+    extern(grp("Controller"), targets = List($cala, maxj))
     extern(grp("Unrolled"), targets = List($cala, maxj))
 
     extern(grp("ExternCounter"), targets = List($cala, cpp, maxj), withTypes = true)

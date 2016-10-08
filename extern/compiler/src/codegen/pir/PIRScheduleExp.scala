@@ -146,7 +146,7 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   }
   case class ReduceStage(op: PIROp, init: LocalMem, in: LocalRef, acc: ReduceReg) extends Stage {
     def outputMems = List(acc)
-    def inputMems = List(in, acc)
+    def inputMems = List(in.reg, acc)
   }
 
   // --- Compute units
@@ -156,7 +156,6 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
     case Const(c: Double) => ConstReg(s"${c}d")
     case Const(c: Float)  => ConstReg(s"${c}f")
     case Param(c: Int)    => ConstReg(s"${c}i")
-    case Param(c: Long)   => ConstReg(s"${c}l")
     case Param(c: Double) => ConstReg(s"${c}d")
     case Param(c: Float)  => ConstReg(s"${c}f")
 

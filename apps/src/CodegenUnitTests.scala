@@ -592,26 +592,31 @@ trait BlockReduce1DApp extends SpatialApp {
   }
 }
 
-object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args: none
+object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args: 2
 trait UnalignedLdApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val N = 1920
 
   val numCols = 155
-  val paddedCols = 192
+  val paddedCols = 1920
 
-  def unaligned_1d(src: Rep[ForgeArray[T]]) = {
-
+  def unaligned_1d(src: Rep[ForgeArray[T]], ii: Rep[T]) = {
+    val iters = ArgIn[T]
     val srcFPGA = DRAM[T](paddedCols)
     val acc = ArgOut[T]
 
+    setArg(iters, ii)
     setMem(srcFPGA, src)
 
     Accel {
       val mem = SRAM[T](numCols)
-      Pipe { mem := srcFPGA(0::numCols) }
-      acc := Reduce(numCols by 1)(0.as[T]) { i => mem(i) }{_+_}
+      val accum = Reg[T](0)
+      Fold(iters by 1)(accum, 0.as[T]) { k =>
+        Pipe { mem := srcFPGA(k*numCols::k*numCols+numCols) }
+        Reduce(numCols by 1)(0.as[T]) { i => mem(i) }{_+_}
+      }{_+_}
+      acc := accum
     }
     getArg(acc)
   }
@@ -624,12 +629,13 @@ trait UnalignedLdApp extends SpatialApp {
 
   def main() = {
     // val size = args(unit(0)).to[SInt]
+    val ii = args(0).to[T]
     val size = paddedCols
     val src = Array.tabulate(size) { i => i }
 
-    val dst = unaligned_1d(src)
+    val dst = unaligned_1d(src, ii)
 
-    val gold = Array.tabulate(numCols) { i => i }.reduce{_+_}
+    val gold = Array.tabulate(ii*numCols) { i => i }.reduce{_+_}
 
     println("src:" + gold)
     println("dst:" + dst)
@@ -729,6 +735,7 @@ trait ScatterGatherApp extends SpatialApp {
   val tileSize = 384
   val maxNumAddrs = 1536
   val offchip_dataSize = maxNumAddrs*6
+  val par = 2
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
@@ -743,9 +750,9 @@ trait ScatterGatherApp extends SpatialApp {
       val addrs = SRAM[T](maxNumAddrs)
       Sequential (maxNumAddrs by tileSize) { i =>
         val gathered = SRAM[T](maxNumAddrs)
-        Pipe {addrs := srcAddrs(i::i + tileSize, param(4))}
-        Pipe {gathered := gatherData(addrs, tileSize)}
-        Pipe {scatterResult(addrs, tileSize, param(4)) := gathered}
+        Pipe {addrs := srcAddrs(i::i + tileSize, param(par))}
+        Pipe {gathered := gatherData(addrs, tileSize, param(par))}
+        Pipe {scatterResult(addrs, tileSize, param(par)) := gathered} // What to do about parallel scatter when sending to same burst simultaneously???
       }
     }
 
@@ -760,15 +767,17 @@ trait ScatterGatherApp extends SpatialApp {
 
   def main() = {
     // val size = args(unit(0)).to[SInt]
+
     val size = maxNumAddrs
     val dataSize = offchip_dataSize
     val addrs = Array.tabulate[SInt](size) { i =>
       // i*2 // for debug
-      if (i == 5) 199 else if (i == 6) offchip_dataSize-2 else if (i == 7) 191 else if (i==8) 203
+      if (i == 4) 199 else if (i == 6) offchip_dataSize-2 else if (i == 7) 191 else if (i==8) 203
         else if (i == 9) 381 else if (i == 10) offchip_dataSize-97 else if (i == 15) 97
         else if (i == 16) 11 else if (i == 17) 99 else if (i == 18) 245
         else if (i == 94) 3 else if (i == 95) 1 else if (i == 83) 101
-        else if (i == 70) 203 else if (i == 71) (offchip_dataSize-1) else i*2
+        else if (i == 70) 203 else if (i == 71) (offchip_dataSize-1)
+        else if (i % 2 == 0) i*2 else i*2 + offchip_dataSize/2
     }
     val offchip_data = Array.fill(dataSize) {random[SInt](dataSize)}
     // val offchip_data = Array.tabulate (dataSize) { i => i}
@@ -841,6 +850,7 @@ trait MultiplexedWriteApp extends SpatialApp {
       val in = SRAM[SInt](T)
       Sequential(N by T){i =>
         wt := weights(i::i+T)
+        in := inputs(i::i+T)
 
         // Some math nonsense (definitely not a correct implementation of anything)
         Pipe(I by 1){x =>
@@ -1005,3 +1015,111 @@ trait SequentialWritesApp extends SpatialApp {
 
   }
 }
+
+object ChangingCtrMax extends SpatialAppCompiler with ChangingCtrMaxApp // Args: none
+trait ChangingCtrMaxApp extends SpatialApp {
+  type T = SInt
+  type Array[T] = ForgeArray[T]
+
+  val tileSize = 96
+  val N = 5
+
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def changingctrmax() = {
+    val result = DRAM[T](96)
+    Accel {
+      val rMem = SRAM[T](96)
+      Sequential(96 by 1) { i =>
+        val accum = Reduce(i by 1)(0.as[SInt]){ j =>
+          j
+        }{_+_}
+        Pipe{rMem(i) = accum}
+      }
+      result(0::96) := rMem
+    }
+    getMem(result)
+  }
+
+  def main() = {
+    val i = args(0).to[SInt]
+
+    val result = changingctrmax()
+
+    // Use strange if (i==0) b/c iter1: 0 by 1 and iter2: 1 by 1 both reduce to 0
+    val gold = Array.tabulate(tileSize) { i => if (i==0) 0 else (i-1)*i/2}
+
+    printArr(gold, "gold: ")
+    printArr(result, "result: ")
+    val cksum = result.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum  + " (ChangingCtrMax)")
+
+  }
+}
+
+
+// object GroupByReduce extends SpatialAppCompiler with GroupByReduceApp // Args: none
+// trait GroupByReduceApp extends SpatialApp {
+
+//   val T = FixPt(32,0,false)
+//   val D4bit = FixPt(2,2,false)
+//   val M8bit = FixPt(4,4,false) // Fix2Float in Node.scala
+//   var dim = 96
+//   var par = 1
+
+
+//   def main(args: String*) = {
+//     if (!(args.size == 2)) {
+//       println(args.size)
+//       println("\nUsage: GroupByReduce <dim>")
+//       sys.exit(0)
+//     }
+//     dim = args(0).toInt
+//     par = args(1).toInt
+
+//     // Get sizes of data structures from host
+//     val B = ArgIn("B"); bound(B, dim)
+
+//     // Declare off-chip data arrays
+//     val keys = OffChipArray(T)("keys", B)
+//     val values = OffChipArray(T)("values", B)
+//     val result = OffChipArray(T)("groups", B)
+//     val accum = OffChipArray(T)("accums", B)
+
+//     // LOAD THE DATA
+//     val kTile = SRAM(T, "ktile", dim, false)
+//     val vTile = SRAM(T, "vtile", dim, false)
+//     val kLd = TileMemLd(keys, B, Const(0), Const(0), kTile, 1, dim)
+//     kLd.withForce(Const(true))
+//     val vLd = TileMemLd(values, B, Const(0), Const(0), vTile, 1, dim)
+//     vLd.withForce(Const(true))
+//     val ldPipe = Parallel(kLd, vLd)
+
+
+//     /*
+//     SECTION FOR NON-PAR
+//     */
+//     // GROUP BY REDUCE
+//     val rTile = SRAM(T, "rtile", dim, false)
+//     val acTile = SRAM(T, "actile", dim, false)
+//     val grbr = GrpByRdc(par, dim, kTile, vTile, rTile, acTile)
+//     val gbrPipe = Parallel(grbr)
+
+
+//     // STORE OFFCHIP
+//     val st = TileMemSt(1, result, B, Const(0), Const(0), rTile, 1, dim)
+//     st.withForce(Const(true))
+//     val st2 = TileMemSt(1, accum, B, Const(0), Const(0), acTile, 1, dim)
+//     st2.withForce(Const(true))
+
+//     val topCtr = Ctr((Const(1),1))
+//     // val last = List(ldPipe) ++ List(grpBlock._1) ++ List(st) ++ List(st2)
+//     val last = List(ldPipe) ++ List(gbrPipe) ++ List(st) ++ List(st2)
+//     val topCtrl = Sequential(topCtr,last:_*)
+
+//     topCtrl
+//   }

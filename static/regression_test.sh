@@ -21,9 +21,11 @@ sparse_args_list=("960" "960"      "960"              "960"       "960"   )
 # Seconds to pause while waiting for apps to run
 delay=900
 
+# random=(`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 4`) # Random chars to add to directory to avoid new workers from wiping old
+random=(`date +"%H-%M"`) # Chars to add to directory to avoid new workers from wiping old
 
 # Override env vars to point to a separate directory for this regression test
-export TESTS_HOME="/home/mattfel/${branch}_regression_tests"
+export TESTS_HOME="/home/mattfel/${branch}_regression_tests_${random}"
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${TESTS_HOME}/hyperdsl
@@ -46,8 +48,10 @@ function write_comments {
 Comments
 --------
 * Expected FifoLoadStore to fail validation
+* Fix parallel ScatterGather to support interleaved banking rather than strided
 * Expected GEMM to fail validation
 * Tighten validation margin on BlackScholes
+* Fix UnalignedLd bug with calculating burst address and cmd enable for unaligned lds
 * Make SGD work on more than 1 epoch
 " >> $1
 }
@@ -142,7 +146,7 @@ function create_script {
 	echo "
 #!/bin/bash
 # Override env vars to point to a separate directory for this regression test
-export TESTS_HOME=/home/mattfel/${branch}_regression_tests
+export TESTS_HOME=/home/mattfel/${branch}_regression_tests_${random}
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${TESTS_HOME}/hyperdsl
@@ -263,6 +267,8 @@ if [ ! -d "./hyperdsl" ]; then
   eval "$cmd"
   git commit -m "automated status update"
   git push
+  sleep 3
+  rm ${TESTS_HOME}
   exit 1
 fi
 cd hyperdsl
@@ -313,6 +319,8 @@ if [ ! -d "${PUB_HOME}" ]; then
   # Use main repo's wiki for update
   if [ ! -d "/home/mattfel/hyperdsl/spatial/spatial.wiki" ]; then
   	echo "FATAL ERROR! No default wiki!"
+	sleep 3
+	rm ${TESTS_HOME}
   	exit 1
   else 
   	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
@@ -332,6 +340,8 @@ if [ ! -d "${PUB_HOME}" ]; then
 	eval "$cmd"
 	git commit -m "automated status update"
 	git push
+	sleep 3
+	rm ${TESTS_HOME}
 	exit 1
   fi
 fi
@@ -347,6 +357,8 @@ wc=$(cat log | grep "success" | wc -l)
 if [ "$wc" -ne 1 ]; then
 	if [ ! -d "${SPATIAL_HOME}/spatial.wiki" ]; then
 		echo "FATAL ERROR. No wiki dir"
+		sleep 3
+		rm ${TESTS_HOME}
 		exit 1
 	else 
 		cd $SPATIAL_HOME
@@ -357,7 +369,7 @@ if [ "$wc" -ne 1 ]; then
 		echo "" >> $result_file
 		echo "" >> $result_file
 		tucson_date=`ssh tucson.stanford.edu date`
-		echo -e "*Repos pulled at $start_date*\n*Status updated on $tucson_date* \n" > $result_file
+		echo -e "*Repos pulled at ${start_date[@]}*\n*Status updated on $tucson_date* \n" > $result_file
 		echo -e "Latest commit: \n\`\`\`\n${hash}\n\`\`\`" >> $result_file
 		echo "" >> $result_file
 		echo "Error building Spatial!  Remake seemed to fail.  Could not validate anything!" >> $result_file
@@ -366,6 +378,8 @@ if [ "$wc" -ne 1 ]; then
 		eval "$cmd"
 		git commit -m "automated status update"
 		git push
+		sleep 3
+		rm ${TESTS_HOME}
 		exit 1
 	fi
 fi
@@ -462,7 +476,8 @@ old_commit=(`cat ${result_file} | grep "^commit" | awk '/commit/{i++}i==1'`)
 rm $result_file
 echo -e "
 
-*Repos pulled at $start_date*
+*Repos pulled at ${start_date[@]}*
+
 *Status updated on `date`*
 
 * <---- indicates relative amount of work needed before app will **pass**" > $result_file
@@ -499,7 +514,7 @@ csvemails=(`echo ${email[@]} | sed 's/ /,/g'`)
 diff=($(comm -12 <(for X in "${new_fail[@]}"; do echo "${X}"; done|sort)  <(for X in "${old_pass[@]}"; do echo "${X}"; done|sort)))
 last_m=""
 echo "[SPATIAL NOTICE] The following apps got messed up: ${diff[@]}"
-if [ ! -z "$diff" ]; then 
+if [ ! -z "$diff" ] && [ *"$old_commit"* != *"$new_commit"* ]; then 
 	echo "debug1"
 	for m in ${emails[@]}; do
 		echo "debug2"
@@ -583,7 +598,7 @@ eval "$cmd"
 numel1=(`cat ${history_file} | grep "^(commit change)\ " | grep -oh "." | wc -l`)
 numel2=(`cat ${history_file} | grep "^(commit change)\ " | wc -l`)
 numel=$(($numel1 / $numel2))
-if [ $numel -gt $(( $hist + $chars_before_bars )) ]; then
+if [ $numel -gt $(( $hist * 2 + $chars_before_bars )) ]; then
 	cmd="sed -i \"s/^(commit change)\([[:blank:]]*\),,../(commit change)\1,,/g\" ${history_file}"
 	eval "$cmd"
 fi
@@ -621,4 +636,7 @@ git stash pop
 git add *
 git commit -m "automated status update via cron"
 git push
+
+sleep 3
+rm -rf ${TESTS_HOME}
 

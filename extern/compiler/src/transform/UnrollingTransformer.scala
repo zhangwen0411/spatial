@@ -8,7 +8,7 @@ import scala.collection.mutable.HashMap
 import spatial.compiler._
 import spatial.compiler.ops._
 
-trait UnrollingTransformExp extends ReductionAnalysisExp with LoweredPipeOpsExp {
+trait UnrollingTransformExp extends ReductionAnalysisExp with UnrolledOpsExp {
   this: SpatialExp =>
 
   case class UnrolledResult(isIt: Boolean) extends Metadata
@@ -382,7 +382,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
     val st2 = withSubstScope(acc -> acc2){ f(st) }
     val rFunc2 = withSubstScope(rV._1 -> rV2._1, rV._2 -> rV2._2){ f(rFunc)(rhs.mT) }
 
-    unrollPipeFold[T,C](lhs, f(cc), f(accum), zero.map(f(_)), fold, iFunc2, ld2, st2, func, rFunc2, inds, idx, acc2, res, rV2)(rhs.ctx,rhs.numT,rhs.mT,rhs.mC)
+    unrollReduce[T,C](lhs, f(cc), f(accum), zero.map(f(_)), fold, iFunc2, ld2, st2, func, rFunc2, inds, idx, acc2, res, rV2)(rhs.ctx,rhs.numT,rhs.mT,rhs.mC)
   }
 
 
@@ -530,7 +530,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
     val st2 = withSubstScope(acc -> acc2){ f(st) }
     val rFunc2 = withSubstScope(rV._1 -> rV2._1, rV._2 -> rV2._2){ f(rFunc)(rhs.mT) }
 
-    unrollAccumFold(lhs,f(ccMap),f(ccRed),f(accum),zero.map(f(_)),fold,iFunc2,func,ldMap,ldAcc2,rFunc2,st2,isMap,isRed,idx,part,acc2,res,rV2)(rhs.ctx,rhs.numT,rhs.mT,rhs.mC)
+    unrollMemReduce(lhs,f(ccMap),f(ccRed),f(accum),zero.map(f(_)),fold,iFunc2,func,ldMap,ldAcc2,rFunc2,st2,isMap,isRed,idx,part,acc2,res,rV2)(rhs.ctx,rhs.numT,rhs.mT,rhs.mC)
   }
 
   // TODO: can probably unify this for scatter and gather

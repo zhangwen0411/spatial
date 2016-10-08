@@ -29,7 +29,7 @@ trait ExternPrimitiveOps extends ExternPrimitiveTypes with NumOps with OrderOps 
   def min2[T:Manifest:Order:Num](a: Rep[T], b: Rep[T])(implicit ctx: SourceContext): Rep[T]
   def max2[T:Manifest:Order:Num](a: Rep[T], b: Rep[T])(implicit ctx: SourceContext): Rep[T]
 }
-trait ExternPrimitiveCompilerOps extends ExternPrimitiveTypes with MemoryTemplateTypes {
+trait ExternPrimitiveCompilerOps extends ExternPrimitiveTypes with MemoryTypes {
   this: SpatialIdentifiers =>
 
   lazy val bx = "B([0-9]+)".r
