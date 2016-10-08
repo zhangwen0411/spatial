@@ -243,6 +243,8 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
     case e:OpForeach        => e.inds ::: effectSyms(e.func) ::: effectSyms(e.cchain)
     case e:OpReduce[_,_]    => e.inds ::: List(e.rV._1, e.rV._2, e.acc, e.res, e.idx) ::: effectSyms(e.cchain) ::: effectSyms(e.iFunc) ::: effectSyms(e.func) ::: effectSyms(e.rFunc) ::: effectSyms(e.ldFunc) ::: effectSyms(e.stFunc) ::: effectSyms(e.accum)
     case e:OpMemReduce[_,_] => e.indsOuter ::: e.indsInner ::: List(e.idx, e.rV._1, e.rV._2, e.acc, e.res, e.part) ::: effectSyms(e.ccOuter) ::: effectSyms(e.ccInner) ::: effectSyms(e.accum) ::: effectSyms(e.iFunc) ::: effectSyms(e.func) ::: effectSyms(e.resLdFunc) ::: effectSyms(e.ldFunc) ::: effectSyms(e.rFunc) ::: effectSyms(e.stFunc)
+    case e:ParallelPipe     => effectSyms(e.func)
+    case e:UnitPipe         => effectSyms(e.func)
     case _ => super.boundSyms(e)
   }
 }
@@ -259,6 +261,8 @@ trait ScalaGenControllerOps extends ScalaGenEffect {
     case UnitPipe(blk) =>
       emitBlock(blk)
       stream.println(s"val ${quote(sym)} = ()")
+
+    case _ => super.emitNode(sym, rhs)
   }
 }
 

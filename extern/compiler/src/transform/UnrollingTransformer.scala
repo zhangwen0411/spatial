@@ -150,26 +150,40 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
     case EatReflect(e@Sram_store(sram@EatAlias(mem),addr,value)) if lanes.isCommon(sram) =>
       debugs(s"Unrolling $lhs = $rhs")
+      getProps(lhs).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
+
       val values = lanes.vectorize{p => f(value)}
       val addrs  = lanes.vectorize{p => f(addr)}
-      val parStore = par_sram_store(f(sram), addrs, values)(e._mT, e.__pos)
+      val lhs2 = par_sram_store(f(sram), addrs, values)(e._mT, e.__pos)
 
-      setProps(parStore, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
-      parIndicesOf(parStore) = lanes.map{i => accessIndicesOf(lhs).map(f(_)) }
-      cloneFuncs.foreach{func => func(parStore) }
-      lanes.unify(lhs, parStore)
+      setProps(lhs2, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
+      parIndicesOf(lhs2) = lanes.map{i => accessIndicesOf(lhs).map(f(_)) }
+      cloneFuncs.foreach{func => func(lhs2) }
+
+      val Def(rhs2) = lhs2
+      debugs(s"Created $lhs2 = $rhs2")
+      getProps(lhs2).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
+
+      lanes.unify(lhs, lhs2)
 
     case EatReflect(e@Sram_load(sram@EatAlias(mem),addr)) if lanes.isCommon(sram) =>
       debugs(s"Unrolling $lhs = $rhs")
-      val addrs = lanes.vectorize{p => f(addr)}
-      val parLoad = par_sram_load(f(sram), addrs)(e._mT, e.__pos)
-      dimsOf(parLoad) = List(lanes.size.as[Index])
-      lenOf(parLoad) = lanes.size
+      getProps(lhs).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
 
-      setProps(parLoad, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
-      parIndicesOf(parLoad) = lanes.map{i => accessIndicesOf(lhs).map(f(_)) }
-      cloneFuncs.foreach{func => func(parLoad) }
-      lanes.split(lhs, parLoad)(e._mT)
+      val addrs = lanes.vectorize{p => f(addr)}
+      val lhs2 = par_sram_load(f(sram), addrs)(e._mT, e.__pos)
+      dimsOf(lhs2) = List(lanes.size.as[Index])
+      lenOf(lhs2) = lanes.size
+
+      setProps(lhs2, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
+      parIndicesOf(lhs2) = lanes.map{i => accessIndicesOf(lhs).map(f(_)) }
+      cloneFuncs.foreach{func => func(lhs2) }
+
+      val Def(rhs2) = lhs2
+      debugs(s"Created $lhs2 = $rhs2")
+      getProps(lhs2).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
+
+      lanes.split(lhs, lhs2)(e._mT)
 
     case EatReflect(e@Sram_store(sram,addr,value)) =>
       debugs(s"Duplicating $lhs = $rhs")
@@ -440,6 +454,11 @@ trait UnrollingTransformer extends MultiPassTransformer {
         debugs(s"[Accum-fold $lhs] Unrolling pipe-reduce reduction")
         tab += 1
         val reduceLanes = Unroller(ccRed, isRed, true)
+        reduceLanes.foreach{p =>
+          debugs(s"Lane #$p")
+          isRed.foreach{i => debugs(s"  $i -> ${f(i)}") }
+        }
+
         val isRed2 = reduceLanes.indices
 
         val rblk = reifyBlock {
@@ -460,6 +479,11 @@ trait UnrollingTransformer extends MultiPassTransformer {
           }}
 
           debugs(s"[Accum-fold $lhs] Unrolling accum loads")
+          reduceLanes.foreach{p =>
+            debugs(s"Lane #$p")
+            isRed.foreach{i => debugs(s"  $i -> ${f(i)}") }
+          }
+
           val accValues = inReduction{ unrollMap(ldAcc, reduceLanes)(mT) }
 
           debugs(s"[Accum-fold $lhs] Unrolling reduction trees and cycles")
@@ -605,7 +629,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
       case _ =>
         debugs(s"Changed to $lhs2")
     }
-    getProps(lhs2).foreach{props => props.data.foreach{(k,m) => " -" + debugs(readable(k) + makeString(m)) }}
+    getProps(lhs2).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
 
     lhs2
   }
