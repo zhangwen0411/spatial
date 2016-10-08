@@ -765,6 +765,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
         withStream(baseStream) {
           emitComment("Reg_new {")
+          Console.println(s"sym $sym, parOf ${parOf(sym)} tp ${sym.tp} tpargs ${sym.tp.typeArguments}")
           val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
           val duplicates = duplicatesOf(sym)
           val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
