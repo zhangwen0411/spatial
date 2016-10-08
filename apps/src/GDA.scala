@@ -10,9 +10,9 @@ trait GDA_App extends SpatialApp {
   val margin = 1
   val innerPar = 2
   val outerPar = 2
-  val MAXC = 8
-  val tileSize = 4
-  val pLoopPar = 1
+  val MAXC = 96
+  val tileSize = 96
+  val pLoopPar = 2
 
   def gda(xCPU: Rep[Array[T]], yCPU: Rep[Array[SInt]], mu0CPU: Rep[Array[T]], mu1CPU: Rep[Array[T]]) = {
     val rTileSize     = param(tileSize);  domainOf(rTileSize) = (96, 19200, 1)
@@ -20,7 +20,7 @@ trait GDA_App extends SpatialApp {
     val ip            = param(innerPar);  domainOf(ip)  = (1, 12, 1)
     val subLoopPar    = param(innerPar);  domainOf(subLoopPar)    = (1, 16, 1)
     val prodLoopPar   = param(pLoopPar);  domainOf(prodLoopPar)   = (1, 96, 1)
-    val outerAccumPar = param(innerPar);  domainOf(outerAccumPar) = (1, 1, 1)
+    val outerAccumPar = param(outerPar);  domainOf(outerAccumPar) = (1, 1, 1)
 
     val rows = yCPU.length;   bound(rows) = 360000
     val cols = mu0CPU.length; bound(cols) = MAXC
@@ -61,7 +61,7 @@ trait GDA_App extends SpatialApp {
         }
 
         val sigmaBlk = BRAM[T](MAXC,MAXC)
-        Fold(rTileSize par ip)(sigmaBlk, 0.as[Flt]){rr =>
+        Fold(rTileSize par op,ip)(sigmaBlk, 0.as[Flt]){rr =>
           val subTile = BRAM[T](MAXC)
           val sigmaTile = BRAM[T](MAXC, MAXC)
           Pipe(C par subLoopPar){ cc =>
