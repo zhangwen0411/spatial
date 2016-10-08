@@ -475,7 +475,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
             stms.zipWithIndex.map { case (TP(s,d), ii) =>
               val Deff(dd) = s
               consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-              Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+              // Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
               dd match {
                 case Reg_read(_) =>
                   first_reg_read = first_reg_read :+ ii
