@@ -503,7 +503,9 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         rdPost = ")"
         addrString = quote(addr)
       case (_,1,true) =>
-        throw new Exception(s"That known bug in connectRport is appearing! Do something about it you lazy ass!")
+        rdPre = s"${quote(bram_name)}.connectRport("
+        rdPost = ")"
+        addrString = quote(addr)
       case (1,2,false) =>
         rdPre = s"${quote(bram_name)}.connectRport("
         rdPost = ")"
