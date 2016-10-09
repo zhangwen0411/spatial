@@ -34,7 +34,7 @@ trait ReductionAnalysisExp extends NodeMetadataOpsExp {
     case Deff(Min2(`a`,`b`)) if isFixPtType(a.tp) => FixPtMin
     case Deff(Max2(`a`,`b`)) if isFixPtType(a.tp) => FixPtMax
     case _ =>
-      Console.println("[WARNING] $rFunc on $a and $b does not match any reduce type!")
+      Console.println(s"[WARNING] $rFunc on $a and $b does not match any reduce type!")
       OtherReduction
   }
 }

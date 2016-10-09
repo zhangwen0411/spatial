@@ -612,8 +612,12 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                 case input @ ( Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
                   inputVecs += s
                   s"/* Par_bram_load */"
+                case FieldApply(a, b) => 
+                  s"""this is a field apply ${quote(s)} and ${quote(a)} and ${b}"""
+                case Internal_pack2(a,b) => 
+                  s"""this is a internal pack  ${quote(s)} and ${quote(a)} and ${quote(b)}"""                 
                 case _ =>
-                  s"/* Unknown Deff $s $dd */"
+                  s"/* Unknown Deff $s ${dd} inside of MaxJPreCodegen*/"
               }
             }
           }

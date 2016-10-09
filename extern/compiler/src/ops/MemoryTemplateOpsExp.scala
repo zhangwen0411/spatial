@@ -559,7 +559,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     val distinctParents = writers.map{writer => parentOf(writer.controlNode)}.distinct
     val allParents = writers.map{writer => parentOf(writer.controlNode)}
     if (distinctParents.length < allParents.length) {
-      Console.println("[WARNING] Bram $bram has multiple writers controlled by the same controller, which should only happen in CharBramTest!")
+      Console.println(s"[WARNING] Bram $bram has multiple writers controlled by the same controller, which should only happen in CharBramTest!")
       // throw MultipleWriteControllersException(bram, writersOf(bram))
     }
     val writeCtrl = writer.controlNode
@@ -621,17 +621,21 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           addrString = offsetPre + quote(inds(0)(0)) + offsetPost + ", " + offsetPre + quote(inds(0)(1)) + offsetPost
         case (_,1,1,1) => // Hardcode banks to writers and hope for best
           val bank_num = writersOf(bram).map{_.node}.indexOf(write)
-          wrType = "connectBankWport"
+          wrType = s"connectBankWport($bank_num, "
           addrString = offsetPre + quote(addr) + offsetPost 
         case (_,_,1,1) => // distinctParents > 1, so writers_length must be > 1
           wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
           addrString = offsetPre + quote(addr) + offsetPost 
         case (_,1,_,1) => 
+          val bank_num = writersOf(bram).map{_.node}.indexOf(write)
+          wrType = s"connectBankWport($bank_num, "
           addrString = offsetPre + quote(addr) + offsetPost
         case (_,1,1,2) =>
+          val bank_num = writersOf(bram).map{_.node}.indexOf(write)
+          wrType = s"connectBankWport($bank_num, "
           addrString = offsetPre + quote(inds(0)(0)) + offsetPost + ", " + offsetPre + quote(inds(0)(1)) + offsetPost
         case (1,_,1,2) =>
-          throw new Exception("Cannot have only one writer but multiple distinct writers!")
+          throw new Exception(s"Cannot have only one writer ${writers} but multiple distinct writers ${distinctParents}!")
         case (1,1,_,2) => 
           addrString = row_col_indices(inds, offsetPre, offsetPost)
         case (_,_,_,1) => 
@@ -641,8 +645,9 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
           wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
           addrString = offsetPre + quote(inds(0)(0)) + offsetPost + ", " + offsetPre + quote(inds(0)(1)) + offsetPost
         case (_,1,_,2) => 
+          val bank_num = writersOf(bram).map{_.node}.indexOf(write)
+          wrType = s"connectBankWport($bank_num, "
           addrString = row_col_indices(inds, offsetPre, offsetPost)
-          throw new Exception("Cannot have only one writer but multiple distinct writers!")
         case (_,_,_,2) => 
           addrString = row_col_indices(inds, offsetPre, offsetPost)
           wrType = if (portsOf(write,bram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
@@ -842,6 +847,13 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
     case Argout_new(init) => //emitted in reg_write
 
     case e@Reg_read(EatAlias(reg)) =>
+      val isTup =  try { // TODO: Spent way too much time trying to figure out how to get bit info from tuples (╯°□°)╯︵ ┻━┻
+        val dummy = nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(1))
+        true
+      } catch { // not Tup2
+        case _ : Throwable => false
+      } 
+
       val readers = readersOf(reg).filter(_.node == sym) // There can be more than one!
       readers.foreach{reader =>
         if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
@@ -870,7 +882,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               quote(reg)
           }
 
-          val regCast = ".cast(" + tpstr(parOf(reg))(reg.tp.typeArguments(0), implicitly[SourceContext]) + ")"
+          val regCast = if (!isTup) {".cast(" + tpstr(parOf(reg))(reg.tp.typeArguments(0), implicitly[SourceContext]) + ")"} else {
+            ".cast(dfeRawBits(" + nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(1)) + nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(2)) + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(0)) + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(1)) + "))"
+          }
 
           // Specialized reductions (regular accumulators with a reduction type) just use sym directly
           // TODO: Why was the statement below in the if statement?  Seems like we always want it printed...
@@ -915,6 +929,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       }
       val allDups = duplicatesOf(reg).zipWithIndex
       val dups = allDups.filter{case (dup, i) => instanceIndicesOf(writer, reg).contains(i) }
+      val enable = en match {
+        case Deff(ConstBit(true)) => s"${quote(writeCtrl)}_done"
+        case _ => quote(en)
+      }
 
       regType(reg) match {
         case ArgumentIn => throw new Exception("Cannot write to ArgIn " + quote(reg) + "!")
@@ -926,10 +944,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
         case _ =>
           if (isAccum(reg)) {
-            en match {
-              case Deff(ConstBit(true)) =>
-              case _ => throw new Exception("Enabled register write is not yet supported for an accumulator!")
-            }
 
             // Not sure how to decide this now...
             val accEn = writeCtrl match {
@@ -952,12 +966,17 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
                     case FltPtSum =>
                       emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
+                    case _ =>
+                      emit(s"""${quote(reg)} gets ${quote(value)}, but redtype unknown""")
+                      // throw new Exception(s"Reduction $fps codegen unknown!")
                   }
                   // Assume duplicate 0 is used for reduction, all others need writes
                   dups.foreach { case (dup, ii) => 
                     val port = portsOf(writer, reg, ii).head 
-                    if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), ${quote(writeCtrl)}_done, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                    if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
                   }
+                  case None =>
+                    throw new Exception(s"No reduce function found for $reg ${reduceType(reg)}")
                 }
               case _ =>
                 emit(s"DFEVar ${quote(reg)}_en = constant.var(true)")
@@ -972,15 +991,15 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   val rstStr = quote(parentOf(reg).get) + "_rst_en"
                   // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
                   if (false/*dup.depth == 2*/) {
-                    emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), ${quote(writeCtrl)}_done, constant.var(false)); // ${nameOf(reg).getOrElse("")}""")
+                    emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), $enable, constant.var(false)); // ${nameOf(reg).getOrElse("")}""")
                   } else if (dup.depth > 1) {
-                    emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), ${quote(writeCtrl)}_done, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
+                    emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
                   }
                   else {
                     // Using an enable signal instead of "always true" is causing an illegal loop.
                     // Using a reset signal instead of "always false" is causing an illegal loop.
                     // These signals don't matter for pass-through registers anyways.
-                    emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), constant.var(true), constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                    emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), constant.var(true) /*TODO: must attach sig*/, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
                   }
               }
             }
