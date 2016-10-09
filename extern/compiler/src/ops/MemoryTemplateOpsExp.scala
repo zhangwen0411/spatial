@@ -486,10 +486,6 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     val match_tuple = (inds.length, num_dims, par)
     var addrString = ""
 
-    val dummyOverride = if (isDummy(bram)) {bankOverride(read) match {
-        case -1 => ""
-        case b => "b"
-      }} else {""}
     val portInfo = if (!isDummy(bram)) s", new int[] {$p}" else ""
 
     match_tuple match { //(inds_length, num_dims, par)
@@ -528,8 +524,18 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
       case (_,_,_) =>
         throw new Exception(s"No codegen rule for this kind of read! $match_tuple")
     }
-    emit(s"""$pre ${quote(read)} = ${rdPre}${addrString}${portInfo}${dummyOverride}${rdPost}; // matched $match_tuple ${nameOf(bram).getOrElse("")}""")
 
+    val dummyOverride = if (isDummy(bram)) {bankOverride(read) match {
+        case -1 => 
+          addrString = quote(addr)
+          ""
+        case b => 
+          addrString = quote(addr)  
+          s", $b"
+      }} else {""}
+
+    emit(s"""$pre ${quote(read)} = ${rdPre}${addrString}${portInfo}${dummyOverride}${rdPost}; // matched $match_tuple ${nameOf(bram).getOrElse("")}""")
+    emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(bram_name)} %d @ %d", ${quote(read)}, ${addrString});""")
     // Handle if loading a composite type
     //n.compositeValues.zipWithIndex.map { t =>
     //  val v = t._1
@@ -643,6 +649,8 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         case (_,_,_,_) =>
           throw new Exception("MaxJ generation of more than 2D BRAMs is currently unsupported.")
       }
+      if (isDummy(bram)) {
+        addrString = quote(addr)} // Dummy override for char test
       emit(s"""${quote(bram)}_${ii}.${wrType}${addrString}, 
         $dataString, $accString, new int[] {$p}); //tuple $match_tuple to ${nameOf(bram).getOrElse("")}""")
       emit(s"""// debug.simPrintf(accString,"${quote(bram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", $dataString, $addrString);""")

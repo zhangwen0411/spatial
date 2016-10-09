@@ -83,8 +83,8 @@ object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp // Args: 5
 trait CharLoadTestApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 1;
-  val outerPar = 1;
+  val innerPar = 4;
+  val outerPar = 2;
   val dim0 = 192;
   val dim1 = 1920;
 
@@ -152,7 +152,7 @@ trait CharLoadTestApp extends SpatialApp {
 
     // Lazy check because I don't feel like xor'ing here
     val cksum = result.flatten.zipWithIndex.map{ case (a, i) =>
-      if (i < outerPar) {a == 0} else {a != 0}
+      if (i < inner) {a == 0} else {a != 0}
     }.reduce{_&&_}
     println("PASS: " + cksum  + " (CharLoadTest)")
 
