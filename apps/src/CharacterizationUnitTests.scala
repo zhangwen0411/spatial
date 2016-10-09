@@ -152,7 +152,7 @@ trait CharLoadTestApp extends SpatialApp {
 
     // Lazy check because I don't feel like xor'ing here
     val cksum = result.flatten.zipWithIndex.map{ case (a, i) =>
-      if (i < inner) {a == 0} else {a != 0}
+      if (i < innerPar) {a == 0} else {a != 0}
     }.reduce{_&&_}
     println("PASS: " + cksum  + " (CharLoadTest)")
 
