@@ -47,7 +47,7 @@ trait MemoryTemplateTypesExp extends MemoryTemplateTypes with BaseExp {
   def isCache[T:Manifest]    = isSubtype(manifest[T].runtimeClass, classOf[CACHE[_]])
   def isCAM[T:Manifest]      = isSubtype(manifest[T].runtimeClass, classOf[SpatialCAM[_,_]])
   def isVector[T:Manifest]   = isSubtype(manifest[T].runtimeClass, classOf[SpatialVector[_]])
-  def isTup2[T:Manifest]     = isSubtype(manifest[T].runtimeClass, classOf[Register[Tup2[_,_]]])
+  def isTup2[T:Manifest]     = isSubtype(manifest[T].runtimeClass, classOf[Tup2[_,_]])
 
   def offchipMemManifest[T:Manifest]: Manifest[OffChipMem[T]] = manifest[DRAM[T]]
   def bramManifest[T:Manifest]: Manifest[BRAM[T]] = manifest[BlockRAM[T]]
@@ -769,7 +769,16 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       //   case _ => Console.println("not TUP2")
       // }
       val EatAlias(alias) = sym
-      val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+      val bits = try { // TODO: Spent way too much time trying to figure out how to get bit info from tuples (╯°□°)╯︵ ┻━┻
+        nbits(sym.tp.typeArguments(0).typeArguments(0).typeArguments(1)) + nbits(sym.tp.typeArguments(0).typeArguments(0).typeArguments(2)) + nbits(sym.tp.typeArguments(0).typeArguments(1).typeArguments(0)) + nbits(sym.tp.typeArguments(0).typeArguments(1).typeArguments(1))
+      } catch { // Float
+        case _ : Throwable => try {nbits(sym.tp.typeArguments(0).typeArguments(0)) + nbits(sym.tp.typeArguments(0).typeArguments(1))}
+        catch { // Fixed
+        case _ : Throwable => nbits(sym.tp.typeArguments(0).typeArguments(2)) + nbits(sym.tp.typeArguments(0).typeArguments(1))
+        }
+      } 
+
+      // val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
 
       if (!regs.contains(alias.asInstanceOf[Sym[Reg[Any]]])) {
         regs += alias.asInstanceOf[Sym[Reg[Any]]]
@@ -782,6 +791,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
             case ConstFix(rv) => rv
             case ConstFlt(rv) => rv
+            case _ => 0
           }
           duplicates.zipWithIndex.foreach { case (d, i) =>
             regType(sym) match {
@@ -791,24 +801,13 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     Console.println(s"[WARNING] Assume duplicate 0 is the inside reduction register and do not emit lib")
                   case _ =>
                     val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
-                    if (true/*!isTup2(sym.tp)*/) {
-                      if (d.depth > 1) {
-                        emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal), ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
-                      } else {
-                        emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal)); // ${nameOf(sym).getOrElse("")}""")
-                        val readstr = if (parOf(sym) > 1) "readv" else "read"
-                        emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
-                        emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this); // ${nameOf(sym).getOrElse("")}""")
-                      }
+                    if (d.depth > 1) {
+                      emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $bits, "${quote(sym)}_${i}", ${parOf(sym)}, $rstVal, ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
                     } else {
-                      if (d.depth > 1) {
-                        emit(s"""NBufTup ${quote(sym)}_${i}_lib = new NBufTup(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal), ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
-                      } else {
-                        emit(s"""DelayTupLib ${quote(sym)}_${i}_lib = new DelayTupLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal)); // ${nameOf(sym).getOrElse("")}""")
-                        val readstr = if (parOf(sym) > 1) "readv" else "read"
-                        emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
-                        emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this); // ${nameOf(sym).getOrElse("")}""")
-                      }                      
+                      emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, $bits, $rstVal); // ${nameOf(sym).getOrElse("")}""")
+                      val readstr = if (parOf(sym) > 1) "readv" else "read"
+                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
+                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = dfeRawBits(${bits}).newInstance(this); // ${nameOf(sym).getOrElse("")}""")
                     }
                 }
               case _ => throw new Exception(s"""Unknown reg type ${regType(sym)}""")
@@ -863,6 +862,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               quote(reg)
           }
 
+          val regCast = ".cast(" + tpstr(parOf(reg))(reg.tp.typeArguments(0), implicitly[SourceContext]) + ")"
+
           // Specialized reductions (regular accumulators with a reduction type) just use sym directly
           // TODO: Why was the statement below in the if statement?  Seems like we always want it printed...
           // if (regType(reg) != Regular || !isAccum(reg) || !reduceType(reg).map{t => t != OtherReduction}.getOrElse(false) ) {
@@ -874,7 +875,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               }
             case _ => // Otherwise emit here
               if (!emitted_reglibreads.contains((sym, regStr))) {
-                emit(s"""$pre ${quote(sym)} = $regStr; // reg read ${nameOf(reg).getOrElse("")}""")
+                emit(s"""$pre ${quote(sym)} = ${regStr}${regCast}; // reg read ${nameOf(reg).getOrElse("")}""")
                 emitted_reglibreads += ((sym, regStr))
               }
           }
@@ -894,7 +895,16 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val writer = writersOf(reg).find(_.node == sym).get
 
       val writeCtrl = writersOf(reg).head.controlNode  // Regs have unique writer which also drives reset
-      val ts = tpstr(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])
+      val isTup =  try { // TODO: Spent way too much time trying to figure out how to get bit info from tuples (╯°□°)╯︵ ┻━┻
+        val dummy = nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(1))
+        true
+      } catch { // not Tup2
+        case _ : Throwable => false
+      } 
+
+      val ts = if (!isTup) {tpstr(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])} else {
+        nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(1)) + nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(2)) + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(0)) + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(1))
+      }
       val allDups = duplicatesOf(reg).zipWithIndex
       val dups = allDups.filter{case (dup, i) => instanceIndicesOf(writer, reg).contains(i) }
 
@@ -938,7 +948,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   // Assume duplicate 0 is used for reduction, all others need writes
                   dups.foreach { case (dup, ii) => 
                     val port = portsOf(writer, reg, ii).head 
-                    if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                    if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), ${quote(writeCtrl)}_done, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
                   }
                 }
               case _ =>
@@ -954,15 +964,15 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   val rstStr = quote(parentOf(reg).get) + "_rst_en"
                   // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
                   if (false/*dup.depth == 2*/) {
-                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false)); // ${nameOf(reg).getOrElse("")}""")
+                    emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), ${quote(writeCtrl)}_done, constant.var(false)); // ${nameOf(reg).getOrElse("")}""")
                   } else if (dup.depth > 1) {
-                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
+                    emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), ${quote(writeCtrl)}_done, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
                   }
                   else {
                     // Using an enable signal instead of "always true" is causing an illegal loop.
                     // Using a reset signal instead of "always false" is causing an illegal loop.
                     // These signals don't matter for pass-through registers anyways.
-                    emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                    emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), constant.var(true), constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
                   }
               }
             }
