@@ -20,6 +20,7 @@ trait SpatialVector[T]
 trait CACHE[T]
 trait Register[T]
 trait DRAM[T]
+trait Tup2[T1,T2]
 
 trait SpatialPipeline
 trait SpatialIndices
@@ -33,6 +34,7 @@ trait MemoryTemplateTypesExp extends MemoryTemplateTypes with BaseExp {
   type Vector[T] = SpatialVector[T]
   type Cache[T] = CACHE[T]
   type Reg[T] = Register[T]
+  // type Tup2[T1,T2] = Tuple2[T1,T2]
 
   type Pipeline = SpatialPipeline
   type Indices = SpatialIndices
@@ -45,6 +47,7 @@ trait MemoryTemplateTypesExp extends MemoryTemplateTypes with BaseExp {
   def isCache[T:Manifest]    = isSubtype(manifest[T].runtimeClass, classOf[CACHE[_]])
   def isCAM[T:Manifest]      = isSubtype(manifest[T].runtimeClass, classOf[SpatialCAM[_,_]])
   def isVector[T:Manifest]   = isSubtype(manifest[T].runtimeClass, classOf[SpatialVector[_]])
+  def isTup2[T:Manifest]     = isSubtype(manifest[T].runtimeClass, classOf[Register[Tup2[_,_]]])
 
   def offchipMemManifest[T:Manifest]: Manifest[OffChipMem[T]] = manifest[DRAM[T]]
   def bramManifest[T:Manifest]: Manifest[BRAM[T]] = manifest[BlockRAM[T]]
@@ -55,6 +58,7 @@ trait MemoryTemplateTypesExp extends MemoryTemplateTypes with BaseExp {
   def cacheManifest[T:Manifest]: Manifest[Cache[T]] = manifest[CACHE[T]]
   def regManifest[T:Manifest]: Manifest[Reg[T]] = manifest[Register[T]]
   def pipelineManifest: Manifest[Pipeline] = manifest[SpatialPipeline]
+  // def tup2Manifest[T1:Manifest, T2:Manifest]: Manifest[Tup2[T1,T2]] = manifest[Tuple2[T1,T2]]
 
   // TODO: Should be refined manifest? But how to know how many fields to fill in?
   def indicesManifest: Manifest[Indices] = manifest[SpatialIndices]
@@ -280,6 +284,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
   override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
     case "SpatialVector" => "DFEVector<DFEVar>"
+    case "Tuple2"  => "Something[" + remap(m.typeArguments(0)) + ", " + remap(m.typeArguments(1)) + "]"
     case _ => super.remap(m)
   }
 
@@ -759,14 +764,20 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
     case Reg_new(init) =>
       // TODO: This is known to have a def, so it shouldn't be necessary to use EatAlias here
+      // sym.tp.typeArguments.head.erasure match {
+      //   case a: Tup2[_,_] => Console.println("TUP2")
+      //   case _ => Console.println("not TUP2")
+      // }
       val EatAlias(alias) = sym
+      val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+
       if (!regs.contains(alias.asInstanceOf[Sym[Reg[Any]]])) {
         regs += alias.asInstanceOf[Sym[Reg[Any]]]
 
         withStream(baseStream) {
           emitComment("Reg_new {")
-          Console.println(s"sym $sym, parOf ${parOf(sym)} tp ${sym.tp} tpargs ${sym.tp.typeArguments}")
-          val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+          // val ts = if (!isTup2(sym.tp)) {tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])} else 
+          //   {List(tpstr(parOf(sym))(sym.tp.typeArguments(0).typeArguments(0), implicitly[SourceContext]),tpstr(parOf(sym))(sym.tp.typeArguments(0).typeArguments(1), implicitly[SourceContext]))}
           val duplicates = duplicatesOf(sym)
           val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
             case ConstFix(rv) => rv
@@ -780,18 +791,24 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     Console.println(s"[WARNING] Assume duplicate 0 is the inside reduction register and do not emit lib")
                   case _ =>
                     val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
-                    if (false/*d.depth == 2*/) {
-                      emit(s"""DblBufReg ${quote(sym)}_${i}_lib = new DblBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal)); //${d.depth} depth ${nameOf(sym).getOrElse("")}""")
-                      val readstr = if (parOf(sym)>1) "readv" else "read"
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this); // ${nameOf(sym).getOrElse("")}""")
-                    } else if (d.depth > 1) {
-                      emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal), ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
+                    if (true/*!isTup2(sym.tp)*/) {
+                      if (d.depth > 1) {
+                        emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal), ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
+                      } else {
+                        emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal)); // ${nameOf(sym).getOrElse("")}""")
+                        val readstr = if (parOf(sym) > 1) "readv" else "read"
+                        emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
+                        emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this); // ${nameOf(sym).getOrElse("")}""")
+                      }
                     } else {
-                      emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal)); // ${nameOf(sym).getOrElse("")}""")
-                      val readstr = if (parOf(sym) > 1) "readv" else "read"
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this); // ${nameOf(sym).getOrElse("")}""")
+                      if (d.depth > 1) {
+                        emit(s"""NBufTup ${quote(sym)}_${i}_lib = new NBufTup(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal), ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
+                      } else {
+                        emit(s"""DelayTupLib ${quote(sym)}_${i}_lib = new DelayTupLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal)); // ${nameOf(sym).getOrElse("")}""")
+                        val readstr = if (parOf(sym) > 1) "readv" else "read"
+                        emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
+                        emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this); // ${nameOf(sym).getOrElse("")}""")
+                      }                      
                     }
                 }
               case _ => throw new Exception(s"""Unknown reg type ${regType(sym)}""")
