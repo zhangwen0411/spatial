@@ -25,7 +25,7 @@ delay=1200
 random=(`date +"%H-%M"`) # Chars to add to directory to avoid new workers from wiping old
 
 # Override env vars to point to a separate directory for this regression test
-export TESTS_HOME="/home/mattfel/${branch}_regression_tests_${random}"
+export TESTS_HOME="${HOME}/${branch}_regression_tests_${random}"
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${TESTS_HOME}/hyperdsl
@@ -146,7 +146,7 @@ function create_script {
 	echo "
 #!/bin/bash
 # Override env vars to point to a separate directory for this regression test
-export TESTS_HOME=/home/mattfel/${branch}_regression_tests_${random}
+export TESTS_HOME=${HOME}/${branch}_regression_tests_${random}
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${TESTS_HOME}/hyperdsl
@@ -243,7 +243,7 @@ fi" >> $1
 #################
 
 # Kill any maxcompilersims older than an hour
-stale_sims=(`ps axh -O user,etimes | grep mattfel | grep maxcompilersim  | awk '{if ($3 >= 1) print $1}'`)
+stale_sims=(`ps axh -O user,etime | grep mattfel | grep maxcompilersim  | awk '{if ($3 >= 1) print $1}'`)
 for job in ${stale_sims[@]}; do
 	kill -9 $job
 done
@@ -255,7 +255,7 @@ echo "[STATUS] `date`: Cloning stuff..."
 git clone git@github.com:stanford-ppl/hyperdsl.git > /dev/null
 if [ ! -d "./hyperdsl" ]; then
   echo "hyperdsl directory does not exist!"
-  result_file="/home/mattfel/hyperdsl/spatial/spatial.wiki/${branch}-Regression-Tests-Status.md"
+  result_file="${HOME}/hyperdsl/spatial/spatial.wiki/${branch}-Regression-Tests-Status.md"
   echo "Current global status on ${branch} branch:" > $result_file
   echo "-------------------------------" >> $result_file
   echo "" >> $result_file
@@ -264,7 +264,7 @@ if [ ! -d "./hyperdsl" ]; then
   echo "" >> $result_file
   echo "Error cloning hyperdsl!  Could not validate anything!" >> $result_file
   # git push
-  cd /home/mattfel/hyperdsl/spatial/spatial.wiki
+  cd ${HOME}/hyperdsl/spatial/spatial.wiki
   cmd="git add ${branch}-Regression-Tests-Status.md"
   eval "$cmd"
   git commit -m "automated status update"
@@ -319,16 +319,16 @@ echo "[STATUS] `date`: Checking if spatial made correctly..."
 if [ ! -d "${PUB_HOME}" ]; then
   echo "$PUB_HOME directory does not exist!"
   # Use main repo's wiki for update
-  if [ ! -d "/home/mattfel/hyperdsl/spatial/spatial.wiki" ]; then
+  if [ ! -d "${HOME}/hyperdsl/spatial/spatial.wiki" ]; then
   	echo "FATAL ERROR! No default wiki!"
 	sleep 3
 	rm ${TESTS_HOME}
   	exit 1
   else 
-  	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
+  	cd ${HOME}/hyperdsl/spatial/spatial.wiki
 	git fetch
 	git reset --hard
-	result_file="/home/mattfel/hyperdsl/spatial/spatial.wiki/${branch}-Regression-Tests-Status.md"
+	result_file="${HOME}/hyperdsl/spatial/spatial.wiki/${branch}-Regression-Tests-Status.md"
 	echo "Current global status on ${branch} branch:" > $result_file
 	echo "-------------------------------" >> $result_file
 	echo "" >> $result_file
@@ -337,7 +337,7 @@ if [ ! -d "${PUB_HOME}" ]; then
 	echo "" >> $result_file
 	echo "Error building Spatial!  No published dir. Could not validate anything!" >> $result_file
 	# git push
-	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
+	cd ${HOME}/hyperdsl/spatial/spatial.wiki
 	cmd="git add ${branch}-Regression-Tests-Status.md"
 	eval "$cmd"
 	git commit -m "automated status update"
