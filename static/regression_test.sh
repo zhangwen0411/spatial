@@ -3,7 +3,7 @@
 ##########
 # CONFIG #
 ##########
-# Length of history to maintain in pretty printer (remember to manually add enough git commits)
+# Length of history to maintain in pretty printer
 hist=72
 branch=$1
 
@@ -19,7 +19,7 @@ sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
 sparse_args_list=("960" "960"      "960"              "960"       "960"   )    
 
 # Seconds to pause while waiting for apps to run
-delay=900
+delay=1200
 
 # random=(`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 4`) # Random chars to add to directory to avoid new workers from wiping old
 random=(`date +"%H-%M"`) # Chars to add to directory to avoid new workers from wiping old
@@ -162,7 +162,8 @@ cd ${PUB_HOME}
 ${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} 2>&1 | tee -a ${5}/log
 
 sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${5}/log
-sed -i \"s/error retrieving current directory/Ignoring getcwd e r r o r/g\" log
+sed -i \"s/error retrieving current directory/Ignoring getcwd e r r o r/g\" ${5}/log
+sed -i \"s/error: illegal sharing of mutable object/Ignoring scattergather mutable sharing e r r o r/g\" ${5}/log
 
 wc=\$(cat ${5}/log | grep \"couldn't find DEG file\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
@@ -180,6 +181,7 @@ if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -2 (${4} Spatial Error)\"
 	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
 	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+	    cat ${5}/log
 	    echo \"[STATUS] Declaring failure build_in_spatial\"
     	touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
     fi
@@ -435,7 +437,7 @@ for ac in ${app_classes[@]}; do
 		cmd_file="${vulture_dir}/cmd"
 
 		# Create script
-		create_script $cmd_file ${ac} $i ${test_list[i]} ${vulture_dir}
+		create_script $cmd_file ${ac} $(($i*30)) ${test_list[i]} ${vulture_dir}
 
 		# Run vulture
 		cd ${SPATIAL_HOME}/regression_tests/${ac}/
@@ -633,10 +635,13 @@ cd ${SPATIAL_HOME}/spatial.wiki
 git stash
 git pull
 git stash pop
+# Remove conflicts
+perl -0777 -i -pe 'BEGIN{undef $/;} s/\n=====.*>>>>>//smg' ./*
+perl -0777 -i -pe 's/\n<<<<<.*//g' ./*
 git add *
 git commit -m "automated status update via cron"
 git push
 
-sleep 3
+sleep 9
 rm -rf ${TESTS_HOME}
 

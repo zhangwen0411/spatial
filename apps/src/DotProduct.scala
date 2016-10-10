@@ -6,9 +6,9 @@ object DotProduct extends SpatialAppCompiler with DotProductApp
 trait DotProductApp extends SpatialApp {
   type T = SInt
 
-  val tileSize = 96
-  val innerPar = 2
-  val outerPar = 2
+  val tileSize = 9600
+  val innerPar = 32
+  val outerPar = 4
   type Array[T] = ForgeArray[T]
 
   def dotproduct(a: Rep[Array[T]], b: Rep[Array[T]]) = {
@@ -30,14 +30,14 @@ trait DotProductApp extends SpatialApp {
     Accel {
       val reg = Reg[T]
       Fold(N by B par P1)(reg, 0.as[T]){ i =>
-        val b1 = BRAM[T](B)
-        val b2 = BRAM[T](B)
+        val b1 = FIFO[T](B)
+        val b2 = FIFO[T](B)
         Parallel {
           b1 := v1(i::i+B, P3)
           b2 := v2(i::i+B, P3)
         }
         Reduce(B par P2)(0.as[T]){ii =>
-          b1(ii) * b2(ii)
+          b1.pop * b2.pop
         }{_+_}
       }{_+_}
       Pipe { out := reg }
@@ -56,13 +56,13 @@ trait DotProductApp extends SpatialApp {
     val a = Array.fill(N)(random[T](10))
     val b = Array.fill(N)(random[T](10))
 
-    printArr(a, "a")
-    printArr(b, "b")
+    // printArr(a, "a")
+    // printArr(b, "b")
 
     val result = dotproduct(a, b)
     val gold = a.zip(b){_*_}.reduce{_+_}
-    println("expected: " + gold)
-    println("result: " + result)
+    // println("expected: " + gold)
+    // println("result: " + result)
 
     val cksum = gold == result
     println("PASS: " + cksum + " (DotProduct)")

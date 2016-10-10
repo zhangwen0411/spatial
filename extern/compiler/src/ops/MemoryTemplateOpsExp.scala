@@ -336,6 +336,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
 
   val brams = Set[Exp[BRAM[Any]]]()
   val regs = Set[Exp[Reg[Any]]]()
+  val connectedArgs = Set[Exp[Any]]()
 
   def emitBufferControlSignals() {
     emit(s"""// rdone signals for N-Buffers go here""")
@@ -663,6 +664,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
     emitComment("} Bram_store")
   }
 
+  
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Offchip_new(size) =>
         emitComment(s""" Offchip_new(${quote(size)}) {""")
@@ -846,7 +848,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         emit(s"""DFEVar ${quote(sym)} = io.scalarInput("${quote(sym)}", $ts );""")
       }
       if (argToExp.contains(sym.asInstanceOf[Sym[Reg[Any]]])) {
-        emit(s"""${quote(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))} <== ${quote(sym)};""")
+        if (!connectedArgs.contains(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))) {
+          emit(s"""${quote(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))} <== ${quote(sym)};""")
+          connectedArgs += (argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))
+        }
       }
 
 

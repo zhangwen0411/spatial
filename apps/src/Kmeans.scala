@@ -8,10 +8,10 @@ trait KmeansApp extends SpatialApp {
   type T = Flt
 
   lazy val MAXK = 96
-  lazy val MAXD = 384
+  lazy val MAXD = 96
   val tileSize = 96
-  val innerPar = 2
-  val outerPar = 2
+  val innerPar = 1
+  val outerPar = 1
 
   def kmeans(points_in: Rep[Array[T]], numPoints: Rep[SInt], numCents: Rep[SInt], numDims: Rep[SInt]) = {
     bound(numPoints) = 960000
