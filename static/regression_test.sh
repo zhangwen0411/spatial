@@ -281,6 +281,7 @@ git checkout -b spatial origin/spatial > /dev/null
 cd delite 
 git fetch > /dev/null 
 git checkout -b spatial origin/spatial > /dev/null 
+find ./ -type f -exec sed -i -e 's/^import tools.nsc/import scala.tools.nsc/g' {} \;
 # git pull origin spatial > /dev/null
 cd ../forge 
 git fetch > /dev/null 
@@ -296,6 +297,7 @@ cd spatial
 git fetch > /dev/null 
 cmd="git checkout -b ${branch} origin/${branch}"
 eval "$cmd" > /dev/null
+find ./ -type f -exec sed -i -e 's/^import tools.nsc/import scala.tools.nsc/g' {} \;
 # cmd="git pull origin ${branch}"
 # eval "$cmd" > /dev/null
 cd ../
