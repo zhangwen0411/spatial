@@ -807,21 +807,27 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
             case _ => 0
           }
           duplicates.zipWithIndex.foreach { case (d, i) =>
+            val skipKerneledReg = (reduceType(sym), i) match {
+              case (Some(fps: ReduceFunction), 0) =>
+                fps match {
+                  case FixPtSum => true
+                  case FltPtSum => true
+                  case _ => false
+                }
+              case _ => false
+            }
             regType(sym) match {
               case Regular =>
-                (reduceType(sym), i) match {
-                  case (Some(fps: ReduceFunction), 0) =>
-                    Console.println(s"[WARNING] Assume duplicate 0 is the inside reduction register and do not emit lib")
-                  case _ =>
-                    val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
-                    if (d.depth > 1) {
-                      emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $bits, "${quote(sym)}_${i}", ${parOf(sym)}, $rstVal, ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
-                    } else {
-                      emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, $bits, $rstVal); // ${nameOf(sym).getOrElse("")}""")
-                      val readstr = if (parOf(sym) > 1) "readv" else "read"
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = dfeRawBits(${bits}).newInstance(this); // ${nameOf(sym).getOrElse("")}""")
-                    }
+                if (!skipKerneledReg) {
+                  val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
+                  if (d.depth > 1) {
+                    emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $bits, "${quote(sym)}_${i}", ${parOf(sym)}, $rstVal, ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
+                  } else {
+                    emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, $bits, $rstVal); // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}""")
+                    val readstr = if (parOf(sym) > 1) "readv" else "read"
+                    emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
+                    emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = dfeRawBits(${bits}).newInstance(this); // ${nameOf(sym).getOrElse("")}""")
+                  }
                 }
               case _ => throw new Exception(s"""Unknown reg type ${regType(sym)}""")
             }
@@ -883,7 +889,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           }
 
           val regCast = if (!isTup) {".cast(" + tpstr(parOf(reg))(reg.tp.typeArguments(0), implicitly[SourceContext]) + ")"} else {
-            ".cast(dfeRawBits(" + nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(1)) + nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(2)) + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(0)) + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(1)) + "))"
+            ".cast(dfeRawBits(" + nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(1)) + "+" + nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(2)) + "+" + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(0)) + "+" + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(1)) + "))"
           }
 
           // Specialized reductions (regular accumulators with a reduction type) just use sym directly
@@ -897,7 +903,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               }
             case _ => // Otherwise emit here
               if (!emitted_reglibreads.contains((sym, regStr))) {
-                emit(s"""$pre ${quote(sym)} = ${regStr}${regCast}; // reg read ${nameOf(reg).getOrElse("")}""")
+                emit(s"""$pre ${quote(sym)} = ${regStr}${regCast}; // reg read ${nameOf(reg).getOrElse("")} $isTup""")
                 emitted_reglibreads += ((sym, regStr))
               }
           }
@@ -925,7 +931,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       } 
 
       val ts = if (!isTup) {tpstr(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])} else {
-        nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(1)) + nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(2)) + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(0)) + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(1))
+        nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(1)) + "+" + nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(2)) + "+" + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(0)) + "+" + nbits(reg.tp.typeArguments(0).typeArguments(1).typeArguments(1))
       }
       val allDups = duplicatesOf(reg).zipWithIndex
       val dups = allDups.filter{case (dup, i) => instanceIndicesOf(writer, reg).contains(i) }
@@ -967,10 +973,14 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     case FltPtSum =>
                       emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                     case _ =>
-                      emit(s"""${quote(reg)} gets ${quote(value)}, but redtype unknown""")
+                      // TODO: This is very bad assumption!  Actually check which reg to write to!!! 
+                      emit(s"""DFEVar ${quote(reg)} = ${quote(value)}; // redtype ${fps} unknown, just assign wire""")
+                      val port = portsOf(writer, reg, 0).head 
+                      emit(s"""${quote(reg)}_0_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_0_lib.bits)), $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                      emit(s"""${quote(reg)}_0_delayed <== stream.offset(${quote(reg)}_0, -${quote(writeCtrl)}_offset);""")
                       // throw new Exception(s"Reduction $fps codegen unknown!")
                   }
-                  // Assume duplicate 0 is used for reduction, all others need writes
+                  // TODO: Assume duplicate 0 is used for reduction, all others need writes
                   dups.foreach { case (dup, ii) => 
                     val port = portsOf(writer, reg, ii).head 
                     if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")

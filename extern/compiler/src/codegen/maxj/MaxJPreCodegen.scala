@@ -15,7 +15,8 @@ import scala.collection.mutable.Set
 import ppl.delite.framework.DeliteApplication
 
 trait MaxJPreCodegen extends Traversal  {
-	val IR:SpatialExp with MemoryAnalysisExp with UnrollingTransformExp with ExternPrimitiveOpsExp
+	val IR:SpatialExp with MemoryAnalysisExp with UnrollingTransformExp with ExternPrimitiveOpsExp with ReductionAnalysisExp
+
 	import IR.{infix_until => _, looprange_until => _, println => _, _}
 
 	var buildDir:String = _
@@ -145,11 +146,24 @@ trait MaxJPreCodegen extends Traversal  {
 					}
 				case InnerPipe => 
           parentOf(sym).get match {
-            case e@Deff(ParPipeReduce(_,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+            case e@Deff(ParPipeReduce(_,accum,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
               if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
-                withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-                  emitReduction(sym, rhs)
-                }                
+                reduceType(accum) match {
+                  case Some(fps: ReduceFunction) => fps match {
+                    case FixPtSum =>
+                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        emitReduction(sym, rhs)
+                      }                
+                    case FltPtSum =>
+                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        emitReduction(sym, rhs)
+                      }                
+                    case _ => // Do not specialize, turn off all metadata for reduction
+                      focusBlock(func){focusExactScope(func){stms =>stms.map { case TP(s,d) =>
+                        isReduceStarter(s) = false
+                        isReduceResult(s) = false}}}
+                  }
+                }
               }
             case _ =>            
           }
@@ -164,9 +178,22 @@ trait MaxJPreCodegen extends Traversal  {
       }
       styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
         case InnerPipe =>
-          withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-            emitReduction(sym, rhs)
-          }
+                reduceType(accum) match {
+                  case Some(fps: ReduceFunction) => fps match {
+                    case FixPtSum =>
+                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        emitReduction(sym, rhs)
+                      }                
+                    case FltPtSum =>
+                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        emitReduction(sym, rhs)
+                      }                
+                    case _ => // Do not specialize, turn off all metadata for reduction
+                      focusBlock(func){focusExactScope(func){stms =>stms.map { case TP(s,d) =>
+                        isReduceStarter(s) = false
+                        isReduceResult(s) = false}}}
+                  }
+                }
         case _ =>
       }
 
@@ -178,11 +205,24 @@ trait MaxJPreCodegen extends Traversal  {
 					}
 				case InnerPipe =>
           parentOf(sym).get match {
-            case e@Deff(ParPipeReduce(_,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+            case e@Deff(ParPipeReduce(_,accum,_,_,_,acc,_)) => // If part of reduce, emit custom red kernel
               if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
-                withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-                  emitReduction(sym, rhs)
-                }                
+                reduceType(accum) match {
+                  case Some(fps: ReduceFunction) => fps match {
+                    case FixPtSum =>
+                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        emitReduction(sym, rhs)
+                      }                
+                    case FltPtSum =>
+                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        emitReduction(sym, rhs)
+                      }                
+                    case _ => // Do not specialize, turn off all metadata for reduction
+                      focusBlock(func){focusExactScope(func){stms =>stms.map { case TP(s,d) =>
+                        isReduceStarter(s) = false
+                        isReduceResult(s) = false}}}
+                  }
+                }
               }
             case _ =>            
           }
@@ -215,12 +255,7 @@ trait MaxJPreCodegen extends Traversal  {
       val dups = duplicatesOf(sym)
       dups.zipWithIndex.foreach { case (d, i) =>
         val readers = readersOf(sym)
-        if (false/*d.depth == 2*/) {
-          val numReaders_for_this_duplicate = readers.filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
-          withStream(newStream("bram_" + quote(sym) + "_" + i)) {
-            emitDblBufSM(quote(sym) + "_" + i, numReaders_for_this_duplicate)
-          }
-        } else if (d.depth > 2) {
+        if (d.depth > 2) {
           val numReaders_for_this_duplicate = readers.filter{r => instanceIndicesOf(r, sym).contains(i) }.length
           withStream(newStream("bram_" + quote(sym) + "_" + i)) {
             emitDblBufSM(quote(sym) + "_" + i, numReaders_for_this_duplicate)
@@ -391,6 +426,8 @@ trait MaxJPreCodegen extends Traversal  {
     dd match {
       case FltPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Sub(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Sub(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FltPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
@@ -411,6 +448,8 @@ trait MaxJPreCodegen extends Traversal  {
       case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
       case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FieldApply(a,b) => {if (isConstOrArgOrBnd(a)) {ret +=a}}
+      case Internal_pack2(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case _ =>
     }
     set ++ ret
@@ -466,6 +505,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
         var inputVecs = Set[Sym[Any]]()
         var treeResultSyms = Set[Sym[Any]]()
         var finalLineReg = ""
+        var knownRedType = false
         var finalLineBram = ""
         var vecs_from_lists = Set[Exp[Any]]()
         var consts_args_bnds_list = Set[Exp[Any]]()
@@ -475,7 +515,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
             stms.zipWithIndex.map { case (TP(s,d), ii) =>
               val Deff(dd) = s
               consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-              // Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+              Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
               dd match {
                 case Reg_read(_) =>
                   first_reg_read = first_reg_read :+ ii
@@ -500,6 +540,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                   val pre = maxJPre(s)
                   if (isReduceResult(s)) {
                     treeResultSyms += s
+                    knownRedType = true
                     if (hasRegWrite) {
                       s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
                     } else {
@@ -513,6 +554,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   val pre = maxJPre(s)
                   if (isReduceResult(s)) {
+                    knownRedType = true
                     treeResultSyms += s
                     if (hasRegWrite) {
                       s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
@@ -531,6 +573,14 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   val pre = maxJPre(s)
                   s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
+                case tag @ FltPt_Sub(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} - ${quote(b)};"""
+                case tag @ FixPt_Sub(a,b) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  val pre = maxJPre(s)
+                  s"""$pre ${quote(s)} = ${quote(a)} - ${quote(b)};"""
                 case FixPt_Lt(a,b) =>
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   val pre = maxJPre(s)
@@ -613,9 +663,15 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                   inputVecs += s
                   s"/* Par_bram_load */"
                 case FieldApply(a, b) => 
-                  s"""this is a field apply ${quote(s)} and ${quote(a)} and ${b}"""
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+                  inputVecs += s
+                  val pre = maxJPre(s)
+                  b match { // TODO: Decide slice based on bit lengths
+                    case "_1" => s"""${pre} ${quote(s)} = ${quote(a)}.slice(0,32).cast(${quote(s)}.getType());"""
+                    case "_2" => s"""${pre} ${quote(s)} = ${quote(a)}.slice(32,32).cast(${quote(s)}.getType());"""
+                  }
                 case Internal_pack2(a,b) => 
-                  s"""this is a internal pack  ${quote(s)} and ${quote(a)} and ${quote(b)}"""                 
+                  s"""DFEVar ${quote(s)} = ${quote(a)}.cast(dfeRawBits(32)).cast(dfeRawBits(64)).shiftLeft(32) ^ ${quote(b)}.cast(dfeRawBits(32)).cast(dfeRawBits(64));"""
                 case _ =>
                   s"/* Unknown Deff $s ${dd} inside of MaxJPreCodegen*/"
               }
@@ -623,6 +679,11 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
           }
         }
 
+        if (!knownRedType) { 
+          val syms = focusBlock(func){ focusExactScope(func){ stms => stms.map { case TP(s,d) => s }}}
+          Console.println(s"Setting isStarter for ${syms(first_reg_read(1))} to false")
+          isReduceStarter(syms(first_reg_read(1))) = false
+        } // In Kmeans, need to disable this for LT reduction
         // // TODO: Assume last Vector_from_list node is packing a single element (tree result) into a list
         // val Deff(dd) = vecs_from_lists.toList.last
         // isReduceResult(vecs_from_lists.toList.last) = true

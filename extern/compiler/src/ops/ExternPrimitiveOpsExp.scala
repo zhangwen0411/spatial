@@ -234,6 +234,24 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 
+    case FixPt_Sub(a,b) =>
+      val pre = maxJPre(sym)
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""$pre ${quote(sym)} = ${quote(a)} - ${quote(b)};""")
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
+    case FltPt_Sub(a,b) =>
+      val pre = maxJPre(sym)
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""$pre ${quote(sym)} = ${quote(a)} - ${quote(b)};""")
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
     case FixPt_Div(a,b) =>
       val pre = maxJPre(sym)
       rTreeMap(sym) match {
@@ -245,15 +263,26 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
 
     case FieldApply(a, b) => 
       val pre = maxJPre(sym)
+      val tp = tpstr(parOf(sym))(sym.tp, implicitly[SourceContext])
       rTreeMap(sym) match {
-        case Nil =>
-          b match { 
-            case "_1" => emit(s"""$a.slice(""")
+        case Nil => 
+          b match { // TODO: Decide slice based on bit lengths
+            case "_1" => emit(s"""$pre ${quote(sym)} = ${quote(a)}.slice(0,32).cast($tp);""")
+            case "_2" => emit(s"""$pre ${quote(sym)} = ${quote(a)}.slice(32,32).cast($tp);""")
           }
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} / ${quote(b)};""")
         case m =>
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
+
+    case Internal_pack2(a,b) => 
+      rTreeMap(sym) match {
+        case Nil => 
+          emit(s"""DFEVar ${quote(sym)} = ${quote(a)}.cast(dfeRawBits(32)).cast(dfeUInt(32)).cast(dfeUInt(64)).cast(dfeRawBits(64)).shiftLeft(32) ^ ${quote(b)}.cast(dfeRawBits(32)).cast(dfeUInt(32)).cast(dfeUInt(64)).cast(dfeRawBits(64));""")
+
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
 
     case FltPt_Div(a,b) =>
       val pre = maxJPre(sym)
