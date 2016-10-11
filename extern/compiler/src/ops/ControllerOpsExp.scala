@@ -13,35 +13,43 @@ import spatial.compiler._
 import spatial.compiler.ops._
 import scala.collection.mutable.HashMap
 
-trait ControllerTemplateOpsExp extends ControllerTemplateOps with MemoryTemplateOpsExp with ExternCounterOpsExp {
+trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with ExternCounterOpsExp {
   this: SpatialExp =>
 
   type Idx = FixPt[Signed,B32,B0]
 
-
   // --- Nodes
-  case class Pipe_foreach(cchain: Exp[CounterChain], func: Block[Unit], inds: List[Sym[Idx]])(implicit val ctx: SourceContext) extends Def[Pipeline]
-  case class Pipe_fold[T,C[T]] (
+  case class ParallelPipe(func: Block[Unit])(implicit val ctx: SourceContext) extends Def[Pipeline]
+  case class UnitPipe(func: Block[Unit])(implicit val ctx: SourceContext) extends Def[Pipeline]
+
+
+  case class OpForeach(
+    cchain: Exp[CounterChain],  // Loop counter chain
+    func:   Block[Unit],        // Foreach function
+    inds:   List[Sym[Idx]]      // Loop iterators
+  )(implicit val ctx: SourceContext) extends Def[Pipeline]
+
+
+  case class OpReduce[T,C[T]] (
     // - Inputs
     cchain: Exp[CounterChain],  // Loop counter chain
     accum:  Exp[C[T]],          // Reduction accumulator
     zero: Option[Exp[T]],       // Zero value
     foldAccum: Boolean,         // Act as a fold (true) or a reduce (false)
     // - Reified blocks
-    iFunc:  Block[Idx],         // "Calculation" of reduction index (always 0)
     ldFunc: Block[T],           // Accumulator load function (reified with acc, idx)
     stFunc: Block[Unit],        // Accumulator store function (reified with acc, idx, res)
     func:   Block[T],           // Map function
     rFunc:  Block[T],           // Reduction function
     // - Bound args
     inds:   List[Sym[Idx]],     // Loop iterators
-    idx:    Sym[Idx],           // Reduction index (usually always 0)
     acc:    Sym[C[T]],          // Reduction accumulator (aliases with accum)
     res:    Sym[T],             // Reduction intermediate result (aliases with rFunc.res)
     rV:    (Sym[T], Sym[T])     // Reduction function inputs
   )(implicit val ctx: SourceContext, val memC: Mem[T,C], val numT: Num[T], val mT: Manifest[T], val mC: Manifest[C[T]]) extends Def[Pipeline]
 
-  case class Accum_fold[T,C[T]](
+
+  case class OpMemReduce[T,C[T]](
     // - Inputs
     ccOuter: Exp[CounterChain], // Counter chain for map (outer) loop
     ccInner: Exp[CounterChain], // Counter chain for reduce (inner) loop
@@ -49,7 +57,6 @@ trait ControllerTemplateOpsExp extends ControllerTemplateOps with MemoryTemplate
     zero: Option[Exp[T]],       // Zero value
     foldAccum: Boolean,         // Act as a fold (true) or a reduce (false)
     // - Reified blocks
-    iFunc:  Block[Idx],         // Calculation of 1D index for loads and stores
     func: Block[C[T]],          // Map function
     resLdFunc: Block[T],        // Partial result load function
     ldFunc: Block[T],           // Accumulator load function
@@ -58,29 +65,37 @@ trait ControllerTemplateOpsExp extends ControllerTemplateOps with MemoryTemplate
     // - Bound args
     indsOuter: List[Sym[Idx]],  // Map (outer) loop iterators
     indsInner: List[Sym[Idx]],  // Reduce (inner) loop iterators
-    idx: Sym[Idx],              // Index used in addressing in ldFunc and stFunc
     part: Sym[C[T]],            // Partial result (aliases with func.res)
     acc: Sym[C[T]],             // Reduction accumulator (aliases with accum)
     res: Sym[T],                // Reduction intermediate result (aliases with rFunc.res)
     rV:  (Sym[T], Sym[T])       // Reduction function inputs
   )(implicit val ctx: SourceContext, val memC: Mem[T,C], val numT: Num[T], val mT: Manifest[T], val mC: Manifest[C[T]]) extends Def[Pipeline]
 
+
+
   // --- Internals
-  def pipe_foreach(cchain: Rep[CounterChain], func: Rep[Indices] => Rep[Unit])(implicit ctx: SourceContext): Rep[Pipeline] = {
+  def parallel_pipe(func: => Rep[Unit])(implicit ctx: SourceContext) = {
+    val blk = reifyEffects(func)
+    val effects = summarizeEffects(blk)
+    reflectEffect(ParallelPipe(blk)(ctx), effects andAlso Simple())
+  }
+
+  def unit_pipe(func: => Rep[Unit])(implicit ctx: SourceContext) = {
+    val blk = reifyEffects(func)
+    val effects = summarizeEffects(blk)
+    reflectEffect(UnitPipe(blk)(ctx), effects andAlso Simple())
+  }
+
+  def foreach_op(cchain: Rep[CounterChain], func: Rep[Indices] => Rep[Unit])(implicit ctx: SourceContext): Rep[Pipeline] = {
     val inds = List.fill(lenOf(cchain)){ fresh[Idx] } // Arbitrary number of bound args. Awww yeah.
     val blk = reifyEffects( func(indices_create(inds)) )
-    reflectEffect(Pipe_foreach(cchain, blk, inds), summarizeEffects(blk).star andAlso Simple())
+    reflectEffect(OpForeach(cchain, blk, inds), summarizeEffects(blk).star andAlso Simple())
   }
-  def pipe_fold[T,C[T]](cchain: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Rep[Indices] => Rep[T], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline]  = {
+
+  def reduce_op[T,C[T]](cchain: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Rep[Indices] => Rep[T], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline]  = {
     // Loop indices
     val is = List.fill(lenOf(cchain)){ fresh[Idx] }
     val inds = indices_create(is)
-
-    val redIndices = __mem.zeroIdx(accum)
-    val iBlk = reifyEffects( __mem.flatIdx(accum, redIndices) )
-
-    val idx = fresh[Idx]
-    accessIndicesOf(idx) = indices_to_list(redIndices)
 
     // Reified map function
     val mBlk = reifyEffects( func(inds) )
@@ -89,7 +104,7 @@ trait ControllerTemplateOpsExp extends ControllerTemplateOps with MemoryTemplate
     val acc = reflectMutableSym( fresh[C[T]] )  // Has to be mutable since we write to "it"
     setProps(acc, getProps(accum))
 
-    val ldBlk = reifyEffects(__mem.ld(acc, idx))
+    val ldBlk = reifyEffects(__mem.zeroLd(acc))
 
    // Reified reduction function
     val rV = (fresh[T], fresh[T])
@@ -97,31 +112,27 @@ trait ControllerTemplateOpsExp extends ControllerTemplateOps with MemoryTemplate
 
     // Reified store function
     val res = fresh[T]
-    val stBlk = reifyEffects(__mem.st(acc, idx, res))
+    val stBlk = reifyEffects(__mem.zeroSt(acc, res))
 
-    val effects = summarizeEffects(iBlk) andAlso summarizeEffects(mBlk) andAlso summarizeEffects(ldBlk) andAlso
+    val effects = summarizeEffects(mBlk) andAlso summarizeEffects(ldBlk) andAlso
                   summarizeEffects(rBlk) andAlso summarizeEffects(stBlk) andAlso Write(List(accum.asInstanceOf[Sym[C[T]]]))
 
-    reflectEffect(Pipe_fold[T,C](cchain, accum, zero, foldAccum, iBlk, ldBlk, stBlk, mBlk, rBlk, is, idx, acc, res, rV), effects.star)
+    reflectEffect(OpReduce[T,C](cchain, accum, zero, foldAccum, ldBlk, stBlk, mBlk, rBlk, is, acc, res, rV), effects.star)
   }
 
-  private def accum_common[T,C[T]](cchain: Rep[CounterChain], cchainRed: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Block[C[T]], isMap: List[Sym[Idx]], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline] = {
+  private def memreduce_common[T,C[T]](cchain: Rep[CounterChain], cchainRed: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Block[C[T]], isMap: List[Sym[Idx]], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline] = {
     val isRed = List.fill(lenOf(cchainRed)){ fresh[Idx] } // Reduce loop indices
     val indsRed = indices_create(isRed)
-
-    val idx = fresh[Idx]
-    accessIndicesOf(idx) = isRed
-    val iBlk = reifyEffects( __mem.flatIdx(getBlockResult(func), indsRed) )
 
     val part = fresh[C[T]]
     setProps(part, getProps(func))
     // Partial result load
-    val ldPartBlk = reifyEffects( __mem.ld(part, idx) )
+    val ldPartBlk = reifyEffects( __mem.ld(part, isRed) )
 
     val acc = reflectMutableSym( fresh[C[T]] )
     setProps(acc, getProps(accum))
     // Accumulator load
-    val ldBlk = reifyEffects( __mem.ld(acc, idx) )
+    val ldBlk = reifyEffects( __mem.ld(acc, isRed) )
 
     val rV = (fresh[T],fresh[T])
     // Reified reduction function
@@ -129,48 +140,45 @@ trait ControllerTemplateOpsExp extends ControllerTemplateOps with MemoryTemplate
 
     val res = fresh[T]
     // Accumulator store function
-    val stBlk = reifyEffects( __mem.st(acc, idx, res) )
+    val stBlk = reifyEffects( __mem.st(acc, isRed, res) )
 
-    val effects = summarizeEffects(iBlk) andAlso summarizeEffects(func) andAlso summarizeEffects(ldPartBlk) andAlso
+    val effects = summarizeEffects(func) andAlso summarizeEffects(ldPartBlk) andAlso
                   summarizeEffects(ldBlk) andAlso summarizeEffects(rBlk) andAlso summarizeEffects(stBlk) andAlso Write(List(accum.asInstanceOf[Sym[C[T]]]))
 
-    reflectEffect(Accum_fold[T,C](cchain, cchainRed, accum, zero, foldAccum, iBlk, func, ldPartBlk, ldBlk, rBlk, stBlk, isMap, isRed, idx, part, acc, res, rV), effects.star)
+    reflectEffect(OpMemReduce[T,C](cchain, cchainRed, accum, zero, foldAccum, func, ldPartBlk, ldBlk, rBlk, stBlk, isMap, isRed, part, acc, res, rV), effects.star)
   }
 
 
-  def accum_fold[T,C[T]](cchain: Rep[CounterChain], cchainRed: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Rep[Indices] => Rep[C[T]], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline] = {
+  def memreduce_op[T,C[T]](cchain: Rep[CounterChain], cchainRed: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Rep[Indices] => Rep[C[T]], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline] = {
     val isMap = List.fill(lenOf(cchain)){ fresh[Idx] }   // Map loop indices
     val indsMap = indices_create(isMap)
     val mBlk = reifyEffects( func(indsMap) )             // Reified map function
 
-    accum_common(cchain, cchainRed, accum, zero, mBlk, isMap, rFunc, foldAccum)
+    memreduce_common(cchain, cchainRed, accum, zero, mBlk, isMap, rFunc, foldAccum)
   }
-
-  /*def accum_reduce[T,C[T]](cchain: Rep[CounterChain], cchainRed: Rep[CounterChain], func: Rep[Indices] => Rep[C[T]], rFunc: (Rep[T],Rep[T]) => Rep[T])(implicit ctx: SourceContext, __mem: Mem[T,C], __mT: Manifest[T], __mC: Manifest[C[T]]): (Rep[C[T]], Rep[Pipeline]) = {
-    val isMap = List.fill(lenOf(cchain)){ fresh[Idx] }   // Map loop indices
-    val indsMap = indices_create(isMap)
-    val mBlk = reifyEffects( func(indsMap) )             // Reified map function
-    val accum = __mem.empty(getBlockResult(mBlk))
-    val pipe = accum_common(cchain, cchainRed, accum, mBlk, isMap, rFunc, false)
-    (accum, pipe)
-  }*/
 
   // --- Mirroring
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
-    case e@Pipe_foreach(c,func,inds) => reflectPure(Pipe_foreach(f(c),f(func),inds)(e.ctx))(mtype(manifest[A]),pos)
-    case Reflect(e@Pipe_foreach(c,func,inds), u, es) => reflectMirrored(Reflect(Pipe_foreach(f(c),f(func),inds)(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]),pos)
+    case e@OpForeach(c,func,inds) => reflectPure(OpForeach(f(c),f(func),inds)(e.ctx))(mtype(manifest[A]),pos)
+    case Reflect(e@OpForeach(c,func,inds), u, es) => reflectMirrored(Reflect(OpForeach(f(c),f(func),inds)(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]),pos)
 
-    case e@Pipe_fold(c,a,z,fA,ld,st,iFunc,func,rFunc,inds,idx,acc,res,rV) => reflectPure(Pipe_fold(f(c),f(a),f(z),fA,f(ld),f(st),f(iFunc),f(func),f(rFunc),inds,idx,acc,res,rV)(e.ctx, e.memC, e.numT, e.mT, e.mC))(mtype(manifest[A]), pos)
-    case Reflect(e@Pipe_fold(c,a,z,fA,ld,st,iFunc,func,rFunc,inds,idx,acc,res,rV), u, es) => reflectMirrored(Reflect(Pipe_fold(f(c),f(a),f(z),fA,f(ld),f(st),f(iFunc),f(func),f(rFunc),inds,idx,acc,res,rV)(e.ctx, e.memC, e.numT, e.mT, e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@OpReduce(c,a,z,fA,ld,st,func,rFunc,inds,acc,res,rV) => reflectPure(OpReduce(f(c),f(a),f(z),fA,f(ld),f(st),f(func),f(rFunc),inds,acc,res,rV)(e.ctx, e.memC, e.numT, e.mT, e.mC))(mtype(manifest[A]), pos)
+    case Reflect(e@OpReduce(c,a,z,fA,ld,st,func,rFunc,inds,acc,res,rV), u, es) => reflectMirrored(Reflect(OpReduce(f(c),f(a),f(z),fA,f(ld),f(st),f(func),f(rFunc),inds,acc,res,rV)(e.ctx, e.memC, e.numT, e.mT, e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
 
-    case e@Accum_fold(c1,c2,a,z,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV) => reflectPure(Accum_fold(f(c1),f(c2),f(a),f(z),fA,f(iFunc),f(func),f(ld1),f(ld2),f(rFunc),f(st),inds1,inds2,idx,part,acc,res,rV)(e.ctx,e.memC,e.numT, e.mT,e.mC))(mtype(manifest[A]), pos)
-    case Reflect(e@Accum_fold(c1,c2,a,z,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV), u, es) => reflectMirrored(Reflect(Accum_fold(f(c1),f(c2),f(a),f(z),fA,f(iFunc),f(func),f(ld1),f(ld2),f(rFunc),f(st),inds1,inds2,idx,part,acc,res,rV)(e.ctx,e.memC,e.numT,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@OpMemReduce(c1,c2,a,z,fA,func,ld1,ld2,rFunc,st,inds1,inds2,part,acc,res,rV) => reflectPure(OpMemReduce(f(c1),f(c2),f(a),f(z),fA,f(func),f(ld1),f(ld2),f(rFunc),f(st),inds1,inds2,part,acc,res,rV)(e.ctx,e.memC,e.numT, e.mT,e.mC))(mtype(manifest[A]), pos)
+    case Reflect(e@OpMemReduce(c1,c2,a,z,fA,func,ld1,ld2,rFunc,st,inds1,inds2,part,acc,res,rV), u, es) => reflectMirrored(Reflect(OpMemReduce(f(c1),f(c2),f(a),f(z),fA,f(func),f(ld1),f(ld2),f(rFunc),f(st),inds1,inds2,part,acc,res,rV)(e.ctx,e.memC,e.numT,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+
+    case e@ParallelPipe(blk) => reflectPure(ParallelPipe(f(blk))(e.ctx))(mtype(manifest[A]), pos)
+    case Reflect(e@ParallelPipe(blk), u, es) => reflectMirrored(Reflect(ParallelPipe(f(blk))(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+
+    case e@UnitPipe(blk) => reflectPure(UnitPipe(f(blk))(e.ctx))(mtype(manifest[A]), pos)
+    case Reflect(e@UnitPipe(blk), u, es) => reflectMirrored(Reflect(UnitPipe(f(blk))(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
 
     case _ => super.mirror(e, f)
   }
 
   override def propagate(lhs: Exp[Any], rhs: Def[Any]) = rhs match {
-    case Pipe_fold(c,a,z,fA,ld,st,iFunc,func,rFunc,inds,idx,acc,res,rV) =>
+    case OpReduce(c,a,z,fA,ld,st,func,rFunc,inds,acc,res,rV) =>
       /*Console.println(s"$lhs = $rhs")
       Console.println(s"Getting props for $func")
       Console.println(s"block result of $func = ${getBlockResult(func)}")
@@ -180,110 +188,71 @@ trait ControllerTemplateOpsExp extends ControllerTemplateOps with MemoryTemplate
       setProps(res, getProps(rFunc))
       setProps(rV._1, getProps(func))
       setProps(rV._2, getProps(func))
-      setProps(idx, getProps(iFunc))
-    case Accum_fold(c1,c2,a,z,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV) =>
+    case OpMemReduce(c1,c2,a,z,fA,func,ld1,ld2,rFunc,st,inds1,inds2,part,acc,res,rV) =>
       setProps(acc, getProps(a))
       setProps(part, getProps(func))
       setProps(res, getProps(rFunc))
       setProps(rV._1, getProps(ld1))
       setProps(rV._2, getProps(ld2))
-      setProps(idx, getProps(iFunc))
 
     case _ => super.propagate(lhs, rhs)
   }
 
   // --- Dependencies
   override def syms(e: Any): List[Sym[Any]] = e match {
-    case Pipe_foreach(chain, func, _) => syms(chain) ::: syms(func)
-    case e: Pipe_fold[_,_] => syms(e.cchain) ::: syms(e.accum) ::: syms(e.zero) ::: syms(e.iFunc) ::: syms(e.func) ::: syms(e.rFunc) ::: syms(e.ldFunc) ::: syms(e.stFunc)
-    case e: Accum_fold[_,_] => syms(e.ccOuter) ::: syms(e.ccInner) ::: syms(e.accum) ::: syms(e.zero) ::: syms(e.iFunc) ::: syms(e.func) ::: syms(e.resLdFunc) ::: syms(e.ldFunc) ::: syms(e.rFunc) ::: syms(e.stFunc)
+    case e:OpForeach        => syms(e.cchain) ::: syms(e.func)
+    case e:OpReduce[_,_]    => syms(e.cchain) ::: syms(e.accum) ::: syms(e.zero) ::: syms(e.func) ::: syms(e.rFunc) ::: syms(e.ldFunc) ::: syms(e.stFunc)
+    case e:OpMemReduce[_,_] => syms(e.ccOuter) ::: syms(e.ccInner) ::: syms(e.accum) ::: syms(e.zero) ::: syms(e.func) ::: syms(e.resLdFunc) ::: syms(e.ldFunc) ::: syms(e.rFunc) ::: syms(e.stFunc)
+    case e:ParallelPipe     => syms(e.func)
+    case e:UnitPipe         => syms(e.func)
     case _ => super.syms(e)
   }
   override def readSyms(e: Any): List[Sym[Any]] = e match {
-    case Pipe_foreach(chain, func, _) => readSyms(chain) ::: readSyms(func)
-    case e: Pipe_fold[_,_] => readSyms(e.cchain) ::: readSyms(e.accum) ::: readSyms(e.zero) ::: readSyms(e.iFunc) ::: readSyms(e.func) ::: readSyms(e.rFunc) ::: readSyms(e.ldFunc) ::: readSyms(e.stFunc)
-    case e: Accum_fold[_,_] => readSyms(e.ccOuter) ::: readSyms(e.ccInner) ::: readSyms(e.accum) ::: readSyms(e.zero) ::: readSyms(e.iFunc) ::: readSyms(e.func) ::: readSyms(e.resLdFunc) ::: readSyms(e.ldFunc) ::: readSyms(e.rFunc) ::: readSyms(e.stFunc)
+    case e:OpForeach        => readSyms(e.cchain) ::: readSyms(e.func)
+    case e:OpReduce[_,_]    => readSyms(e.cchain) ::: readSyms(e.accum) ::: readSyms(e.zero) ::: readSyms(e.func) ::: readSyms(e.rFunc) ::: readSyms(e.ldFunc) ::: readSyms(e.stFunc)
+    case e:OpMemReduce[_,_] => readSyms(e.ccOuter) ::: readSyms(e.ccInner) ::: readSyms(e.accum) ::: readSyms(e.zero) ::: readSyms(e.func) ::: readSyms(e.resLdFunc) ::: readSyms(e.ldFunc) ::: readSyms(e.rFunc) ::: readSyms(e.stFunc)
+    case e:ParallelPipe     => readSyms(e.func)
+    case e:UnitPipe         => readSyms(e.func)
     case _ => super.readSyms(e)
   }
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
-    case Pipe_foreach(chain, func, _) => freqCold(func) ::: freqCold(chain)
-    case e: Pipe_fold[_,_] => freqNormal(e.iFunc) ::: freqCold(e.func) ::: freqCold(e.rFunc) ::: freqCold(e.ldFunc) ::: freqCold(e.stFunc) ::: freqCold(e.cchain) ::: freqCold(e.accum) ::: freqCold(e.zero)
-    case e: Accum_fold[_,_] => freqNormal(e.ccOuter) ::: freqNormal(e.ccInner) ::: freqNormal(e.accum) ::: freqCold(e.zero) ::: freqNormal(e.iFunc) ::: freqNormal(e.func) ::: freqNormal(e.resLdFunc) ::: freqNormal(e.ldFunc) ::: freqNormal(e.rFunc) ::: freqNormal(e.stFunc)
+    case e:OpForeach        => freqCold(e.cchain) ::: freqCold(e.func)
+    case e:OpReduce[_,_]    => freqCold(e.func) ::: freqCold(e.rFunc) ::: freqCold(e.ldFunc) ::: freqCold(e.stFunc) ::: freqCold(e.cchain) ::: freqCold(e.accum) ::: freqCold(e.zero)
+    case e:OpMemReduce[_,_] => freqNormal(e.ccOuter) ::: freqNormal(e.ccInner) ::: freqNormal(e.accum) ::: freqCold(e.zero) ::: freqNormal(e.func) ::: freqNormal(e.resLdFunc) ::: freqNormal(e.ldFunc) ::: freqNormal(e.rFunc) ::: freqNormal(e.stFunc)
+    case e:ParallelPipe     => freqCold(e.func)
+    case e:UnitPipe         => freqCold(e.func)
     case _ => super.symsFreq(e)
   }
   override def boundSyms(e: Any): List[Sym[Any]] = e match {
-    case Pipe_foreach(chain,func,inds) => inds ::: effectSyms(func) ::: effectSyms(chain)
-    case e: Pipe_fold[_,_] => e.inds ::: List(e.rV._1, e.rV._2, e.acc, e.res, e.idx) ::: effectSyms(e.cchain) ::: effectSyms(e.iFunc) ::: effectSyms(e.func) ::: effectSyms(e.rFunc) ::: effectSyms(e.ldFunc) ::: effectSyms(e.stFunc) ::: effectSyms(e.accum)
-    case e: Accum_fold[_,_] => e.indsOuter ::: e.indsInner ::: List(e.idx, e.rV._1, e.rV._2, e.acc, e.res, e.part) ::: effectSyms(e.ccOuter) ::: effectSyms(e.ccInner) ::: effectSyms(e.accum) ::: effectSyms(e.iFunc) ::: effectSyms(e.func) ::: effectSyms(e.resLdFunc) ::: effectSyms(e.ldFunc) ::: effectSyms(e.rFunc) ::: effectSyms(e.stFunc)
+    case e:OpForeach        => e.inds ::: effectSyms(e.func) ::: effectSyms(e.cchain)
+    case e:OpReduce[_,_]    => e.inds ::: List(e.rV._1, e.rV._2, e.acc, e.res) ::: effectSyms(e.cchain) ::: effectSyms(e.func) ::: effectSyms(e.rFunc) ::: effectSyms(e.ldFunc) ::: effectSyms(e.stFunc) ::: effectSyms(e.accum)
+    case e:OpMemReduce[_,_] => e.indsOuter ::: e.indsInner ::: List(e.rV._1, e.rV._2, e.acc, e.res, e.part) ::: effectSyms(e.ccOuter) ::: effectSyms(e.ccInner) ::: effectSyms(e.accum) ::: effectSyms(e.func) ::: effectSyms(e.resLdFunc) ::: effectSyms(e.ldFunc) ::: effectSyms(e.rFunc) ::: effectSyms(e.stFunc)
+    case e:ParallelPipe     => effectSyms(e.func)
+    case e:UnitPipe         => effectSyms(e.func)
     case _ => super.boundSyms(e)
   }
 }
 
-
-// DEPRECATED: These should always be unrolled prior to code generation
-trait ScalaGenControllerTemplateOps extends ScalaGenEffect {
-  val IR: ControllerTemplateOpsExp with SpatialIdentifiers
+trait ScalaGenControllerOps extends ScalaGenEffect {
+  val IR: ControllerOpsExp with SpatialCodegenOps
   import IR._
 
-  def emitNestedLoop(iters: List[Sym[Idx]], cchain: Exp[CounterChain])(emitBlk: => Unit) = {
-    iters.zipWithIndex.foreach{ case (iter,idx) =>
-      stream.println("for( " + quote(iter) + "_vec <- " + quote(cchain) + ".apply(" + idx + ".toInt)) {")
-      stream.println("  val " + quote(iter) + " = " + quote(iter) + "_vec.head")
-    }
-    emitBlk
-    stream.println("}" * iters.length)
-  }
-
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case e@Pipe_foreach(cchain, func, inds) =>
-      emitNestedLoop(inds, cchain){ emitBlock(func) }
-      emitValDef(sym, "()")
+    case ParallelPipe(blk) =>
+      emitBlock(blk)
+      stream.println(s"val ${quote(sym)} = ()")
 
-    case e@Pipe_fold(cchain, accum, zero, fA, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
-      emitValDef(acc, quote(accum)) // Assign bound accumulator to accum
-      emitNestedLoop(inds, cchain){
-        emitBlock(iFunc)            // Idx function
-        emitValDef(idx, quote(getBlockResult(iFunc)))
-        emitBlock(func)             // Map function
-        emitBlock(ldFunc)           // Load corresponding value from accumulator
-        emitValDef(rV._1, quote(getBlockResult(ldFunc)))
-        emitValDef(rV._2, quote(getBlockResult(func)))
-        emitBlock(rFunc)            // Reduction function
-        emitValDef(res, quote(getBlockResult(rFunc)))
-        emitBlock(stFunc)           // Write back to accumulator
-      }
-
-      emitValDef(sym, "()")
-
-    case e@Accum_fold(ccOuter, ccInner, accum, zero, fA, iFunc, func, ldPart, ldFunc, rFunc, stFunc, indsOuter, indsInner, idx, part, acc, res, rV) =>
-
-      emitValDef(acc, quote(accum)) // Assign bound accumulator to accum
-      emitNestedLoop(indsOuter, ccOuter){
-        emitBlock(func)
-        emitValDef(part, quote(getBlockResult(func)))
-
-        emitNestedLoop(indsInner, ccInner){
-          emitBlock(iFunc)
-          emitValDef(idx, quote(getBlockResult(iFunc)))
-          emitBlock(ldPart)
-          emitBlock(ldFunc)
-          emitValDef(rV._1, quote(getBlockResult(ldPart)))
-          emitValDef(rV._2, quote(getBlockResult(ldFunc)))
-          emitBlock(rFunc)
-          emitValDef(res, quote(getBlockResult(rFunc)))
-          emitBlock(stFunc)
-        }
-      }
-      emitValDef(sym, "()")
-
+    case UnitPipe(blk) =>
+      emitBlock(blk)
+      stream.println(s"val ${quote(sym)} = ()")
 
     case _ => super.emitNode(sym, rhs)
   }
 }
 
-trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
-  val IR: LoweredPipeOpsExp with ControllerTemplateOpsExp with TpesOpsExp with ParallelOpsExp
-          with PipeOpsExp with OffChipMemOpsExp with RegOpsExp with ExternCounterOpsExp
+trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
+  val IR: UnrolledOpsExp with ControllerOpsExp with TpesOpsExp with ParallelOpsExp
+          with PipeOpsExp with DRAMOpsExp with RegOpsExp with ExternCounterOpsExp
           with SpatialCodegenOps with NosynthOpsExp with MemoryAnalysisExp
           with DeliteTransform with VectorOpsExp with SpatialExp with UnrollingTransformExp
 
@@ -292,7 +261,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
   def consumesMemFifo(node: Exp[Any]) = {
     childrenOf(parentOf(node).get).map{ n => n match {
-        case Deff(Offchip_load_cmd(mem, fifo, ofs, len, par)) => true
+        case Deff(BurstLoad(mem, fifo, ofs, len, par)) => true
         case _ => false
       }
     }.reduce{_|_}
@@ -314,7 +283,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
         case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
           xx match {
             case Deff(Argin_new(_)) => true
-            case _ =>  
+            case _ =>
               if (isReduceStarter(s)) {false} else {true}
           }
         case Deff(_) => false // None
@@ -372,9 +341,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
           val str = s"$value"
           s"const${str.replace('.', 'p').replace('-', 'n')}_" + s.tp.erasure.getSimpleName() + n
         case _ =>
-    			val tstr = s.tp.erasure.getSimpleName()
-                      .replace("Spatial","")
-                      .replace("BlockRAM", "BRAM")
+    			val tstr = s.tp.erasure.getSimpleName().replace("Spatial","")
           val customStr = tstr match {
             case "Pipeline" => styleOf(s) match {
               case CoarsePipe => "metapipe"
@@ -460,14 +427,14 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 	var argToExp = HashMap[Exp[Reg[Any]],Exp[Any]]()
   override def preProcess[A:Manifest](body: Block[A]) = {
     val argInPass = new MaxJArgInPass {
-      val IR: MaxJGenControllerTemplateOps.this.IR.type = MaxJGenControllerTemplateOps.this.IR
+      val IR: MaxJGenControllerOps.this.IR.type = MaxJGenControllerOps.this.IR
     }
     argInPass.run(body)
     expToArg = argInPass.expToArg
     argToExp = argInPass.argToExp
 
     val regChainPass = new RegChainPass {
-      val IR: MaxJGenControllerTemplateOps.this.IR.type = MaxJGenControllerTemplateOps.this.IR
+      val IR: MaxJGenControllerOps.this.IR.type = MaxJGenControllerOps.this.IR
     }
     regChainPass.run(body)
     quoteSuffix = regChainPass.quoteSuffix
@@ -520,8 +487,8 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
         }
 
         d match {
-           case Reflect(Offchip_new(size),_,_) =>  // Avoid emitting Offchip_new here as it would've been emitted already
-           case Offchip_new(size) =>  // Avoid emitting Offchip_new here as it would've been emitted already
+           case Reflect(Dram_new(size),_,_) =>  // Avoid emitting Dram_new here as it would've been emitted already
+           case Dram_new(size) =>  // Avoid emitting Dram_new here as it would've been emitted already
            case _ => emitNode(s, d)
          }
       }
@@ -544,9 +511,9 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
     case e@Counterchain_new(counters) =>
 
-    case e@Pipe_foreach(cchain, func, inds) =>
+    case e@OpForeach(cchain, func, inds) =>
       controlNodeStack.push(sym)
-      print_stage_prefix(s"Pipe_foreach",s"",s"${quote(sym)}")
+      print_stage_prefix(s"OpForeach",s"",s"${quote(sym)}")
       emitController(sym, Some(cchain))
       emitNestedIdx(cchain, inds)
       emitRegChains(sym, inds)
@@ -554,14 +521,12 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
       print_stage_suffix(quote(sym))
       controlNodeStack.pop
 
-    case e@Pipe_fold(cchain, accum, zero, fA, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
+    case e@OpReduce(cchain, accum, zero, fA, ldFunc, stFunc, func, rFunc, inds, acc, res, rV) =>
       controlNodeStack.push(sym)
-      print_stage_prefix(s"Pipe_fold","","${quote(sym)}")
+      print_stage_prefix(s"OpReduce","","${quote(sym)}")
       emitController(sym, Some(cchain))
       emitNestedIdx(cchain, inds)
       emitRegChains(sym, inds)
-      emitBlock(iFunc, s"${quote(sym)} Index Calculation")
-      emitValDef(idx, quote(getBlockResult(iFunc)))
       emitBlock(func, s"${quote(sym)} Foreach")
       emitBlock(ldFunc, s"${quote(sym)} Load")
       emitValDef(rV._1, quote(getBlockResult(ldFunc)))
@@ -573,15 +538,15 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
       controlNodeStack.pop
 
 
-		case e@Pipe_parallel(func: Block[Unit]) =>
+		case e@ParallelPipe(func: Block[Unit]) =>
       controlNodeStack.push(sym)
-      print_stage_prefix(s"Pipe_parallel",s"",s"${quote(sym)}")
+      print_stage_prefix(s"ParallelPipe",s"",s"${quote(sym)}")
       emitController(sym, None)
       emitBlock(func, s"${quote(sym)} Parallel")
       print_stage_suffix(quote(sym))
       controlNodeStack.pop
 
-		case e@Unit_pipe(func: Block[Unit]) =>
+		case e@UnitPipe(func: Block[Unit]) =>
       var hadThingsInside = if (isInnerPipe(sym)) {false} else {true}
       controlNodeStack.push(sym)
       val smStr = styleOf(sym) match {
@@ -626,7 +591,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
 
 
       parentOf(sym).get match {
-        case e@Deff(ParPipeReduce(_,accum,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+        case e@Deff(UnrolledReduce(_,accum,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
           val isKerneledRed = reduceType(accum) match {
             case Some(fps: ReduceFunction) => fps match {
               case FixPtSum => true
@@ -637,28 +602,26 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
           if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
             styleOf(sym) match {
               case InnerPipe =>
-                if (isKerneledRed) {
-                  // Putting reduction tree in its own kernel
-                  var inputVecs = Set[Sym[Any]]()
-                  var consts_args_bnds_list = Set[Exp[Any]]()
-                  var treeResult = ""
-                  focusBlock(func){ // Send reduce tree to separate file
-                    focusExactScope(func){ stms =>
-                      stms.foreach { case TP(s,d) =>
-                        val Deff(dd) = s
-                        dd match {
-                          case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                            if (isReduceResult(s)) {
-                              val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                              emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
-                              treeResult = quote(s)
-                            }
-                            consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                          case input @ ( Par_bram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
-                            inputVecs += s
-                          case _ =>
-                            consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        }
+                // Putting reduction tree in its own kernel
+                var inputVecs = Set[Sym[Any]]()
+                var consts_args_bnds_list = Set[Exp[Any]]()
+                var treeResult = ""
+                focusBlock(func){ // Send reduce tree to separate file
+                  focusExactScope(func){ stms =>
+                    stms.foreach { case TP(s,d) =>
+                      val Deff(dd) = s
+                      dd match {
+                        case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
+                          if (isReduceResult(s)) {
+                            val ts = tpstr(1)(s.tp, implicitly[SourceContext])
+                            emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
+                            treeResult = quote(s)
+                          }
+                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                        case input @ ( Par_sram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                          inputVecs += s
+                        case _ =>
+                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
                       }
                     }
                   }
@@ -671,15 +634,13 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
                   val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
                   emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
                   emit(s"}")
-                } else {
-                  emitBlock(func, s"${quote(sym)} Unitpipe")
                 }
               case _ =>
                 emitBlock(func, s"${quote(sym)} Unitpipe")
-              }
-            } else {
-              emitBlock(func, s"${quote(sym)} Unitpipe")
             }
+          } else {
+            emitBlock(func, s"${quote(sym)} Unitpipe")
+          }
         case _ =>
           emitBlock(func, s"${quote(sym)} Unitpipe")
       }
@@ -831,7 +792,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
         } else {
           emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
         }
-        
+
       case ForkJoin => throw new Exception("Cannot have counter chain control logic for fork-join (parallel) controller!")
       case _ =>
         emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_en;""")
@@ -842,9 +803,9 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
     styleOf(sym) match {
       case InnerPipe =>
         val Def(EatReflect(d)) = sym; d match {
-          case n:Pipe_foreach =>
+          case n:OpForeach =>
             val writesToAccumRam = writtenIn(sym).exists {s => s match {
-                case Def(EatReflect(Bram_new(_,_))) => isAccum(sym)
+                case Def(EatReflect(Sram_new(_,_))) => isAccum(sym)
                 case _ => false
               }
             }
@@ -863,9 +824,9 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
             }
 
 
-          case n:ParPipeForeach =>
+          case n:UnrolledForeach =>
             val writesToAccumRam = writtenIn(sym).exists {s => s match {
-                case Def(EatReflect(Bram_new(_,_))) => isAccum(sym)
+                case Def(EatReflect(Sram_new(_,_))) => isAccum(sym)
                 case _ => false
               }
             }
@@ -873,7 +834,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
               emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
-              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym, 
+              emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym,
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
@@ -882,7 +843,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
 
-          case n@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+          case n@UnrolledReduce(cchain, accum, func, rFunc, inds, ens, acc, rV) =>
             emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
             emit(s"""CounterChain ${quote(sym)}_redLoopChain = control.count.makeCounterChain(${quote(sym)}_datapath_en);""")
             // emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${stream_offset_guess+1}, 1);""")
@@ -894,7 +855,7 @@ trait MaxJGenControllerTemplateOps extends MaxJGenEffect with MaxJGenFat {
             emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
 
 
-          case n:Pipe_fold[_,_] =>
+          case n:OpReduce[_,_] =>
 			      //TODO : what is this? seems like all reduce supported are specialized
             //  def specializeReduce(r: ReduceTree) = {
             //  val lastGraph = r.graph.takeRight(1)(0)

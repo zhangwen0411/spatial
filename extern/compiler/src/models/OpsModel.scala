@@ -63,8 +63,8 @@ trait OpsModel extends NodeMetadataOpsExp {
     case e: Cam_store[_,_] => AppStatistics(insts=1, onChipIn = nbits(e._mV))
 
     // TODO: Should this count if ram will be implemented as regs?
-    case e: Bram_load[_] => AppStatistics(insts=1,onChipOut = nbits(e._mT))
-    case e: Bram_store[_] => AppStatistics(insts=1,onChipIn = nbits(e._mT))
+    case e: Sram_load[_] => AppStatistics(insts=1,onChipOut = nbits(e.mT))
+    case e: Sram_store[_] => AppStatistics(insts=1,onChipIn = nbits(e.mT))
 
     case e: Reg_read[_] => Instruction
     case e: Reg_write[_] => Instruction
@@ -116,13 +116,13 @@ trait OpsModel extends NodeMetadataOpsExp {
     case Fixpt_to_fltpt(x) => FLOP // ???
     case Fltpt_to_fixpt(_) => FLOP // ???
 
-    case e@Offchip_store_cmd(mem,stream,ofs,len,p) =>
-      val bits = nbits(e._mT)
+    case e@BurstStore(mem,stream,ofs,len,p) =>
+      val bits = nbits(e.mT)
       val size = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip load")(mpos(s.pos)); 96.0}
       AppStatistics(dataOut=bits*size.toLong)
 
-    case e@Offchip_load_cmd(mem,stream,ofs,len,p) =>
-      val bits = nbits(e._mT)
+    case e@BurstLoad(mem,stream,ofs,len,p) =>
+      val bits = nbits(e.mT)
       val size = bound(len).getOrElse{stageWarn("Cannot resolve bound of offchip store")(mpos(s.pos)); 96.0}
       AppStatistics(dataIn=bits*size.toLong)
 

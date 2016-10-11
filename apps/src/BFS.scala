@@ -2,6 +2,28 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
+/*
+       frontier     ids                  counts           edges
+  (ids of nodes   (index in "edges"   (number of edges   (list of                           
+  on next layer)   where this node's   for this node)     edges)                        
+                   cxns starts)                                                                                                                                   
+         _            _                   _                _                                                                
+        | |          | |                 | |              | |                                                                   
+        | |          | |                 | |              | |                                                                   
+        | |          | |                 | |              | |                                                                   
+        | |          | |                 | |              | |                                                                   
+        | |          | |                 | |              | |                                                                   
+        | |          | |                 | |              | |                                                                   
+        |_|          |_|                 |_|              | |                                                                   
+                                                          | |                                             
+                                                          | |                       
+                                                          | |                       
+                                                          | |                       
+                                                          | |                       
+                                                          | |                       
+                                                          | |                       
+                                                          |_|                       
+*/
 object BFS extends SpatialAppCompiler with BFSApp
 trait BFSApp extends SpatialApp {
   type Elem = Flt //FixPt[Signed, B16, B16]
@@ -15,11 +37,11 @@ trait BFSApp extends SpatialApp {
 
   def bfs(INnodes: Rep[Array[SInt]], INedges: Rep[Array[SInt]], INcounts: Rep[Array[SInt]], INids: Rep[Array[SInt]], n: Rep[SInt], e: Rep[SInt]) = {
     
-    val OCnodes = OffChipMem[SInt](n)
-    val OCedges = OffChipMem[SInt](e) 
-    val OCcounts = OffChipMem[SInt](n) 
-    val OCids = OffChipMem[SInt](n) 
-    val OCresult = OffChipMem[SInt](n)
+    val OCnodes = DRAM[SInt](n)
+    val OCedges = DRAM[SInt](e) 
+    val OCcounts = DRAM[SInt](n) 
+    val OCids = DRAM[SInt](n) 
+    val OCresult = DRAM[SInt](n)
 
     setMem(OCnodes, INnodes)
     setMem(OCedges, INedges)
@@ -27,10 +49,10 @@ trait BFSApp extends SpatialApp {
     setMem(OCids, INids)
 
     Accel {
-      val frontierNodes = BRAM[SInt](tileSize)
-      // val frontierCounts = BRAM[SInt](tileSize)
-      // val frontierIds = BRAM[SInt](tileSize)
-      val frontierLevels = BRAM[SInt](tileSize)
+      val frontierNodes = SRAM[SInt](tileSize)
+      // val frontierCounts = SRAM[SInt](tileSize)
+      // val frontierIds = SRAM[SInt](tileSize)
+      val frontierLevels = SRAM[SInt](tileSize)
       // frontierCounts := OCcounts(0::1)
       // frontierIds := OCids(0::1)
       // val id = frontierIds(0)

@@ -2,7 +2,7 @@ package spatial.compiler.ops
 
 import java.io.{File,FileWriter,PrintWriter}
 import scala.virtualization.lms.internal.{Traversal}
-import scala.virtualization.lms.common.{BaseExp, EffectExp, ScalaGenEffect, DotGenEffect, MaxJGenEffect}
+import scala.virtualization.lms.common.{BaseExp, EffectExp, ScalaGenEffect, CGenEffect, MaxJGenEffect}
 import ppl.delite.framework.transform.{DeliteTransform}
 import scala.reflect.{Manifest,SourceContext}
 
@@ -88,6 +88,10 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
     case _ => false
   }
 
+  def isIndexType(t: Manifest[_]) = {
+    isFixPtType(t) && sign(t) && nbits(t.typeArguments(1)) == 32 && nbits(t.typeArguments(2)) == 0
+  }
+
   // --- Rewrite Rules
   override def globalCheck(__arg0: Rep[Any])(implicit __pos: SourceContext): Boolean = __arg0 match {
     case p: Param[_] => true
@@ -140,6 +144,16 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
     }
   }
 
+  override def fix_to_int[S:Manifest,I:Manifest](x: Rep[FixPt[S,I,B0]])(implicit __pos: SourceContext) = x match {
+    case Deff(e@Tpes_Int_to_fix(x)) if sign(e._mS) == sign(manifest[S]) && nbits(e._mI) == nbits(manifest[I]) => x.asInstanceOf[Exp[Int]]
+    case _ => super.fix_to_int(x)
+  }
+  override def int_to_fix[S:Manifest,I:Manifest](x: Rep[Int])(implicit ctx: SourceContext) = x match {
+    case Deff(e@Tpes_Fix_to_int(x)) if sign(e._mS) == sign(manifest[S]) && nbits(e._mI) == nbits(manifest[I]) => x.asInstanceOf[Exp[FixPt[S,I,B0]]]
+    case _ => super.int_to_fix(x)
+  }
+
+
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = (e match {
     case EatReflect(e@Min2(a,b)) => reflectPure(Min2(f(a),f(b))(e.mT,e.oT,e.nT,e.ctx))(mtype(manifest[A]),pos)
     case EatReflect(e@Max2(a,b)) => reflectPure(Max2(f(a),f(b))(e.mT,e.oT,e.nT,e.ctx))(mtype(manifest[A]),pos)
@@ -147,6 +161,32 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
   }).asInstanceOf[Exp[A]]
 }
 
+trait CGenExternPrimitiveOps extends CGenEffect {
+  val IR: ExternPrimitiveOpsExp with SpatialCodegenOps
+  import IR._
+
+  def bitsToStringInt(x: Int) = x match {
+    case n: Int if n <= 8 => "8"
+    case n: Int if n <= 16 => "16"
+    case n: Int if n <= 32 => "32"
+    case _ => "64"
+  }
+
+  def bitsToFloatType(bits: Int) = bits match {
+    case n: Int if n <= 32 => "float"
+    case _ => "double"
+  }
+
+  override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
+    case "SpatialBit" => "bool"
+    case "Signed" => ""
+    case "Unsign" => "u"
+    case "FixedPoint" => remap(m.typeArguments(0)) + "int" + bitsToStringInt(remap(m.typeArguments(1)).toInt + remap(m.typeArguments(2)).toInt) + "_t"
+    case "FloatPoint" => bitsToFloatType(remap(m.typeArguments(0)).toInt + remap(m.typeArguments(1)).toInt)
+    case bx(n) => n
+    case _ => super.remap(m)
+  }
+}
 
 trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
   val IR:UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DeliteTransform
@@ -501,7 +541,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
 
   override def emitFileFooter() = {
     emit(s"""// Emit consts""")
-    emitted_consts.foreach { 
+    emitted_consts.foreach {
       case ((s, d)) =>
         d match {
           case ConstFixPt(x,_,_,_) =>
@@ -545,9 +585,9 @@ trait ScalaGenExternPrimitiveOps extends ScalaGenEffect {
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Min2(x,y) =>
-      stream.println(s"val ${quote(sym)} = Math.min(${quote(x)}, ${quote(y)})")
+      stream.println(s"val ${quote(sym)} = if (${quote(x)} < ${quote(y)}) ${quote(x)} else ${quote(y)}")
     case Max2(x,y) =>
-      stream.println(s"val ${quote(sym)} = Math.max(${quote(x)}, ${quote(y)})")
+      stream.println(s"val ${quote(sym)} = if (${quote(x)} > ${quote(y)}) ${quote(x)} else ${quote(y)}")
     case _ => super.emitNode(sym, rhs)
   }
 
@@ -626,11 +666,12 @@ case class FixedPointRange[S:Manifest,I:Manifest,F:Manifest](start: FixedPoint[S
   private val fullStep = parStep * step
   private val vecOffsets = Array.tabulate(par){p => FixedPoint[S,I,F](p) * step}
 
-  def foreach(func: Array[FixedPoint[S,I,F]] => Unit) = {
+  def foreach(func: (Array[FixedPoint[S,I,F]], Array[Boolean]) => Unit) = {
     var i = start
     while (i < end) {
-      val vec = vecOffsets.map{ofs => ofs + i}
-      func(vec)
+      val vec = vecOffsets.map{ofs => ofs + i} // Create current vector
+      val valids = vec.map{ix => ix < end}     // Valid bits
+      func(vec, valids)
       i += fullStep
     }
   }

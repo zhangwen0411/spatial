@@ -6,10 +6,10 @@
 // optiQL
 // trait TPCHQ1Trait extends TPCHBaseTrait {
 
-//   val queryName = "Q1"  
-//   def query() = {  
+//   val queryName = "Q1"
+//   def query() = {
 
-//     val lineItems = loadLineItems()         
+//     val lineItems = loadLineItems()
 //     tic(lineItems.size)
 
 //     val q = lineItems Where(_.l_shipdate <= Date("1998-12-01")) GroupBy(l => pack(l.l_returnflag,l.l_linestatus)) Select(g => new Record {
@@ -24,11 +24,11 @@
 //       val avgDiscount = g.values.Average(_.l_discount)
 //       val countOrder = g.values.Count
 //     }) OrderBy(asc(_.returnFlag), asc(_.lineStatus))
-    
+
 //     toc(q)
 //     q.printAsTable()
 //     q.writeAsJSON("out.json")
-//   }    
+//   }
 // }
 
 
@@ -74,11 +74,11 @@
 //     setArg(dataSize, datesIn.length)
 
 
-//     val dates  = OffChipMem[SInt](dataSize)
-//     val quants = OffChipMem[SInt](dataSize)
-//     val discts = OffChipMem[FT](dataSize)
-//     val prices = OffChipMem[FT](dataSize)
-//     val linestatuses = OffChipMem[FT](dataSize)
+//     val dates  = DRAM[SInt](dataSize)
+//     val quants = DRAM[SInt](dataSize)
+//     val discts = DRAM[FT](dataSize)
+//     val prices = DRAM[FT](dataSize)
+//     val linestatuses = DRAM[FT](dataSize)
 //     val minDateIn = MIN_DATE
 //     val maxDateIn = MAX_DATE
 //     val out = ArgOut[FT]
@@ -99,11 +99,11 @@
 
 //       val acc = Reg[FT]
 //       Fold(dataSize by ts par op)(acc, 0.as[FT]){ i =>
-//         val datesTile  = BRAM[SInt](ts)
-//         val quantsTile = BRAM[SInt](ts)
-//         val disctsTile = BRAM[FT](ts)
-//         val pricesTile = BRAM[FT](ts)
-//         val linestatusesTile = BRAM[SInt](ts)
+//         val datesTile  = SRAM[SInt](ts)
+//         val quantsTile = SRAM[SInt](ts)
+//         val disctsTile = SRAM[FT](ts)
+//         val pricesTile = SRAM[FT](ts)
+//         val linestatusesTile = SRAM[SInt](ts)
 //         Parallel {
 //           datesTile  := dates(i::i+ts, ip)
 //           quantsTile := quants(i::i+ts, ip)
@@ -160,7 +160,7 @@
 
 //     println("expected " + gold)
 //     println("result " + result)
-    
+
 //     val cksum = gold == result
 //     println("PASS: " + cksum + " (TPCHQ1)")
 //   }

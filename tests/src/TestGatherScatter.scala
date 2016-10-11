@@ -10,8 +10,8 @@ trait TestGatherScatter extends SpatialApp {
     type Elem = Flt //FixPt[Signed, B16, B16]
     val N = 10
 
-    val v1    = OffChipMem[Elem](N)
-    val v2    = OffChipMem[Elem](N)
+    val v1    = DRAM[Elem](N)
+    val v2    = DRAM[Elem](N)
 
     val vec1 = Array.fill(N)(random[Elem](N))
     setMem(v1, vec1)
@@ -20,13 +20,13 @@ trait TestGatherScatter extends SpatialApp {
     val sAddr = Array(3,2,5,1,4)
 
     Accel {
-      val addr = BRAM[Index](5)
-      val value = BRAM[Elem](5)
+      val addr = SRAM[Index](5)
+      val value = SRAM[Elem](5)
       Sequential {
-        setBram(addr, sAddr)
-        println("addrs:" + getBram(addr).mkString(","))
+        set(addr, sAddr)
+        println("addrs:" + get(addr).mkString(","))
         value := v1(addr)
-        println("values:" + getBram(value).mkString(","))
+        println("values:" + get(value).mkString(","))
         println(value)
         v2(addr) := value
       }

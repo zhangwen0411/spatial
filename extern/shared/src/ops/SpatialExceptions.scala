@@ -11,7 +11,14 @@ trait SpatialExceptionsCompilerOps extends SpatialExceptionsOps with NodeMetadat
 
   def name(x: Rep[Any]): String = nameOf(x).map(x => x + " ").getOrElse("") + s"($x)"
   def name(x: Manifest[_]): String = x.runtimeClass.getSimpleName match {
-    case "BlockRAM" => "BRAM"
+    case "SpatialReg" => "Reg"
+    case "SpatialCAM" => "CAM"
+    case "SpatialSRAM" => "SRAM"
+    case "SpatialFIFO" => "FIFO"
+    case "SpatialDRAM" => "DRAM"
+    case "SpatialCache" => "Cache"
+    case "SpatialVector" => "Vector"
+    case "SpatialPipeline" => "Pipe"
     case tp => tp
   }
   def context(x: Rep[Any]) = implicitly[SourceContext]
@@ -55,6 +62,9 @@ trait SpatialExceptionsCompilerOps extends SpatialExceptionsOps with NodeMetadat
 
   case class UndefinedParentException(mem: Rep[Any]) extends
   SpatialException(11, s"${name(mem)} does not have a defined parent")
+
+  case class UnknownLibraryManifest(tp: Manifest[_]) extends
+  SpatialException(12, s"Cannot determine memory template type of ${name(tp)} during library runtime")
 
 
   /** Exceptions during code generation **/

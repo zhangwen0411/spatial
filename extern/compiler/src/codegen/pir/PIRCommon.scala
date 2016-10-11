@@ -27,14 +27,14 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
 
   // HACK: Skip parallel pipes in PIR gen
   def parentOfHack(x: Exp[Any]): Option[Exp[Any]] = parentOf(x) match {
-    case Some(pipe@Deff(Pipe_parallel(_))) => parentOfHack(pipe)
+    case Some(pipe@Deff(ParallelPipe(_))) => parentOfHack(pipe)
     case parentOpt => parentOpt
   }
 
 
   // Give top controller or first controller below which is not a Parallel
   def topControllerHack(access: Access, ctrl: Controller): Controller = ctrl.node match {
-    case pipe@Deff(Pipe_parallel(_)) =>
+    case pipe@Deff(ParallelPipe(_)) =>
       topControllerHack(access, childContaining(ctrl, access))
     case _ => ctrl
   }
@@ -176,13 +176,13 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
   def allocateGlobal(mem: Exp[Any]) = {
     val name = quote(mem)
     val global = mem match {
-      case Deff(Offchip_new(_)) => Offchip(name)
+      case Deff(Dram_new(_)) => Offchip(name)
       case Deff(Argin_new(_))   => InputArg(name)
       case Deff(Argout_new(_))  => OutputArg(name)
       case Deff(Reg_new(_))     => ScalarMem(name)
       case mem if isArgIn(mem)  => InputArg(name)
       case mem if isArgOut(mem) => OutputArg(name)
-      case mem if isRegister(mem.tp) => ScalarMem(name)
+      case mem if isReg(mem.tp) => ScalarMem(name)
       case _                    => VectorMem(name)
     }
     debug(s"### Adding global for $mem: $global")
@@ -230,7 +230,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     case _ => TempReg(mem)
   }
 
-  def isBuffer(mem: Exp[Any]) = isBRAM(mem.tp) // || isFIFO(mem.tp)
+  def isBuffer(mem: Exp[Any]) = isSRAM(mem.tp) // || isFIFO(mem.tp)
 
   /* How much to bank by in Plasticine:
      - Which dimension (stride) has a predictable, parallelizable access with inner index

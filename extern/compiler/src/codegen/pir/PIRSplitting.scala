@@ -48,48 +48,63 @@ trait PIRSplitter extends Traversal with PIRCommon {
     - Reduction stages represent multiple real ALU stages in the architecture (logV + 1 ?)
     - Reduction stages cannot directly consume CU inputs (requires a bypass stage)
     - Reduction stages cannot directly produce CU outputs (requires a bypass stage)
-    - Write address computation stages MUST be preserved/copied within the consumer CU
-    - Vector feedback edges cannot be communicated across multiple CUs (TODO: verify)
-      -> Local vector feedback and associated consumer edges MUST be preserved within a single CU
+    - Write address computation stages MUST be preserved/copied within consumer CUs
+    - Local vector writes: address and data must be available in the same CU
 
     Nodes must be duplicated/created depending on how the graph is partitioned
-    Could model this as conditional costs for nodes?
-
-    Questions:
-    - Can vector feedbacks cross CUs?
-
-    - Do all physically realizable cuts have equal cost, at least to a first order?
-      i.e. should we value more "balanced" cuts higher?
-
-    - Do any existing algorithms handle conditional node weights? What about restrictions on subgraphs?
+    Could model this as conditional costs for nodes in context of their partition?
    **/
 
-  def splitComputeCU(cu: BasicComputeUnit): List[BasicComputeUnit] = List(cu) /*{
-    val MAX_VECTOR_OUT   = if (cu.isUnitCompute) 4 else 1   // Maximum vector outputs
-    val MAX_SCALAR_OUT   = if (cu.isUnitCompute) 4 else 1   // Maximum scalar outputs
-    val MAX_VECTOR_IN    = if (cu.isUnitCompute) 4 else 1   // Maximum vector inputs
-    val MAX_SCALAR_IN    = if (cu.isUnitCompute) 4 else 1   // Maximum scalar inputs
-    val MAX_VECTOR_LOCAL = 1
-    val MAX_STAGES       = 10                               // 10 compute stages total
-    val REDUCE_STAGES    = 5                                // Number of stages required to do a full reduction
+  val REDUCE_STAGES = 5  // Number of stages required to do a full reduction
 
-    debug(s"Splitting CU: $cu")
-    def inputsOf(stage: Stage): List[LocalMem] = stage match {
-      case stage: MapStage => stage.inputMems.filterNot(stage.outputMems contains _ ) // Ignore cycles
-      case stage: ReduceStage =>
-        val idx = cu.stages.indexOf(stage)
-        cu.stages(idx - 1).outputMems.filter(isAccum(_))
+  class SplitCost(scalarIn: Int, scalarOut: Int, vectorIn: Int, vectorOut: Int, vectorLocal: Int, compute: Int)
+  case object ComputeMax extends SplitCost(scalarIn=4, scalarOut=4, vectorIn=4, vectorOut=4, vectorLocal=1, compute=10)
+  case object UnitMax    extends SplitCost(scalarIn=1, scalarOut=1, vectorIn=1, vectorOut=1, vectorLocal=1, compute=10)
+
+  def inputsOf(stage: Stage): List[LocalMem] = {
+    stage.inputMems.filterNot(stage.outputMems contains _ ) // Ignore self-cycles
+  }
+  def outputsOf(stage: Stage) = stage.outputMems
+
+  def computeCost(stages: Set[Stage], unstages: Set[Stage])(implicit cu: BasicComputeUnit) = {
+    val allIns       = stages.flatMap(inputsOf(_))
+    val allOuts      = stages.flatMap(outputsOf(_))
+    val externalUsed = unstages.flatMap(inputsOf(_))
+    val liveOuts     = allOuts.filter(externalUsed contains _)
+
+    val rawStageCosts = stages.map{
+      case stage:MapStage => 1
+      case ReduceStage(op,init,in,acc) =>
+        val bypassInputCost  = if (allOuts.contains(in.reg)) 0 else 1     // Needs bypass added at input
+        val bypassOutputCost = if (liveOuts.contains(acc)) 1 else 0   // Needs bypass added at output
+        REDUCE_STAGES + bypassOutputCost + bypassInputCost
     }
-    def outputsOf(stage: Stage) = stage.outputMems
+    val readSRAMs = allIns.flatMap{case SRAMRead(mem) => Some(mem); case _ => None}
+
+    // TODO: SRAM cost?
+    rawStageCosts.fold(0){_+_}
+  }
+
+  def partitionCost(stages: Set[Stage], unstages: Set[Stage])(implicit cu: BasicComputeUnit) = {
+    val scalarsIn  = stages.flatMap{stage => inputsOf(stage).filter{case _:ScalarIn => true; case _ => false }}
+    val scalarsOut = stages.flatMap{stage => outputsOf(stage).filter{case _:ScalarOut => true; case _ => false}}
+    val vectorsIn  = stages.flatMap{stage => inputsOf(stage).filter{case _:SRAMRead => true; case _:VectorIn => true; case _ => false }}
+    val vectorsOut = stages.flatMap{stage => outputsOf(stage).filter{case _:VectorOut => true; case _ => false }}
+    val vectorsLocal = stages.flatMap{stage => outputsOf(stage).filter{case _:VectorLocal => true; case _ => false }}
+    val compute = computeCost(stages, unstages)
+    new SplitCost(scalarsIn.size, scalarsOut.size, vectorsIn.size, vectorsOut.size, vectorsLocal.size, compute)
+  }
+
+  def splitComputeCU(cu: BasicComputeUnit): List[BasicComputeUnit] = List(cu) /*{
+    debug(s"Splitting CU: $cu")
+
 
     val stages = cu.stages.toSet
 
+
+
     def requiresSplitting(stages: Set[Stage]) = {
-      val scalarsIn  = stages.flatMap{stage => inputsOf(stage).filter{case _:ScalarIn => true; case _ => false }}
-      val scalarsOut = stages.flatMap{stage => outputsOf(stage).filter{case _:ScalarOut => true; case _ => false}}
-      val vectorsIn  = stages.flatMap{stage => inputsOf(stage).filter{case _:SRAMRead => true; case _:VectorIn => true; case _ => false }}
-      val vectorsOut = stages.flatMap{stage => outputsOf(stage).filter{case _:VectorOut => true; case _ => false }}
-      val vectorsLocal = stages.flatMap{stage => outputsOf(stage).filter{case _:VectorLocal => true; case _ => false }}
+
       val nStages = stages.map{case _:MapStage => 1; case _:ReduceStage => REDUCE_STAGES }.fold(0)(_+_)
 
       debug(s"Stages: ")

@@ -132,7 +132,7 @@ trait ParameterAnalyzer extends Traversal {
   val MAX_PAR_FACTOR = 192  // duplications
   val MAX_OUTER_PAR  = 15
 
-  var tileSizes: List[Param[Int]] = Nil  // Params used to calculate BRAM size
+  var tileSizes: List[Param[Int]] = Nil  // Params used to calculate SRAM size
   var parParams: List[Param[Int]] = Nil  // Params used as parallelization factors for counters
   val range = HashMap[Param[Int],RRange]()
 
@@ -183,14 +183,14 @@ trait ParameterAnalyzer extends Traversal {
       //tileSizes ::= p
       //setRange(p, 1, MAX_TILE_SIZE, MIN_TILE_SIZE)
 
-    case Bram_new(_,_) =>
+    case Sram_new(_,_) =>
       val dims = dimsOf(lhs)
 
       val (consts,params) = dims.partition{ case ConstFix(_) => true; case _ => false }
       val cSize = consts.map{case ConstFix(c) => c.asInstanceOf[Int] }.fold(1){_*_}
 
       val tiles = params.flatMap{case ParamFix(p) => Some(p); case _ => None}
-      debug(s"Found BRAM with parameterized dimensions: " + tiles.map(p => nameOf(p).getOrElse(p.toString)).mkString(", "))
+      debug(s"Found SRAM with parameterized dimensions: " + tiles.map(p => nameOf(p).getOrElse(p.toString)).mkString(", "))
 
       tiles.zipWithIndex.foreach{
         case (p, idx) =>
@@ -263,28 +263,28 @@ trait ParameterAnalyzer extends Traversal {
         case _ => // No restrictions
       }
 
-    case Offchip_store_cmd(mem,stream,ofs,len,p: Param[Int]) =>
+    case BurstStore(mem,stream,ofs,len,p: Param[Int]) =>
       parParams ::= p
 
-    case Offchip_load_cmd(mem,stream,ofs,len,p: Param[Int]) =>
+    case BurstLoad(mem,stream,ofs,len,p: Param[Int]) =>
       parParams ::= p
 
     // HACK: Parallelize innermost loop only
-    case e:Pipe_foreach =>
+    case e:OpForeach =>
       val pars = getParams(parFactorsOf(e.cchain))
       parParams :::= pars
       if (!isParallelizableLoop(lhs)) pars.foreach{p => domainOf(p) = (1,1,1) }
       else if (!isInnerPipe(lhs)) pars.foreach{p => setMax(p, MAX_OUTER_PAR) }
       else pars.foreach{p => setMax(p, MAX_PAR_FACTOR) }
 
-    case e:Pipe_fold[_,_] =>
+    case e:OpReduce[_,_] =>
       val pars = getParams(parFactorsOf(e.cchain))
       parParams :::= pars
       if (!isParallelizableLoop(lhs)) pars.foreach{p => domainOf(p) = (1,1,1) }
       else if (!isInnerPipe(lhs)) pars.foreach{p => setMax(p, MAX_OUTER_PAR) }
       else pars.foreach{p => setMax(p, MAX_PAR_FACTOR) }
 
-    case e:Accum_fold[_,_] =>
+    case e:OpMemReduce[_,_] =>
       val opars = getParams(parFactorsOf(e.ccOuter))
       val ipars = getParams(parFactorsOf(e.ccInner))
       parParams :::= opars

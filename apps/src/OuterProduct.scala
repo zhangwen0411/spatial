@@ -11,10 +11,10 @@ trait OuterProductApp extends SpatialApp {
   val ip = 1
 
   def outerproduct(a: Rep[ForgeArray[T]], b: Rep[ForgeArray[T]]) = {
-    val tileSizeA = param(tileSize1);  domainOf(tileSizeA) = (96, 38400, 96)
-    val tileSizeB = param(tileSize2);  domainOf(tileSizeB) = (96, 38400, 96)
-    val outerPar  = param(op);  domainOf(outerPar) = (1, 4, 1)
-    val innerPar  = param(ip);  domainOf(innerPar) = (1, 38400, 1)
+    val tileSizeA = tileSize1 (96 -> 96 -> 38400)
+    val tileSizeB = tileSize2 (96 -> 96 -> 38400)
+    val outerPar  = op (1 -> 4)
+    val innerPar  = ip (1 -> 256)
 
     val M = a.length;  bound(M) = 38400
     val N = b.length;  bound(N) = 38400
@@ -24,25 +24,29 @@ trait OuterProductApp extends SpatialApp {
     setArg(sizeA, M)
     setArg(sizeB, N)
 
-    val vec1 = OffChipMem[T](sizeA)
-    val vec2 = OffChipMem[T](sizeB)
-    val out = OffChipMem[T](sizeA, sizeB)
+    val vec1 = DRAM[T](sizeA)
+    val vec2 = DRAM[T](sizeB)
+    val out = DRAM[T](sizeA, sizeB)
 
     setMem(vec1, a)
     setMem(vec2, b)
 
     Accel {
       Pipe(sizeA by tileSizeA, sizeB by tileSizeB par outerPar){ (i,j) =>
-        val b1 = BRAM[T](tileSizeA)
-        val b2 = BRAM[T](tileSizeB)
-        val outTile = BRAM[T](tileSizeA, tileSizeB)
+        val b1 = SRAM[T](tileSizeA)
+        val b2 = SRAM[T](tileSizeB)
+        val outTile = SRAM[T](tileSizeA, tileSizeB)
+        val blkA = Reg[SInt]
+        val blkB = Reg[SInt]
         Parallel {
           b1 := vec1(i::i+tileSizeA)
           b2 := vec2(j::j+tileSizeB)
+          Pipe{ blkA := min(sizeA.value - i, tileSizeA) }
+          Pipe{ blkB := min(sizeB.value - j, tileSizeB) }
         }
-        Pipe(tileSizeA by 1, tileSizeB par innerPar){ (ii,jj) => outTile(ii, jj) = b1(ii) * b2(jj) } // 2
+        Pipe(blkA by 1, blkB par innerPar){ (ii,jj) => outTile(ii, jj) = b1(ii) * b2(jj) } // 2
 
-        out(i::i+tileSizeA, j::j+tileSizeB) := outTile
+        out(i::i+blkA, j::j+blkB) := outTile
       }
     }
     getMem(out)

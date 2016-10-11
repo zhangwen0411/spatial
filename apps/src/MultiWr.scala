@@ -18,26 +18,26 @@ trait MultiWrApp extends SpatialApp {
     val iters = ArgIn[SInt]
     setArg(iters,i)
 
-    val c = OffChipMem[T](M, N)
+    val c = DRAM[T](M, N)
 
     setMem(c, C)
 
     Accel {
 
       Sequential(1 by 1) { d =>
-        val tileC = BRAM[T](M, N)
+        val tileC = SRAM[T](M, N)
 
-        tileC := c(0::M, 0::N, param(1))
+        tileC := c(0::M, 0::N)
 
         Fold(iters by 1)(tileC, 0.as[T]) { i =>
-          val tile_partial = BRAM[T](M,N)
+          val tile_partial = SRAM[T](M,N)
           Pipe(M by 1, N by 1) { (x,y) =>
             tile_partial(x,y) = x+y
           }
           tile_partial
         }{_+_}
 
-        c(0::M, 0::N, param(1)) := tileC
+        c(0::M, 0::N) := tileC
       }
     }
     getMem(c)

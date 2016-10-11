@@ -172,6 +172,8 @@ trait PrimitiveTypes {
     /** @nodoc **/
     fimplicit (Tpes) ("stage_int_to_fixpt", Nil, MInt :: SInt32) implements redirect ${ int_to_fix[Signed,B32]($0) }  // Needed for params
     /** @nodoc **/
+    fimplicit (Tpes) ("fixpt_to_stage_int", Nil, SInt32 :: MInt) implements redirect ${ fix_to_int[Signed,B32]($0) }
+    /** @nodoc **/
     fimplicit (Tpes) ("scala_float_to_fltpt", Nil, SFloat :: Flt) implements redirect ${ fltPt[Float,B24,B8]($0) }
 
     fimplicit (Tpes) ("insert_unit", Nil, MAny :: MUnit) implements composite ${ unit(()) }

@@ -47,19 +47,19 @@ trait PipeLevelAnalyzer extends Traversal with SpatialTraversalTools {
   }
 
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
-    case Pipe_parallel(blk) =>
+    case ParallelPipe(blk) =>
       styleOf(lhs) = ForkJoin
       if (hasPrimitiveNodes(blk)) throw PrimitivesInParallelException(lhs)(mpos(lhs.pos))
       if (!hasControlNodes(blk)) throw EmptyParallelException(lhs)(mpos(lhs.pos))
 
     case Hwblock(blk)      => annotatePipeStyle(lhs, blk)
-    case Unit_pipe(func)   => annotatePipeStyle(lhs, func)
-    case e:Pipe_foreach    => annotatePipeStyle(lhs, e.func)
-    case e:Pipe_fold[_,_]  =>
+    case UnitPipe(func)   => annotatePipeStyle(lhs, func)
+    case e:OpForeach    => annotatePipeStyle(lhs, e.func)
+    case e:OpReduce[_,_]  =>
       annotatePipeStyle(lhs, e.func)
       if (hasControlNodes(e.rFunc)) throw ControlInReductionException(lhs)(e.ctx)
 
-    case e:Accum_fold[_,_] =>
+    case e:OpMemReduce[_,_] =>
       annotateAccumFold(lhs)
       if (hasControlNodes(e.rFunc)) throw ControlInReductionException(lhs)(e.ctx)
 

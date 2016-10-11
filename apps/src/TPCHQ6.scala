@@ -13,7 +13,7 @@ trait TPCHQ6Trait extends TPCHBaseTrait {
     tic(lineItems.size)
 
     //FIXME: infix_&& fails to resolve automatically
-    val q = lineItems Where (l => infix_&&(l.l_shipdate >= Date("1994-01-01"), infix_&&(l.l_shipdate < Date("1995-01-01"), infix_&&(l.l_discount >= 0.05, infix_&&(l.l_discount <= 0.07, l.l_quantity < 24))))) 
+    val q = lineItems Where (l => infix_&&(l.l_shipdate >= Date("1994-01-01"), infix_&&(l.l_shipdate < Date("1995-01-01"), infix_&&(l.l_discount >= 0.05, infix_&&(l.l_discount <= 0.07, l.l_quantity < 24)))))
     val revenue = q.Sum(l => l.l_extendedprice * l.l_discount)
 
     toc(revenue)
@@ -52,18 +52,17 @@ trait TPCHQ6_App extends SpatialApp {
     val dataSize = ArgIn[SInt]
     setArg(dataSize, datesIn.length)
 
-
-    val dates  = OffChipMem[UInt](dataSize)
-    val quants = OffChipMem[UInt](dataSize)
-    val discts = OffChipMem[FT](dataSize)
-    val prices = OffChipMem[FT](dataSize)
+    val dates  = DRAM[UInt](dataSize)
+    val quants = DRAM[UInt](dataSize)
+    val discts = DRAM[FT](dataSize)
+    val prices = DRAM[FT](dataSize)
     val minDateIn = MIN_DATE
     val maxDateIn = MAX_DATE
     val out = ArgOut[FT]
 
-    val ts = param(tileSize);   domainOf(ts) = (96,192000,96)
-    val op = param(outerPar);    domainOf(op) = (1,6,1)
-    val ip = param(innerPar);    domainOf(ip) = (1,384,1)
+    val ts = tileSize (96 -> 96 -> 192000)
+    val op = outerPar (1 -> 6)
+    val ip = innerPar (1 -> 384)
 
     setMem(dates, datesIn)
     setMem(quants, quantsIn)
@@ -76,15 +75,15 @@ trait TPCHQ6_App extends SpatialApp {
 
       val acc = Reg[FT]
       Fold(dataSize by ts par op)(acc, 0.as[FT]){ i =>
-        val datesTile  = BRAM[UInt](ts)
-        val quantsTile = BRAM[UInt](ts)
-        val disctsTile = BRAM[FT](ts)
-        val pricesTile = BRAM[FT](ts)
+        val datesTile  = SRAM[UInt](ts)
+        val quantsTile = SRAM[UInt](ts)
+        val disctsTile = SRAM[FT](ts)
+        val pricesTile = SRAM[FT](ts)
         Parallel {
-          datesTile  := dates(i::i+ts, ip)
-          quantsTile := quants(i::i+ts, ip)
-          disctsTile := discts(i::i+ts, ip)
-          pricesTile := prices(i::i+ts, ip)
+          datesTile  := dates(i::i+ts par ip)
+          quantsTile := quants(i::i+ts par ip)
+          disctsTile := discts(i::i+ts par ip)
+          pricesTile := prices(i::i+ts par ip)
         }
         Reduce(ts par ip)(0.as[FT]){ j =>
           val date  = datesTile(j)
@@ -95,7 +94,8 @@ trait TPCHQ6_App extends SpatialApp {
           mux(valid, price * disct, 0.0f)
         }{_+_}
       }{_+_}
-      Pipe {out := acc}
+
+      out := acc
     }
     getArg(out)
   }
@@ -128,7 +128,7 @@ trait TPCHQ6_App extends SpatialApp {
 
     println("expected " + gold)
     println("result " + result)
-    
+
     val cksum = gold == result
     println("PASS: " + cksum + " (TPCHQ6)")
   }

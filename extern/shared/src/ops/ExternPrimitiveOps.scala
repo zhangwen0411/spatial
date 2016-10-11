@@ -29,7 +29,7 @@ trait ExternPrimitiveOps extends ExternPrimitiveTypes with NumOps with OrderOps 
   def min2[T:Manifest:Order:Num](a: Rep[T], b: Rep[T])(implicit ctx: SourceContext): Rep[T]
   def max2[T:Manifest:Order:Num](a: Rep[T], b: Rep[T])(implicit ctx: SourceContext): Rep[T]
 }
-trait ExternPrimitiveCompilerOps extends ExternPrimitiveTypes with MemoryTemplateTypes {
+trait ExternPrimitiveCompilerOps extends ExternPrimitiveTypes with MemoryTypes {
   this: SpatialIdentifiers =>
 
   lazy val bx = "B([0-9]+)".r
@@ -79,8 +79,8 @@ trait ExternPrimitiveCompilerOps extends ExternPrimitiveTypes with MemoryTemplat
   def nbits[T:Manifest]: Int = manifest[T] match {
     case mA if isFixPtType(mA) => nbits(mA.typeArguments(1)) + nbits(mA.typeArguments(2))
     case mA if isFltPtType(mA) => nbits(mA.typeArguments(0)) + nbits(mA.typeArguments(1))
-    case mA if isBitType(mA) => 1
-    case mA if isRegister(mA) => nbits(mA.typeArguments(0))
+    case mA if isBitType(mA)   => 1
+    case mA if isReg(mA)       => nbits(mA.typeArguments(0))
     case BXX(bits) => bits
     case mA => throw new Exception("Unknown type in nbits: " + mA.runtimeClass.getSimpleName)
   }

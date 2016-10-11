@@ -18,9 +18,7 @@ trait MaxJManagerGen {
 
   def quote(x: Exp[Any]) = x match {
 		case s@Sym(n) => {
-			val tstr = s.tp.erasure.getSimpleName()
-                  .replace("Spatial","")
-                  .replace("BlockRAM", "BRAM")
+			val tstr = s.tp.erasure.getSimpleName().replace("Spatial","")
       val customStr = tstr match {
         case "Pipeline" => styleOf(s) match {
           case CoarsePipe => "metapipe"
@@ -48,7 +46,7 @@ trait MaxJManagerGen {
 //  }
 
   /**
-   * The following three methods are largely duplicated in CGenMemoryTemplateOps.
+   * The following three methods are largely duplicated in CGenMemoryOps.
    * The only differences are that BlockRAM and DRAM aren't remapped in the Manager,
    * and 'float' and 'double' types are remapped to capitalized versions (non-caps
    * versions are reserved keywords)
@@ -67,7 +65,7 @@ trait MaxJManagerGen {
   }
 
   def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
-    case "Register" => remap(m.typeArguments(0))
+    case "SpatialReg" => remap(m.typeArguments(0))
     case "SpatialBit" => "uint8_t"
     case "Signed" => ""
     case "Unsign" => "u"
@@ -301,15 +299,15 @@ s"""
     emit("    // Setup LMEM -> DFE streams (input streams to DFE)")
     emit("    // Setup DFE -> LMEM (output streams from DFE)")
     memStreams.foreach{
-      case tt@Def(EatReflect(Offchip_store_cmd(mem,stream,ofs,len,p))) =>
+      case tt@Def(EatReflect(BurstStore(mem,stream,ofs,len,p))) =>
         val streamName = s"${quote(mem)}_${quote(tt)}"
-        emit(s"""// Offchip_store_cmd $streamName""")
+        emit(s"""// BurstStore $streamName""")
         emit(s"""    DFELink ${streamName}_out = addStreamToOnCardMemory("${streamName}_out", k.getOutput("${streamName}_out_cmd"));""")
         emit(s"""    ${streamName}_out <== k.getOutput("${streamName}_out");""")
 
-      case tt@Def(EatReflect(Offchip_load_cmd(mem,stream,ofs,len,p))) =>
+      case tt@Def(EatReflect(BurstLoad(mem,stream,ofs,len,p))) =>
      	  val streamName = s"${quote(mem)}_${quote(tt)}"
-        emit(s"""// Offchip_load_cmd $streamName""")
+        emit(s"""// BurstLoad $streamName""")
         emit(s"""    DFELink ${streamName}_in = addStreamFromOnCardMemory("${streamName}_in", k.getOutput("${streamName}_in_cmd"));""")
         emit(s"""    k.getInput("${streamName}_in") <== ${streamName}_in;""")
       case tt@Def(EatReflect(Scatter(mem,local,addrs,len,par,_))) =>
@@ -338,7 +336,7 @@ s"""
     emit(mWriteIntf)
   }
 
-  def emitDefaultInterface(argInOuts: Set[Sym[Register[_]]]) = {
+  def emitDefaultInterface(argInOuts: Set[Sym[Reg[_]]]) = {
     emit(mDefaultIntfPreamble)
     argInOuts.foreach { a =>
 			regType(a) match {
@@ -355,7 +353,7 @@ s"""
     emit(mDefaultIntfEpilogue)
   }
 
-  def emitManager(stream:PrintWriter, argInOuts:Set[Sym[Register[_]]], memStreams:Set[Sym[Any]]) = {
+  def emitManager(stream:PrintWriter, argInOuts:Set[Sym[Reg[_]]], memStreams:Set[Sym[Any]]) = {
 		this.stream = stream
     initPass()
     //println(s"""tileTransfers: """)

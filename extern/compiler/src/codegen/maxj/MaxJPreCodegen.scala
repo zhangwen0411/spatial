@@ -60,7 +60,7 @@ trait MaxJPreCodegen extends Traversal  {
       maxJManagerGen.quote(x)
   }
 
-	val argInOuts  = Set.empty[Sym[Register[_]]]
+	val argInOuts  = Set.empty[Sym[Reg[_]]]
 	val memStreams = Set.empty[Sym[Any]]
 
   override def preprocess[A:Manifest](b: Block[A]): Block[A] = {
@@ -108,11 +108,11 @@ trait MaxJPreCodegen extends Traversal  {
 			withStream(newStream("sequential_" + quote(sym))) {
 				emitSeqSM(quote(sym), childrenOf(sym).length)
 			}
-		case e@Pipe_parallel(func: Block[Unit]) =>
+		case e@ParallelPipe(func: Block[Unit]) =>
 			withStream(newStream("parallel_" + quote(sym))) {
 				emitParallelSM(quote(sym), childrenOf(sym).length)
 			}
-    case e@Pipe_foreach(cchain, func, inds) =>
+    case e@OpForeach(cchain, func, inds) =>
 			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
 				case CoarsePipe =>
 					withStream(newStream("metapipe_" + quote(sym))) {
@@ -124,7 +124,7 @@ trait MaxJPreCodegen extends Traversal  {
     				emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
 					}
 			}
-    case e@Pipe_fold(cchain, accum, zero, foldAccum, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
+    case e@OpReduce(cchain, accum, zero, foldAccum, ldFunc, stFunc, func, rFunc, inds, acc, res, rV) =>
 			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
 
 				case CoarsePipe =>
@@ -138,15 +138,15 @@ trait MaxJPreCodegen extends Traversal  {
 					}
 			}
 
-    case e@ParPipeForeach(cc, func, inds) =>
+    case e@UnrolledForeach(cc, func, inds, vs) =>
 			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
 				case CoarsePipe =>
 					withStream(newStream("metapipe_" + quote(sym))) {
     				emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
 					}
-				case InnerPipe => 
+				case InnerPipe =>
           parentOf(sym).get match {
-            case e@Deff(ParPipeReduce(_,accum,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+            case e@Deff(UnrolledReduce(_,accum,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
               if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
                 reduceType(accum) match {
                   case Some(fps: ReduceFunction) => fps match {
@@ -165,14 +165,14 @@ trait MaxJPreCodegen extends Traversal  {
                   }
                 }
               }
-            case _ =>            
+            case _ =>
           }
 				case SequentialPipe =>
 					withStream(newStream("sequential_" + quote(sym))) {
     				emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
 					}
 			}
-    case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, vs, acc, rV) =>
       withStream(newStream("metapipe_" + quote(sym))) {
         emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
       }
@@ -197,7 +197,7 @@ trait MaxJPreCodegen extends Traversal  {
         case _ =>
       }
 
-    case e@Unit_pipe(func) =>
+    case e@UnitPipe(func) =>
 			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
 				case CoarsePipe =>
 					withStream(newStream("metapipe_" + quote(sym))) {
@@ -205,7 +205,7 @@ trait MaxJPreCodegen extends Traversal  {
 					}
 				case InnerPipe =>
           parentOf(sym).get match {
-            case e@Deff(ParPipeReduce(_,accum,_,_,_,acc,_)) => // If part of reduce, emit custom red kernel
+            case e@Deff(UnrolledReduce(_,accum,_,_,_,_,acc,_)) => // If part of reduce, emit custom red kernel
               if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
                 reduceType(accum) match {
                   case Some(fps: ReduceFunction) => fps match {
@@ -224,7 +224,7 @@ trait MaxJPreCodegen extends Traversal  {
                   }
                 }
               }
-            case _ =>            
+            case _ =>
           }
 				case SequentialPipe =>
           withStream(newStream("sequential_" + quote(sym))) {
@@ -246,12 +246,12 @@ trait MaxJPreCodegen extends Traversal  {
 		case e:Argin_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
     case e:Argout_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
 
-    case _:Offchip_store_cmd[_] => memStreams += sym
-    case _:Offchip_load_cmd[_] => memStreams += sym
+    case _:BurstStore[_] => memStreams += sym
+    case _:BurstLoad[_] => memStreams += sym
     case _:Scatter[_] => memStreams += sym
     case _:Gather[_] => memStreams += sym
 
-    case Bram_new(size, zero) =>
+    case Sram_new(size, zero) =>
       val dups = duplicatesOf(sym)
       dups.zipWithIndex.foreach { case (d, i) =>
         val readers = readersOf(sym)
@@ -266,9 +266,9 @@ trait MaxJPreCodegen extends Traversal  {
         }
       }
 
-    // case Reg_new(init) => 
+    // case Reg_new(init) =>
     //   val duplicates = duplicatesOf(sym)
-    //   duplicates.zipWithIndex.foreach { case (d, i) => 
+    //   duplicates.zipWithIndex.foreach { case (d, i) =>
     //     if (d.depth > 2) {
     //       withStream(newStream("nbuf_" + quote(sym) + "_" + i)) {
     //         emitNBufSM(quote(sym), i, d.depth)
@@ -322,7 +322,7 @@ trait MaxJPreCodegen extends Traversal  {
 //   // Initialize state machine in constructor
 //   public ${name}_${i}_NBufSM(KernelLib owner, int nn, int bits) {
 //     super(owner);
-//     n = nn; 
+//     n = nn;
 //     DFEsmValueType wireType = dfeBool();
 //     DFEsmValueType counterType = dfeUInt(bits);
 
@@ -411,7 +411,7 @@ trait MaxJPreCodegen extends Traversal  {
         case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
           xx match {
             case Deff(Argin_new(_)) => true
-            case _ =>  
+            case _ =>
               if (isReduceStarter(s)) {false} else {true}
           }
         case Deff(_) => false // None
@@ -481,16 +481,14 @@ import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
 import java.util.Arrays;
 class ${quote(sym)}_reduce_kernel extends KernelLib {""")
     rhs match {
-      case e@(ParPipeReduce(_, _, _, _, _, _, _) | 
-              ParPipeForeach(_, _, _) |
-              Unit_pipe(_)) =>
+      case _:UnrolledReduce[_,_] | _:UnrolledForeach | _:UnitPipe =>
         var isVecResult = false
         val func = rhs match {
-          case ParPipeReduce(_,_,func,_,_,_,_) => func
-          case ParPipeForeach(_,func,_) => 
+          case e:UnrolledReduce[_,_] => e.func
+          case e:UnrolledForeach     =>
             isVecResult = true
-            func
-          case Unit_pipe(func) => func
+            e.func
+          case UnitPipe(func) => func
         }
 
         // If there is no result to this kernel, then turn off isStarter and isResult metadata
@@ -520,18 +518,18 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                 case Reg_read(_) =>
                   first_reg_read = first_reg_read :+ ii
                   s""
-                // case Vector_from_list(_) => // seems to have replaced reg_read with davids merge
+                // case ListVector(_) => // seems to have replaced reg_read with davids merge
                 //   // TODO: ask david how to actually detect tree start and tree result because this is sooo hacky!!!
                 //   first_reg_read = first_reg_read :+ ii
                 //   vecs_from_lists += s
-                //   s""            
+                //   s""
                 case tag @ Vec_apply(vec,idx) =>
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
-                case tag @ FixPt_Div(a,b) => 
+                case tag @ FixPt_Div(a,b) =>
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   s"""${maxJPre(s)} ${quote(s)} = ${quote(a)} / ${quote(b)};"""
-                case tag @ FltPt_Div(a,b) => 
+                case tag @ FltPt_Div(a,b) =>
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   s"""${maxJPre(s)} ${quote(s)} = ${quote(a)} / ${quote(b)};"""
                 case tag @ FltPt_Add(a,b) =>
@@ -653,15 +651,15 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   val pre = maxJPre(s)
                   s"""$pre ${quote(s)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;"""
-                case input @ ( Par_bram_load(_,_) ) =>
-                  if (isVecResult) { // Assume there is no reg_write in ParPipeForeach stage, so use par_bram_load
+                case input @ ( Par_sram_load(_,_) ) =>
+                  if (isVecResult) { // Assume there is no reg_write in UnrolledForeach stage, so use par_sram_load
                     first_reg_read = first_reg_read :+ ii
                   }
                   inputVecs += s
-                  s"/* Par_bram_load */"
+                  s"/* Par_sram_load */"
                 case input @ ( Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
                   inputVecs += s
-                  s"/* Par_bram_load */"
+                  s"/* Par_pop_fifo */"
                 case FieldApply(a, b) => 
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   inputVecs += s
@@ -684,11 +682,12 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
           Console.println(s"Setting isStarter for ${syms(first_reg_read(1))} to false")
           isReduceStarter(syms(first_reg_read(1))) = false
         } // In Kmeans, need to disable this for LT reduction
+
         // // TODO: Assume last Vector_from_list node is packing a single element (tree result) into a list
         // val Deff(dd) = vecs_from_lists.toList.last
         // isReduceResult(vecs_from_lists.toList.last) = true
         // val treeResult = dd match {
-        //   case Vector_from_list(node) => quote(node.head) // Assume list of one thing
+        //   case ListVector(node) => quote(node.head) // Assume list of one thing
         //   case _ => throw new Exception(s"No tree result found on $sym $rhs reduction!")
         // }
 
@@ -698,7 +697,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
           }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
         } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
 
-        val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_<_).mkString(",")
+        val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
         val res_input_arg = if (treeResult != "") {treeResultSyms.map { a => s"DFEVar ${quote(a)}"}.mkString(",")} else {""}
         // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
         //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
@@ -720,7 +719,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
         //   }
         // }.mkString("\n")
 
-        val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.toList.sortWith(_<_).mkString(",")
+        val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.toList.sortWith(_ < _).mkString(",")
         val first_comma = if (vec_input_args != "") { "," } else {""}
         val second_comma = if (treeResult != "") { "," } else {""}
         val trailing_args = consts_args_bnds_list.toList
@@ -734,7 +733,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
             ) "," else ""
         val trailing_args_string = trailing_args.map { exp =>
           s"""DFEVar ${quote(exp)}"""
-        }.sortWith(_<_).mkString(",")
+        }.sortWith(_ < _).mkString(",")
         emit(s"""void common($vec_input_args /*1*/ ${if (vec_input_args != "" & treeResult != "") "," else ""}
                 $res_input_arg /*2*/ $owner_comma $trailing_args_string /*3*/) {
 // For now, I just regenerate constants because java is being annoying about class extensions
@@ -746,7 +745,7 @@ $treeString
 ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $second_comma /*2*/
                 $res_input_arg $trailing_args_comma /*3*/  $trailing_args_string) {
   super(owner);
-  common(${inputVecs.map( exp => quote(exp)).toList.sortWith(_<_).mkString(", ")} ${if (vec_input_args != "" & treeResult != "") "," else ""} ${treeResult} ${if ((treeResult != "" | inputVecs.toList.length != 0) & trailing_args.length > 0) "," else ""} ${trailing_args.map { exp => quote(exp)}.sortWith(_<_).mkString(",")});
+  common(${inputVecs.map( exp => quote(exp)).toList.sortWith(_<_).mkString(", ")} ${if (vec_input_args != "" & treeResult != "") "," else ""} ${treeResult} ${if ((treeResult != "" | inputVecs.toList.length != 0) & trailing_args.length > 0) "," else ""} ${trailing_args.map { exp => quote(exp)}.sortWith(_ < _).mkString(",")});
 }
 }""")
 
@@ -796,7 +795,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
     private final DFEsmInput[] max;
     private final int[] strides;
     // Gap between the end of one array of count to the start of the next.
-    //   This is useful for padding non-powerof2-banked BRAMs to the next highest pwr of 2 banks
+    //   This is useful for padding non-powerof2-banked SRAMs to the next highest pwr of 2 banks
     // i.e- gap = 32, stride = 1, par = 96 would do this:
     // cycle1: count = [0, 1, ..., 94, 95]
     // cycle2: count = [128, 129, ..., 222, 223]

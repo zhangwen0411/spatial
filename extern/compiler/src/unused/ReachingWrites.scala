@@ -34,7 +34,7 @@ trait ReachingWritesAnalyzer extends Traversal with SpatialTraversalTools {
       val childAccesses = childrenOf(x).map(gatherAccesses)
     }
     else x match {
-      case Unit_pipe(func) => getStages(func).filter{s => isReader(s) || isWriter(s) }
+      case UnitPipe(func) => getStages(func).filter{s => isReader(s) || isWriter(s) }
       case
     }
   }

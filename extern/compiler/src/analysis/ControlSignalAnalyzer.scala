@@ -179,8 +179,8 @@ trait ControlSignalAnalyzer extends Traversal {
       val parent = lhs match {
         case lhs if isControlNode(lhs) => (lhs,false)
         case Def(Reify(_,_,_)) => ctrl.node match {
-          case Deff(_:Accum_fold[_,_]) => (ctrl.node, true)
-          case Deff(_:Pipe_fold[_,_])  => (ctrl.node, true)
+          case Deff(_:OpMemReduce[_,_]) => (ctrl.node, true)
+          case Deff(_:OpReduce[_,_])  => (ctrl.node, true)
           case _ => ctrl
         }
         case _ => ctrl
@@ -245,13 +245,13 @@ trait ControlSignalAnalyzer extends Traversal {
 
   def analyze(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
     case Hwblock(blk)       => traverseWith((lhs, false))(blk)
-    case Pipe_parallel(blk) => traverseWith((lhs, false))(blk)
-    case Unit_pipe(blk)     => traverseWith((lhs, false))(blk)
+    case ParallelPipe(blk) => traverseWith((lhs, false))(blk)
+    case UnitPipe(blk)     => traverseWith((lhs, false))(blk)
 
-    case Pipe_foreach(cc,func,inds) =>
+    case OpForeach(cc,func,inds) =>
       traverseWith((lhs, false), inds, cc)(func)
 
-    case Pipe_fold(cc,a,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) =>
+    case OpReduce(cc,a,zero,fA,ld,st,func,rFunc,inds,acc,res,rV) =>
       aliasOf(acc) = a
       traverseWith((lhs, false), inds, cc)(func)
       traverseWith((lhs, true), inds, cc)(rFunc)
@@ -260,7 +260,7 @@ trait ControlSignalAnalyzer extends Traversal {
       isAccum(a) = true                                   // (6)
       parentOf(a) = lhs  // Reset accumulator with reduction
 
-    case Accum_fold(cc1,cc2,a,zero,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV) =>
+    case OpMemReduce(cc1,cc2,a,zero,fA,func,ld1,ld2,rFunc,st,inds1,inds2,part,acc,res,rV) =>
       aliasOf(acc) = a
       aliasOf(part) = getBlockResult(func)
       traverseWith((lhs, false), inds1, cc1)(func)
@@ -297,10 +297,10 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
   }
 
   override def analyze(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
-    case ParPipeForeach(cc,func,inds) =>
+    case UnrolledForeach(cc,func,inds, vs) =>
       traverseUnrolled(lhs, inds, cc)(func)
 
-    case ParPipeReduce(cc,accum,func,rFunc,inds,acc,rV) =>
+    case UnrolledReduce(cc,accum,func,rFunc,inds,vs,acc,rV) =>
       aliasOf(acc) = accum
       traverseUnrolled(lhs, inds, cc)(func)
       // rFunc isn't "real" anymore

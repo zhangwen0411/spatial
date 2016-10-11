@@ -193,7 +193,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
         debug(s"    $stage")
         ctx.addStage(stage)
 
-      case stage@ReduceStage(op,init,acc) =>
+      case stage@ReduceStage(op,init,in,acc) =>
         debug(s"    $stage")
         ctx.addStage(stage)
 

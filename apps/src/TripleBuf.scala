@@ -19,18 +19,18 @@ trait TripleBufApp extends SpatialApp {
     val bm = param(96)
     val bn = param(96)
 
-    val c = OffChipMem[T](M, N)
-    val d = OffChipMem[T](M, N)
+    val c = DRAM[T](M, N)
+    val d = DRAM[T](M, N)
 
     setMem(c, C)
 
     Accel {
 
-      val tileC = BRAM[T](bm, bn)
-      Pipe(M by bm, N by bn) { (m,n) => 
+      val tileC = SRAM[T](bm, bn)
+      Pipe(M by bm, N by bn) { (m,n) =>
 
         // STAGE 1: Tile load
-        tileC := c(m::m+bm, n::n+bn, param(1))
+        tileC := c(m::m+bm, n::n+bn)
 
         // STAGE 2: Accumulate (Will be DCE in MaxJ)
         Pipe(bn by 1){ i =>
@@ -40,7 +40,7 @@ trait TripleBufApp extends SpatialApp {
         }
 
         // STAGE 3: Writeback
-        d(m::m+bm, n::n+bn, param(1)) := tileC
+        d(m::m+bm, n::n+bn) := tileC
       }
 
     }

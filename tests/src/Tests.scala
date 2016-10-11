@@ -12,16 +12,16 @@ trait Test extends SpatialApp {
 
     val N = 10
     val T = 5
-    val v1 = OffChipMem[A](N)
-    val v2 = OffChipMem[A](N)
-    //val out = OffChipMem[A](N, N)
+    val v1 = DRAM[A](N)
+    val v2 = DRAM[A](N)
+    //val out = DRAM[A](N, N)
 
     val vec1 = Array.fill(N)(random[A](10))
     setMem(v1, vec1)
 
     Accel {
       Pipe(N by T) { i =>
-        val b1 = BRAM[A](T)
+        val b1 = SRAM[A](T)
         b1 := v1(i::i+T)
         v2(i::i+T) := b1
       }
@@ -43,7 +43,7 @@ trait Test3 extends SpatialApp {
 
     Accel {
       Sequential(T by T){ i =>
-        val b1 = BRAM[SInt](T)
+        val b1 = SRAM[SInt](T)
         Pipe(T par P){ ii =>
           b1(ii) = x.value * ii
         }
@@ -61,7 +61,7 @@ trait FilterTest extends SpatialApp {
     val N = args(0).to[SInt]
     val B = param(10)
 
-    val data = OffChipMem[SInt](N)
+    val data = DRAM[SInt](N)
     val size = ArgIn[SInt]
     val sum = ArgOut[SInt]
 
@@ -74,7 +74,7 @@ trait FilterTest extends SpatialApp {
 
     Accel {
       Pipe.fold(size by B par unit(1))(sum){i =>
-        val tile = BRAM[SInt](B)
+        val tile = SRAM[SInt](B)
         val fifo = FIFO[SInt](B)
         tile := data(i::i+B)
 
@@ -104,7 +104,7 @@ trait UnrollTest1 extends SpatialApp {
 
     Accel {
       out := Reduce(N by 1 par unit(2))(0){i =>
-        val mem = BRAM[SInt](32)
+        val mem = SRAM[SInt](32)
         mem(i)
       }{_+_}
     }
@@ -115,7 +115,7 @@ object BankingTest0Compiler extends SpatialAppCompiler with BankingTest0
 trait BankingTest0 extends SpatialAppCompiler {
   def main() {
     Accel {
-      val mem = BRAM[SInt](8, 8)
+      val mem = SRAM[SInt](8, 8)
       val out = Reg[SInt]
       Fold(8 by 1 par unit(2))(out, 0){i =>
         Reduce(8 by 1 par unit(8))(0){j =>
@@ -130,7 +130,7 @@ object BankingTest1Compiler extends SpatialAppCompiler with BankingTest1
 trait BankingTest1 extends SpatialAppCompiler {
   def main() {
     Accel {
-      val mem = BRAM[SInt](8, 8)
+      val mem = SRAM[SInt](8, 8)
       val out = Reg[SInt]
       Fold(8 by 1 par unit(2))(out, 0){i =>
         Reduce(8 by 1 par unit(8))(0){j =>
@@ -147,7 +147,7 @@ object BankingTest2Compiler extends SpatialAppCompiler with BankingTest2
 trait BankingTest2 extends SpatialAppCompiler {
   def main() {
     Accel {
-      val mem = BRAM[SInt](8, 8)
+      val mem = SRAM[SInt](8, 8)
       val out = Reg[SInt]
       Fold(8 by 1 par unit(2))(out, 0){i =>
         Reduce(8 by 1 par unit(8))(0){j =>
@@ -162,7 +162,7 @@ object BankingTest3Compiler extends SpatialAppCompiler with BankingTest3
 trait BankingTest3 extends SpatialAppCompiler {
   def main() {
     Accel {
-      val mem = BRAM[SInt](8, 8)
+      val mem = SRAM[SInt](8, 8)
       val out = Reg[SInt]
       Fold(8 by 1 par unit(2))(out, 0){i =>
         Reduce(8 by 1 par unit(8))(0){j =>
@@ -177,7 +177,7 @@ object BankingTest4Compiler extends SpatialAppCompiler with BankingTest4
 trait BankingTest4 extends SpatialAppCompiler {
   def main() {
     Accel {
-      val mem = BRAM[SInt](8, 8)
+      val mem = SRAM[SInt](8, 8)
       val out = Reg[SInt]
       Fold(8 by 1 par unit(2))(out, 0){i =>
         Reduce(8 by 1 par unit(8))(0){j =>
@@ -192,7 +192,7 @@ object BankingTest5Compiler extends SpatialAppCompiler with BankingTest5
 trait BankingTest5 extends SpatialAppCompiler {
   def main() {
     Accel {
-      val mem = BRAM[SInt](8, 8)
+      val mem = SRAM[SInt](8, 8)
       val out = Reg[SInt]
       Fold(8 by 1 par unit(2))(out, 0){i =>
         Reduce(8 by 1 par unit(8))(0){j =>
@@ -220,7 +220,7 @@ trait LiftTest extends SpatialApp {
     setArg(y, yin)
 
     Accel {
-      val b1 = BRAM[SInt](tileSize)
+      val b1 = SRAM[SInt](tileSize)
       Sequential (tileSize by tileSize) { i =>
         Pipe.foreach(tileSize par innerPar) { ii =>
           b1(ii) = x.value * ii
@@ -278,15 +278,15 @@ trait ParLoadTest extends SpatialApp {
     val P1 = param(4)
     val P2 = param(2)
     val P3 = param(2)
-    val mem = OffChipMem[SInt](32,32)
+    val mem = DRAM[SInt](32,32)
     val out = ArgOut[SInt]
     Accel {
-      val bram = BRAM[SInt](32,32)
-      bram := mem(0::32, 0::32, P1)
+      val sram = SRAM[SInt](32,32)
+      sram := mem(0::32, 0::32, P1)
 
       Fold(32 par P2)(out, 0.as[SInt]){i =>
         Reduce(32 par P3)(0.as[SInt]){j =>
-          bram(i,j)
+          sram(i,j)
         }{_+_}
       }{_+_}
       ()

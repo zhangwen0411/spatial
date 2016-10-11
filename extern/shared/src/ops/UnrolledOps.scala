@@ -6,5 +6,6 @@ import scala.reflect.{Manifest,SourceContext}
 import spatial.shared._
 import spatial.shared.ops._
 
-trait LoweredPipeOps extends Base { this: Spatial => }
-trait LoweredPipeCompilerOps extends LoweredPipeOps { this: Spatial => }
+// No user-facing methods
+trait UnrolledOps extends Base { this: Spatial => }
+trait UnrolledCompilerOps extends UnrolledOps { this: Spatial => }

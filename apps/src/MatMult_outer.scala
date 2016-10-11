@@ -15,14 +15,14 @@ trait MatMult_outerApp extends SpatialApp {
     setArg(N,nn)
     setArg(P,pp)
 
-    val a = OffChipMem[T](M, P)
-    val b = OffChipMem[T](P, N)
-    val c_init = OffChipMem[T](M, N)
-    val c = OffChipMem[T](M, N)
+    val a = DRAM[T](M, P)
+    val b = DRAM[T](P, N)
+    val c_init = DRAM[T](M, N)
+    val c = DRAM[T](M, N)
 
-    val bm        = param(4) 
-    val bn        = param(96) 
-    val bp        = param(96) 
+    val bm        = param(4)
+    val bn        = param(96)
+    val bp        = param(96)
 
     setMem(a, A)
     setMem(b, B)
@@ -30,23 +30,23 @@ trait MatMult_outerApp extends SpatialApp {
 
     Accel {
       Sequential(M by bm, N by bn) { (i,j) =>
-        val tileC = BRAM[T](bm, bn)
-        tileC := c(i::i+bm, j::j+bn, param(1))
+        val tileC = SRAM[T](bm, bn)
+        tileC := c(i::i+bm, j::j+bn)
        	Pipe(P by bp) { k =>
-          val tileA = BRAM[T](bm, bp)
-          val tileB = BRAM[T](bp, bn)
+          val tileA = SRAM[T](bm, bp)
+          val tileB = SRAM[T](bp, bn)
           Parallel {
-            tileA := a(i::i+bm, k::k+bp, param(1))
-            tileB := b(k::k+bp, j::j+bn, param(1))
+            tileA := a(i::i+bm, k::k+bp)
+            tileB := b(k::k+bp, j::j+bn)
           }
           Fold(bp by 1)(tileC, 0.as[T]) { kk =>
-            val tileC_partial = BRAM[T](bm,bn)
+            val tileC_partial = SRAM[T](bm,bn)
             Pipe(bm by 1, bn by 1){ (ii,jj) =>
               tileC_partial(ii,jj) = tileA(ii,kk) * tileB(kk,jj)
             }
             tileC_partial
           }{_+_}
-          c(i::i+bm, j::j+bn, param(1)) := tileC
+          c(i::i+bm, j::j+bn) := tileC
      		}
      	}
     }

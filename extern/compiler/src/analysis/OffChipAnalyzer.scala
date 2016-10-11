@@ -18,11 +18,11 @@ trait OffChipAnalyzer extends Traversal {
   verboseMode = SpatialConfig.verbose
 
   var softValue: Map[Exp[Reg[Any]], Exp[Any]] = Map.empty
-  var offchips: Set[Exp[OffChipMem[Any]]] = Set.empty
+  var offchips: Set[Exp[DRAM[Any]]] = Set.empty
 
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
     case Set_arg(reg, value) => softValue += reg -> value
-    case Offchip_new(_) => offchips += lhs.asInstanceOf[Exp[OffChipMem[Any]]]
+    case Dram_new(_) => offchips += lhs.asInstanceOf[Exp[DRAM[Any]]]
     case _ => super.traverse(lhs, rhs)
   }
 
@@ -31,7 +31,7 @@ trait OffChipAnalyzer extends Traversal {
     for ((reg,value) <- softValue) {
       debug(s"  $reg: $value")
     }
-    debug("OffChipMems: ")
+    debug("DRAMs: ")
     for (offchip <- offchips) {
       debug(s"  $offchip")
       val dims = dimsOf(offchip)

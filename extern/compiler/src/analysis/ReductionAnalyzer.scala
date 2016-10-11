@@ -50,7 +50,7 @@ trait ReductionAnalyzer extends Traversal with SpatialTraversalTools {
   verboseMode = SpatialConfig.verbose
 
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
-    case Pipe_fold(c,a,z,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) =>
+    case OpReduce(c,a,z,fA,ld,st,func,rFunc,inds,acc,res,rV) =>
       val funcType = identifyReduceFunc(rFunc, rV._1, rV._2)
       getStages(rFunc).foreach{sym => reduceType(sym) = funcType}
       getStages(ld).foreach{sym => reduceType(sym) = funcType}
@@ -61,7 +61,7 @@ trait ReductionAnalyzer extends Traversal with SpatialTraversalTools {
       debug(s"pipefold acc $acc to $funcType in $lhs")
       debug(s"a $a to $funcType in $lhs")
 
-    case Accum_fold(c1,c2,a,z,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV) =>
+    case OpMemReduce(c1,c2,a,z,fA,func,ld1,ld2,rFunc,st,inds1,inds2,part,acc,res,rV) =>
       val funcType = identifyReduceFunc(rFunc, rV._1, rV._2)
       getStages(rFunc).foreach{sym => reduceType(sym) = funcType}
       getStages(ld1).foreach{sym => reduceType(sym) = funcType}

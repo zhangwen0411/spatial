@@ -308,7 +308,7 @@ cd ../
 start_date=(`date`)
 echo "[STATUS] `date`: Done cloning stuff!"
 echo "[STATUS] `date`: Making hyperdsl..."
-sbt compile > /dev/null 
+# sbt compile > /dev/null 
 echo "[STATUS] `date`: hyperdsl done!"
 echo "[STATUS] `date`: Making spatial..."
 cd spatial
@@ -504,6 +504,7 @@ echo -e "\n\n***\n\n" >> $result_file
 # Link to logs
 echo -e "\n## [History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${branch}_Regression_Test_History.csv) \n" >> $result_file
 echo -e "\n## [Prettier History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${branch}_Pretty_Regression_Test_History.csv) \n" >> $result_file
+echo -e "\n## ## [Performance Results](https://www.dropbox.com/ow/msft/edit/home/Research_Misc/Performance_Results.xlsx?hpt_click_ts=1476212646316)" >> $result_file
 
 write_comments $result_file
 

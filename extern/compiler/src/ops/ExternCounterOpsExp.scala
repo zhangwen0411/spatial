@@ -1,6 +1,6 @@
 package spatial.compiler.ops
 
-import scala.virtualization.lms.common.{BaseExp, ScalaGenEffect, DotGenEffect, MaxJGenEffect}
+import scala.virtualization.lms.common.{BaseExp, ScalaGenEffect, CGenEffect, MaxJGenEffect}
 import scala.virtualization.lms.internal.{Traversal}
 import scala.reflect.{Manifest,SourceContext}
 import scala.collection.mutable.Set
@@ -126,6 +126,17 @@ trait ScalaGenExternCounterOps extends ScalaGenEffect {
       emitValDef(sym, "Array(" + counters.map(quote).mkString(", ") + ")")
 
     case _ => super.emitNode(sym,rhs)
+  }
+}
+
+trait CGenExternCounterOps extends CGenEffect {
+  val IR: ExternCounterOpsExp
+  import IR._
+
+  override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
+    case "SpatialCounter" => "int32_t"
+    case "SpatialCounterChain" => "int32_t*"
+    case _ => super.remap(m)
   }
 }
 

@@ -16,8 +16,8 @@ import scala.collection.mutable.HashMap
 import ppl.delite.framework.DeliteApplication
 
 trait MaxJArgInPass extends Traversal  {
-  val IR: LoweredPipeOpsExp with ControllerTemplateOpsExp with TpesOpsExp with ParallelOpsExp
-          with PipeOpsExp with OffChipMemOpsExp with RegOpsExp with ExternCounterOpsExp
+  val IR: UnrolledOpsExp with ControllerOpsExp with TpesOpsExp with ParallelOpsExp
+          with PipeOpsExp with DRAMOpsExp with RegOpsExp with ExternCounterOpsExp
           with ExternPrimitiveOpsExp with SpatialCodegenOps with NosynthOpsExp with DeliteTransform
 	import IR._
 

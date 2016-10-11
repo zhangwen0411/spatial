@@ -448,20 +448,20 @@ trait BankingBase extends Traversal with ControllerTools {
 }
 
 /**
-    BRAM BANKING
+    SRAM BANKING
     stride - number of contiguous elements mapped to the same bank
     banks  - number of independent address generators corresponding to a single vectorized load
     depth  - number of writes that occur before one read (number of blocks needed to be saved)
 
-    val bram = BRAM[Fix](16,32)
-    Pipe(N until 1 par P){i =>    // domain of P should be (1,1,1) if this includes random *writes* to bram
+    val sram = SRAM[Fix](16,32)
+    Pipe(N until 1 par P){i =>    // domain of P should be (1,1,1) if this includes random *writes* to sram
       val a = Reg[Idx]
       Pipe { a := ... }
-      Pipe(32 until 1 par Q){j => bram(j) = ... }
+      Pipe(32 until 1 par Q){j => sram(j) = ... }
       Pipe(...)
     }
 
-    Should be allowed to bank (but not duplicate) writes to outer BRAMs -> restriction on params, not banking
+    Should be allowed to bank (but not duplicate) writes to outer SRAMs -> restriction on params, not banking
     Otherwise need some more complicated coherency protocol
     Also should have a multiFold in Spatial?
 
@@ -500,7 +500,7 @@ trait BankingBase extends Traversal with ControllerTools {
   B:   j%N       i%N        (i+j)%N
   A:(i*C+j)/N  (i/N)*C+j      ???
 **/
-trait BRAMBanking extends BankingBase {
+trait SRAMBanking extends BankingBase {
   import IR._
 
   override def bankAccess(mem: Exp[Any], access: Exp[Any]): (List[Banking], Int) = {
@@ -545,7 +545,7 @@ trait BRAMBanking extends BankingBase {
   }
 }
 
-trait RegisterBanking extends BankingBase {
+trait RegBanking extends BankingBase {
   import IR._
 }
 
@@ -582,8 +582,8 @@ trait MemoryAnalyzer extends Traversal {
 
   lazy val ctrlAnalyzer = new ControlSignalAnalyzer{val IR: MemoryAnalyzer.this.IR.type = MemoryAnalyzer.this.IR}
 
-  lazy val BRAMAnalyzer = new BRAMBanking{val IR: MemoryAnalyzer.this.IR.type = MemoryAnalyzer.this.IR}
-  lazy val RegAnalyzer  = new RegisterBanking{val IR: MemoryAnalyzer.this.IR.type = MemoryAnalyzer.this.IR}
+  lazy val SRAMAnalyzer = new SRAMBanking{val IR: MemoryAnalyzer.this.IR.type = MemoryAnalyzer.this.IR}
+  lazy val RegAnalyzer  = new RegBanking{val IR: MemoryAnalyzer.this.IR.type = MemoryAnalyzer.this.IR}
   lazy val FIFOAnalyzer = new FIFOBanking{val IR: MemoryAnalyzer.this.IR.type = MemoryAnalyzer.this.IR}
 
   def run(localMems: List[Exp[Any]]): Unit = {
@@ -594,9 +594,9 @@ trait MemoryAnalyzer extends Traversal {
     }
 
     localMems.foreach {
-      case mem if isBRAM(mem.tp) => BRAMAnalyzer.bank(mem)
+      case mem if isSRAM(mem.tp) => SRAMAnalyzer.bank(mem)
       case mem if isFIFO(mem.tp) => FIFOAnalyzer.bank(mem)
-      case mem if isRegister(mem.tp) => RegAnalyzer.bank(mem)
+      case mem if isReg(mem.tp) => RegAnalyzer.bank(mem)
       case mem => throw UnsupportedBankingException(mem)
     }
   }

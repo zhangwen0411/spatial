@@ -16,8 +16,8 @@ import scala.collection.mutable.HashMap
 import ppl.delite.framework.DeliteApplication
 
 trait RegChainPass extends Traversal  {
-  val IR: LoweredPipeOpsExp with ControllerTemplateOpsExp with TpesOpsExp with ParallelOpsExp
-          with PipeOpsExp with OffChipMemOpsExp with RegOpsExp with ExternCounterOpsExp
+  val IR: UnrolledOpsExp with ControllerOpsExp with TpesOpsExp with ParallelOpsExp
+          with PipeOpsExp with DRAMOpsExp with RegOpsExp with ExternCounterOpsExp
           with ExternPrimitiveOpsExp with SpatialCodegenOps with NosynthOpsExp with DeliteTransform
 	import IR._
 
@@ -46,7 +46,7 @@ trait RegChainPass extends Traversal  {
       val localSuffixMap = HashMap[Sym[Any], String]()
       if (quoteSuffix.contains(c.asInstanceOf[Sym[Any]])) {
         if (i > 0) {
-          inds.foreach { idx => 
+          inds.foreach { idx =>
             quoteSuffix(c.asInstanceOf[Sym[Any]]).put(idx, s"_chain[${i-1}].read()")
           }
         }
@@ -80,16 +80,16 @@ trait RegChainPass extends Traversal  {
   }
 
   def traverseNode(sym: Sym[Any], rhs: Def[Any]):Unit = rhs match {
-    case e@Pipe_foreach(cchain, func, inds) =>
+    case e@OpForeach(cchain, func, inds) =>
       processNode(sym, inds)
 
-    case e@Pipe_fold(cchain, accum, zero, foldAccum, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
+    case e@OpReduce(cchain, accum, zero, foldAccum, ldFunc, stFunc, func, rFunc, inds, acc, res, rV) =>
       processNode(sym, inds)
 
-    case e@ParPipeForeach(cc, func, inds) =>
+    case e@UnrolledForeach(cc, func, inds, vs) =>
       processNodeList(sym, inds)
 
-    case e@ParPipeReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, vs, acc, rV) =>
       processNodeList(sym, inds)
 
     case n@Reflect(d,_,_) =>

@@ -100,14 +100,14 @@ trait AreaAnalyzer extends ModelingTraversal {
         inHwScope = false
         body
 
-      case EatReflect(Pipe_parallel(func)) => areaOfBlock(func,false,1) + areaOf(lhs)
-      case EatReflect(Unit_pipe(func)) =>
+      case EatReflect(ParallelPipe(func)) => areaOfBlock(func,false,1) + areaOf(lhs)
+      case EatReflect(UnitPipe(func)) =>
         val body = areaOfBlock(func, isInnerPipe(lhs), 1)
         debug(s"Pipe $lhs: ")
         debug(s"  body: $body")
         body + areaOf(lhs)
 
-      case EatReflect(Pipe_foreach(cchain, func, _)) =>
+      case EatReflect(OpForeach(cchain, func, _)) =>
         val P = parsOf(cchain).reduce(_*_)
 
         val body = areaOfBlock(func, isInnerPipe(lhs), P)
@@ -116,7 +116,7 @@ trait AreaAnalyzer extends ModelingTraversal {
         debug(s"  body: $body")
         body + areaOf(lhs)
 
-      case EatReflect(e@Pipe_fold(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,idx,_,_,_)) =>
+      case EatReflect(e@OpReduce(cchain,accum,zero,fA,ld,st,func,rFunc,_,_,_,_)) =>
         val P = parsOf(cchain).reduce(_*_)
 
         val body = areaOfBlock(func, isInnerPipe(lhs), P) // map duplicated P times
@@ -133,20 +133,19 @@ trait AreaAnalyzer extends ModelingTraversal {
         val internal = areaOfBlock(rFunc, true, P - 1)
         val rFuncLatency = latencyOfPipe(rFunc)
         val internalDelays = reductionTreeDelays(P).map{delay => areaOfDelayLine(nbits(e.mT), rFuncLatency * delay, 1) }.fold(NoArea){_+_}
-        val icalc = areaOfCycle(iFunc, 1) // Calculate index for load/store
         val load  = areaOfCycle(ld, 1)    // Load from accumulator (happens once)
         val cycle = areaOfCycle(rFunc, 1) // Special case area of accumulator
-        val store = areaOfCycle(st, 1, Map(idx -> -(latencyOfCycle(ld) + latencyOfCycle(rFunc))) )    // Store to accumulator (happens once)
+        val store = areaOfCycle(st, 1)    // Store to accumulator (happens once)
 
         if (isInnerPipe(lhs)) debug(s"Reduce $lhs (P = $P):") else debug(s"Outer Reduce $lhs (P = $P):")
         debug(s"  body: $body")
         debug(s"  tree: $internal")
         debug(s"  dlys: $internalDelays")
-        debug(s"  cycle: ${icalc + load + cycle + store}")
+        debug(s"  cycle: ${load + cycle + store}")
 
-        body + internal + internalDelays + icalc + load + cycle + store + areaOf(lhs)
+        body + internal + internalDelays + load + cycle + store + areaOf(lhs)
 
-      case EatReflect(e@Accum_fold(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,_,_,idx,_,_,_,_)) =>
+      case EatReflect(e@OpMemReduce(ccOuter,ccInner,accum,zero,fA,func,ld1,ld2,rFunc,st,_,_,_,_,_,_)) =>
         val Pm = parsOf(ccOuter).reduce(_*_) // Parallelization factor for map
         val Pr = parsOf(ccInner).reduce(_*_) // Parallelization factor for reduce
 
@@ -155,21 +154,19 @@ trait AreaAnalyzer extends ModelingTraversal {
         val internal = areaOfPipe(rFunc, 1).replicated(Pm - 1,false).replicated(Pr,true)
         val rFuncLatency = latencyOfPipe(rFunc)
         val internalDelays = reductionTreeDelays(Pm).map{delay => areaOfDelayLine(nbits(e.mT), rFuncLatency * delay, Pr) }.fold(NoArea){_+_}
-        val icalc = areaOfPipe(iFunc, 1) //.replicated(Pr,true) // TODO: Shouldn't be duplicated? Taken care of by counter parallelization
         val load1 = areaOfPipe(ld1, 1).replicated(Pm,false).replicated(Pr,true)
-        val load2 = areaOfPipe(ld2, Pr, Map(idx -> -latencyOfPipe(ld1) ))
+        val load2 = areaOfPipe(ld2, Pr)
         val cycle = areaOfPipe(rFunc, Pr)
-        val store = areaOfPipe(st, Pr, Map(idx -> -(latencyOfPipe(ld2) + latencyOfPipe(rFunc))) )
+        val store = areaOfPipe(st, Pr)
 
         debug(s"BlockReduce $lhs (Pm = $Pm, Pr = $Pr)")
         debug(s"  body: $body (Pm)")
         debug(s"  tree: $internal (Pm)")
         debug(s"  dlys: $internalDelays (Pr)")
         debug(s"  load: $load1 (Pm*Pr)")
-        debug(s"  indx: $icalc (Pr)")
         debug(s"  accum: ${load2+cycle+store} (Pr)")
 
-        body + internal + internalDelays + icalc + load1 + load2 + cycle + store + areaOf(lhs)
+        body + internal + internalDelays + load1 + load2 + cycle + store + areaOf(lhs)
 
       case _ =>
         blocks(rhs).map(blk => areaOfBlock(blk,false,1)).fold(NoArea){_+_} + areaOf(lhs)
