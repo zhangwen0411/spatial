@@ -63,6 +63,8 @@ trait MemoryTypesExp extends MemoryTypes with BaseExp {
 trait MemoryOpsExp extends MemoryTypesExp with ExternPrimitiveOpsExp with SRAMOpsExp {
   this: SpatialExp =>
 
+  def isTup2[T:Manifest] = isSubtype(manifest[T].runtimeClass, classOf[Tup2[_,_]])
+
   val stream_offset_guess = 20
   // --- Nodes
   case class ListVector[T](elems: List[Exp[T]])(implicit val mT: Manifest[T], val ctx: SourceContext) extends Def[Vector[T]]
@@ -913,6 +915,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 //      emitComment("Offchip store from fifo")
 
     case Reg_new(init) =>
+      val tp = sym.tp.typeArguments(0)
+      Console.println(s"$sym = reg_new")
+      Console.println(s"tp = $tp [${isTup2(tp)}]")
+
       // TODO: This is known to have a def, so it shouldn't be necessary to use EatAlias here
       val EatAlias(alias) = sym
       if (!regs.contains(alias.asInstanceOf[Sym[Reg[Any]]])) {

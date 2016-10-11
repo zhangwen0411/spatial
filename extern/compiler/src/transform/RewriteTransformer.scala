@@ -49,8 +49,15 @@ trait RewriteTransformer extends SinglePassTransformer {
   }
 
   override def self_mirror[A](lhs: Sym[A], rhs: Def[A]): Exp[A] = {
+    //debugs(s"Mirroring: $lhs = $rhs")
+    //getProps(lhs).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
+
     val lhs2 = super.self_mirror(lhs, rhs)
     debug(s"$lhs -> $lhs2")
+    //val rhs2 = lhs2 match {case Def(d) => d; case _ => null}
+    //debugs(s"Created:   $lhs2 = $rhs2")
+    //getProps(lhs2).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
+
     lhs2
   }
 

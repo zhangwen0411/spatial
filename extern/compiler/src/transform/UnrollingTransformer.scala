@@ -563,6 +563,20 @@ trait UnrollingTransformer extends MultiPassTransformer {
     unrollGather(lhs, f(mem), f(local), f(addrs), f(len), p.toInt)(rhs.ctx, rhs.mT)
   }
 
+  override def self_mirror[A](lhs: Sym[A], rhs: Def[A]): Exp[A] = {
+    debugs(s"Mirroring: $lhs = $rhs")
+    getProps(lhs).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
+
+    val lhs2 = super.self_mirror(lhs, rhs)
+
+    val rhs2 = lhs2 match {case Def(d) => d; case _ => null}
+    debugs(s"Created:   $lhs2 = $rhs2")
+    getProps(lhs2).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
+    cloneFuncs.foreach{func => func(lhs2) }
+
+    lhs2
+  }
+
   def self_clone[A](lhs: Sym[A], rhs: Def[A]): Exp[A] = {
     debugs(s"Cloning $lhs = $rhs")
     getProps(lhs).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
@@ -571,7 +585,6 @@ trait UnrollingTransformer extends MultiPassTransformer {
     // Assumption: If the symbol we get back from cloning/mirroring had already been created by this
     // point, the mirrored symbol underwent a rewrite rule or CSE. The correct thing to do here is
     // to keep the previously created symbol's metadata, not the mirrored version of lhs's.
-    // TBD: Should this be added to the general self_mirror function too?
     val prevVars = IR.nVars
 
     val lhs2 = clone(lhs, rhs)(mtype(lhs.tp), mpos(lhs.pos))
