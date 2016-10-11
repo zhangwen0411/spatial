@@ -1193,7 +1193,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       }
 
     case ListVector(elems) =>
-      val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])
+      val ts = tpstr(1)(elems(0).tp.typeArguments(0), implicitly[SourceContext])
       emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map(quote).mkString(",")}));""")
 
     case _ => super.emitNode(sym, rhs)
