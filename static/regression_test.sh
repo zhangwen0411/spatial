@@ -135,7 +135,7 @@ function update_log {
 			sed -i -e "1d" $perf_file
 		fi
 
-		cmd="python ${SPATIAL_HOME}/static/plotter.py ${branch}_${pname} ${SPATIAL_HOME}/spatial.wiki/"
+		cmd="/usr/local/bin/python2.7 ${SPATIAL_HOME}/static/plotter.py ${branch}_${pname} ${SPATIAL_HOME}/spatial.wiki/"
 		eval "$cmd"
 
 
@@ -156,7 +156,7 @@ export DELITE_HOME=${HYPER_HOME}/delite
 export LMS_HOME=${HYPER_HOME}/virtualization-lms-core
 export PIR_HOME=${HYPER_HOME}/spatial/published/Spatial
 
-sleep ${3} # Backoff time to prevent those weird file IO errors
+sleep \$((${3}*10)) # Backoff time to prevent those weird file IO errors
 
 cd ${PUB_HOME}
 ${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} 2>&1 | tee -a ${5}/log
@@ -439,7 +439,7 @@ for ac in ${app_classes[@]}; do
 		cmd_file="${vulture_dir}/cmd"
 
 		# Create script
-		create_script $cmd_file ${ac} $(($i*30)) ${test_list[i]} ${vulture_dir}
+		create_script $cmd_file ${ac} $i ${test_list[i]} ${vulture_dir}
 
 		# Run vulture
 		cd ${SPATIAL_HOME}/regression_tests/${ac}/
