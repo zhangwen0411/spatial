@@ -15,19 +15,18 @@ trait GDA_App extends SpatialApp {
   val pLoopPar = 1
 
   def gda(xCPU: Rep[Array[T]], yCPU: Rep[Array[SInt]], mu0CPU: Rep[Array[T]], mu1CPU: Rep[Array[T]]) = {
-    val rTileSize     = param(tileSize);  domainOf(rTileSize) = (96, 19200, 1)
-    val op            = param(outerPar);  domainOf(op)  = (1, 8, 1)
-    val ip            = param(innerPar);  domainOf(ip)  = (1, 12, 1)
-    val subLoopPar    = param(innerPar);  domainOf(subLoopPar)    = (1, 16, 1)
-    val prodLoopPar   = param(pLoopPar);  domainOf(prodLoopPar)   = (1, 96, 1)
-    val outerAccumPar = param(innerPar);  domainOf(outerAccumPar) = (1, 1, 1)
+    val rTileSize     = tileSize (96 -> 19200)
+    val op            = outerPar (1 -> 8)
+    val ip            = innerPar (1 -> 12)
+    val subLoopPar    = innerPar (1 -> 16)
+    val prodLoopPar   = pLoopPar (1 -> 96)
+    val outerAccumPar = innerPar (1 -> 1)
 
     val rows = yCPU.length;   bound(rows) = 360000
     val cols = mu0CPU.length; bound(cols) = MAXC
 
     val R = ArgIn[SInt]
     val C = ArgIn[SInt]
-
     setArg(R, rows)
     setArg(C, cols)
 
@@ -46,8 +45,8 @@ trait GDA_App extends SpatialApp {
       val mu0Tile = SRAM[T](MAXC)
       val mu1Tile = SRAM[T](MAXC)
       Parallel {
-        mu0Tile := mu0(0::C, subLoopPar)  // Load mu0
-        mu1Tile := mu1(0::C, subLoopPar)  // Load mu1
+        mu0Tile := mu0(0::C par subLoopPar)  // Load mu0
+        mu1Tile := mu1(0::C par subLoopPar)  // Load mu1
       }
 
       val sigmaOut = SRAM[T](MAXC, MAXC)
@@ -55,13 +54,15 @@ trait GDA_App extends SpatialApp {
       Fold(R by rTileSize par op, outerAccumPar)(sigmaOut, 0.as[T]){ r =>
         val yTile = SRAM[SInt](rTileSize)
         val xTile = SRAM[T](rTileSize, MAXC)
+        val blk = Reg[SInt]
         Parallel {
-          yTile := y(r::r+rTileSize, subLoopPar)
-          xTile := x(r::r+rTileSize, 0::C, subLoopPar)  // Load tile of x
+          yTile := y(r::r+rTileSize par subLoopPar)
+          xTile := x(r::r+rTileSize, 0::C par subLoopPar)  // Load tile of x
+          Pipe { blk := min(R.value - r, rTileSize) }
         }
 
         val sigmaBlk = SRAM[T](MAXC,MAXC)
-        Fold(rTileSize par ip)(sigmaBlk, 0.as[Flt]){rr =>
+        Fold(blk par ip)(sigmaBlk, 0.as[Flt]){rr =>
           val subTile = SRAM[T](MAXC)
           val sigmaTile = SRAM[T](MAXC, MAXC)
           Pipe(C par subLoopPar){ cc =>
@@ -74,7 +75,7 @@ trait GDA_App extends SpatialApp {
         }{_+_}
       }{_+_}
 
-      sigma(0::C, 0::C, prodLoopPar) := sigmaOut
+      sigma(0::C, 0::C par prodLoopPar) := sigmaOut
     }
 
     getMem(sigma)

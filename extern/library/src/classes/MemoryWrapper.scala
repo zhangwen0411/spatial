@@ -48,7 +48,7 @@ trait MemoryWrapper extends ControllerWrapper with ExternPrimitiveWrapper {
   def indicesManifest: Manifest[Indices] = manifest[RecordImpl]
   def pipelineManifest: Manifest[Pipeline] = manifest[Unit]
 
-  def vectorize[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]] = elems.toArray
+  def vector_from_list[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]] = elems.toArray
 
   def gather[T:Manifest](mem: Rep[DRAM[T]],local: Rep[SRAM[T]],addrs: Rep[SRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
     for (i <- 0 until len.toInt) {
@@ -70,6 +70,17 @@ trait MemoryWrapper extends ControllerWrapper with ExternPrimitiveWrapper {
   }
   def burst_store[T:Manifest](mem: Rep[DRAM[T]],fifo: Rep[FIFO[T]],ofs: Rep[FixPt[Signed,B32,B0]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
     for (i <- 0 until len.toInt) { if (i + ofs.toInt < mem.length) mem(i + ofs.toInt) = fifo.dequeue() }
+  }
+
+  def sram_load[T:Manifest](mem: Rep[SRAM[T]], addr: Rep[Vector[FixPt[Signed,B32,B0]]])(implicit ctx: SourceContext): Rep[T] = {
+    val x = calcAddress(addr.toList, dimsOf(mem)).toInt
+    if (x < mem.length) mem(x) else mem(0)
+  }
+  def sram_store[T:Manifest](mem: Rep[SRAM[T]], addr: Rep[Vector[FixPt[Signed,B32,B0]]], value: Rep[T], en: Rep[Bit])(implicit ctx: SourceContext): Rep[Unit] = {
+    if (en) {
+      val x = calcAddress(addr.toList, dimsOf(mem)).toInt
+      if (x < mem.length) mem(x) = value
+    }
   }
 
 }

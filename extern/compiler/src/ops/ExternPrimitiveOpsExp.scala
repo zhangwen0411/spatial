@@ -88,6 +88,10 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
     case _ => false
   }
 
+  def isIndexType(t: Manifest[_]) = {
+    isFixPtType(t) && sign(t) && nbits(t.typeArguments(1)) == 32 && nbits(t.typeArguments(2)) == 0
+  }
+
   // --- Rewrite Rules
   override def globalCheck(__arg0: Rep[Any])(implicit __pos: SourceContext): Boolean = __arg0 match {
     case p: Param[_] => true
@@ -139,6 +143,16 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
       case _ => super.add(__arg0, __arg1)(manifest[S],manifest[I],manifest[F],__pos,__imp1)
     }
   }
+
+  override def fix_to_int[S:Manifest,I:Manifest](x: Rep[FixPt[S,I,B0]])(implicit __pos: SourceContext) = x match {
+    case Deff(e@Tpes_Int_to_fix(x)) if sign(e._mS) == sign(manifest[S]) && nbits(e._mI) == nbits(manifest[I]) => x.asInstanceOf[Exp[Int]]
+    case _ => super.fix_to_int(x)
+  }
+  override def int_to_fix[S:Manifest,I:Manifest](x: Rep[Int])(implicit ctx: SourceContext) = x match {
+    case Deff(e@Tpes_Fix_to_int(x)) if sign(e._mS) == sign(manifest[S]) && nbits(e._mI) == nbits(manifest[I]) => x.asInstanceOf[Exp[FixPt[S,I,B0]]]
+    case _ => super.int_to_fix(x)
+  }
+
 
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = (e match {
     case EatReflect(e@Min2(a,b)) => reflectPure(Min2(f(a),f(b))(e.mT,e.oT,e.nT,e.ctx))(mtype(manifest[A]),pos)
@@ -530,9 +544,9 @@ trait ScalaGenExternPrimitiveOps extends ScalaGenEffect {
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Min2(x,y) =>
-      stream.println(s"val ${quote(sym)} = Math.min(${quote(x)}, ${quote(y)})")
+      stream.println(s"val ${quote(sym)} = if (${quote(x)} < ${quote(y)}) ${quote(x)} else ${quote(y)}")
     case Max2(x,y) =>
-      stream.println(s"val ${quote(sym)} = Math.max(${quote(x)}, ${quote(y)})")
+      stream.println(s"val ${quote(sym)} = if (${quote(x)} > ${quote(y)}) ${quote(x)} else ${quote(y)}")
     case _ => super.emitNode(sym, rhs)
   }
 

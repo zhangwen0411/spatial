@@ -12,8 +12,6 @@ import spatial.compiler.ops._
 trait SpatialAffineAnalysisExp extends AffineAnalysisExp {
   this: SpatialExp =>
 
-  def isIndexType(t: Manifest[_]) = isFixPtType(t) && sign(t) && nbits(t.typeArguments(1)) == 32 && nbits(t.typeArguments(2)) == 0
-
   // Pair of symbols for nodes used in address calculation addition nodes
   override def indexPlusUnapply(x: Exp[Index]): Option[(Exp[Index], Exp[Index])] = x match {
     case Deff(FixPt_Add(a,b)) => Some((a.asInstanceOf[Exp[Index]],b.asInstanceOf[Exp[Index]])) // annoying erasure here
@@ -28,10 +26,10 @@ trait SpatialAffineAnalysisExp extends AffineAnalysisExp {
   override def loopUnapply(x: Exp[Any]): Option[List[(List[Sym[Index]], List[Block[Any]])]] = x match {
     case Deff(OpForeach(cchain, func, inds)) =>
       Some( List(inds -> List(func)) )
-    case Deff(OpReduce(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV)) =>
-      Some( List(inds -> List(iFunc,ld,st,func,rFunc)) )
-    case Deff(OpMemReduce(c1,c2,a,zero,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV)) =>
-      Some( List(inds1 -> List(func), (inds1 ++ inds2) -> List(iFunc,ld1,ld2,rFunc,st)) )
+    case Deff(OpReduce(cchain,accum,zero,fA,ld,st,func,rFunc,inds,acc,res,rV)) =>
+      Some( List(inds -> List(ld,st,func,rFunc)) )
+    case Deff(OpMemReduce(c1,c2,a,zero,fA,func,ld1,ld2,rFunc,st,inds1,inds2,part,acc,res,rV)) =>
+      Some( List(inds1 -> List(func), (inds1 ++ inds2) -> List(ld1,ld2,rFunc,st)) )
     case _ => None
   }
   // Memory being read + list of addresses (for N-D access)
@@ -41,7 +39,7 @@ trait SpatialAffineAnalysisExp extends AffineAnalysisExp {
   }
   // Memory being written + list of addresses (for N-D access)
   override def writeUnapply(x: Exp[Any]): Option[(Exp[Any], List[Exp[Index]])] = x match {
-    case Deff(Sram_store(sram,addr,y)) => Some((sram, accessIndicesOf(x)))
+    case Deff(Sram_store(sram,addr,y,en)) => Some((sram, accessIndicesOf(x)))
     case _ => None
   }
   // Usually None, but allows other exceptions for symbols being loop invariant
@@ -64,13 +62,6 @@ trait SpatialAffineAnalyzer extends AffineAnalyzer {
       accessPatternOf(lhs) = List(LinearAccess(e.i))
     case EatReflect(e:Gather[_]) =>
       accessPatternOf(lhs) = List(LinearAccess(e.i))
-
-    // OpReduce - idx is loop invariant anyway
-
-    case EatReflect(e: OpMemReduce[_,_]) =>
-      // Add access pattern for bound idx variable prior to traversal
-      boundIndexPatterns += e.idx -> e.indsInner.map{i => LinearAccess(i)}
-      super.traverse(lhs, rhs)
 
     case _ => super.traverse(lhs,rhs)
   }

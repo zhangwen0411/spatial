@@ -102,39 +102,69 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
 
   // Returns written memory, optional value, optional address
   private def writerUnapply(d: Def[Any]): Option[List[LocalWrite]] = d match {
-    case EatReflect(Reg_write(reg,value,_))           => Some(LocalWrite(reg,value))
-    case EatReflect(Sram_store(sram,addr,value))      => Some(LocalWrite(sram,value,addr))
-    case EatReflect(Push_fifo(fifo,value,_))          => Some(LocalWrite(fifo,value))
-    case EatReflect(Cam_store(cam,key,value))         => Some(LocalWrite(cam,value,key))
-    case EatReflect(Par_sram_store(sram,addr,value))  => Some(LocalWrite(sram,value,addr))
-    case EatReflect(Par_push_fifo(fifo,value,_,_))    => Some(LocalWrite(fifo,value))
-    case EatReflect(BurstLoad(mem,fifo,_,_,_)) => Some(LocalWrite(fifo))
-    case EatReflect(Gather(mem,local,addrs,_,_,_))    => Some(LocalWrite(local))
+    case EatReflect(Reg_write(reg,value,_))            => Some(LocalWrite(reg,value))
+    case EatReflect(Sram_store(sram,addr,value,_))     => Some(LocalWrite(sram,value,addr))
+    case EatReflect(Push_fifo(fifo,value,_))           => Some(LocalWrite(fifo,value))
+    case EatReflect(Cam_store(cam,key,value))          => Some(LocalWrite(cam,value,key))
+    case EatReflect(Par_sram_store(sram,addr,value,_)) => Some(LocalWrite(sram,value,addr))
+    case EatReflect(Par_push_fifo(fifo,value,_,_))     => Some(LocalWrite(fifo,value))
+    case EatReflect(BurstLoad(mem,fifo,_,_,_))         => Some(LocalWrite(fifo))
+    case EatReflect(Gather(mem,local,addrs,_,_,_))     => Some(LocalWrite(local))
     case _ => None
   }
 
   // Returns read memory, optional address
   private def readerUnapply(d: Def[Any]): Option[List[LocalRead]] = d match {
-    case EatReflect(Reg_read(reg))                     => Some(LocalRead(reg))
-    case EatReflect(Sram_load(sram,addr))              => Some(LocalRead(sram,addr))
-    case EatReflect(Pop_fifo(fifo))                    => Some(LocalRead(fifo))
-    case EatReflect(Cam_load(cam,key))                 => Some(LocalRead(cam,key))
-    case EatReflect(Par_sram_load(sram,addr))          => Some(LocalRead(sram,addr))
-    case EatReflect(Par_pop_fifo(fifo,_))              => Some(LocalRead(fifo))
-    case EatReflect(BurstStore(mem,fifo,_,_,_)) => Some(LocalRead(fifo))
-    case EatReflect(Gather(mem,local,addrs,_,_,_))     => Some(LocalRead(addrs))
-    case EatReflect(Scatter(mem,local,addrs,_,_,_))    => Some(LocalRead(local) ++ LocalRead(addrs))
+    case EatReflect(Reg_read(reg))                  => Some(LocalRead(reg))
+    case EatReflect(Sram_load(sram,addr))           => Some(LocalRead(sram,addr))
+    case EatReflect(Pop_fifo(fifo))                 => Some(LocalRead(fifo))
+    case EatReflect(Cam_load(cam,key))              => Some(LocalRead(cam,key))
+    case EatReflect(Par_sram_load(sram,addr))       => Some(LocalRead(sram,addr))
+    case EatReflect(Par_pop_fifo(fifo,_))           => Some(LocalRead(fifo))
+    case EatReflect(BurstStore(mem,fifo,_,_,_))     => Some(LocalRead(fifo))
+    case EatReflect(Gather(mem,local,addrs,_,_,_))  => Some(LocalRead(addrs))
+    case EatReflect(Scatter(mem,local,addrs,_,_,_)) => Some(LocalRead(local) ++ LocalRead(addrs))
     case _ => None
+  }
+
+  private def indicesOf(addr: Exp[Any]): List[Exp[Index]] = addr match {
+    case Deff(ListVector(indices)) => indices.flatMap{
+      case i if isIndexType(i.tp) => Some(i.asInstanceOf[Exp[Index]])
+      case _ => None
+    }
+    case s: Sym[_] if isIndexType(s.tp) => List(s.asInstanceOf[Exp[Index]])
+    case _ => Nil
+  }
+  private def vectorIndicesOf(addr: Exp[Any]): List[List[Exp[Index]]] = addr match {
+    case Deff(ListVector(vector)) if vector.isEmpty => Nil
+    case Deff(ListVector(vector)) if isIndexType(vector.head.tp) => List(indicesOf(addr))
+    case Deff(ListVector(vector)) =>
+      val vecs = vector.map(indicesOf(_))
+      if (vecs.exists(_.isEmpty)) Nil else vecs // forall or exists?
+    case _ => Nil
+  }
+
+  // HACK: Only uses first access (assumed that access to multiple mems is with same address)
+  def accessIndicesOf(x: Exp[Any]): List[Exp[Index]] = x match {
+    case LocalWriter(accesses) => accesses.flatMap(_._3).headOption.map(indicesOf(_)).getOrElse(Nil)
+    case LocalReader(accesses) => accesses.flatMap(_._2).headOption.map(indicesOf(_)).getOrElse(Nil)
+    case _ => Nil
+  }
+  // HACK: Only uses first access (assumed that access to multiple mems is with same address)
+  def parIndicesOf(x: Exp[Any]): List[List[Exp[Index]]] = x match {
+    case LocalWriter(accesses) => accesses.flatMap(_._3).headOption.map(vectorIndicesOf(_)).getOrElse(Nil)
+    case LocalReader(accesses) => accesses.flatMap(_._2).headOption.map(vectorIndicesOf(_)).getOrElse(Nil)
+    case _ => Nil
   }
 
   // Parallelization factors associated with this node
   override def parFactors(e: Exp[Any])(implicit ctx: SourceContext): List[Exp[Int]] = e match {
-    case Deff(Counterchain_new(ctrs))         => ctrs.flatMap{ctr => parFactors(ctr) }
-    case Deff(Counter_new(_,_,_,par))         => List(par)
-    case Deff(BurstLoad(_,_,_,_,par))         => List(par)
-    case Deff(BurstStore(_,_,_,_,par))    => List(par)
-    case Deff(Scatter(_,_,_,_,par,_))         => List(par)
-    case Deff(Gather(_,_,_,_,par,_))          => List(par)
+    case Deff(Counterchain_new(ctrs))  => ctrs.flatMap{ctr => parFactors(ctr) }
+    case Deff(Counter_new(_,_,_,par))  => List(par)
+    case Deff(BurstLoad(_,_,_,_,par))  => List(par)
+    case Deff(BurstStore(_,_,_,_,par)) => List(par)
+    case Deff(Scatter(_,_,_,_,par,_))  => List(par)
+    case Deff(Gather(_,_,_,_,par,_))   => List(par)
     case _ => super.parFactors(e)
   }
 

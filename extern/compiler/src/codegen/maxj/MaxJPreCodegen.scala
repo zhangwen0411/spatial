@@ -123,7 +123,7 @@ trait MaxJPreCodegen extends Traversal  {
     				emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
 					}
 			}
-    case e@OpReduce(cchain, accum, zero, foldAccum, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
+    case e@OpReduce(cchain, accum, zero, foldAccum, ldFunc, stFunc, func, rFunc, inds, acc, res, rV) =>
 			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
 
 				case CoarsePipe =>
@@ -137,7 +137,7 @@ trait MaxJPreCodegen extends Traversal  {
 					}
 			}
 
-    case e@UnrolledForeach(cc, func, inds) =>
+    case e@UnrolledForeach(cc, func, inds, vs) =>
 			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
 				case CoarsePipe =>
 					withStream(newStream("metapipe_" + quote(sym))) {
@@ -145,7 +145,7 @@ trait MaxJPreCodegen extends Traversal  {
 					}
 				case InnerPipe =>
           parentOf(sym).get match {
-            case e@Deff(UnrolledReduce(_,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+            case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
               if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
                 withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
                   emitReduction(sym, rhs)
@@ -158,7 +158,7 @@ trait MaxJPreCodegen extends Traversal  {
     				emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
 					}
 			}
-    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, vs, acc, rV) =>
       withStream(newStream("metapipe_" + quote(sym))) {
         emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
       }
@@ -178,7 +178,7 @@ trait MaxJPreCodegen extends Traversal  {
 					}
 				case InnerPipe =>
           parentOf(sym).get match {
-            case e@Deff(UnrolledReduce(_,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+            case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
               if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
                 withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
                   emitReduction(sym, rhs)
@@ -445,10 +445,10 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
       case _:UnrolledReduce[_,_] | _:UnrolledForeach | _:UnitPipe =>
         var isVecResult = false
         val func = rhs match {
-          case UnrolledReduce(_,_,func,_,_,_,_) => func
-          case UnrolledForeach(_,func,_) =>
+          case e:UnrolledReduce[_,_] => e.func
+          case e:UnrolledForeach     =>
             isVecResult = true
-            func
+            e.func
           case UnitPipe(func) => func
         }
 

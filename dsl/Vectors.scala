@@ -16,9 +16,8 @@ trait Vectors {
     val vector_apply = internal (Vector) ("vec_apply", T, (Vector(T), SInt) :: T)
 
     // --- Internals
-    internal (Vector) ("vector_create_from_list", T, SList(T) :: Vector(T)) implements composite ${
-      val vec = vectorize($0)
-      dimsOf(vec) = List($0.length.as[Index])
+    internal (Vector) ("vectorize", T, SList(T) :: Vector(T)) implements composite ${
+      val vec = vector_from_list($0)
       lenOf(vec) = $0.length
       vec
     }
@@ -36,7 +35,7 @@ trait Vectors {
     static (Vector) ("apply", T, varArgs(T) :: Vector(T)) implements composite ${
       val elems = $0.toList
       if (elems.length < 1) throw EmptyVectorException()
-      vector_create_from_list(elems)
+      vectorize(elems)
     }
 
     /** Creates a subvector of this vector with elements [start, end)
@@ -55,7 +54,7 @@ trait Vectors {
     rewrite (vector_slice) using pattern((${vec@Deff(ListVector(elems))},${start},${end}) -> ${
       if (start >= end) throw EmptyVectorException()
       if (end >= elems.length) throw InvalidVectorSliceException(vec)
-      vector_create_from_list(elems.slice(start, end)).asInstanceOf[Rep[Vector[T]]]
+      vectorize(elems.slice(start, end)).asInstanceOf[Rep[Vector[T]]]
     })
     rewrite (vector_apply) using pattern((${vec@Deff(ListVector(elems))}, ${i}) -> ${
       if (i < 0 && i >= elems.length) throw InvalidVectorApplyException(vec, i)

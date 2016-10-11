@@ -320,11 +320,11 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val cu = allocateCU(lhs)
       prescheduleStages(lhs, func)
 
-    case UnrolledForeach(cc, func, inds) =>
+    case UnrolledForeach(cc, func, inds, vs) =>
       val cu = allocateCU(lhs)
       prescheduleStages(lhs, func)
 
-    case UnrolledReduce(cc, accum, func, rFunc, inds, acc, rV) =>
+    case UnrolledReduce(cc, accum, func, rFunc, inds, vs, acc, rV) =>
       val cu = allocateCU(lhs)
       prescheduleStages(lhs, func)
 

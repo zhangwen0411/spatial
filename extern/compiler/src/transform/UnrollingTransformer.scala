@@ -49,37 +49,55 @@ trait UnrollingTransformer extends MultiPassTransformer {
   def inReduction[T](blk: => T): T = {
     duringClone{e => if (SpatialConfig.genCGRA) reduceType(e) = None }{ blk }
   }
-  def withAccessIndices[T](inds: List[Exp[Index]])(blk: => T): T = {
-    duringClone{e => if (isAccess(e)) accessIndicesOf(e) = inds }{ blk }
+
+  var validBit: Option[Exp[Bit]] = None
+  def withValid[T](valid: Exp[Bit])(blk: => T): T = {
+    val prevValid = validBit
+    validBit = Some(valid)
+    val result = blk
+    validBit = prevValid
+    result
   }
+  def globalValid = validBit.getOrElse(true.asBit)
 
   /**
    * Helper class for unrolling
-   * Tracks multiple substitution contexts in 'laneSubst' array
+   * Tracks multiple substitution contexts in 'contexts' array
    **/
-  case class Unroller(cchain: Exp[CounterChain], inds: List[Exp[Index]], inner: Boolean, unrolledInds: Option[List[List[Sym[Index]]]] = None) {
+  case class Unroller(cchain: Exp[CounterChain], inds: List[Exp[Index]], isInnerLoop: Boolean) {
     // Don't unroll inner loops for CGRA generation
-    val Ps = if (inner && SpatialConfig.genCGRA) inds.map{i => 1} else parsOf(cchain)
+    val Ps = if (isInnerLoop && SpatialConfig.genCGRA) inds.map{i => 1} else parsOf(cchain)
     val P = Ps.reduce(_*_)
     val N = Ps.length
     val prods = List.tabulate(N){i => Ps.slice(i+1,N).fold(1)(_*_) }
-    val indices = unrolledInds.getOrElse{ Ps.map{p => List.fill(p){fresh[Index]}} }
+    val indices = Ps.map{p => List.fill(p){fresh[Index]}}
+    val indexValids = Ps.map{p => List.fill(p){fresh[Bit]}}
+
+    // Valid bits corresponding to each lane
+    lazy val valids = List.tabulate(P){p =>
+      val laneIdxValids = indexValids.zip(parAddr(p)).map{case (vec,i) => vec(i)}
+      (laneIdxValids ++ validBit).reduce(_&&_)
+    }
 
     def size = P
 
     def parAddr(p: Int) = List.tabulate(N){d => (p / prods(d)) % Ps(d) }
 
     // Substitution for each duplication "lane"
-    val laneSubst = Array.tabulate(P){p =>
+    val contexts = Array.tabulate(P){p =>
       val inds2 = indices.zip(parAddr(p)).map{case (vec, i) => vec(i) }
-      withSubstScope(inds.zip(inds2):_*){ subst }
+      Map.empty[Exp[Any],Exp[Any]] ++ inds.zip(inds2)
     }
 
     def inLane[A](i: Int)(block: => A): A = {
-      withSubstRules(laneSubst(i)){
-        val result = block
-        laneSubst(i) = subst
-        result
+      val save = subst
+      withSubstRules(contexts(i)) {
+        withValid(valids(i)) {
+          val result = block
+          // Retain only the substitutions added within this scope
+          contexts(i) ++= subst.filterNot(save contains _._1)
+          result
+        }
       }
     }
 
@@ -87,7 +105,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
     def foreach(block: Int => Unit) { map(block) }
 
-    def vectorize[T:Manifest](block: Int => Exp[T]): Exp[Vector[T]] = vector_create_from_list(map(block))
+    def vectorize[T:Manifest](block: Int => Exp[T]): Exp[Vector[T]] = IR.vectorize(map(block))
 
     // --- Each unrolling rule should do at least one of three things:
     // 1. Split a given vector as the substitution for the single original symbol
@@ -111,7 +129,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
     }
 
     // Same symbol for all lanes
-    def isCommon(e: Exp[Any]) = laneSubst.map{p => f(e)}.forall{e2 => e2 == f(e)}
+    def isCommon(e: Exp[Any]) = contexts.map{p => f(e)}.forall{e2 => e2 == f(e)}
   }
 
   /**
@@ -123,8 +141,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
     case EatReflect(e@Push_fifo(fifo@EatAlias(mem), value, en)) if lanes.isCommon(fifo) =>
       debugs(s"Unrolling $lhs = $rhs")
       val values  = lanes.vectorize{p => f(value)}
-      val valids  = boundChecks(lanes.cchain, lanes.indices)
-      val enables = lanes.vectorize{p => f(en) && valids(p) }
+      val enables = lanes.vectorize{p => f(en) && globalValid }
       val parPush = par_push_fifo(f(fifo), values, enables, true)(e._mT,e.__pos)
 
       setProps(parPush, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
@@ -134,7 +151,6 @@ trait UnrollingTransformer extends MultiPassTransformer {
     case EatReflect(e@Pop_fifo(fifo@EatAlias(mem))) if lanes.isCommon(fifo) =>
       debugs(s"Unrolling $lhs = $rhs")
       val parPop = par_pop_fifo(f(fifo), lanes.size)(e._mT,e.__pos)
-      dimsOf(parPop) = List(lanes.size.as[Index])
       lenOf(parPop) = lanes.size
 
       setProps(parPop, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
@@ -148,16 +164,16 @@ trait UnrollingTransformer extends MultiPassTransformer {
       if (lanes.size > 1) throw ParallelizedCAMOpException(lhs)(mpos(lhs.pos))
       lanes.duplicate(lhs, rhs)
 
-    case EatReflect(e@Sram_store(sram@EatAlias(mem),addr,value)) if lanes.isCommon(sram) =>
+    case EatReflect(e@Sram_store(sram@EatAlias(mem),addr,value,en)) if lanes.isCommon(sram) =>
       debugs(s"Unrolling $lhs = $rhs")
       getProps(lhs).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
 
       val values = lanes.vectorize{p => f(value)}
       val addrs  = lanes.vectorize{p => f(addr)}
-      val lhs2 = par_sram_store(f(sram), addrs, values)(e._mT, e.__pos)
+      val ens    = lanes.vectorize{p => f(en) && globalValid }
+      val lhs2 = par_sram_store(f(sram), addrs, values, ens)(e.mT, e.ctx)
 
       setProps(lhs2, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
-      parIndicesOf(lhs2) = lanes.map{i => accessIndicesOf(lhs).map(f(_)) }
       cloneFuncs.foreach{func => func(lhs2) }
 
       val Def(rhs2) = lhs2
@@ -171,39 +187,23 @@ trait UnrollingTransformer extends MultiPassTransformer {
       getProps(lhs).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
 
       val addrs = lanes.vectorize{p => f(addr)}
-      val lhs2 = par_sram_load(f(sram), addrs)(e._mT, e.__pos)
-      dimsOf(lhs2) = List(lanes.size.as[Index])
-      lenOf(lhs2) = lanes.size
+      val lhs2 = par_sram_load(f(sram), addrs)(e.mT, e.ctx)
 
       setProps(lhs2, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
-      parIndicesOf(lhs2) = lanes.map{i => accessIndicesOf(lhs).map(f(_)) }
       cloneFuncs.foreach{func => func(lhs2) }
 
       val Def(rhs2) = lhs2
       debugs(s"Created $lhs2 = $rhs2")
       getProps(lhs2).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
 
-      lanes.split(lhs, lhs2)(e._mT)
+      lanes.split(lhs, lhs2)(e.mT)
 
-    case EatReflect(e@Sram_store(sram,addr,value)) =>
-      debugs(s"Duplicating $lhs = $rhs")
-
-      val stores = lanes.duplicate(lhs, rhs)
-      lanes.foreach{i => parIndicesOf(f(lhs)) = List(accessIndicesOf(lhs).map(f(_))) }
-      stores
-
-    case EatReflect(e@Sram_load(sram,addr)) =>
-      debugs(s"Duplicating $lhs = $rhs")
-      val loads = lanes.duplicate(lhs, rhs)
-      loads.foreach{i => parIndicesOf(f(lhs)) = List(accessIndicesOf(lhs).map(f(_))) }
-      loads
-
-    case EatReflect(e:OpForeach)  => unrollControllers(lhs,rhs,lanes){ unrollForeachNode(lhs, e) }
-    case EatReflect(e:OpReduce[_,_])  => unrollControllers(lhs,rhs,lanes){ unrollReduceNode(lhs, e) }
+    case EatReflect(e:OpForeach)        => unrollControllers(lhs,rhs,lanes){ unrollForeachNode(lhs, e) }
+    case EatReflect(e:OpReduce[_,_])    => unrollControllers(lhs,rhs,lanes){ unrollReduceNode(lhs, e) }
     case EatReflect(e:OpMemReduce[_,_]) => unrollControllers(lhs,rhs,lanes){ unrollMemReduceNode(lhs, e) }
-    case EatReflect(e:Scatter[_])      => unrollControllers(lhs,rhs,lanes){ unrollScatterNode(lhs, e) }
-    case EatReflect(e:Gather[_])       => unrollControllers(lhs,rhs,lanes){ unrollGatherNode(lhs, e) }
-    case d if isControlNode(lhs)       => unrollControllers(lhs,rhs,lanes){ self_clone(lhs, rhs) }
+    case EatReflect(e:Scatter[_])       => unrollControllers(lhs,rhs,lanes){ unrollScatterNode(lhs, e) }
+    case EatReflect(e:Gather[_])        => unrollControllers(lhs,rhs,lanes){ unrollGatherNode(lhs, e) }
+    case d if isControlNode(lhs)        => unrollControllers(lhs,rhs,lanes){ self_clone(lhs, rhs) }
 
     case EatReflect(Reg_new(_)) =>
       debugs(s"Duplicating $lhs = $rhs")
@@ -223,16 +223,6 @@ trait UnrollingTransformer extends MultiPassTransformer {
     debugs(s"$lhs = $rhs")
     if (lanes.size > 1) {
       val blk = reifyBlock {
-        /*debugs(s"$lhs duplicate 1/${lanes.size}")
-        val first = lanes.inLane(0){ unroll }
-        (1 until lanes.size).foreach{p => lanes.inLane(p){
-          debugs(s"$lhs duplicate ${p+1}/${lanes.size}")
-          first match {case Def(rhs2) => self_clone(first.asInstanceOf[Sym[Any]],rhs2); case _ => first }
-        }}*/
-        // Can't quite use the above method -- e.g. if accumulators are duplicated A -> A', A''
-        // There's no rule that says A' -> A''
-        // So for now just unrolling the same loop in multiple contexts
-        // Is unrolling multiple times more expensive? Doesn't seem like it should be...
         lanes.foreach{p =>
           debugs(s"$lhs duplicate ${p+1}/${lanes.size}")
           unroll
@@ -248,17 +238,6 @@ trait UnrollingTransformer extends MultiPassTransformer {
       lanes.unify(lhs, first)
     }
   }
-
-
-  /**
-   * Create index bound checks
-   * NOTE: Only can be used within reify scope
-   **/
-  def boundChecks2D(cchain: Exp[CounterChain], inds: List[List[Exp[Index]]]): List[List[Exp[Bit]]] = {
-    val ccMax = ccMaxes(cchain)
-    inds.zip(ccMax).map{case (ind,max) => ind.map{i => i < max}}
-  }
-  def boundChecks(cchain: Exp[CounterChain], inds: List[List[Exp[Index]]]): List[Exp[Bit]] = boundChecks2D(cchain,inds).flatten
 
   /*
     Unrolls purely independent loop iterations
@@ -291,10 +270,11 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
     val lanes = Unroller(cchain, inds, isInnerControl(lhs))
     val blk = reifyBlock { unrollMap(func, lanes); () }
-    val inds2 = lanes.indices
+    val inds2  = lanes.indices
+    val vs = lanes.indexValids
 
     val effects = summarizeEffects(blk).star andAlso Simple()
-    val lhs2 = reflectEffect(UnrolledForeach(cchain, blk, inds2)(ctx), effects)
+    val lhs2 = reflectEffect(UnrolledForeach(cchain, blk, inds2, vs)(ctx), effects)
     setProps(lhs2, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
 
     val Def(rhs2) = lhs2
@@ -339,13 +319,11 @@ trait UnrollingTransformer extends MultiPassTransformer {
     accum:  Exp[C[T]],          // Accumulator (external)
     zero:   Option[Exp[T]],     // Optional identity value for reduction
     fold:   Boolean,            // [Unused]
-    iFunc:  Block[Index],       // Address function for accumulator
     ld:     Block[T],           // Load function for accumulator
     st:     Block[Unit],        // Store function for accumulator
     func:   Block[T],           // Map function
     rFunc:  Block[T],           // Reduce function
     inds:   List[Sym[Index]],   // Bound iterators for map loop
-    idx:    Sym[Index],         // Bound symbol corresponding to result of iFunc
     acc:    Sym[C[T]],          // Bound symbol corresponding to accum
     res:    Sym[T],             // Bound symbol corresponding to result of rFunc
     rV:     (Sym[T],Sym[T])     // Bound symbols used to reify rFunc
@@ -353,17 +331,17 @@ trait UnrollingTransformer extends MultiPassTransformer {
     debugs(s"Unrolling pipe-fold $lhs")
     val lanes = Unroller(cchain, inds, isInnerControl(lhs))
     val inds2 = lanes.indices
+    val vs = lanes.indexValids
 
     val blk = reifyBlock {
       debugs("Unrolling map")
       val values = unrollMap(func, lanes)(mT)
-      val valids = boundChecks(cchain, inds2)
+      val valids = lanes.valids
 
       if (isOuterLoop(lhs)) {
         debugs("Unrolling unit pipe reduce")
         val rblk = reifyBlock {
-          val idx2 = inlineBlock(iFunc)
-          withSubstScope(idx -> idx2){ unrollReduceTree[T](values, valids, zero, rFunc, ld, st, rV, res) }
+          unrollReduceTree[T](values, valids, zero, rFunc, ld, st, rV, res)
         }
         val effects = summarizeEffects(rblk) andAlso Simple()
         val rpipe = reflectEffect(UnitPipe(rblk)(ctx), effects)
@@ -371,12 +349,11 @@ trait UnrollingTransformer extends MultiPassTransformer {
       }
       else {
         debugs("Unrolling inner reduce")
-        val idx2 = inlineBlock(iFunc)
-        withSubstScope(idx -> idx2) { unrollReduceTree[T](values, valids, zero, rFunc, ld, st, rV, res) }
+        unrollReduceTree[T](values, valids, zero, rFunc, ld, st, rV, res)
       }
     }
     val effects = summarizeEffects(blk).star andAlso Simple() andAlso Write(List(accum.asInstanceOf[Sym[C[T]]]))
-    val lhs2 = reflectEffect(UnrolledReduce(cchain, accum, blk, rFunc, inds2, acc, rV)(ctx,mT,mC), effects)
+    val lhs2 = reflectEffect(UnrolledReduce(cchain, accum, blk, rFunc, inds2, vs, acc, rV)(ctx,mT,mC), effects)
     setProps(lhs2, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
 
     val Def(rhs2) = lhs2
@@ -384,19 +361,18 @@ trait UnrollingTransformer extends MultiPassTransformer {
     lhs2
   }
   def unrollReduceNode[T,C[T]](lhs: Sym[Any], rhs: OpReduce[T,C]) = {
-    val OpReduce(cc,accum,zero,fold,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) = rhs
+    val OpReduce(cc,accum,zero,fold,ld,st,func,rFunc,inds,acc,res,rV) = rhs
 
     // Create a new copy of all the bound symbols that carry over to the unrolled node
     val acc2 = reflectMutableSym(fresh(List(rhs.ctx))(rhs.mC))
     val rV2 = (fresh(List(rhs.ctx))(rhs.mT), fresh(List(rhs.ctx))(rhs.mT))
 
     // Mirror the corresponding blocks for the new bound symbols
-    val iFunc2 = f(iFunc)
     val ld2 = withSubstScope(acc -> acc2){ f(ld)(rhs.mT) }
     val st2 = withSubstScope(acc -> acc2){ f(st) }
     val rFunc2 = withSubstScope(rV._1 -> rV2._1, rV._2 -> rV2._2){ f(rFunc)(rhs.mT) }
 
-    unrollReduce[T,C](lhs, f(cc), f(accum), zero.map(f(_)), fold, iFunc2, ld2, st2, func, rFunc2, inds, idx, acc2, res, rV2)(rhs.ctx,rhs.numT,rhs.mT,rhs.mC)
+    unrollReduce[T,C](lhs, f(cc), f(accum), zero.map(f(_)), fold, ld2, st2, func, rFunc2, inds, acc2, res, rV2)(rhs.ctx,rhs.numT,rhs.mT,rhs.mC)
   }
 
 
@@ -408,7 +384,6 @@ trait UnrollingTransformer extends MultiPassTransformer {
     accum: Exp[C[T]],         // Accumulator (external)
     zero:  Option[Exp[T]],    // Optional identity value for reduction
     fold:  Boolean,           // [Unused]
-    iFunc: Block[Index],      // Address function for intermediate values and accumulator
     func:  Block[C[T]],       // Map function
     ldMap: Block[T],          // Load function for intermediate values
     ldAcc: Block[T],          // Load function for accumulator
@@ -416,7 +391,6 @@ trait UnrollingTransformer extends MultiPassTransformer {
     st:    Block[Unit],       // Store function for accumulator
     isMap: List[Sym[Index]],  // Bound iterators for map loop
     isRed: List[Sym[Index]],  // Bound iterators for reduce loop
-    idx:   Sym[Index],        // Bound symbol corresponding to result of iFunc
     part:  Sym[C[T]],         // Bound symbol corresponding to result of func
     acc:   Sym[C[T]],         // Bound symbol corresponding to accum
     res:   Sym[T],            // Bound symbol corresponding to result of rFunc
@@ -428,23 +402,21 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
     val mapLanes = Unroller(ccMap, isMap, false)
     val isMap2 = mapLanes.indices
+    val mvs = mapLanes.indexValids
     val partial = getBlockResult(func)
 
     val blk = reifyBlock {
       debugs(s"[Accum-fold $lhs] Unrolling map")
       val mems = unrollMap(func, mapLanes)
-      val mvalids = boundChecks(ccMap, isMap2)
+      val mvalids = mapLanes.valids
 
       if (isUnitCounterChain(ccRed)) withSubstScope(acc -> accum) {
         debugs(s"[Accum-fold $lhs] Unrolling unit pipe reduction")
         val rblk = reifyBlock {
-          val idx2 = inlineBlock(iFunc)
-          withSubstScope(idx -> idx2){
-            val values = mems.map{mem => withSubstScope(partial -> mem, part -> mem){
-              inReduction{ inlineBlock(ldMap)(mT) }
-            }}
-            inReduction{ unrollReduceTree[T](values, mvalids, zero, rFunc, ldAcc, st, rV, res) }
-          }
+          val values = mems.map{mem => withSubstScope(partial -> mem, part -> mem){
+            inReduction{ inlineBlock(ldMap)(mT) }
+          }}
+          inReduction{ unrollReduceTree[T](values, mvalids, zero, rFunc, ldAcc, st, rV, res) }
         }
         val effects = summarizeEffects(rblk) andAlso Simple()
         val rpipe = reflectEffect(UnitPipe(rblk)(ctx), effects)
@@ -453,29 +425,22 @@ trait UnrollingTransformer extends MultiPassTransformer {
       else {
         debugs(s"[Accum-fold $lhs] Unrolling pipe-reduce reduction")
         tab += 1
+
         val reduceLanes = Unroller(ccRed, isRed, true)
+        val isRed2 = reduceLanes.indices
+        val rvs = reduceLanes.indexValids
         reduceLanes.foreach{p =>
           debugs(s"Lane #$p")
           isRed.foreach{i => debugs(s"  $i -> ${f(i)}") }
         }
 
-        val isRed2 = reduceLanes.indices
 
         val rblk = reifyBlock {
-          val rvalids = boundChecks2D(ccRed, isRed2)
-
-          debugs(s"[Accum-fold $lhs] Creating reduction indices")
-          val idx2 = reduceLanes.map{mem =>
-            val idx2 = inlineBlock(iFunc)
-            register(idx -> idx2)
-            idx2
-          }
+          val rvalids = reduceLanes.valids
 
           debugs(s"[Accum-fold $lhs] Unrolling map loads")
           val values = mems.map{mem => withSubstScope(partial -> mem, part -> mem){
-            val loadLanes = Unroller(ccRed, isRed, true, Some(isRed2))
-            loadLanes.foreach{p => register(idx -> idx2(p) ) }
-            inReduction{ unrollMap(ldMap, loadLanes)(mT) }
+            inReduction{ unrollMap(ldMap, reduceLanes)(mT) }
           }}
 
           debugs(s"[Accum-fold $lhs] Unrolling accum loads")
@@ -488,10 +453,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
 
           debugs(s"[Accum-fold $lhs] Unrolling reduction trees and cycles")
           reduceLanes.foreach{p =>
-            // Valid bit for each index
-            val indexValids = rvalids.zip(reduceLanes.parAddr(p)).map{case (vec,j) => vec(j) }
-            // Valid bit for this lane (all indices are valid)
-            val laneValid = reduceTree(indexValids){(x,y) => x && y}
+            val laneValid = reduceLanes.valids(p)
 
             debugs(s"Lane #$p:")
             tab += 1
@@ -528,13 +490,13 @@ trait UnrollingTransformer extends MultiPassTransformer {
           ()
         }
         val effects = summarizeEffects(rblk).star andAlso Simple()
-        val rpipe = reflectEffect(UnrolledForeach(ccRed, rblk, isRed2)(ctx), effects)
+        val rpipe = reflectEffect(UnrolledForeach(ccRed, rblk, isRed2, rvs)(ctx), effects)
         styleOf(rpipe) = InnerPipe
         tab -= 1
       }
     }
     val effects = summarizeEffects(blk) andAlso Simple() andAlso Write(List(accum.asInstanceOf[Sym[C[T]]]))
-    val lhs2 = reflectEffect(UnrolledReduce(ccMap, accum, blk, rFunc, isMap2, acc, rV)(ctx,mT,mC), effects)
+    val lhs2 = reflectEffect(UnrolledReduce(ccMap, accum, blk, rFunc, isMap2, mvs, acc, rV)(ctx,mT,mC), effects)
     setProps(lhs2, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
 
     val Def(rhs2) = lhs2
@@ -542,19 +504,18 @@ trait UnrollingTransformer extends MultiPassTransformer {
     lhs2
   }
   def unrollMemReduceNode[T,C[T]](lhs: Sym[Any], rhs: OpMemReduce[T,C]) = {
-    val OpMemReduce(ccMap,ccRed,accum,zero,fold,iFunc,func,ldMap,ldAcc,rFunc,st,isMap,isRed,idx,part,acc,res,rV) = rhs
+    val OpMemReduce(ccMap,ccRed,accum,zero,fold,func,ldMap,ldAcc,rFunc,st,isMap,isRed,part,acc,res,rV) = rhs
 
     // Create a new copy of all the bound symbols that (could) carry over to the unrolled nodes
     val acc2 = reflectMutableSym(fresh(List(rhs.ctx))(rhs.mC))
     val rV2 = (fresh(List(rhs.ctx))(rhs.mT), fresh(List(rhs.ctx))(rhs.mT))
 
     // Mirror the corresponding blocks for the new bound symbols
-    val iFunc2 = f(iFunc)
     val ldAcc2 = withSubstScope(acc -> acc2){ f(ldAcc)(rhs.mT) }
     val st2 = withSubstScope(acc -> acc2){ f(st) }
     val rFunc2 = withSubstScope(rV._1 -> rV2._1, rV._2 -> rV2._2){ f(rFunc)(rhs.mT) }
 
-    unrollMemReduce(lhs,f(ccMap),f(ccRed),f(accum),zero.map(f(_)),fold,iFunc2,func,ldMap,ldAcc2,rFunc2,st2,isMap,isRed,idx,part,acc2,res,rV2)(rhs.ctx,rhs.numT,rhs.mT,rhs.mC)
+    unrollMemReduce(lhs,f(ccMap),f(ccRed),f(accum),zero.map(f(_)),fold,func,ldMap,ldAcc2,rFunc2,st2,isMap,isRed,part,acc2,res,rV2)(rhs.ctx,rhs.numT,rhs.mT,rhs.mC)
   }
 
   // TODO: can probably unify this for scatter and gather
@@ -602,9 +563,6 @@ trait UnrollingTransformer extends MultiPassTransformer {
     unrollGather(lhs, f(mem), f(local), f(addrs), f(len), p.toInt)(rhs.ctx, rhs.mT)
   }
 
-
-  override def self_mirror[A](lhs: Sym[A], rhs: Def[A]): Exp[A] = self_clone(lhs, rhs)
-
   def self_clone[A](lhs: Sym[A], rhs: Def[A]): Exp[A] = {
     debugs(s"Cloning $lhs = $rhs")
     getProps(lhs).foreach{props => props.data.foreach{(k,m) => debugs(" -" + readable(k) + makeString(m)) }}
@@ -637,7 +595,7 @@ trait UnrollingTransformer extends MultiPassTransformer {
   def cloneInds[I:Manifest](inds: List[List[Sym[I]]]) = inds.map{is => is.map{i => fresh[I] }}
 
   def clone[A:Manifest](lhs: Sym[A], rhs: Def[A])(implicit ctx: SourceContext): Exp[A] = (rhs match {
-    case Reflect(e@UnrolledForeach(cc,b,i), u, es) =>
+    /*case Reflect(e@UnrolledForeach(cc,b,i), u, es) =>
       val i2 = cloneInds(i)
       val b2 = withSubstScope(i.flatten.zip(i2.flatten):_*){ f(b) }
       reflectMirrored(Reflect(UnrolledForeach(f(cc), b2, i2)(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]), ctx)
@@ -649,16 +607,10 @@ trait UnrollingTransformer extends MultiPassTransformer {
       val b2 = withSubstScope( (i.flatten.zip(i2.flatten) ++ List(acc -> acc2)):_*) { f(b) }
       val rF2 = withSubstScope(rV._1 -> rV2._1, rV._2 -> rV2._2){ f(rF) }
       reflectMirrored(Reflect(UnrolledReduce(f(cc),f(a),b2,rF2,i2,acc2,rV2)(e.ctx,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), ctx)
+    */
 
-    case EatReflect(e@Sram_store(sram,addr,value)) =>
-      val store = mirror(rhs, f.asInstanceOf[Transformer])(mtype(manifest[A]), ctx)
-      parIndicesOf(store) = List(accessIndicesOf(lhs).map(f(_)))
-      store
-
-    case EatReflect(e@Sram_load(sram,addr)) =>
-      val load = mirror(rhs, f.asInstanceOf[Transformer])(mtype(manifest[A]), ctx)
-      parIndicesOf(load) = List(accessIndicesOf(lhs).map(f(_)))
-      load
+    case EatReflect(e@Sram_store(sram,addr,value,en)) =>
+      sram_store(f(sram),f(addr),f(value), f(en) && globalValid)(e.mT, e.ctx)
 
     case _ => mirror(rhs, f.asInstanceOf[Transformer])(mtype(manifest[A]), ctx)
 

@@ -413,31 +413,6 @@ trait SpatialMetadata {
     internal.static (contentionOps) ("apply", Nil, MAny :: SInt) implements
       composite ${ meta[MContention]($0).map(_.contention).getOrElse(1) }
 
-    /**
-     * N-D access indices
-     * Used to track the addresses for each dimension independent of address flattening.
-     * User facing: No
-     * Set: accessIndicesOf(Rep[Any]) = List[Rep[Index]]
-     * Get: accessIndicesOf(Rep[Any])   // Returns List[Rep[Index]]. Nil if undefined.
-     **/
-    val MAccessIndices = metadata("MAccessIndices", "indices" -> SList(Idx))
-    val accessOps = metadata("accessIndicesOf")
-    internal.static (accessOps) ("update", Nil, (MAny, SList(Idx)) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MAccessIndices($1)) }
-    internal.static (accessOps) ("apply", Nil, MAny :: SList(Idx)) implements
-      composite ${ meta[MAccessIndices]($0).map(_.indices).getOrElse(Nil) }
-
-
-    /**
-     * Parallelized N-D access indices
-     **/
-    val MParAccessIndices = metadata("MParAccessIndices", "indices" -> SList(SList(Idx)))
-    val parAccessOps = metadata("parIndicesOf")
-    internal.static (parAccessOps) ("update", Nil, (MAny, SList(SList(Idx))) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MParAccessIndices($1)) }
-    internal.static (parAccessOps) ("apply", Nil, (MAny) :: SList(SList(Idx))) implements
-      composite ${ meta[MParAccessIndices]($0).map(_.indices).getOrElse(Nil) }
-
         /* MaxJ Codegen Helper Functions */
     val maxjgrp = grp("maxjGrp")
         /* Not real metadata but need to be globally accessable */

@@ -54,26 +54,6 @@ trait DRAMs {
        **/
       infix ("apply") ((Range,Range,Range) :: Tile(T)) implements composite ${ tile_create($self, List($1,$2,$3)) }
 
-      // Hack version for adding explicit parallelization factors to a tile load / store
-      /** @nodoc - syntax needs some tweaking here **/
-      infix ("apply") ((Range,MInt) :: Tile(T)) implements composite ${
-        val tile = tile_create($self, List($1))
-        tilePar(tile) = $2
-        tile
-      }
-      /** @nodoc - syntax needs some tweaking here **/
-      infix ("apply") ((Range,Range,MInt) :: Tile(T)) implements composite ${
-        val tile = tile_create($self, List($1,$2))
-        tilePar(tile) = $3
-        tile
-      }
-      /** @nodoc - syntax needs some tweaking here **/
-      infix ("apply") ((Range,Range,Range,MInt) :: Tile(T)) implements composite ${
-        val tile = tile_create($self, List($1,$2,$3))
-        tilePar(tile) = $4
-        tile
-      }
-
       // 2D -> 1D
       /** Creates a reference to a 1D row Tile of this 2D DRAM
        * @param row
@@ -129,26 +109,13 @@ trait DRAMs {
       /** Sets up a sparse gather from this DRAM using *size* addresses from the supplied SRAM
        * @param addrs: SRAM with addresses to load
        * @param size: the number of addresses
-       * @param par: the number of elements to load in parallel
        **/
-      infix ("apply") ((SRAM(Idx), Idx, MInt) :: SparseTile(T)) implements composite ${ stile_create($self, $1, $2, $3) }
-
-      /** Sets up a sparse gather from this DRAM using *size* addresses from the supplied SRAM
-       * @param addrs: SRAM with addresses to load
-       * @param par: the number of elements to load in parallel
-       **/
-      infix ("apply") ((SRAM(Idx), MInt) :: SparseTile(T)) implements composite ${ stile_create($self, $1, sizeOf($1), $2) }
-
-      /** Sets up a sparse gather from this DRAM using *size* addresses from the supplied SRAM
-       * @param addrs: SRAM with addresses to load
-       * @param size: the number of addresses
-       **/
-      infix ("apply") ((SRAM(Idx), Idx) :: SparseTile(T)) implements composite ${ stile_create($self, $1, $2, param(1)) }
+      infix ("apply") ((SRAM(Idx), Idx) :: SparseTile(T)) implements composite ${ stile_create($self, $1, $2) }
 
       /** Sets up a sparse gather from this DRAM using all addresses from the supplied SRAM
        * @param addrs: SRAM with addresses to load
        **/
-      infix ("apply") (SRAM(Idx) :: SparseTile(T)) implements composite ${ stile_create($self, $1, sizeOf($1), param(1)) }
+      infix ("apply") (SRAM(Idx) :: SparseTile(T)) implements composite ${ stile_create($self, $1, sizeOf($1)) }
     }
 
     // --- Scala Backend
@@ -193,7 +160,7 @@ trait DRAMs {
       val offsets = rangesOf($tile).map(_.start)
       val tileDims = rangesOf($tile).map(_.len)
 
-      val p = tilePar($tile).getOrElse(param(1))
+      val p = tilePar(rangesOf(tile).last).getOrElse(param(1))
       val len = tileDims.last
 
       val px = param(1); domainOf(px) = (1,1,1)
@@ -223,7 +190,7 @@ trait DRAMs {
       val tileDims = rangesOf($tile).map(_.len)
       val unitDims = rangesOf($tile).map(isUnit(_))
 
-      val p = tilePar($tile).getOrElse(param(1))
+      val p = tilePar(rangesOf($tile).last).getOrElse(param(1))
       val len = tileDims.last
 
       val fifo = FIFO[T](512) // TODO: How to determine FIFO depth?
@@ -246,7 +213,7 @@ trait DRAMs {
             burst_store(mem, fifo, memOfs, len, p)
           }
           else {
-            // val el_per_burst = 384*8/tp(mem).bits // Get number of elements in a burst
+            // val el_per_burst = 384*8/nbits(manifest[T]) // Get number of elements in a burst
             // val start_bound = memOfs % el_per_burst // Figure out number of elements to ignore before we get desired data
             // val memOfs_downcast = memOfs - start_bound // Figure out burst-aligned memOfs
             // val end_bound = start_bound + len // Figure out number of elements before we should ignore again
@@ -269,7 +236,7 @@ trait DRAMs {
             burst_store(mem, fifo, memOfs, len, p)
           }
           else {
-            // val el_per_burst = 384*8/tp(mem).bits // Get number of elements in a burst
+            // val el_per_burst = 384*8/nbits(manifest[T]) // Get number of elements in a burst
             // val start_bound = memOfs % el_per_burst // Figure out number of elements to ignore before we get desired data
             // val memOfs_downcast = memOfs - start_bound // Figure out burst-aligned memOfs
             // val end_bound = start_bound + len // Figure out number of elements before we should ignore again
@@ -288,17 +255,15 @@ trait DRAMs {
     val T = tpePar("T")
 
     val SparseTile = lookupTpe("SparseTile")
-    val DRAM    = lookupTpe("DRAM")
+    val DRAM       = lookupTpe("DRAM")
     val SRAM       = lookupTpe("SRAM")
     val Idx = lookupAlias("Index")
 
     data(SparseTile, ("_target", DRAM(T)), ("_addrs", SRAM(Idx)), ("_len", Idx))
     internal (SparseTile) ("stile_new", T, (DRAM(T), SRAM(Idx), Idx) :: SparseTile(T)) implements allocates(SparseTile, ${$0}, ${$1}, ${$2})
-    internal (SparseTile) ("stile_create", T, (DRAM(T), SRAM(Idx), Idx, MInt) :: SparseTile(T)) implements composite ${
+    internal (SparseTile) ("stile_create", T, (DRAM(T), SRAM(Idx), Idx) :: SparseTile(T)) implements composite ${
       if (dimsOf($1).length != 1) throw UnsupportedSparseDimensionalityException($1, dimsOf($1).length)
-      val stile = stile_new($0, $1, $2)
-      tilePar(stile) = $3
-      stile
+      stile_new($0, $1, $2)
     }
     internal.infix (SparseTile) ("mem", T, SparseTile(T) :: DRAM(T)) implements getter(0, "_target")
     internal.infix (SparseTile) ("addr", T, SparseTile(T) :: SRAM(Idx)) implements getter(0, "_addrs")
@@ -313,7 +278,7 @@ trait DRAMs {
       val mem   = $tile.mem
       val addrs = $tile.addr
       val len   = $tile.len
-      val p     = tilePar($tile).getOrElse(param(1))
+      val p     = tilePar(addrs).getOrElse(param(1))
 
       if ($isScatter) { scatter(mem, $local, addrs, len, p) }
       else            { gather(mem, $local, addrs, len, p) }

@@ -52,7 +52,6 @@ trait TPCHQ6_App extends SpatialApp {
     val dataSize = ArgIn[SInt]
     setArg(dataSize, datesIn.length)
 
-
     val dates  = DRAM[UInt](dataSize)
     val quants = DRAM[UInt](dataSize)
     val discts = DRAM[FT](dataSize)
@@ -61,9 +60,9 @@ trait TPCHQ6_App extends SpatialApp {
     val maxDateIn = MAX_DATE
     val out = ArgOut[FT]
 
-    val ts = param(tileSize);   domainOf(ts) = (96,192000,96)
-    val op = param(outerPar);    domainOf(op) = (1,6,1)
-    val ip = param(innerPar);    domainOf(ip) = (1,384,1)
+    val ts = tileSize (96 -> 96 -> 192000)
+    val op = outerPar (1 -> 6)
+    val ip = innerPar (1 -> 384)
 
     setMem(dates, datesIn)
     setMem(quants, quantsIn)
@@ -81,10 +80,10 @@ trait TPCHQ6_App extends SpatialApp {
         val disctsTile = SRAM[FT](ts)
         val pricesTile = SRAM[FT](ts)
         Parallel {
-          datesTile  := dates(i::i+ts, ip)
-          quantsTile := quants(i::i+ts, ip)
-          disctsTile := discts(i::i+ts, ip)
-          pricesTile := prices(i::i+ts, ip)
+          datesTile  := dates(i::i+ts par ip)
+          quantsTile := quants(i::i+ts par ip)
+          disctsTile := discts(i::i+ts par ip)
+          pricesTile := prices(i::i+ts par ip)
         }
         Reduce(ts par ip)(0.as[FT]){ j =>
           val date  = datesTile(j)
@@ -95,7 +94,8 @@ trait TPCHQ6_App extends SpatialApp {
           mux(valid, price * disct, 0.0f)
         }{_+_}
       }{_+_}
-      Pipe {out := acc}
+
+      out := acc
     }
     getArg(out)
   }

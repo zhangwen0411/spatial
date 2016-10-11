@@ -63,8 +63,8 @@ trait OpsModel extends NodeMetadataOpsExp {
     case e: Cam_store[_,_] => AppStatistics(insts=1, onChipIn = nbits(e._mV))
 
     // TODO: Should this count if ram will be implemented as regs?
-    case e: Sram_load[_] => AppStatistics(insts=1,onChipOut = nbits(e._mT))
-    case e: Sram_store[_] => AppStatistics(insts=1,onChipIn = nbits(e._mT))
+    case e: Sram_load[_] => AppStatistics(insts=1,onChipOut = nbits(e.mT))
+    case e: Sram_store[_] => AppStatistics(insts=1,onChipIn = nbits(e.mT))
 
     case e: Reg_read[_] => Instruction
     case e: Reg_write[_] => Instruction

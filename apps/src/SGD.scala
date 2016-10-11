@@ -114,8 +114,8 @@ trait SGDApp extends SpatialApp {
       val y_err = SRAM[T](N)
       Sequential(E by 1) { e =>
         Parallel {
-          Pipe {x_tile := x(0::N, 0::D, param(1))}
-          y_tile := y(0::D, param(1))
+          x_tile := x(0::N, 0::D)
+          y_tile := y(0::D)
         }
         Pipe (N by 1) { i =>
           val y_hat = Reduce(D by 1)(0.as[T]){ j => x_tile(i,j) * model(j) }{_+_}
@@ -127,13 +127,10 @@ trait SGDApp extends SpatialApp {
         }
         Fold(1 by 1)(model, 0.as[T]){d => update}{_+_} // Fuse with prev pipe once foreach reduce is allowed
       }
-      result(0::D, param(1)) := model
-
+      result(0::D) := model
     }
 
     getMem(result)
-
-
   }
 
   def printArr(a: Rep[Array[T]], str: String = "") {

@@ -735,7 +735,7 @@ trait ScatterGatherApp extends SpatialApp {
   val tileSize = 384
   val maxNumAddrs = 1536
   val offchip_dataSize = maxNumAddrs*6
-  val par = 2
+  val P = parameter(2)
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
@@ -750,9 +750,9 @@ trait ScatterGatherApp extends SpatialApp {
       val addrs = SRAM[T](maxNumAddrs)
       Sequential (maxNumAddrs by tileSize) { i =>
         val gathered = SRAM[T](maxNumAddrs)
-        Pipe {addrs := srcAddrs(i::i + tileSize, param(par))}
-        Pipe {gathered := gatherData(addrs, tileSize, param(par))}
-        Pipe {scatterResult(addrs, tileSize, param(par)) := gathered} // What to do about parallel scatter when sending to same burst simultaneously???
+        addrs := srcAddrs(i::i + tileSize par P)
+        gathered := gatherData(addrs par P, tileSize)
+        scatterResult(addrs par P, tileSize) := gathered // What to do about parallel scatter when sending to same burst simultaneously???
       }
     }
 

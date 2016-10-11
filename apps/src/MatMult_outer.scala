@@ -31,13 +31,13 @@ trait MatMult_outerApp extends SpatialApp {
     Accel {
       Sequential(M by bm, N by bn) { (i,j) =>
         val tileC = SRAM[T](bm, bn)
-        tileC := c(i::i+bm, j::j+bn, param(1))
+        tileC := c(i::i+bm, j::j+bn)
        	Pipe(P by bp) { k =>
           val tileA = SRAM[T](bm, bp)
           val tileB = SRAM[T](bp, bn)
           Parallel {
-            tileA := a(i::i+bm, k::k+bp, param(1))
-            tileB := b(k::k+bp, j::j+bn, param(1))
+            tileA := a(i::i+bm, k::k+bp)
+            tileB := b(k::k+bp, j::j+bn)
           }
           Fold(bp by 1)(tileC, 0.as[T]) { kk =>
             val tileC_partial = SRAM[T](bm,bn)
@@ -46,7 +46,7 @@ trait MatMult_outerApp extends SpatialApp {
             }
             tileC_partial
           }{_+_}
-          c(i::i+bm, j::j+bn, param(1)) := tileC
+          c(i::i+bm, j::j+bn) := tileC
      		}
      	}
     }

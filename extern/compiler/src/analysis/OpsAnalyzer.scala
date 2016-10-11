@@ -59,24 +59,22 @@ trait OpsAnalyzer extends ModelingTraversal {
         debug(s"  body: $body")
         body * P * N
 
-      case EatReflect(e@OpReduce(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,idx,_,_,_)) =>
+      case EatReflect(e@OpReduce(cchain,accum,zero,fA,ld,st,func,rFunc,_,_,_,_)) =>
         val P = parsOf(cchain).reduce(_*_)
         val N = nIters(cchain)
         val body = opsInBlock(func) * N * P
         val reduce = opsInBlock(rFunc) * N * P
-        val icalc = opsInBlock(iFunc) * N * P
         val load = opsInBlock(ld) * N * P
         val store = opsInBlock(st) * N * P
 
         debug(s"Fold $lhs (N = $N, P = $P)")
         debug(s"  body: $body")
         debug(s"  reduce: $reduce")
-        debug(s"  icalc: $icalc")
         debug(s"  load: $load")
         debug(s"  store: $store")
-        body + reduce + icalc + load + store
+        body + reduce + load + store
 
-      case EatReflect(e@OpMemReduce(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,_,_,idx,_,_,_,_)) =>
+      case EatReflect(e@OpMemReduce(ccOuter,ccInner,accum,zero,fA,func,ld1,ld2,rFunc,st,_,_,_,_,_,_)) =>
         val Pm = parsOf(ccOuter).reduce(_*_)
         val Pr = parsOf(ccInner).reduce(_*_)
         val Nm = nIters(ccOuter)
@@ -84,17 +82,15 @@ trait OpsAnalyzer extends ModelingTraversal {
 
         val body = opsInBlock(func) * Nm * Pm
         val reduce = opsInBlock(rFunc) * Nm * Pm * Nr * Pr
-        val icalc = opsInBlock(iFunc) * Nm * Pm * Nr * Pr
         val load = opsInBlock(ld1) * Nm * Pm * Nr * Pr
         val store = opsInBlock(ld2) * Nr * Pr
 
         debug(s"AccumFold $lhs (Nm = $Nm, Pm = $Pm, Nr = $Nr, Pr = $Pr)")
         debug(s"  body: $body")
         debug(s"  reduce: $reduce")
-        debug(s"  icalc: $icalc")
         debug(s"  load: $load")
         debug(s"  store: $store")
-        body + reduce + icalc + load + store
+        body + reduce + load + store
 
       case _ =>
         blocks(rhs).map{blk => opsInBlock(blk)}.fold(NoOps){_+_} + opsIn(lhs)

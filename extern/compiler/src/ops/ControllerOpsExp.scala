@@ -37,14 +37,12 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
     zero: Option[Exp[T]],       // Zero value
     foldAccum: Boolean,         // Act as a fold (true) or a reduce (false)
     // - Reified blocks
-    iFunc:  Block[Idx],         // "Calculation" of reduction index (always 0)
     ldFunc: Block[T],           // Accumulator load function (reified with acc, idx)
     stFunc: Block[Unit],        // Accumulator store function (reified with acc, idx, res)
     func:   Block[T],           // Map function
     rFunc:  Block[T],           // Reduction function
     // - Bound args
     inds:   List[Sym[Idx]],     // Loop iterators
-    idx:    Sym[Idx],           // Reduction index (usually always 0)
     acc:    Sym[C[T]],          // Reduction accumulator (aliases with accum)
     res:    Sym[T],             // Reduction intermediate result (aliases with rFunc.res)
     rV:    (Sym[T], Sym[T])     // Reduction function inputs
@@ -59,7 +57,6 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
     zero: Option[Exp[T]],       // Zero value
     foldAccum: Boolean,         // Act as a fold (true) or a reduce (false)
     // - Reified blocks
-    iFunc:  Block[Idx],         // Calculation of 1D index for loads and stores
     func: Block[C[T]],          // Map function
     resLdFunc: Block[T],        // Partial result load function
     ldFunc: Block[T],           // Accumulator load function
@@ -68,7 +65,6 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
     // - Bound args
     indsOuter: List[Sym[Idx]],  // Map (outer) loop iterators
     indsInner: List[Sym[Idx]],  // Reduce (inner) loop iterators
-    idx: Sym[Idx],              // Index used in addressing in ldFunc and stFunc
     part: Sym[C[T]],            // Partial result (aliases with func.res)
     acc: Sym[C[T]],             // Reduction accumulator (aliases with accum)
     res: Sym[T],                // Reduction intermediate result (aliases with rFunc.res)
@@ -101,12 +97,6 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
     val is = List.fill(lenOf(cchain)){ fresh[Idx] }
     val inds = indices_create(is)
 
-    val redIndices = __mem.zeroIdx(accum)
-    val iBlk = reifyEffects( __mem.flatIdx(accum, redIndices) )
-
-    val idx = fresh[Idx]
-    accessIndicesOf(idx) = indices_to_list(redIndices)
-
     // Reified map function
     val mBlk = reifyEffects( func(inds) )
 
@@ -114,7 +104,7 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
     val acc = reflectMutableSym( fresh[C[T]] )  // Has to be mutable since we write to "it"
     setProps(acc, getProps(accum))
 
-    val ldBlk = reifyEffects(__mem.ld(acc, idx))
+    val ldBlk = reifyEffects(__mem.zeroLd(acc))
 
    // Reified reduction function
     val rV = (fresh[T], fresh[T])
@@ -122,31 +112,27 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
 
     // Reified store function
     val res = fresh[T]
-    val stBlk = reifyEffects(__mem.st(acc, idx, res))
+    val stBlk = reifyEffects(__mem.zeroSt(acc, res))
 
-    val effects = summarizeEffects(iBlk) andAlso summarizeEffects(mBlk) andAlso summarizeEffects(ldBlk) andAlso
+    val effects = summarizeEffects(mBlk) andAlso summarizeEffects(ldBlk) andAlso
                   summarizeEffects(rBlk) andAlso summarizeEffects(stBlk) andAlso Write(List(accum.asInstanceOf[Sym[C[T]]]))
 
-    reflectEffect(OpReduce[T,C](cchain, accum, zero, foldAccum, iBlk, ldBlk, stBlk, mBlk, rBlk, is, idx, acc, res, rV), effects.star)
+    reflectEffect(OpReduce[T,C](cchain, accum, zero, foldAccum, ldBlk, stBlk, mBlk, rBlk, is, acc, res, rV), effects.star)
   }
 
   private def memreduce_common[T,C[T]](cchain: Rep[CounterChain], cchainRed: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Block[C[T]], isMap: List[Sym[Idx]], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline] = {
     val isRed = List.fill(lenOf(cchainRed)){ fresh[Idx] } // Reduce loop indices
     val indsRed = indices_create(isRed)
 
-    val idx = fresh[Idx]
-    accessIndicesOf(idx) = isRed
-    val iBlk = reifyEffects( __mem.flatIdx(getBlockResult(func), indsRed) )
-
     val part = fresh[C[T]]
     setProps(part, getProps(func))
     // Partial result load
-    val ldPartBlk = reifyEffects( __mem.ld(part, idx) )
+    val ldPartBlk = reifyEffects( __mem.ld(part, isRed) )
 
     val acc = reflectMutableSym( fresh[C[T]] )
     setProps(acc, getProps(accum))
     // Accumulator load
-    val ldBlk = reifyEffects( __mem.ld(acc, idx) )
+    val ldBlk = reifyEffects( __mem.ld(acc, isRed) )
 
     val rV = (fresh[T],fresh[T])
     // Reified reduction function
@@ -154,12 +140,12 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
 
     val res = fresh[T]
     // Accumulator store function
-    val stBlk = reifyEffects( __mem.st(acc, idx, res) )
+    val stBlk = reifyEffects( __mem.st(acc, isRed, res) )
 
-    val effects = summarizeEffects(iBlk) andAlso summarizeEffects(func) andAlso summarizeEffects(ldPartBlk) andAlso
+    val effects = summarizeEffects(func) andAlso summarizeEffects(ldPartBlk) andAlso
                   summarizeEffects(ldBlk) andAlso summarizeEffects(rBlk) andAlso summarizeEffects(stBlk) andAlso Write(List(accum.asInstanceOf[Sym[C[T]]]))
 
-    reflectEffect(OpMemReduce[T,C](cchain, cchainRed, accum, zero, foldAccum, iBlk, func, ldPartBlk, ldBlk, rBlk, stBlk, isMap, isRed, idx, part, acc, res, rV), effects.star)
+    reflectEffect(OpMemReduce[T,C](cchain, cchainRed, accum, zero, foldAccum, func, ldPartBlk, ldBlk, rBlk, stBlk, isMap, isRed, part, acc, res, rV), effects.star)
   }
 
 
@@ -176,11 +162,11 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
     case e@OpForeach(c,func,inds) => reflectPure(OpForeach(f(c),f(func),inds)(e.ctx))(mtype(manifest[A]),pos)
     case Reflect(e@OpForeach(c,func,inds), u, es) => reflectMirrored(Reflect(OpForeach(f(c),f(func),inds)(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]),pos)
 
-    case e@OpReduce(c,a,z,fA,ld,st,iFunc,func,rFunc,inds,idx,acc,res,rV) => reflectPure(OpReduce(f(c),f(a),f(z),fA,f(ld),f(st),f(iFunc),f(func),f(rFunc),inds,idx,acc,res,rV)(e.ctx, e.memC, e.numT, e.mT, e.mC))(mtype(manifest[A]), pos)
-    case Reflect(e@OpReduce(c,a,z,fA,ld,st,iFunc,func,rFunc,inds,idx,acc,res,rV), u, es) => reflectMirrored(Reflect(OpReduce(f(c),f(a),f(z),fA,f(ld),f(st),f(iFunc),f(func),f(rFunc),inds,idx,acc,res,rV)(e.ctx, e.memC, e.numT, e.mT, e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@OpReduce(c,a,z,fA,ld,st,func,rFunc,inds,acc,res,rV) => reflectPure(OpReduce(f(c),f(a),f(z),fA,f(ld),f(st),f(func),f(rFunc),inds,acc,res,rV)(e.ctx, e.memC, e.numT, e.mT, e.mC))(mtype(manifest[A]), pos)
+    case Reflect(e@OpReduce(c,a,z,fA,ld,st,func,rFunc,inds,acc,res,rV), u, es) => reflectMirrored(Reflect(OpReduce(f(c),f(a),f(z),fA,f(ld),f(st),f(func),f(rFunc),inds,acc,res,rV)(e.ctx, e.memC, e.numT, e.mT, e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
 
-    case e@OpMemReduce(c1,c2,a,z,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV) => reflectPure(OpMemReduce(f(c1),f(c2),f(a),f(z),fA,f(iFunc),f(func),f(ld1),f(ld2),f(rFunc),f(st),inds1,inds2,idx,part,acc,res,rV)(e.ctx,e.memC,e.numT, e.mT,e.mC))(mtype(manifest[A]), pos)
-    case Reflect(e@OpMemReduce(c1,c2,a,z,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV), u, es) => reflectMirrored(Reflect(OpMemReduce(f(c1),f(c2),f(a),f(z),fA,f(iFunc),f(func),f(ld1),f(ld2),f(rFunc),f(st),inds1,inds2,idx,part,acc,res,rV)(e.ctx,e.memC,e.numT,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@OpMemReduce(c1,c2,a,z,fA,func,ld1,ld2,rFunc,st,inds1,inds2,part,acc,res,rV) => reflectPure(OpMemReduce(f(c1),f(c2),f(a),f(z),fA,f(func),f(ld1),f(ld2),f(rFunc),f(st),inds1,inds2,part,acc,res,rV)(e.ctx,e.memC,e.numT, e.mT,e.mC))(mtype(manifest[A]), pos)
+    case Reflect(e@OpMemReduce(c1,c2,a,z,fA,func,ld1,ld2,rFunc,st,inds1,inds2,part,acc,res,rV), u, es) => reflectMirrored(Reflect(OpMemReduce(f(c1),f(c2),f(a),f(z),fA,f(func),f(ld1),f(ld2),f(rFunc),f(st),inds1,inds2,part,acc,res,rV)(e.ctx,e.memC,e.numT,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
 
     case e@ParallelPipe(blk) => reflectPure(ParallelPipe(f(blk))(e.ctx))(mtype(manifest[A]), pos)
     case Reflect(e@ParallelPipe(blk), u, es) => reflectMirrored(Reflect(ParallelPipe(f(blk))(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
@@ -192,7 +178,7 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
   }
 
   override def propagate(lhs: Exp[Any], rhs: Def[Any]) = rhs match {
-    case OpReduce(c,a,z,fA,ld,st,iFunc,func,rFunc,inds,idx,acc,res,rV) =>
+    case OpReduce(c,a,z,fA,ld,st,func,rFunc,inds,acc,res,rV) =>
       /*Console.println(s"$lhs = $rhs")
       Console.println(s"Getting props for $func")
       Console.println(s"block result of $func = ${getBlockResult(func)}")
@@ -202,14 +188,12 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
       setProps(res, getProps(rFunc))
       setProps(rV._1, getProps(func))
       setProps(rV._2, getProps(func))
-      setProps(idx, getProps(iFunc))
-    case OpMemReduce(c1,c2,a,z,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV) =>
+    case OpMemReduce(c1,c2,a,z,fA,func,ld1,ld2,rFunc,st,inds1,inds2,part,acc,res,rV) =>
       setProps(acc, getProps(a))
       setProps(part, getProps(func))
       setProps(res, getProps(rFunc))
       setProps(rV._1, getProps(ld1))
       setProps(rV._2, getProps(ld2))
-      setProps(idx, getProps(iFunc))
 
     case _ => super.propagate(lhs, rhs)
   }
@@ -217,32 +201,32 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
   // --- Dependencies
   override def syms(e: Any): List[Sym[Any]] = e match {
     case e:OpForeach        => syms(e.cchain) ::: syms(e.func)
-    case e:OpReduce[_,_]    => syms(e.cchain) ::: syms(e.accum) ::: syms(e.zero) ::: syms(e.iFunc) ::: syms(e.func) ::: syms(e.rFunc) ::: syms(e.ldFunc) ::: syms(e.stFunc)
-    case e:OpMemReduce[_,_] => syms(e.ccOuter) ::: syms(e.ccInner) ::: syms(e.accum) ::: syms(e.zero) ::: syms(e.iFunc) ::: syms(e.func) ::: syms(e.resLdFunc) ::: syms(e.ldFunc) ::: syms(e.rFunc) ::: syms(e.stFunc)
+    case e:OpReduce[_,_]    => syms(e.cchain) ::: syms(e.accum) ::: syms(e.zero) ::: syms(e.func) ::: syms(e.rFunc) ::: syms(e.ldFunc) ::: syms(e.stFunc)
+    case e:OpMemReduce[_,_] => syms(e.ccOuter) ::: syms(e.ccInner) ::: syms(e.accum) ::: syms(e.zero) ::: syms(e.func) ::: syms(e.resLdFunc) ::: syms(e.ldFunc) ::: syms(e.rFunc) ::: syms(e.stFunc)
     case e:ParallelPipe     => syms(e.func)
     case e:UnitPipe         => syms(e.func)
     case _ => super.syms(e)
   }
   override def readSyms(e: Any): List[Sym[Any]] = e match {
     case e:OpForeach        => readSyms(e.cchain) ::: readSyms(e.func)
-    case e:OpReduce[_,_]    => readSyms(e.cchain) ::: readSyms(e.accum) ::: readSyms(e.zero) ::: readSyms(e.iFunc) ::: readSyms(e.func) ::: readSyms(e.rFunc) ::: readSyms(e.ldFunc) ::: readSyms(e.stFunc)
-    case e:OpMemReduce[_,_] => readSyms(e.ccOuter) ::: readSyms(e.ccInner) ::: readSyms(e.accum) ::: readSyms(e.zero) ::: readSyms(e.iFunc) ::: readSyms(e.func) ::: readSyms(e.resLdFunc) ::: readSyms(e.ldFunc) ::: readSyms(e.rFunc) ::: readSyms(e.stFunc)
+    case e:OpReduce[_,_]    => readSyms(e.cchain) ::: readSyms(e.accum) ::: readSyms(e.zero) ::: readSyms(e.func) ::: readSyms(e.rFunc) ::: readSyms(e.ldFunc) ::: readSyms(e.stFunc)
+    case e:OpMemReduce[_,_] => readSyms(e.ccOuter) ::: readSyms(e.ccInner) ::: readSyms(e.accum) ::: readSyms(e.zero) ::: readSyms(e.func) ::: readSyms(e.resLdFunc) ::: readSyms(e.ldFunc) ::: readSyms(e.rFunc) ::: readSyms(e.stFunc)
     case e:ParallelPipe     => readSyms(e.func)
     case e:UnitPipe         => readSyms(e.func)
     case _ => super.readSyms(e)
   }
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
     case e:OpForeach        => freqCold(e.cchain) ::: freqCold(e.func)
-    case e:OpReduce[_,_]    => freqNormal(e.iFunc) ::: freqCold(e.func) ::: freqCold(e.rFunc) ::: freqCold(e.ldFunc) ::: freqCold(e.stFunc) ::: freqCold(e.cchain) ::: freqCold(e.accum) ::: freqCold(e.zero)
-    case e:OpMemReduce[_,_] => freqNormal(e.ccOuter) ::: freqNormal(e.ccInner) ::: freqNormal(e.accum) ::: freqCold(e.zero) ::: freqNormal(e.iFunc) ::: freqNormal(e.func) ::: freqNormal(e.resLdFunc) ::: freqNormal(e.ldFunc) ::: freqNormal(e.rFunc) ::: freqNormal(e.stFunc)
+    case e:OpReduce[_,_]    => freqCold(e.func) ::: freqCold(e.rFunc) ::: freqCold(e.ldFunc) ::: freqCold(e.stFunc) ::: freqCold(e.cchain) ::: freqCold(e.accum) ::: freqCold(e.zero)
+    case e:OpMemReduce[_,_] => freqNormal(e.ccOuter) ::: freqNormal(e.ccInner) ::: freqNormal(e.accum) ::: freqCold(e.zero) ::: freqNormal(e.func) ::: freqNormal(e.resLdFunc) ::: freqNormal(e.ldFunc) ::: freqNormal(e.rFunc) ::: freqNormal(e.stFunc)
     case e:ParallelPipe     => freqCold(e.func)
     case e:UnitPipe         => freqCold(e.func)
     case _ => super.symsFreq(e)
   }
   override def boundSyms(e: Any): List[Sym[Any]] = e match {
     case e:OpForeach        => e.inds ::: effectSyms(e.func) ::: effectSyms(e.cchain)
-    case e:OpReduce[_,_]    => e.inds ::: List(e.rV._1, e.rV._2, e.acc, e.res, e.idx) ::: effectSyms(e.cchain) ::: effectSyms(e.iFunc) ::: effectSyms(e.func) ::: effectSyms(e.rFunc) ::: effectSyms(e.ldFunc) ::: effectSyms(e.stFunc) ::: effectSyms(e.accum)
-    case e:OpMemReduce[_,_] => e.indsOuter ::: e.indsInner ::: List(e.idx, e.rV._1, e.rV._2, e.acc, e.res, e.part) ::: effectSyms(e.ccOuter) ::: effectSyms(e.ccInner) ::: effectSyms(e.accum) ::: effectSyms(e.iFunc) ::: effectSyms(e.func) ::: effectSyms(e.resLdFunc) ::: effectSyms(e.ldFunc) ::: effectSyms(e.rFunc) ::: effectSyms(e.stFunc)
+    case e:OpReduce[_,_]    => e.inds ::: List(e.rV._1, e.rV._2, e.acc, e.res) ::: effectSyms(e.cchain) ::: effectSyms(e.func) ::: effectSyms(e.rFunc) ::: effectSyms(e.ldFunc) ::: effectSyms(e.stFunc) ::: effectSyms(e.accum)
+    case e:OpMemReduce[_,_] => e.indsOuter ::: e.indsInner ::: List(e.rV._1, e.rV._2, e.acc, e.res, e.part) ::: effectSyms(e.ccOuter) ::: effectSyms(e.ccInner) ::: effectSyms(e.accum) ::: effectSyms(e.func) ::: effectSyms(e.resLdFunc) ::: effectSyms(e.ldFunc) ::: effectSyms(e.rFunc) ::: effectSyms(e.stFunc)
     case e:ParallelPipe     => effectSyms(e.func)
     case e:UnitPipe         => effectSyms(e.func)
     case _ => super.boundSyms(e)
@@ -537,14 +521,12 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
       print_stage_suffix(quote(sym))
       controlNodeStack.pop
 
-    case e@OpReduce(cchain, accum, zero, fA, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
+    case e@OpReduce(cchain, accum, zero, fA, ldFunc, stFunc, func, rFunc, inds, acc, res, rV) =>
       controlNodeStack.push(sym)
       print_stage_prefix(s"OpReduce","","${quote(sym)}")
       emitController(sym, Some(cchain))
       emitNestedIdx(cchain, inds)
       emitRegChains(sym, inds)
-      emitBlock(iFunc, s"${quote(sym)} Index Calculation")
-      emitValDef(idx, quote(getBlockResult(iFunc)))
       emitBlock(func, s"${quote(sym)} Foreach")
       emitBlock(ldFunc, s"${quote(sym)} Load")
       emitValDef(rV._1, quote(getBlockResult(ldFunc)))
@@ -609,7 +591,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
 
 
       parentOf(sym).get match {
-        case e@Deff(UnrolledReduce(_,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+        case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
           if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
             styleOf(sym) match {
               case InnerPipe =>
@@ -854,7 +836,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
 
-          case n@UnrolledReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+          case n@UnrolledReduce(cchain, accum, func, rFunc, inds, ens, acc, rV) =>
             emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
             emit(s"""CounterChain ${quote(sym)}_redLoopChain = control.count.makeCounterChain(${quote(sym)}_datapath_en);""")
             // emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${stream_offset_guess+1}, 1);""")

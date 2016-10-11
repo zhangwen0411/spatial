@@ -11,29 +11,25 @@ trait LogRegApp extends SpatialApp {
   val tileSizeH = 192
   val innerParH = 4
   val outerParH = 2
-  lazy val tileSize = param(tileSizeH)
-  lazy val outerMpPar = param(outerParH)
-  lazy val innerMpPar = param(1)
-  lazy val innerPar   = param(innerParH)
-  lazy val noPar = param(1)
 
   val A = 1
 
   def sigmoid(t:Rep[Elem]) = 1.as[Elem]/(exp(-t)+1)
 
   def logreg(x_in: Rep[Array[Elem]], y_in: Rep[Array[Elem]], tt: Rep[Array[Elem]]) {
-
-    val N = ArgIn[SInt]
     val D = 384
 
-    setArg(N, y_in.length)
+    val n = y_in.length; bound(n) = 9600
 
-    val BN = param(tileSizeH); domainOf(BN) = (96,9600,96)
-    val PX = param(1);  domainOf(PX) = (1,1,1)
-    val P0 = param(1);  domainOf(P0) = (1,3,1)
-    val P1 = param(innerParH);  domainOf(P1) = (1,2,1)
-    val P2 = param(innerParH);  domainOf(P2) = (1,96,1)
-    val P3 = param(1);  domainOf(P3) = (1,96,1)
+    val N = ArgIn[SInt]
+    setArg(N, n)
+
+    val BN = tileSizeH (96 -> 96 -> 9600)
+    val PX = 1 (1 -> 1)
+    val P0 = 1 (1 -> 3)
+    val P1 = innerParH (1 -> 2)
+    val P2 = innerParH (1 -> 96)
+    val P3 = 1 (1 -> 96)
 
     val x = DRAM[Elem](N, D)
     val y = DRAM[Elem](N)
@@ -45,14 +41,14 @@ trait LogRegApp extends SpatialApp {
 
     Accel {
       val btheta = SRAM[Elem](D)
-      btheta := theta(0::D, P2)
+      btheta := theta(0::D par P2)
 
       val gradAcc = SRAM[Elem](D)
       Fold(N by BN par P0, P1)(gradAcc, 0.as[T]){ i =>
         val xB = SRAM[Elem](BN, D)
         val yB = SRAM[Elem](BN)
         Parallel {
-          xB := x(i::i+BN, 0::D, P2)
+          xB := x(i::i+BN, 0::D par P2)
           yB := y(i::i+BN, P2)
         }
         val gradient = SRAM[Elem](D)
@@ -69,7 +65,7 @@ trait LogRegApp extends SpatialApp {
 
       val newTheta = SRAM[Elem](D)
       Pipe (D par P2) { j => newTheta(j) = gradAcc(j)*A + btheta(j) }
-      theta(0::D, P2) := newTheta
+      theta(0::D par P2) := newTheta
     }
     getMem(theta)
   }
@@ -77,12 +73,6 @@ trait LogRegApp extends SpatialApp {
   def main() {
     val N = args(0).to[SInt]
     val D = 384
-    /*domainOf(tileSize) = (96,9600,96)
-    domainOf(outerMpPar) = (1,3,1)
-    domainOf(innerMpPar) = (1,1,1)
-    domainOf(innerPar) = (1,192,1)
-    domainOf(noPar) = (1,1,1)*/
-
 
     val sX = Array.fill(N){ Array.fill(D){ random[Elem](10.0)} }
     val sY = Array.fill(N)( random[Elem](10.0) )

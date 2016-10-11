@@ -45,11 +45,14 @@ trait MemoryOps extends MemoryTypes with Base { this: Spatial => }
 trait MemoryCompilerOps extends MemoryOps {
   this: Spatial =>
 
-  def vectorize[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]]
+  def vector_from_list[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]]
 
   def gather[T:Manifest](mem: Rep[DRAM[T]], local: Rep[SRAM[T]], addrs: Rep[SRAM[Index]], len: Rep[Index], par: Rep[Int])(implicit ctx: SourceContext): Rep[Unit]
   def scatter[T:Manifest](mem: Rep[DRAM[T]], local: Rep[SRAM[T]], addrs: Rep[SRAM[Index]], len: Rep[Index], par: Rep[Int])(implicit ctx: SourceContext): Rep[Unit]
 
   def burst_load[T:Manifest](mem: Rep[DRAM[T]], fifo: Rep[FIFO[T]], ofs: Rep[Index], len: Rep[Index], par: Rep[Int])(implicit ctx: SourceContext): Rep[Unit]
   def burst_store[T:Manifest](mem: Rep[DRAM[T]], fifo: Rep[FIFO[T]], ofs: Rep[Index], len: Rep[Index], par: Rep[Int])(implicit ctx: SourceContext): Rep[Unit]
+
+  def sram_load[T:Manifest](mem: Rep[SRAM[T]], addr: Rep[Vector[Index]])(implicit ctx: SourceContext): Rep[T]
+  def sram_store[T:Manifest](mem: Rep[SRAM[T]], addr: Rep[Vector[Index]], value: Rep[T], en: Rep[Bit])(implicit ctx: SourceContext): Rep[Unit]
 }

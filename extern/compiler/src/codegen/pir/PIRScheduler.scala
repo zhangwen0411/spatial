@@ -112,12 +112,12 @@ trait PIRScheduler extends Traversal with PIRCommon {
 
   // Addresses only, not values
   def writeAddrToStage(lhs: Exp[Any], rhs: Def[Any], ctx: CUContext) = rhs match {
-    case Sram_store(sram, addr, value) =>
+    case Sram_store(sram, addr, value, en) =>
       ctx.memories(sram).foreach{sram =>
         sram.writeAddr = Some(allocateAddrReg(sram, addr, ctx, write=true))
       }
 
-    case Par_sram_store(sram, addrs, values) =>
+    case Par_sram_store(sram, addrs, values, en) =>
       ctx.memories(sram).foreach{sram =>
         sram.writeAddr = Some(allocateAddrReg(sram, addrs, ctx, write=true))
       }
@@ -185,9 +185,9 @@ trait PIRScheduler extends Traversal with PIRCommon {
     case Par_push_fifo(EatAlias(fifo),values,ens,_) =>
       bufferWrite(fifo,values,None,ctx)
 
-    case Sram_store(EatAlias(sram), addr, value) =>
+    case Sram_store(EatAlias(sram), addr, value, ens) =>
       bufferWrite(sram,value,Some(addr),ctx)
-    case Par_sram_store(EatAlias(sram), addrs, values) =>
+    case Par_sram_store(EatAlias(sram), addrs, values, ens) =>
       bufferWrite(sram,values,Some(addrs),ctx)
 
     // Cases: 1. Inner Accumulator (read -> write)

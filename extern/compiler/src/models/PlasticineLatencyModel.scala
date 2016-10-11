@@ -95,9 +95,8 @@ trait PlasticineLatencyModel {
     case Cam_load(cam,key) => 1
     case Cam_store(cam,key,value) => 1
 
-    // TODO: Not a function of number of banks?
-    case Sram_load(ram, _) => 0 //if (isDblBuf(ram)) 2 else 1
-    case Sram_store(ram, _, _) => 0 //if (isDblBuf(ram)) 2 else 1
+    case _:Sram_load[_]  => 0 //if (isDblBuf(ram)) 2 else 1
+    case _:Sram_store[_] => 0 //if (isDblBuf(ram)) 2 else 1
 
     case _:Counter_new => 0
     case _:Counterchain_new => 0

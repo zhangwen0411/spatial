@@ -38,31 +38,21 @@ trait ControllerWrapper {
   }
 
   def reduce_op[T,C[T]](cchain: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Rep[Indices] => Rep[T], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline]  = {
-    def iFunc(c: Rep[C[T]], i: Rep[Indices]): Rep[FixPt[Signed,B32,B0]] = __mem.flatIdx(c, i)
-    def ldFunc(c: Rep[C[T]], i: Rep[FixPt[Signed,B32,B0]]): Rep[T] = __mem.ld(c, i)
-    def stFunc(c: Rep[C[T]], i: Rep[FixPt[Signed,B32,B0]], x: Rep[T]): Rep[Unit] = __mem.st(c, i, x)
-
     loop(cchain, 0, Nil, {i: Rep[Indices] =>
-      val idx = iFunc(accum, i)
-      stFunc(accum, idx, rFunc(ldFunc(accum, idx), func(i)))
+      __mem.zeroSt(accum, rFunc(__mem.zeroLd(accum), func(i)))
     })
   }
 
   def memreduce_op[T,C[T]](cchain: Rep[CounterChain], cchainRed: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Rep[Indices] => Rep[C[T]], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline] = {
-    def iFunc(c: Rep[C[T]], i: Rep[Indices]): Rep[FixPt[Signed,B32,B0]] = __mem.flatIdx(c, i)
-    def ldFunc(c: Rep[C[T]], i: Rep[FixPt[Signed,B32,B0]]): Rep[T] = __mem.ld(c, i)
-    def stFunc(c: Rep[C[T]], i: Rep[FixPt[Signed,B32,B0]], x: Rep[T]) = __mem.st(c, i, x)
-
     var first = true
-    loop(cchain, 0, Nil, {i: Rep[Indices] =>
+    loop(cchain, 0, Nil, {i =>
       val part = func(i)
 
-      loop(cchainRed, 0, Nil, {j: Rep[Indices] =>
-        val idx  = iFunc(part, j)
+      loopList(cchainRed, 0, Nil, {j =>
         if (first && !foldAccum)
-          stFunc(accum, idx, ldFunc(part, idx))
+          __mem.st(accum, j, __mem.ld(part, j))
         else
-          stFunc(accum, idx, rFunc(ldFunc(part, idx), ldFunc(accum, idx)))
+          __mem.st(accum, j, rFunc(__mem.ld(part, j), __mem.ld(accum, j)))
       })
       first = false
     })

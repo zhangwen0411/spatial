@@ -45,12 +45,24 @@ trait Regs {
 
     val Mem = lookupTpeClass("Mem").get
     val RegMem = tpeClassInst("RegMem", T, TMem(T, Reg(T)))
-    infix (RegMem) ("ld", T, (Reg(T), Idx) :: T) implements composite ${ readReg($0) } // Ignore address
-    infix (RegMem) ("st", T, (Reg(T), Idx, T) :: MUnit, effect = write(0)) implements composite ${ writeReg($0, $2) }
-    infix (RegMem) ("zeroIdx", T, (Reg(T)) :: Indices) implements composite ${ reg_zero_idx }
-    infix (RegMem) ("flatIdx", T, (Reg(T), Indices) :: Idx) implements composite ${ 0.as[Index] }
-    infix (RegMem) ("iterator", T, (Reg(T), SList(MInt)) :: CounterChain) implements composite ${ CounterChain(Counter(max=1)) }
-    infix (RegMem) ("empty", T, Reg(T) :: Reg(T), TNum(T)) implements composite ${ reg_create[T](zero[T]) }
+    infix (RegMem) ("ld", T, (Reg(T), SList(Idx)) :: T) implements composite ${
+      readReg($0)
+    }
+    infix (RegMem) ("st", T, (Reg(T), SList(Idx), T) :: MUnit, effect = write(0)) implements composite ${
+      writeReg($0, $2)
+    }
+    infix (RegMem) ("zeroLd", T, (Reg(T)) :: T) implements composite ${
+      readReg($0)
+    }
+    infix (RegMem) ("zeroSt", T, (Reg(T), T) :: MUnit, effect = write(0)) implements composite ${
+      writeReg($0, $1)
+    }
+    infix (RegMem) ("iterator", T, (Reg(T), SList(MInt)) :: CounterChain) implements composite ${
+      CounterChain(Counter(max=1))
+    }
+    infix (RegMem) ("empty", T, Reg(T) :: Reg(T), TNum(T)) implements composite ${
+      reg_create[T](zero[T])
+    }
 
     // --- API
     /* Reg */

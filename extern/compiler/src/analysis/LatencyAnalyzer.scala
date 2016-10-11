@@ -117,7 +117,7 @@ trait LatencyAnalyzer extends ModelingTraversal {
         debugs(s"- pipe = $pipe")
         pipe + N - 1 + latencyOf(lhs)
 
-      case EatReflect(OpReduce(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,_,_,_,rV)) if isInnerPipe(lhs) =>
+      case EatReflect(OpReduce(cchain,accum,zero,fA,ld,st,func,rFunc,_,_,_,rV)) if isInnerPipe(lhs) =>
         val N = nIters(cchain)
         val P = parsOf(cchain).reduce(_*_)
 
@@ -130,7 +130,7 @@ trait LatencyAnalyzer extends ModelingTraversal {
                        else latencyOfPipe(rFunc) * reductionTreeHeight(P)
 
 
-        val cycle = latencyOfCycle(iFunc) + latencyOfCycle(ld) + latencyOfCycle(rFunc) + latencyOfCycle(st)
+        val cycle = latencyOfCycle(ld) + latencyOfCycle(rFunc) + latencyOfCycle(st)
 
 
         debugs(s"- body  = $body")
@@ -170,7 +170,7 @@ trait LatencyAnalyzer extends ModelingTraversal {
         if (isMetaPipe(lhs)) { stages.max * (N - 1) + stages.sum + latencyOf(lhs) }
         else                 { stages.sum * N + latencyOf(lhs) }
 
-      case EatReflect(OpReduce(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,_,_,_,_,_)) =>
+      case EatReflect(OpReduce(cchain,accum,zero,fA,ld,st,func,rFunc,_,_,_,_)) =>
         // print_diagram(lhs, List(1), "fold")
         val N = nIters(cchain)
         val P = parsOf(cchain).reduce(_*_)
@@ -180,7 +180,7 @@ trait LatencyAnalyzer extends ModelingTraversal {
         val mapStages = latencyOfBlock(func)
         print_stage_suffix(mapStages.sum)
         val internal = latencyOfPipe(rFunc) * reductionTreeHeight(P)
-        val cycle = latencyOfCycle(iFunc) + latencyOfCycle(ld) + latencyOfCycle(rFunc) + latencyOfCycle(st)
+        val cycle = latencyOfCycle(ld) + latencyOfCycle(rFunc) + latencyOfCycle(st)
 
         val reduceStage = internal + cycle
         pipe_diagram.write(s"<TR><TD>OpReduce_reduce $lhs <p> latency $reduceStage </TD></TR>")
@@ -191,7 +191,7 @@ trait LatencyAnalyzer extends ModelingTraversal {
         if (isMetaPipe(lhs)) { stages.max * (N - 1) + stages.sum + latencyOf(lhs) }
         else                 { stages.sum * N + latencyOf(lhs) }
 
-      case EatReflect(OpMemReduce(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,_,_,_,_,_,_,_)) =>
+      case EatReflect(OpMemReduce(ccOuter,ccInner,accum,zero,fA,func,ld1,ld2,rFunc,st,_,_,_,_,_,_)) =>
         val Nm = nIters(ccOuter)
         val Nr = nIters(ccInner)
         val Pm = parsOf(ccOuter).reduce(_*_) // Parallelization factor for map
@@ -203,7 +203,7 @@ trait LatencyAnalyzer extends ModelingTraversal {
         print_stage_prefix(s"OpMemReduce_map $lhs", 0)
         val mapStages: List[Long] = latencyOfBlock(func)
         print_stage_suffix(mapStages.sum)
-        val internal: Long = latencyOfPipe(iFunc) + latencyOfPipe(ld1) + latencyOfPipe(rFunc) * reductionTreeHeight(Pm)
+        val internal: Long = latencyOfPipe(ld1) + latencyOfPipe(rFunc) * reductionTreeHeight(Pm)
         val accumulate: Long = latencyOfPipe(ld2) + latencyOfPipe(rFunc) + latencyOfPipe(st)
 
         val reduceStage: Long = internal + accumulate + Nr - 1

@@ -161,12 +161,12 @@ trait GEMMApp extends SpatialApp {
 // lets solve  A(480x96)x B(96x480)= C (480x480)
 
 
-    val n_r        = param(96) // rank-1 updated width/height
+    val n_r        = parameter(96) // rank-1 updated width/height
     // We could have two n_r but we assume we do square rank-1 updated
 
-    val m_c        = param(96) // blockram number of A matrix rows in each tile
-    val k_c        = param(96) // number of B rows/A Columns  in each tile
-    val n_r_par    = param(1)
+    val m_c        = parameter(96) // blockram number of A matrix rows in each tile
+    val k_c        = parameter(96) // number of B rows/A Columns  in each tile
+    val n_r_par    = parameter(1)
 
     setMem(a, A)
     setMem(b, B)
@@ -187,8 +187,8 @@ trait GEMMApp extends SpatialApp {
         levelOf(tileA) = 1
         levelOf(tileB) = 1
         Parallel {
-          tileA := a(0::M, k::k+k_c, param(1))
-          tileB := b(k::k+k_c, 0::N, param(1))
+          tileA := a(0::M, k::k+k_c)
+          tileB := b(k::k+k_c, 0::N)
         }
         // Loaded On-chip memory
 
@@ -241,7 +241,7 @@ trait GEMMApp extends SpatialApp {
           }
 
 }      }
-      c(0::M, 0::N, param(1)) := tileC
+      c(0::M, 0::N) := tileC
 
     }
     getMem(c)

@@ -73,8 +73,11 @@ trait MemoryOpsExp extends MemoryTypesExp with ExternPrimitiveOpsExp with SRAMOp
   case class BurstLoad[T](mem: Exp[DRAM[T]], fifo: Rep[FIFO[T]], ofs: Rep[Index], len: Rep[Index], par: Rep[Int])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
   case class BurstStore[T](mem: Exp[DRAM[T]], fifo: Rep[FIFO[T]], ofs: Rep[Index], len: Rep[Index], par: Rep[Int])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
 
+  case class Sram_load[T](mem: Exp[SRAM[T]], addr: Exp[Vector[Index]])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[T]
+  case class Sram_store[T](mem: Exp[SRAM[T]], addr: Exp[Vector[Index]], value: Exp[T], en: Exp[Bit])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
+
   // --- Internal API
-  def vectorize[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]] = reflectPure(ListVector(elems))
+  def vector_from_list[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]] = reflectPure(ListVector(elems))
 
   def gather[T:Manifest](mem: Rep[DRAM[T]],local: Rep[SRAM[T]],addrs: Rep[SRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
     reflectWrite[Unit](local)(Gather[T](mem,local,addrs,len,par,fresh[FixPt[Signed,B32,B0]])(ctx, implicitly[Manifest[T]]))
@@ -91,6 +94,12 @@ trait MemoryOpsExp extends MemoryTypesExp with ExternPrimitiveOpsExp with SRAMOp
     reflectWrite[Unit](mem)(BurstStore[T](mem,fifo,ofs,len,par)(ctx, implicitly[Manifest[T]]))
   }
 
+  def sram_load[T:Manifest](mem: Rep[SRAM[T]], addr: Rep[Vector[Index]])(implicit ctx: SourceContext) = {
+    reflectPure(Sram_load(mem, addr)(ctx, manifest[T]))
+  }
+  def sram_store[T:Manifest](mem: Rep[SRAM[T]], addr: Rep[Vector[Index]], value: Rep[T], en: Rep[Bit])(implicit ctx: SourceContext) = {
+    reflectWrite(mem)(Sram_store(mem, addr, value, en)(ctx, manifest[T]))
+  }
 
   // --- Mirroring
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
@@ -100,6 +109,10 @@ trait MemoryOpsExp extends MemoryTypesExp with ExternPrimitiveOpsExp with SRAMOp
     case Reflect(e@Scatter(mem,local,addrs,len,p,i), u, es) => reflectMirrored(Reflect(Scatter(f(mem),f(local),f(addrs),f(len),f(p),i)(e.ctx,e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
     case Reflect(e@BurstLoad(mem,fifo,ofs,len,p), u, es) => reflectMirrored(Reflect(BurstLoad(f(mem),f(fifo),f(ofs),f(len),f(p))(e.ctx,e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
     case Reflect(e@BurstStore(mem,fifo,ofs,len,p), u, es) => reflectMirrored(Reflect(BurstStore(f(mem),f(fifo),f(ofs),f(len),f(p))(e.ctx,e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@Sram_load(mem,addr) => sram_load(f(mem),f(addr))(e.mT, e.ctx)
+    case Reflect(e@Sram_load(mem,addr), u, es) => reflectMirrored(Reflect(Sram_load(f(mem),f(addr))(e.ctx, e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@Sram_store(mem,addr,value,en) => sram_store(f(mem),f(addr),f(value),f(en))(e.mT, e.ctx)
+    case Reflect(e@Sram_store(mem,addr,value,en), u, es) => reflectMirrored(Reflect(Sram_store(f(mem),f(addr),f(value),f(en))(e.ctx, e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
     case _ => super.mirror(e, f)
   }
 
@@ -129,10 +142,13 @@ trait MemoryOpsExp extends MemoryTypesExp with ExternPrimitiveOpsExp with SRAMOp
     case e:Scatter[_] => Nil
     case e:BurstLoad[_] => Nil
     case e:BurstStore[_] => Nil
+    case e:Sram_load[_] => Nil
+    case e:Sram_store[_] => Nil
     case _ => super.aliasSyms(e)
   }
-
 }
+
+
 
 // Defines type remappings required in Scala gen (should be same as in library)
 trait ScalaGenMemoryOps extends ScalaGenEffect {
@@ -149,6 +165,23 @@ trait ScalaGenMemoryOps extends ScalaGenEffect {
     case "SpatialVector" => "Array[" + remap(m.typeArguments(0)) + "]"
     case "SpatialPipeline" => "Unit"
     case _ => super.remap(m)
+  }
+
+  def emitSramStrides(dims: List[Exp[FixPt[Signed,B32,B0]]]) = if (dims.nonEmpty) {
+    stream.println(s"val stride${dims.length-1} = 1")
+    if (dims.length > 1) {
+      (dims.length-2 to 0).foreach{d =>
+        stream.println(s"val stride$d = stride${d+1} * ${quote(dims(d+1))}.toInt")
+      }
+    }
+  } else { (new Exception("empty dimensions")) printStackTrace }
+
+  def emitSramAddress(flatAddr: String, addrVector: String, dims: List[Exp[FixPt[Signed,B32,B0]]]) = {
+    val quotedIndices = List.tabulate(dims.length){d => s"$addrVector($d).toInt"}
+    stream.println(s"val $flatAddr = {")
+    emitSramStrides(dims)
+    stream.println(quotedIndices.zipWithIndex.map{case (index,i) => s"$index * stride$i" }.mkString(" + "))
+    stream.println("}")
   }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
@@ -173,6 +206,21 @@ trait ScalaGenMemoryOps extends ScalaGenEffect {
     case BurstStore(mem,fifo,ofs,len,par) =>
       stream.println("val "+quote(sym)+" = {")
       stream.println("for (i <- 0 until "+quote(len)+".toInt) { if (i + "+quote(ofs)+".toInt < "+quote(mem)+".length) "+quote(mem)+"(i + "+quote(ofs)+".toInt) = "+quote(fifo)+".dequeue() }" + "")
+      stream.println("}")
+
+    case Sram_load(mem@EatAlias(sram), addr) =>
+      if (dimsOf(sram).isEmpty) sys.error(s"$sym : $sram has no dimensions!")
+      stream.println(s"val ${quote(sym)} = {")
+      emitSramAddress("addr", quote(addr), dimsOf(sram))
+      stream.println(s"if (addr < ${quote(mem)}.length) ${quote(mem)}(addr) else ${quote(mem)}(0)")
+      stream.println("}")
+
+    case Sram_store(mem@EatAlias(sram), addr, value, en) =>
+      if (dimsOf(sram).isEmpty) sys.error(s"$sym : $sram has no dimensions!")
+      stream.println(s"val ${quote(sym)} = {")
+      emitSramAddress("addr", quote(addr), dimsOf(sram))
+      stream.println(s"if (${quote(en)} && addr < ${quote(mem)}.length) ${quote(mem)}(addr) = ${quote(value)}")
+      stream.println("()")
       stream.println("}")
 
     case _ => super.emitNode(sym, rhs)
@@ -1130,10 +1178,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
     case Par_sram_load(EatAlias(sram), addr) =>
       sramLoad(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, true)
 
-    case Sram_store(EatAlias(sram), addr, value) =>
+    case Sram_store(EatAlias(sram), addr, value, en) =>
       sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value)
 
-    case Par_sram_store(EatAlias(sram), addr, value) =>
+    case Par_sram_store(EatAlias(sram), addr, value, ens) =>
       sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value)
 
     case Fifo_new(size, zero) =>  // FIFO is always parallel

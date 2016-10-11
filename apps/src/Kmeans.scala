@@ -18,21 +18,15 @@ trait KmeansApp extends SpatialApp {
     bound(numCents) = MAXK
     bound(numDims) = MAXD
 
-    val BN = param(tileSize);  domainOf(BN) = (96, 9600, 96)
-    val BD = param(MAXD);  domainOf(BD) = (MAXD, MAXD, MAXD)
-    val PX = param(1);    domainOf(PX) = (1,1,1) // Why does this make a diag bram?!
-    val P0 = param(outerPar);    domainOf(P0) = (32,192,96)  // Dimensions loaded in parallel
-    val P1 = param(outerPar);    domainOf(P1) = (1,12,2)     // Sets of points calculated in parallel
-    val P2 = param(innerPar);    domainOf(P2) = (1,96,4)     // Dimensions accumulated in parallel (outer)
-    val P3 = param(innerPar);    domainOf(P3) = (1,16,4)     // Points calculated in parallel
-    val PR = param(innerPar);    domainOf(PR) = (1,96,4)
-    val P4 = param(innerPar);    domainOf(P4) = (1,96,4)
-    /*val P4 = param(1);    domainOf(P4) = (1,MAXD,1)   // Dimensions accumulated in parallel (inner)
-    val P5 = param(1);    domainOf(P5) = (1,MAXD,1)   // Dimensions compared in parallel
-    val P6 = param(1);    domainOf(P6) = (1,MAXD,1)   // Dimensions saved in parallel
-    val P7 = param(1);    domainOf(P7) = (1,MAXK,1)   // Centroid counts copied in parallel
-    val P8 = param(1);    domainOf(P8) = (1,MAXD,1)   // Dimensions averaged in parallel
-    val P9 = param(1);    domainOf(P9) = (1,MAXD,1)   // Dimensions stored in parallel*/
+    val BN = tileSize (96 -> 96 -> 9600)
+    val BD = MAXD
+    val PX = 1 (1 -> 1)
+    val P0 = outerPar (32 -> 96 -> 192) // Dimensions loaded in parallel
+    val P1 = outerPar (1 -> 12)         // Sets of points calculated in parallel
+    val P2 = innerPar (1 -> 4 -> 96)    // Dimensions accumulated in parallel (outer)
+    val P3 = innerPar (1 -> 4 -> 16)    // Points calculated in parallel
+    val PR = innerPar (1 -> 4 -> 96)
+    val P4 = innerPar (1 -> 4 -> 96)
 
     val N = ArgIn[SInt]
     val K = ArgIn[SInt]
@@ -49,7 +43,7 @@ trait KmeansApp extends SpatialApp {
       val cts = SRAM[T](MAXK, MAXD)
 
       // Load initial centroids (from points)
-      cts := points(0::K,0::D, P0)
+      cts := points(0::K,0::D par P0)
 
       val DM1 = D.value - 1
 
@@ -57,7 +51,7 @@ trait KmeansApp extends SpatialApp {
       // For each set of points
       Fold(N by BN par P1, PR)(newCents, 0.as[T]){i =>
         val pts = SRAM[T](BN, BD)
-        pts := points(i::i+BN, 0::BD, P0)
+        pts := points(i::i+BN, 0::BD par P0)
 
         val centTile = SRAM[T](MAXK, MAXD)
         // For each point in this set
@@ -89,7 +83,7 @@ trait KmeansApp extends SpatialApp {
         centsOut(ct, d) = newCents(ct,d) / centCount(ct)
       }
       // Store the centroids out
-      centroids(0::K,0::D,P2) := centsOut
+      centroids(0::K, 0::D par P2) := centsOut
     }
 
     getMem(centroids)

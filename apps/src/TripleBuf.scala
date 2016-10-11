@@ -30,7 +30,7 @@ trait TripleBufApp extends SpatialApp {
       Pipe(M by bm, N by bn) { (m,n) =>
 
         // STAGE 1: Tile load
-        tileC := c(m::m+bm, n::n+bn, param(1))
+        tileC := c(m::m+bm, n::n+bn)
 
         // STAGE 2: Accumulate (Will be DCE in MaxJ)
         Pipe(bn by 1){ i =>
@@ -40,7 +40,7 @@ trait TripleBufApp extends SpatialApp {
         }
 
         // STAGE 3: Writeback
-        d(m::m+bm, n::n+bn, param(1)) := tileC
+        d(m::m+bm, n::n+bn) := tileC
       }
 
     }

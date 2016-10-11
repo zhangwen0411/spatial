@@ -293,7 +293,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitBlock(func, quote(sym) + "_foreachFunc", "foreachFunc", foreachFillColor)             // Map function
       emit("}")
 
-    case e@OpReduce(cchain, accum, zero, fA, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
+    case e@OpReduce(cchain, accum, zero, fA, ldFunc, stFunc, func, rFunc, inds, acc, res, rV) =>
 			emitValDef(acc, accum)
       emitNestedIdx(cchain, inds)
       emit(s"""subgraph cluster_${quote(sym)} {""")
@@ -303,8 +303,6 @@ trait DotIRPrinter extends Traversal with QuotingExp {
 			emit(s"""fillcolor=$pipeFillColor""")
       emitValDef(acc, accum)
 			emitCtrChain(cchain)
-      emitBlock(iFunc, quote(sym) + "_idxFunc", "idxFunc", ldFillColor)
-			emitValDef(idx, quote(getBlockResult(iFunc)))
       emitBlock(func, quote(sym) + "_mapFunc", "mapFunc", mapFillColor)
       emitBlock(ldFunc, quote(sym) + "_ldFunc", "ldFunc", ldFillColor)
       emitValDef(rV._1, getBlockResult(ldFunc))
@@ -314,7 +312,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitBlock(stFunc, quote(sym) + "_stFunc", "stFunc" , stFillColor)
       emit("}")
 
-    case e@OpMemReduce(ccOuter, ccInner, accum, zero, fA, iFunc, func, ldPart, ldFunc, rFunc, stFunc, indsOuter, indsInner, idx, part, acc, res, rV) =>
+    case e@OpMemReduce(ccOuter, ccInner, accum, zero, fA, func, ldPart, ldFunc, rFunc, stFunc, indsOuter, indsInner, part, acc, res, rV) =>
       emitValDef(acc, accum)
       emitNestedIdx(ccOuter, indsOuter)
       emit(s"""subgraph cluster_${quote(sym)} {""")
@@ -329,8 +327,6 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       }
       emitBlock(func, quote(sym) + "_mapFunc", "mapFunc", mapFillColor)
       emitValDef(part, getBlockResult(func))
-      emitBlock(iFunc, quote(sym) + "_idxFunc", "idxFunc", ldFillColor)
-      emitValDef(idx, getBlockResult(iFunc))
       emitBlock(ldPart, quote(sym) + "_ldPart", "ldPart", ldFillColor)
       emitBlock(ldFunc, quote(sym) + "_ldFunc", "ldFunc", ldFillColor)
       emitValDef(rV._1, getBlockResult(ldPart))
@@ -394,7 +390,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitEdge(addr, sram, "addr")
 			emitValDef(sym, sram)
 
-    case Sram_store(sram,addr,value) =>
+    case Sram_store(sram,addr,value,ens) =>
       emitEdge(addr, sram, "addr")
       emitEdge(value, sram, "data")
 
@@ -468,7 +464,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitEdge(a, sym, "a")
       emitEdge(b, sym, "b")
 
-    case UnrolledForeach(cc,func,inds) =>
+    case UnrolledForeach(cc,func,inds,vs) =>
       emitParallelNestedIdx(cc, inds)
       emit(s"""subgraph cluster_${quote(sym)} {""")
       emit(s"""label="${quote(sym)}"""")
@@ -479,7 +475,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitBlock(func, quote(sym) + "_foreach", "foreach", foreachFillColor)             // Map function
       emit("}")
 
-    case UnrolledReduce(cc,accum,func,rFunc,inds,acc,rV) =>
+    case UnrolledReduce(cc,accum,func,rFunc,inds,vs,acc,rV) =>
       emitValDef(acc, accum)
       emitParallelNestedIdx(cc, inds)
       emit(s"""subgraph cluster_${quote(sym)} {""")

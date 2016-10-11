@@ -83,13 +83,13 @@ trait RegChainPass extends Traversal  {
     case e@OpForeach(cchain, func, inds) =>
       processNode(sym, inds)
 
-    case e@OpReduce(cchain, accum, zero, foldAccum, iFunc, ldFunc, stFunc, func, rFunc, inds, idx, acc, res, rV) =>
+    case e@OpReduce(cchain, accum, zero, foldAccum, ldFunc, stFunc, func, rFunc, inds, acc, res, rV) =>
       processNode(sym, inds)
 
-    case e@UnrolledForeach(cc, func, inds) =>
+    case e@UnrolledForeach(cc, func, inds, vs) =>
       processNodeList(sym, inds)
 
-    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, vs, acc, rV) =>
       processNodeList(sym, inds)
 
     case n@Reflect(d,_,_) =>

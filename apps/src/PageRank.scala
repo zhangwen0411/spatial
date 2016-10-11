@@ -18,13 +18,13 @@ trait PageRankApp extends SpatialApp {
     val NE = 9216
     val tileSize = 96 // For now
     val iters = ArgIn[SInt]
-    val damp = ArgIn[SInt]
-    val NP = ArgIn[SInt]
-    val OCpages = DRAM[SInt](np)
-    val OCedges = DRAM[SInt](NE) // srcs of edges
-    val OCcounts = DRAM[SInt](NE) // counts for each edge
+    val damp  = ArgIn[SInt]
+    val NP    = ArgIn[SInt]
+    val OCpages    = DRAM[SInt](np)
+    val OCedges    = DRAM[SInt](NE)    // srcs of edges
+    val OCcounts   = DRAM[SInt](NE)    // counts for each edge
     val OCedgeInfo = DRAM[SInt](np, 2) // Start index of edges and number of edges for each page
-    val OCresult = DRAM[SInt](np)
+    val OCresult   = DRAM[SInt](np)
 
     setArg(iters, OCiters)
     setArg(damp, OCdamp)
@@ -41,8 +41,8 @@ trait PageRankApp extends SpatialApp {
         Sequential(NP by tileSize) { tid =>
           val currentPR = SRAM[SInt](tileSize)
           val edgesInfo = SRAM[SInt](tileSize, 2)
-          Pipe {currentPR := OCpages(tid::tid+tileSize, param(1))}
-          Pipe {edgesInfo := OCedgeInfo(tid :: tid+tileSize, 0::2, param(1))}
+          Pipe {currentPR := OCpages(tid::tid+tileSize) }
+          Pipe {edgesInfo := OCedgeInfo(tid :: tid+tileSize, 0::2) }
           Sequential(tileSize by 1) { pid =>
             val startId = edgesInfo(pid, 0)
             val numEdges = edgesInfo(pid, 1)
@@ -50,8 +50,8 @@ trait PageRankApp extends SpatialApp {
             // Gather edges indices and counts
             val edges = SRAM[SInt](tileSize)
             val counts = SRAM[SInt](tileSize)
-            Pipe {edges := OCedges(startId::startId+numEdges, param(1))}
-            Pipe {counts := OCcounts(startId::startId+numEdges, param(1))}
+            Pipe {edges := OCedges(startId::startId+numEdges) }
+            Pipe {counts := OCcounts(startId::startId+numEdges) }
 
             // Gather pages based on edges
             val gatheredPR = SRAM[SInt](tileSize)

@@ -94,7 +94,7 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     // TODO: Not a function of number of banks?
     case Sram_load(ram, _) => 1
 
-    case Sram_store(ram, _, _) => 1 // TODO
+    case Sram_store(ram,_,_,_) => 1 // TODO
 
     case _:Counter_new => 0
     case _:Counterchain_new => 0
@@ -238,18 +238,19 @@ trait LatencyModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
       //System.out.println(s"Tile transfer $s: c = $c, r = $r, b = $b, p = $p")
       memoryModel(c,r.toInt,b.toInt,p.toInt)
 
-    case _:ParallelPipe   => 1
-    case _:UnitPipe       => 0
-    case _:OpForeach    => 1
-    case _:OpReduce[_,_]  => 1
+    case _:ParallelPipe     => 1
+    case _:UnitPipe         => 0
+    case _:OpForeach        => 1
+    case _:OpReduce[_,_]    => 1
     case _:OpMemReduce[_,_] => 1
 
     case _:Reg_read[_]     => 0
     case _:Reg_write[_]    => 1
     case _:Reg_reset[_]    => 0
-    case _:Dram_new[_]  => 0
+    case _:Dram_new[_]     => 0
     case _:FieldApply[_]   => 0
     case _:DeliteStruct[_] => 0
+    case _:ListVector[_]   => 0
 
     case Reflect(d,_,_) => latencyOfNode(s, d)
     case Reify(_,_,_) => 0

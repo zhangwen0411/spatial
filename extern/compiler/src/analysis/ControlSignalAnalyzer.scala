@@ -251,7 +251,7 @@ trait ControlSignalAnalyzer extends Traversal {
     case OpForeach(cc,func,inds) =>
       traverseWith((lhs, false), inds, cc)(func)
 
-    case OpReduce(cc,a,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) =>
+    case OpReduce(cc,a,zero,fA,ld,st,func,rFunc,inds,acc,res,rV) =>
       aliasOf(acc) = a
       traverseWith((lhs, false), inds, cc)(func)
       traverseWith((lhs, true), inds, cc)(rFunc)
@@ -260,7 +260,7 @@ trait ControlSignalAnalyzer extends Traversal {
       isAccum(a) = true                                   // (6)
       parentOf(a) = lhs  // Reset accumulator with reduction
 
-    case OpMemReduce(cc1,cc2,a,zero,fA,iFunc,func,ld1,ld2,rFunc,st,inds1,inds2,idx,part,acc,res,rV) =>
+    case OpMemReduce(cc1,cc2,a,zero,fA,func,ld1,ld2,rFunc,st,inds1,inds2,part,acc,res,rV) =>
       aliasOf(acc) = a
       aliasOf(part) = getBlockResult(func)
       traverseWith((lhs, false), inds1, cc1)(func)
@@ -297,10 +297,10 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
   }
 
   override def analyze(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
-    case UnrolledForeach(cc,func,inds) =>
+    case UnrolledForeach(cc,func,inds, vs) =>
       traverseUnrolled(lhs, inds, cc)(func)
 
-    case UnrolledReduce(cc,accum,func,rFunc,inds,acc,rV) =>
+    case UnrolledReduce(cc,accum,func,rFunc,inds,vs,acc,rV) =>
       aliasOf(acc) = accum
       traverseUnrolled(lhs, inds, cc)(func)
       // rFunc isn't "real" anymore

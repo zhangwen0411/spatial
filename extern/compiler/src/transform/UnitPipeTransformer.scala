@@ -194,27 +194,25 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
   }
 
   def wrapPrimitives_Reduce[T,C[T]](lhs: Sym[Any], rhs: OpReduce[T,C])(implicit ctx: SourceContext, memC: Mem[T,C], numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
-    val OpReduce(cchain,accum,zero,fA,iFunc,ld,st,func,rFunc,inds,idx,acc,res,rV) = rhs
+    val OpReduce(cchain,accum,zero,fA,ld,st,func,rFunc,inds,acc,res,rV) = rhs
     val accum2 = f(accum)
     debugs(s"$lhs = $rhs")
     val mBlk = wrapPrimitives(func)
-    val iBlk = f(iFunc)
     val ldBlk = f(ld)
     val stBlk = f(st)
     val rBlk = f(rFunc)
 
-    val effects = summarizeEffects(iBlk) andAlso summarizeEffects(mBlk) andAlso summarizeEffects(ldBlk) andAlso
+    val effects = summarizeEffects(mBlk) andAlso summarizeEffects(ldBlk) andAlso
                   summarizeEffects(rBlk) andAlso summarizeEffects(stBlk) andAlso Write(List(accum2.asInstanceOf[Sym[C[T]]]))
 
-    val pipe2 = reflectEffect(OpReduce(f(cchain),accum2,f(zero),fA,iBlk,ldBlk,stBlk,mBlk,rBlk,inds,idx,acc,res,rV)(ctx,memC,numT,mT,mC), effects.star)
+    val pipe2 = reflectEffect(OpReduce(f(cchain),accum2,f(zero),fA,ldBlk,stBlk,mBlk,rBlk,inds,acc,res,rV)(ctx,memC,numT,mT,mC), effects.star)
     setProps(pipe2, getProps(lhs))
     pipe2
   }
 
   def wrapPrimitives_MemReduce[T,C[T]](lhs: Sym[Any], rhs: OpMemReduce[T,C])(implicit ctx: SourceContext, memC: Mem[T,C], numT: Num[T], mT: Manifest[T], mC: Manifest[C[T]]) = {
-    val OpMemReduce(ccOuter,ccInner,accum,zero,fA,iFunc,func,ld1,ld2,rFunc,st,indsOuter,indsInner,idx,part,acc,res,rV) = rhs
+    val OpMemReduce(ccOuter,ccInner,accum,zero,fA,func,ld1,ld2,rFunc,st,indsOuter,indsInner,part,acc,res,rV) = rhs
     val accum2 = f(accum)
-    val iBlk = f(iFunc)
     debugs(s"$lhs = $rhs")
     val mBlk = wrapPrimitives(func)
     val ldPartBlk = f(ld1)
@@ -222,10 +220,10 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
     val rBlk = f(rFunc)
     val stBlk = f(st)
 
-    val effects = summarizeEffects(iBlk) andAlso summarizeEffects(mBlk) andAlso summarizeEffects(ldPartBlk) andAlso
+    val effects = summarizeEffects(mBlk) andAlso summarizeEffects(ldPartBlk) andAlso
                   summarizeEffects(ldBlk) andAlso summarizeEffects(rBlk) andAlso summarizeEffects(stBlk) andAlso Write(List(accum2.asInstanceOf[Sym[C[T]]]))
 
-    val pipe2 = reflectEffect(OpMemReduce(f(ccOuter),f(ccInner),accum2,f(zero),fA,iBlk,mBlk,ldPartBlk,ldBlk,rBlk,stBlk,indsOuter,indsInner,idx,part,acc,res,rV)(ctx,memC,numT,mT,mC), effects.star)
+    val pipe2 = reflectEffect(OpMemReduce(f(ccOuter),f(ccInner),accum2,f(zero),fA,mBlk,ldPartBlk,ldBlk,rBlk,stBlk,indsOuter,indsInner,part,acc,res,rV)(ctx,memC,numT,mT,mC), effects.star)
     setProps(pipe2, getProps(lhs))
     pipe2
   }

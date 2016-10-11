@@ -23,6 +23,21 @@ trait SpatialMisc {
 
     val Idx = lookupAlias("Index")
 
+    direct (Misc) ("parameter", Nil, (SInt) :: Idx) implements composite ${
+      int_to_fix[Signed,B32](param($0))
+    }
+
+    infix (Misc) ("apply", Nil, (SInt, CTuple2(CTuple2(SInt,SInt),SInt)) :: Idx) implements composite ${
+      val p = param($0)
+      domainOf(p) = ($1._1._1, $1._2, $1._1._2) // min, max, step
+      int_to_fix[Signed,B32](p)
+    }
+    infix (Misc) ("apply", Nil, (SInt, CTuple2(SInt,SInt)) :: Idx) implements composite ${
+      val p = param($0)
+      domainOf(p) = ($1._1, $1._2, 1)
+      int_to_fix[Signed,B32](p)
+    }
+
     // --- Staging time warnings and errors
     // TODO: These aren't DSL specific, move elsewhere
     internal (Misc) ("stageWarn", Nil, SAny :: SUnit, effect = simple) implements composite ${

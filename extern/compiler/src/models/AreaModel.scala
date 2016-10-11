@@ -263,13 +263,13 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     // ISSUE #33: Need characterization
     case e@Sram_load(ram, _) =>
       val decode = 0
-      val bits = nbits(e._mT)
+      val bits = nbits(e.mT)
       FPGAResources(lut3=decode+bits, regs=decode+bits)
 
     // ISSUE #33: Need characterization
-    case e@Sram_store(ram, _, _) =>
+    case e@Sram_store(ram, _, _, _) =>
       val decode = 0
-      val bits = nbits(e._mT)
+      val bits = nbits(e.mT)
       FPGAResources(lut3=decode+bits, regs=decode+bits)
 
     case _:Counter_new => FPGAResources(lut3=106,regs=67)
@@ -439,9 +439,10 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     case _:Reg_read[_]     => NoArea
     case _:Reg_write[_]    => NoArea
     case _:Reg_reset[_]    => NoArea
-    case _:Dram_new[_]  => NoArea
+    case _:Dram_new[_]     => NoArea
     case _:FieldApply[_]   => NoArea
     case _:DeliteStruct[_] => NoArea
+    case _:ListVector[_]   => NoArea
 
     // Effects
     case Reflect(d,_,_) => areaOfNode(s,d)

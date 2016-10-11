@@ -27,7 +27,7 @@ trait MultiWrApp extends SpatialApp {
       Sequential(1 by 1) { d =>
         val tileC = SRAM[T](M, N)
 
-        tileC := c(0::M, 0::N, param(1))
+        tileC := c(0::M, 0::N)
 
         Fold(iters by 1)(tileC, 0.as[T]) { i =>
           val tile_partial = SRAM[T](M,N)
@@ -37,7 +37,7 @@ trait MultiWrApp extends SpatialApp {
           tile_partial
         }{_+_}
 
-        c(0::M, 0::N, param(1)) := tileC
+        c(0::M, 0::N) := tileC
       }
     }
     getMem(c)

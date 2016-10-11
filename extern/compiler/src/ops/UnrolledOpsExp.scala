@@ -31,81 +31,132 @@ trait UnrolledOpsExp extends ExternPrimitiveTypesExp with MemoryOpsExp {
 
   // --- Nodes
   case class UnrolledForeach(
-    cc:   Exp[CounterChain],
-    func: Block[Unit],
-    inds: List[List[Sym[FixPt[Signed,B32,B0]]]]
+    cc:     Exp[CounterChain],
+    func:   Block[Unit],
+    inds:   List[List[Sym[FixPt[Signed,B32,B0]]]],
+    valids: List[List[Sym[Bit]]]
   )(implicit val ctx: SourceContext) extends Def[Pipeline]
 
   case class UnrolledReduce[T,C[T]](
-    cc:    Exp[CounterChain],
-    accum: Exp[C[T]],
-    func:  Block[Unit],
-    rFunc: Block[T],
-    inds:  List[List[Sym[FixPt[Signed,B32,B0]]]],
-    acc:   Sym[C[T]],
-    rV:    (Sym[T], Sym[T])
+    cc:     Exp[CounterChain],
+    accum:  Exp[C[T]],
+    func:   Block[Unit],
+    rFunc:  Block[T],
+    inds:   List[List[Sym[FixPt[Signed,B32,B0]]]],
+    valids: List[List[Sym[Bit]]],
+    acc:    Sym[C[T]],
+    rV:     (Sym[T], Sym[T])
   )(implicit val ctx: SourceContext, val mT: Manifest[T], val mC: Manifest[C[T]]) extends Def[Pipeline]
 
+  case class Par_sram_load[T](
+    sram: Exp[SRAM[T]],
+    addr: Exp[Vector[Vector[FixPt[Signed,B32,B0]]]]
+  )(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Vector[T]]
+
+  case class Par_sram_store[T](
+    sram:   Exp[SRAM[T]],
+    addr:   Exp[Vector[Vector[FixPt[Signed,B32,B0]]]],
+    values: Exp[Vector[T]],
+    ens:    Exp[Vector[Bit]]
+  )(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
+
   // --- Internal API
+  def par_sram_load[T:Manifest](sram: Exp[SRAM[T]], addr: Exp[Vector[Vector[FixPt[Signed,B32,B0]]]])(implicit ctx: SourceContext) = {
+    val s = reflectPure(Par_sram_load(sram,addr)(ctx, manifest[T]))
+    lenOf(s) = lenOf(addr)
+    s
+  }
+
+  def par_sram_store[T:Manifest](sram: Exp[SRAM[T]], addr: Exp[Vector[Vector[FixPt[Signed,B32,B0]]]], values: Exp[Vector[T]], ens: Exp[Vector[Bit]])(implicit ctx: SourceContext) = {
+    reflectWrite(sram)(Par_sram_store(sram,addr,values,ens)(ctx, manifest[T]))
+  }
 
   // --- Mirroring
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = e match {
-    case e@UnrolledForeach(cc,func,i) => reflectPure(UnrolledForeach(f(cc),f(func),i)(e.ctx))(mtype(manifest[A]),pos)
-    case Reflect(e@UnrolledForeach(cc,func,i), u, es) => reflectMirrored(Reflect(UnrolledForeach(f(cc),f(func),i)(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]),pos)
+    case e@UnrolledForeach(cc,func,i,v) => reflectPure(UnrolledForeach(f(cc),f(func),i,v)(e.ctx))(mtype(manifest[A]),pos)
+    case Reflect(e@UnrolledForeach(cc,func,i,v), u, es) => reflectMirrored(Reflect(UnrolledForeach(f(cc),f(func),i,v)(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]),pos)
 
-    case e@UnrolledReduce(cc,a,b,r,i,acc,rV) => reflectPure(UnrolledReduce(f(cc),f(a),f(b),f(r),i,acc,rV)(e.ctx,e.mT,e.mC))(mtype(manifest[A]),pos)
-    case Reflect(e@UnrolledReduce(cc,a,b,r,i,acc,rV), u, es) => reflectMirrored(Reflect(UnrolledReduce(f(cc),f(a),f(b),f(r),i,acc,rV)(e.ctx,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@UnrolledReduce(cc,a,b,r,i,v,acc,rV) => reflectPure(UnrolledReduce(f(cc),f(a),f(b),f(r),i,v,acc,rV)(e.ctx,e.mT,e.mC))(mtype(manifest[A]),pos)
+    case Reflect(e@UnrolledReduce(cc,a,b,r,i,v,acc,rV), u, es) => reflectMirrored(Reflect(UnrolledReduce(f(cc),f(a),f(b),f(r),i,v,acc,rV)(e.ctx,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+
+    case e@Par_sram_load(mem,addrs) => par_sram_load(f(mem),f(addrs))(e.mT,e.ctx)
+    case Reflect(e@Par_sram_load(mem,addrs), u, es) => reflectMirrored(Reflect(Par_sram_load(f(mem),f(addrs))(e.ctx,e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
+    case e@Par_sram_store(mem,addrs,values,ens) => par_sram_store(f(mem),f(addrs),f(values),f(ens))(e.mT,e.ctx)
+    case Reflect(e@Par_sram_store(mem,addrs,values,ens), u, es) => reflectMirrored(Reflect(Par_sram_store(f(mem),f(addrs),f(values),f(ens))(e.ctx,e.mT), mapOver(f,u), f(es)))(mtype(manifest[A]), pos)
 
     case _ => super.mirror(e,f)
   }
 
   // --- Dependencies
   override def syms(e: Any): List[Sym[Any]] = e match {
-    case UnrolledForeach(cc,func,inds) => syms(cc) ::: syms(func)
-    case UnrolledReduce(cc,accum,func,rFunc,inds,acc,rV) => syms(cc) ::: syms(accum) ::: syms(func) ::: syms(rFunc)
+    case UnrolledForeach(cc,func,inds,vs) => syms(cc) ::: syms(func)
+    case UnrolledReduce(cc,accum,func,rFunc,inds,vs,acc,rV) => syms(cc) ::: syms(accum) ::: syms(func) ::: syms(rFunc)
     case _ => super.syms(e)
   }
   override def readSyms(e: Any): List[Sym[Any]] = e match {
-    case UnrolledForeach(cc,func,inds) => readSyms(cc) ::: readSyms(func)
-    case UnrolledReduce(cc,accum,func,rFunc,inds,acc,rV) => readSyms(cc) ::: readSyms(accum) ::: readSyms(func) ::: readSyms(rFunc)
+    case UnrolledForeach(cc,func,inds,vs) => readSyms(cc) ::: readSyms(func)
+    case UnrolledReduce(cc,accum,func,rFunc,inds,vs,acc,rV) => readSyms(cc) ::: readSyms(accum) ::: readSyms(func) ::: readSyms(rFunc)
     case _ => super.readSyms(e)
   }
   override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
-    case UnrolledForeach(cc,func,inds) => freqNormal(cc) ::: freqCold(func)
-    case UnrolledReduce(cc,accum,func,rFunc,inds,acc,rV) => freqNormal(cc) ::: freqNormal(accum) ::: freqCold(func) ::: freqNormal(rFunc)
+    case UnrolledForeach(cc,func,inds,vs) => freqNormal(cc) ::: freqCold(func)
+    case UnrolledReduce(cc,accum,func,rFunc,inds,vs,acc,rV) => freqNormal(cc) ::: freqNormal(accum) ::: freqCold(func) ::: freqNormal(rFunc)
     case _ => super.symsFreq(e)
   }
   override def boundSyms(e: Any): List[Sym[Any]] = e match {
-    case UnrolledForeach(cc,func,inds) => inds.flatten ::: effectSyms(func)
-    case UnrolledReduce(cc,accum,func,rFunc,inds,acc,rV) => inds.flatten ::: effectSyms(func) ::: effectSyms(rFunc) ::: List(acc, rV._1, rV._2)
+    case UnrolledForeach(cc,func,inds,vs) => inds.flatten ::: vs.flatten ::: effectSyms(func)
+    case UnrolledReduce(cc,accum,func,rFunc,inds,vs,acc,rV) => inds.flatten ::: vs.flatten ::: effectSyms(func) ::: effectSyms(rFunc) ::: List(acc, rV._1, rV._2)
     case _ => super.boundSyms(e)
+  }
+  override def aliasSyms(e: Any): List[Sym[Any]] = e match {
+    case e:Par_sram_load[_] => Nil
+    case e:Par_sram_store[_] => Nil
+    case _ => super.aliasSyms(e)
   }
 }
 
-trait ScalaGenUnrolledOps extends ScalaGenEffect {
-  val IR: UnrolledOpsExp with SpatialCodegenOps
+trait ScalaGenUnrolledOps extends ScalaGenEffect with ScalaGenMemoryOps {
+  val IR: UnrolledOpsExp with MemoryOpsExp with SpatialCodegenOps
   import IR._
 
-  def emitParallelizedLoop(iters: List[List[Sym[FixPt[Signed,B32,B0]]]], cchain: Exp[CounterChain])(emitBlk: => Unit) = {
-    iters.zipWithIndex.foreach{ case (is, i) =>
-      stream.println("for( " + quote(cchain) + "_vec" + i + " <- " + quote(cchain) + ".apply(" + i + ".toInt)) {")
-      is.zipWithIndex.foreach{ case (iter, j) =>
-        stream.println("  val "+quote(iter)+" = " + quote(cchain) + "_vec" + i + ".apply(" + j + ".toInt)")
-      }
+  def emitParallelizedLoop(iters: List[List[Sym[FixPt[Signed,B32,B0]]]], valids: List[List[Sym[Bit]]], cchain: Exp[CounterChain])(emitBlk: => Unit) = {
+    for(i <- 0 until iters.length){
+      val is = iters(i)
+      val vs = valids(i)
+      stream.println(quote(cchain) + ".apply(" + i + s".toInt).foreach{case (is,vs) => ")
+      is.zipWithIndex.foreach{ case (iter, j) => stream.println(s"  val ${quote(iter)} = is($j)") }
+      vs.zipWithIndex.foreach{ case (valid, j) => stream.println(s"  val ${quote(valid)} = vs($j)") }
     }
     emitBlk
     stream.println("}" * iters.length)
   }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case e@UnrolledForeach(cchain, func, inds) =>
-      emitParallelizedLoop(inds, cchain){ emitBlock(func) }
+    case e@UnrolledForeach(cchain, func, inds, vs) =>
+      emitParallelizedLoop(inds, vs, cchain){ emitBlock(func) }
       emitValDef(sym, "()")
 
-    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, vs, acc, rV) =>
       emitValDef(acc, quote(accum))
-      emitParallelizedLoop(inds, cchain){ emitBlock(func) }
+      emitParallelizedLoop(inds, vs, cchain){ emitBlock(func) }
       emitValDef(sym, "()")
+
+    case e@Par_sram_load(mem@EatAlias(sram), addrs) =>
+      if (dimsOf(sram).isEmpty) sys.error(s"$sym : $sram has no dimensions!")
+      val len = lenOf(addrs)
+      stream.println(s"val ${quote(sym)} = ${quote(addrs)}.map{a => ")
+      emitSramAddress("addr", "a", dimsOf(sram))
+      stream.println(s"if (addr < ${quote(mem)}.length) ${quote(mem)}(addr) else ${quote(mem)}(0)")
+      stream.println("}")
+
+    case e@Par_sram_store(mem@EatAlias(sram), addrs, values, en) =>
+      if (dimsOf(sram).isEmpty) sys.error(s"$sym : $sram has no dimensions!")
+      val len = lenOf(addrs)
+      stream.println(s"val ${quote(sym)} = (${quote(addrs)}, ${quote(values)}, ${quote(en)}).zipped.foreach{case (a,v,en) => ")
+      emitSramAddress("addr", "a", dimsOf(sram))
+      stream.println(s"if (en && addr < ${quote(mem)}.length) ${quote(mem)}(addr) = v")
+      stream.println("}")
+
 
     case _ => super.emitNode(sym, rhs)
   }
@@ -182,7 +233,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
 
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case e@UnrolledForeach(cchain, func, inds) =>
+    case e@UnrolledForeach(cchain, func, inds, vs) =>
       controlNodeStack.push(sym)
       emitComment(s"""UnrolledForeach ${quote(sym)} = UnrolledForeach(${quote(cchain)}) {""")
       emit("""{""")
@@ -219,7 +270,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
       emitRegChains(sym, inds.flatten)
 
       parentOf(sym).get match {
-        case e@Deff(UnrolledReduce(_,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+        case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
           if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
             styleOf(sym) match {
               case InnerPipe =>
@@ -271,7 +322,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
       print_stage_suffix(quote(sym), hadThingsInside)
       controlNodeStack.pop
 
-    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, acc, rV) =>
+    case e@UnrolledReduce(cchain, accum, func, rFunc, inds, vs, acc, rV) =>
       controlNodeStack.push(sym)
       val Def(EatReflect(Counterchain_new(diagram_counters))) = cchain
       var ctr_str = diagram_counters.map { ctr =>
