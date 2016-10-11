@@ -6,9 +6,9 @@ object DotProduct extends SpatialAppCompiler with DotProductApp
 trait DotProductApp extends SpatialApp {
   type T = SInt
 
-  val tileSize = 9600
-  val innerPar = 32
-  val outerPar = 4
+  val tileSize = 960
+  val innerPar = 2
+  val outerPar = 2
   type Array[T] = ForgeArray[T]
 
   def dotproduct(a: Rep[Array[T]], b: Rep[Array[T]]) = {
@@ -53,8 +53,8 @@ trait DotProductApp extends SpatialApp {
 
   def main() {
     val N = args(0).to[SInt]
-    val a = Array.fill(N)(random[T](10))
-    val b = Array.fill(N)(random[T](10))
+    val a = Array.fill(N)(/*random[T](10)*/ 1)
+    val b = Array.fill(N)(/*random[T](10)*/ 1)
 
     // printArr(a, "a")
     // printArr(b, "b")

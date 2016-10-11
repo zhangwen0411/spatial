@@ -659,7 +659,7 @@ trait MaxJGenMemoryTemplateOps extends MaxJGenExternPrimitiveOps with MaxJGenFat
         addrString = quote(addr)} // Dummy override for char test
       emit(s"""${quote(bram)}_${ii}.${wrType}${addrString}, 
         $dataString, $accString, new int[] {$p}); //tuple $match_tuple to ${nameOf(bram).getOrElse("")}""")
-      emit(s"""// debug.simPrintf(accString,"${quote(bram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", $dataString, $addrString);""")
+      emit(s"""// debug.simPrintf($accString,"${quote(bram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", $dataString, $addrString);""")
     }
     emitComment("} Bram_store")
   }
@@ -848,10 +848,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         emit(s"""DFEVar ${quote(sym)} = io.scalarInput("${quote(sym)}", $ts );""")
       }
       if (argToExp.contains(sym.asInstanceOf[Sym[Reg[Any]]])) {
-        if (!connectedArgs.contains(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))) {
-          emit(s"""${quote(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))} <== ${quote(sym)};""")
-          connectedArgs += (argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))
-        }
+        emit(s"""${quote(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))} <== ${quote(sym)};""")
       }
 
 

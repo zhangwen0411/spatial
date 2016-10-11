@@ -189,6 +189,10 @@ if [ \"\$wc\" -ne 0 ]; then
 fi
 
 cd ${5}/out
+# Because why the fuck won't ant run inside a makefile if I set the symlinks correctly
+#sed -i \"s/JAVA_HOME = \/usr\/lib\/jvm\/java-1.7.0-openjdk-1.7.0.111.x86_64/JAVA_HOME = \/usr/g\" Makefile
+#sed -i \"s/ant/\/usr\/share\/ant\/bin\/ant/g\" Makefile
+
 make clean sim 2>&1 | tee -a ${5}/log
 wc=\$(cat ${5}/log | sed \"s/Error 1 (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then

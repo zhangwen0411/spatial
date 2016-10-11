@@ -8,7 +8,7 @@ trait KmeansApp extends SpatialApp {
   type T = Flt
 
   lazy val MAXK = 96
-  lazy val MAXD = 96
+  lazy val MAXD = 192
   val tileSize = 96
   val innerPar = 1
   val outerPar = 1
@@ -97,8 +97,8 @@ trait KmeansApp extends SpatialApp {
 
   def main() {
     val N = args(0).to[SInt];
-    val K = MAXK.as[SInt];
-    val D = MAXD.as[SInt];
+    val K = args(1).to[SInt];
+    val D = args(2).to[SInt];
 
     val pts = Array.tabulate(N){i => Array.tabulate(D){d => random[T](10) }}
 
