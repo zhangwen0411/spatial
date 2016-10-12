@@ -1196,10 +1196,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       }
 
     case ListVector(elems) =>
-      Console.println(s"${elems(0)} \n ${elems(0).tp} \n ${elems(0).tp.typeArguments}")
       if (isVector(elems(0).tp)) {
         val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
-        emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${elems.map(quote).mkString(",")};""")
+        emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map{a => quote(a) + "[0]"}.mkString(",")}));""")
       } else {
         val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])        
         emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map(quote).mkString(",")}));""")
