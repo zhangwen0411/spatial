@@ -13,7 +13,7 @@ import spatial.compiler.ops._
 
 trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRCommon {
   val IR: SpatialExp with PIRScheduleAnalysisExp
-  import IR._
+  import IR.{infix_by => _, _}
 
   override val name = "PIR Preschedule Analysis"
   override val eatReflect = true
@@ -164,7 +164,8 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     case Def(d) => throw new Exception(s"Don't know how to generate CU for: \n  $pipe = $d")
   }
 
-  def allocateWrittenSRAM(writer: Exp[Any], mem: Exp[Any], addr: Option[Exp[Any]], writerCU: ComputeUnit, stages: List[PseudoStage]) {
+
+  def allocateWrittenSRAM(writer: Exp[Any], mem: Exp[Any], writerCU: ComputeUnit, stages: List[PseudoStage]) {
     val srams = readersOf(mem).map{reader =>
       val readerCU = allocateCU(reader.controlNode)
       copyIterators(readerCU, writerCU)
@@ -176,23 +177,16 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       (readerCU, sram)
     }
 
-    val writeStages = if (!isControlNode(writer) && addr.isDefined) {
-      stages ++ List(WriteAddrStage(writer))
-    }
-    else stages
-
-    if (writeStages.nonEmpty) {
+    if (stages.nonEmpty) {
       val groups = srams.groupBy(_._1).mapValues(_.map(_._2))
       for ((readerCU,srams) <- groups if readerCU != writerCU) {
         debug(s"""Adding write stages to $readerCU for SRAMs: ${srams.mkString(", ")}""")
-        readerCU.writePseudoStages += srams -> writeStages
+        readerCU.writePseudoStages += srams -> stages
       }
     }
   }
-  def allocateReadSRAM(reader: Exp[Any], mem: Exp[Any], addr: Option[Exp[Any]], readerCU: ComputeUnit) {
-    val sram = allocateMem(mem, reader, readerCU)
-    //if (!sram.readAddr.isDefined && addr.isDefined)
-    //sram.readAddr = addr.map{a => readerCU.getOrAddReg(a){ ReadAddrWire(sram) } }
+  def allocateReadSRAM(reader: Exp[Any], mem: Exp[Any], readerCU: ComputeUnit) {
+    allocateMem(mem, reader, readerCU)
   }
 
   def foreachSymInBlock(b: Block[Any])(func: Sym[Any] => Unit) {
@@ -224,14 +218,14 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     val cu = allocateCU(pipe)
 
     val remotelyAddedStages = cu.computePseudoStages // Stages added prior to traversing this pipe
-    val remotelyAddedStms = remotelyAddedStages.map(_.output).flatMap{
+    val remotelyAddedStms = remotelyAddedStages.flatMap(_.output).flatMap{
       case s: Sym[_] => findDefinition(s)
       case _ => None
     }
 
     val stms = remotelyAddedStms ++ getStmsInBlock(func)
     val stages = stms.map{case TP(lhs,rhs) => lhs}
-    var remoteStages: Set[Exp[Any]] = Set.empty
+    var remoteStages: Set[Exp[Any]] = Set.empty           // Ignore these (goes on different CU)
 
     def symsOnlyUsedInWriteAddr(exps: List[Exp[Any]]) = {
       // Build a schedule as usual, except for depencies on write addresses
@@ -247,10 +241,10 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val scopeIndex = buildScopeIndex(stms)
       val result = func.res
       val xx = GraphUtil.stronglyConnectedComponents[Stm](scheduleDepsWithIndex(mysyms(result), scopeIndex), t => scheduleDepsWithIndex(mysyms(t.rhs), scopeIndex)).flatten
+
       debug(s"  Schedule without write addresses:")
-      xx.reverse.foreach{
-        case TP(lhs, rhs) => debug(s"    $lhs = $rhs")
-      }
+      xx.reverse.foreach{case TP(lhs, rhs) => debug(s"    $lhs = $rhs")}
+
       exps.filterNot{case sym: Sym[_] => xx.exists(_.defines(sym).isDefined) }
     }
 
@@ -263,25 +257,29 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       // However, register reads may appear outside their corresponding controller
       case writer@LocalWriter(writes) if !isControlNode(writer) =>
         debug(s"  $writer [WRITER]")
-        writes.foreach{case (EatAlias(mem), value, addr) =>
+        writes.foreach{case (EatAlias(mem), value, indices) =>
           if (isBuffer(mem)) {
-            val addrComputation = addr.map{a => getSchedule(stms)(a,false)}.getOrElse(Nil)
-            val addrSyms = addrComputation.map{case TP(s,d) => s}
-            val addrStages = addrSyms.map{s => DefStage(s) }
+            val indexComputation = indices.map{is => getSchedule(stms)(is,false) }.getOrElse(Nil)
+            val indexSyms = indexComputation.map{case TP(s,d) => s }
+            val indexStages = indexSyms.map{s => DefStage(s) }
+            val flatOpt = indices.map{is => flattenNDAddress(is, dimsOf(mem)) }
+            val addr = flatOpt.map(_._1)
+            val remoteWriteStage = addr.map{a => WriteAddrStage(mem, a) }
+            val addrStages = indexStages ++ flatOpt.map(_._2).getOrElse(Nil) ++ remoteWriteStage
 
-            allocateWrittenSRAM(writer, mem, addr, cu, addrStages)
+            allocateWrittenSRAM(writer, mem, cu, addrStages)
             val isLocallyRead = isReadInPipe(mem, pipe)
             // Currently have to duplicate if used in both address and compute
-            if (addrSyms.nonEmpty && !isLocallyRead) {
+            if (indexSyms.nonEmpty && !isLocallyRead) {
               debug(s"  Checking if symbols calculating ${addr.get} are used in current scope $pipe")
-              remoteStages ++= symsOnlyUsedInWriteAddr(addrSyms)
+              remoteStages ++= symsOnlyUsedInWriteAddr(indexSyms)
             }
           }
         }
 
       case reader@LocalReader(reads) if !isControlNode(reader) =>
         debug(s"  $reader [READER]")
-        reads.foreach{case (EatAlias(mem),addr) =>
+        reads.foreach{case (EatAlias(mem),indices) =>
           if (isReg(mem.tp)) {
             prescheduleRegisterRead(mem, reader, Some(pipe))
             val isLocallyRead = isReadInPipe(mem, pipe, Some(reader))
@@ -291,7 +289,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
           }
           else if (isBuffer(mem)) {
             debug(s"  Local buffer read: $reader")
-            allocateReadSRAM(reader, mem, addr, cu)
+            allocateReadSRAM(reader, mem, cu)
           }
         }
 

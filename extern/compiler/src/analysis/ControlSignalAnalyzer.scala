@@ -69,8 +69,11 @@ trait ControlSignalAnalyzer extends Traversal {
     // After setting all other readers/external uses, check to see if
     // any reads external to the accel block are unused. Parent for these is top
     pendingExternalReads.foreach{case reader@LocalReader(reads) =>
+      debug(s"Checking external $reader for uses: ")
       reads.foreach{case (EatAlias(mem),addr) =>
+        debug(s"  $mem: readers = ${readersOf(mem)}")
         if (!readersOf(mem).exists{access => access.node == reader}) {
+          debug(s"  Adding $reader to list of readers for $mem")
           readersOf(mem) = readersOf(mem) :+ (reader, (top,false))
         }
       }
@@ -326,6 +329,8 @@ trait UnrolledControlSignalAnalyzer extends ControlSignalAnalyzer {
   }
 
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
+    super.postprocess(b)
+
     propagationPairs.foreach{case (src,dest) =>
       setProps(dest,getProps(src))
     }

@@ -239,12 +239,16 @@ trait ScalaGenControllerOps extends ScalaGenEffect {
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case ParallelPipe(blk) =>
+      stream.println(s"val ${quote(sym)} = {")
       emitBlock(blk)
-      stream.println(s"val ${quote(sym)} = ()")
+      stream.println("()")
+      stream.println("}")
 
     case UnitPipe(blk) =>
+      stream.println(s"val ${quote(sym)} = {")
       emitBlock(blk)
-      stream.println(s"val ${quote(sym)} = ()")
+      stream.println("()")
+      stream.println("}")
 
     case _ => super.emitNode(sym, rhs)
   }

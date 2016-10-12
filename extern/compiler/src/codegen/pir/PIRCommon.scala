@@ -60,7 +60,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
 
     def mapStages = stages.flatMap{case stage:MapStage => Some(stage); case _ => None}
     def stageNum = mapStages.length+1
-    def prevStage = stages.headOption
+    def prevStage = stages.lastOption
 
     def mem(mem: Exp[Any], reader: Exp[Any]) = allocateMem(mem, reader, cu)
 
@@ -357,4 +357,28 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
         sram
     }
   }
+
+
+  def flattenNDAddress(addr: Exp[Any], dims: List[Exp[Index]]) = addr match {
+    case Deff(ListVector(List(Deff(ListVector(indices))))) if indices.nonEmpty => flattenNDIndices(indices, dims)
+    case Deff(ListVector(indices)) if indices.nonEmpty => flattenNDIndices(indices, dims)
+    case _ => throw new Exception(s"Unsupported address in PIR generation: $addr")
+  }
+  private def flattenNDIndices(indices: List[Exp[Any]], dims: List[Exp[Index]]) = {
+    val cdims = dims.map{case Bound(d) => d.toInt; case _ => throw new Exception("Unable to get bound of memory size") }
+    val strides = List.tabulate(dims.length){d =>
+      if (d == dims.length - 1) 1.as[Index]
+      else cdims.drop(d+1).reduce(_*_).as[Index]
+    }
+    var partialAddr: Exp[Any] = indices.last
+    var addrCompute: List[OpStage] = Nil
+    for (i <- dims.length-2 to 0 by -1) { // If dims.length <= 1 this won't run
+      val mul = OpStage(FixMul, List(indices(i),strides(i)), fresh[Index])
+      val add = OpStage(FixAdd, List(mul.out, partialAddr),  fresh[Index])
+      partialAddr = add.out
+      addrCompute ++= List(mul,add)
+    }
+    (partialAddr, addrCompute)
+  }
+
 }

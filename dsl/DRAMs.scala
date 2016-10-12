@@ -219,11 +219,18 @@ trait DRAMs {
             // val end_bound = start_bound + len // Figure out number of elements before we should ignore again
             // val len_upcast = (end_bound - (end_bound % el_per_burst)) + el_per_burst // Upcast memory request to nearest burst alignment
 
-            burst_load(mem, fifo, memOfs/*_downcast*/, len/*_upcast*/, p)
+            /*val elementsPerBurst = 384*8/nbits(manifest[T])
+            val startBound = memOfs % elementsPerBurst      // Number of elements to ignore at beginning
+            val memOfsDowncast = memOfs - startBound        // Burst-aligned address
+            val endBound = startBound + len                 // Index to begin ignoring again
+            val lenUpcast = (endBound - (endBound % elementsPerBurst)) + elementsPerBurst // Number of elements aligned to nearest burst length*/
 
-            Pipe(len/*_upcast*/ par p){i =>
+            burst_load(mem, fifo, memOfs/*Downcast*/, len/*Upcast*/, p)
+
+            Pipe(len/*Upcast*/ par p){i =>
               val localAddr = localOfs.take(localOfs.length - 1) :+ (localOfs.last + i)
-              $local(localAddr/*,en = i > start_bound & i < end_bound*/) = fifo.pop()
+              //val en = i >= startBound & i < endBound
+              $local(localAddr/*, en*/) = fifo.pop()
             }
           }
         }
@@ -236,15 +243,18 @@ trait DRAMs {
             burst_store(mem, fifo, memOfs, len, p)
           }
           else {
-            // val el_per_burst = 384*8/nbits(manifest[T]) // Get number of elements in a burst
-            // val start_bound = memOfs % el_per_burst // Figure out number of elements to ignore before we get desired data
-            // val memOfs_downcast = memOfs - start_bound // Figure out burst-aligned memOfs
-            // val end_bound = start_bound + len // Figure out number of elements before we should ignore again
-            // val len_upcast = (end_bound - (end_bound % el_per_burst)) + el_per_burst // Upcast memory request to nearest burst alignment
+            // val elementsPerBurst = 384*8/nbits(manifest[T])
+            // val startBound = memOfs % elementsPerBurst      // Number of elements to ignore at beginning
+            // val memOfsDowncast = memOfs - startBound        // Burst-aligned address
+            // val endBound = startBound + len                 // Index to begin ignoring again
+            // val lenUpcast = (endBound - (endBound % elementsPerBurst)) + elementsPerBurst // Number of elements aligned to nearest burst length
 
-            burst_load(mem, fifo, memOfs/*_downcast*/, len/*_upcast*/, p)
+            burst_load(mem, fifo, memOfs/*Downcast*/, len/*Upcast*/, p)
 
-            Pipe(len/*_upcast*/ par p){i => $local(i/*, en = i > start_bound & i < end_bound*/) = fifo.pop() }
+            Pipe(len/*Upcast*/ par p){i =>
+              //val en = i >= startBound && i < endBound
+              $local(i/*, en*/) = fifo.pop()
+            }
           }
         }
       }
