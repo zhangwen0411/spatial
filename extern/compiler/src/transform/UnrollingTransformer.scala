@@ -148,9 +148,10 @@ trait UnrollingTransformer extends MultiPassTransformer {
       cloneFuncs.foreach{func => func(parPush) }
       lanes.unify(lhs, parPush)
 
-    case EatReflect(e@Pop_fifo(fifo@EatAlias(mem))) if lanes.isCommon(fifo) =>
+    case EatReflect(e@Pop_fifo(fifo@EatAlias(mem),en)) if lanes.isCommon(fifo) =>
       debugs(s"Unrolling $lhs = $rhs")
-      val parPop = par_pop_fifo(f(fifo), lanes.size)(e._mT,e.__pos)
+      val enables = lanes.vectorize{p => f(en) && globalValid }
+      val parPop = par_pop_fifo(f(fifo), enables)(e._mT,e.__pos)
       lenOf(parPop) = lanes.size
 
       setProps(parPop, mirror(getProps(lhs), f.asInstanceOf[Transformer]))
@@ -608,22 +609,14 @@ trait UnrollingTransformer extends MultiPassTransformer {
   def cloneInds[I:Manifest](inds: List[List[Sym[I]]]) = inds.map{is => is.map{i => fresh[I] }}
 
   def clone[A:Manifest](lhs: Sym[A], rhs: Def[A])(implicit ctx: SourceContext): Exp[A] = (rhs match {
-    /*case Reflect(e@UnrolledForeach(cc,b,i), u, es) =>
-      val i2 = cloneInds(i)
-      val b2 = withSubstScope(i.flatten.zip(i2.flatten):_*){ f(b) }
-      reflectMirrored(Reflect(UnrolledForeach(f(cc), b2, i2)(e.ctx), mapOver(f,u), f(es)))(mtype(manifest[A]), ctx)
-
-    case Reflect(e@UnrolledReduce(cc,a,b,rF,i,acc,rV), u, es) =>
-      val i2 = cloneInds(i)
-      val acc2 = reflectMutableSym(fresh(List(e.ctx))(e.mC))
-      val rV2 = (fresh(List(e.ctx))(e.mT), fresh(List(e.ctx))(e.mT))
-      val b2 = withSubstScope( (i.flatten.zip(i2.flatten) ++ List(acc -> acc2)):_*) { f(b) }
-      val rF2 = withSubstScope(rV._1 -> rV2._1, rV._2 -> rV2._2){ f(rF) }
-      reflectMirrored(Reflect(UnrolledReduce(f(cc),f(a),b2,rF2,i2,acc2,rV2)(e.ctx,e.mT,e.mC), mapOver(f,u), f(es)))(mtype(manifest[A]), ctx)
-    */
-
     case EatReflect(e@Sram_store(sram,addr,value,en)) =>
       sram_store(f(sram),f(addr),f(value), f(en) && globalValid)(e.mT, e.ctx)
+
+    case EatReflect(e@Reg_write(reg, value, en)) =>
+      reg_write(f(reg), f(value), f(en) && globalValid)(e._mT, e.__pos)
+
+    case EatReflect(e@Pop_fifo(fifo, en)) =>
+      pop_fifo(f(fifo), f(en) && globalValid)(e._mT, e.__pos)
 
     case _ => mirror(rhs, f.asInstanceOf[Transformer])(mtype(manifest[A]), ctx)
 

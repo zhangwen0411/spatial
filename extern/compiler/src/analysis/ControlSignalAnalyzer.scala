@@ -60,8 +60,23 @@ trait ControlSignalAnalyzer extends Traversal {
       if (meta[WrittenMemsIn](s).isDefined) writtenIn(s) = Nil
       if (meta[Writers](s).isDefined) writersOf(s) = Nil
       if (meta[Children](s).isDefined) childrenOf(s) = Nil
+      if (meta[MExternalReaders](s).isDefined) externalReadersOf(s) = Nil
     }
     super.preprocess(b)
+  }
+
+  override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
+    // After setting all other readers/external uses, check to see if
+    // any reads external to the accel block are unused. Parent for these is top
+    pendingExternalReads.foreach{case reader@LocalReader(reads) =>
+      reads.foreach{case (EatAlias(mem),addr) =>
+        if (!readersOf(mem).exists{access => access.node == reader}) {
+          readersOf(mem) = readersOf(mem) :+ (reader, (top,false))
+        }
+      }
+    }
+
+    (b)
   }
 
   // Traverse the scope of the given controller
@@ -223,10 +238,7 @@ trait ControlSignalAnalyzer extends Traversal {
       if (controller.isDefined) addChild(lhs, controller.get.node)     // (2,3)
       else {
         top = lhs                                                      // (11)
-
-        if (pendingExternalReads.nonEmpty) {
-          pendingExternalReads.foreach{reader => appendReader(reader, (top,false)) }
-        }
+        pendingExternalReads.foreach{reader => addPendingReader(reader) }
       }
 
       if (isMetaPipe(lhs)) metapipes ::= lhs                           // (8)

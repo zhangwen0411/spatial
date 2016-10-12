@@ -25,7 +25,7 @@ trait FIFOs {
     val fifo_store = internal (FIFO) ("fifo_store", T, (("fifo", FIFO(T)), ("addr", Idx), ("value", T)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
 
     val fifo_push = internal (FIFO) ("push_fifo", T, (("fifo", FIFO(T)), ("value",T), ("en", Bit)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
-    val fifo_pop  = internal (FIFO) ("pop_fifo", T, ("fifo", FIFO(T)) :: T, aliasHint = aliases(Nil))
+    val fifo_pop  = internal (FIFO) ("pop_fifo", T, (("fifo", FIFO(T)), ("en", Bit)) :: T, aliasHint = aliases(Nil))
     val fifo_count = internal (FIFO) ("count_fifo", T, ("fifo", FIFO(T)) :: Idx, aliasHint = aliases(Nil))
 
     // --- API
@@ -53,7 +53,8 @@ trait FIFOs {
       infix ("push") ((T, Bit) :: MUnit, effect = write(0)) implements composite ${ push_fifo($self, $1, $2) }
 
       /** Creates a pop (read) port to this FIFO **/
-      infix ("pop") (Nil :: T) implements composite ${ pop_fifo($self) }
+      infix ("pop") (Nil :: T) implements composite ${ pop_fifo($self, true.asBit) }
+      infix ("pop") (Bit :: T) implements composite ${ pop_fifo($self, $1)}
 
       infix ("count") (Nil :: Idx) implements composite ${ count_fifo($self) }
 
@@ -68,27 +69,22 @@ trait FIFOs {
     impl (fifo_load)  (codegen($cala, ${ $fifo.apply($addr.toInt) }))
     impl (fifo_store) (codegen($cala, ${ $fifo.update($addr.toInt, $value) }))
     impl (fifo_push)  (codegen($cala, ${ if ($en) $fifo.enqueue($value); () }))
-    impl (fifo_pop)   (codegen($cala, ${ $fifo.dequeue() }))
+    impl (fifo_pop)   (codegen($cala, ${ if ($en) $fifo.dequeue() else $fifo.front }))
     impl (fifo_count) (codegen($cala, ${ FixedPoint[Signed,B32,B0]($fifo.length) }))
 
 
     // --- Unrolled nodes
     val push = internal (FIFO) ("par_push_fifo", T, (("fifo", FIFO(T)), ("value",MVector(T)), ("en", MVector(Bit)), ("shuffle", SBoolean)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
-    val pop  = internal (FIFO) ("par_pop_fifo", T, (("fifo", FIFO(T)), ("len", SInt)) :: MVector(T), aliasHint = aliases(Nil))
+    val pop  = internal (FIFO) ("par_pop_fifo", T, (("fifo", FIFO(T)), ("en", MVector(Bit))) :: MVector(T), aliasHint = aliases(Nil))
 
     impl (push) (codegen($cala, ${
       $value.zip($en).foreach{ case (v,e) => if (e) $fifo.enqueue(v) }
     }))
 
     impl (pop) (codegen($cala, ${
-      if ($len < $fifo.length) {
-        // Assumes there's at least one element
-        val first = $fifo.front
-        Array.tabulate($len){i => if ($fifo.nonEmpty) $fifo.dequeue() else first }
-      }
-      else {
-        Array.tabulate($len){i => $fifo.dequeue() }
-      }
+      // Assumes there's at least one element
+      val first = $fifo.front
+      $en.map{e => if ($fifo.nonEmpty && e) $fifo.dequeue() else first }
     }))
 
   }

@@ -611,7 +611,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
                             treeResult = quote(s)
                           }
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        case input @ ( Par_sram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                        case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
                           inputVecs += s
                         case _ =>
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)

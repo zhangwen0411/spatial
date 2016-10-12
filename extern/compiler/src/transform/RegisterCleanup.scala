@@ -64,7 +64,7 @@ trait RegisterCleanupTransformer extends SinglePassTransformer {
       debug(s"$lhs = $rhs")
       debug(s"  External reader. Adding read substitutions.")
       val lhs2 = withSubstScope(pendingReaders(lhs).toList:_*){
-        mirror(rhs, f.asInstanceOf[Transformer])(mtype(lhs.tp),mpos(lhs.pos))
+        super.self_mirror(lhs, rhs)
       }
       val Def(d) = lhs2
       debug(s"  $lhs2 = $d")

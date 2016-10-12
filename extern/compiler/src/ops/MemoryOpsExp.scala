@@ -1209,14 +1209,14 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       emit(s"""${quote(fifo)}_wdata <== ${quote(value)};""")
 
 
-    case Par_pop_fifo(fifo, par) =>
-      emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, ${quote(par)});""")
+    case Par_pop_fifo(fifo, en) =>
+      emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, ${quote(en)});""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       val readEn = s"${reader}_ctr_en"
       emit(s"""${quote(fifo)}_readEn <== ${readEn};""")
       emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
 
-    case Pop_fifo(fifo) =>
+    case Pop_fifo(fifo,en) =>
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, 1);""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       emit(s"""${quote(fifo)}_readEn <== ${reader}_ctr_en;""")

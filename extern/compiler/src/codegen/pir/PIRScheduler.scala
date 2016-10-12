@@ -21,9 +21,17 @@ trait PIRScheduler extends Traversal with PIRCommon {
 
   val cus = HashMap[Exp[Any], ComputeUnit]()
 
+  var controlSignals: Set[Exp[Any]] = Set.empty
+
   def allocateCU(pipe: Exp[Any]): ComputeUnit = cus(pipe)
 
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) {
+    lhs match {
+      case Deff(e:UnrolledForeach) => controlSignals ++= e.valids.flatten
+      case Deff(e:UnrolledReduce[_,_]) => controlSignals ++= e.valids.flatten
+      case _ =>
+    }
+
     if (isControlNode(lhs) && cus.contains(lhs))
       scheduleCU(lhs, cus(lhs))
   }
@@ -142,12 +150,17 @@ trait PIRScheduler extends Traversal with PIRCommon {
   }
 
   def mapNodeToStage(lhs: Exp[Any], rhs: Def[Any], ctx: CUContext) = rhs match {
+    // Ignore control-signal only nodes (for now)
+    case node if syms(node).nonEmpty && syms(node).forall(controlSignals contains _) =>
+      controlSignals += lhs
+      debug(s"Ignoring control statement $lhs = $rhs")
+
     // --- Reads
-    case Pop_fifo(EatAlias(fifo)) =>
+    case Pop_fifo(EatAlias(fifo), en) =>
       val vector = allocateGlobal(fifo).asInstanceOf[VectorMem]
       ctx.addReg(lhs, VectorIn(vector))
 
-    case Par_pop_fifo(EatAlias(fifo), len) =>
+    case Par_pop_fifo(EatAlias(fifo), en) =>
       val vector = allocateGlobal(fifo).asInstanceOf[VectorMem]
       ctx.addReg(lhs, VectorIn(vector))
 
@@ -199,7 +212,7 @@ trait PIRScheduler extends Traversal with PIRCommon {
     // - 2: Update producer of value to have accumulator as output
     // - 3: Update reg to map to register of value (for later use in reads)
     // - 4: If any of first 3 options, add bypass value to scalar out, otherwise update producer
-    case Reg_write(EatAlias(reg), value, Deff(ConstBit(true))) =>
+    case Reg_write(EatAlias(reg), value, en) =>
       val isLocallyRead = isReadInPipe(reg, ctx.pipe)
       val isLocallyWritten = isWrittenInPipe(reg, ctx.pipe, Some(lhs)) // Always true?
       val isInnerAcc = isInnerAccum(reg) && isLocallyRead && isLocallyWritten
@@ -222,9 +235,6 @@ trait PIRScheduler extends Traversal with PIRCommon {
           propagateReg(reg, ctx.reg(reg), out, ctx)
       }
 
-    case Reg_write(EatAlias(reg), value, en) => throw new Exception("Enabled register write not yet supported in PIR")
-
-
     case _ => lhs match {
       case Fixed(_) => ctx.cu.getOrAddReg(lhs){ allocateLocal(lhs, ctx.pipe) }
       case Def(ConstBit(_)) => ctx.cu.getOrAddReg(lhs){ allocateLocal(lhs, ctx.pipe) }
@@ -245,7 +255,10 @@ trait PIRScheduler extends Traversal with PIRCommon {
         ctx.addStage(stage)
 
       case _ => nodeToOp(rhs) match {
-        case Some(op) => opStageToStage(op, syms(rhs), lhs, ctx, false)
+        case Some(op) =>
+          val inputs = syms(rhs)
+          opStageToStage(op, inputs, lhs, ctx, false)
+
         case None => stageWarn(s"No ALU operation known for $lhs = $rhs")
       }
     }

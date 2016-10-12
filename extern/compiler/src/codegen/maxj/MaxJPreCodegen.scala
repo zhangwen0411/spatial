@@ -607,7 +607,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                   }
                   inputVecs += s
                   s"/* Par_sram_load */"
-                case input @ ( Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
                   inputVecs += s
                   s"/* Par_pop_fifo */"
                 case _ =>

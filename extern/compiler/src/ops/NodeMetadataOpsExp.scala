@@ -117,7 +117,7 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
   private def readerUnapply(d: Def[Any]): Option[List[LocalRead]] = d match {
     case EatReflect(Reg_read(reg))                  => Some(LocalRead(reg))
     case EatReflect(Sram_load(sram,addr))           => Some(LocalRead(sram,addr))
-    case EatReflect(Pop_fifo(fifo))                 => Some(LocalRead(fifo))
+    case EatReflect(Pop_fifo(fifo,_))               => Some(LocalRead(fifo))
     case EatReflect(Cam_load(cam,key))              => Some(LocalRead(cam,key))
     case EatReflect(Par_sram_load(sram,addr))       => Some(LocalRead(sram,addr))
     case EatReflect(Par_pop_fifo(fifo,_))           => Some(LocalRead(fifo))

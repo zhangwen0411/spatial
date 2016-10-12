@@ -369,7 +369,7 @@ trait DotIRPrinter extends Traversal with QuotingExp {
       emitEdge(value,fifo, "data")
       emitEdge(en,fifo,"en")
 
-    case Pop_fifo(fifo) =>
+    case Pop_fifo(fifo,en) =>
       emitValDef(sym, fifo)
 
     case Count_fifo(fifo) =>

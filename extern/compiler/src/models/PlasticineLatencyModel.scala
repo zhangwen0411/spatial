@@ -87,9 +87,9 @@ trait PlasticineLatencyModel {
     case Cam_new(_,_) => 0
 
     // TODO
-    case Push_fifo(fifo,_,_) => 0
-    case Pop_fifo(fifo) => 0
-    case Count_fifo(fifo) => 0
+    case _:Push_fifo[_] => 0
+    case _:Pop_fifo[_] => 0
+    case _:Count_fifo[_] => 0
 
     // TODO
     case Cam_load(cam,key) => 1

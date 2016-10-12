@@ -78,3 +78,26 @@ trait VectorMinTestApp extends SpatialApp {
     println("min = " + result)
   }
 }
+
+
+object ParRegRead extends SpatialAppCompiler with ParRegReadTest
+trait ParRegReadTest extends SpatialApp {
+  def main() = {
+    val P1 = parameter(4)
+    val N = ArgIn[SInt]
+    val result = ArgOut[SInt]
+    setArg(N, 1)
+
+    val n = N.value
+
+    Accel {
+      val sum = Fold(12 par P1)(Reg[SInt], 0.as[SInt]){i =>
+        val local = Reg[SInt]
+        Pipe { local := n }
+        local
+      }{_+_}
+      result := sum.value
+    }
+    println(getArg(result))
+  }
+}
