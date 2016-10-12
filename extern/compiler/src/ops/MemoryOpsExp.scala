@@ -661,7 +661,10 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
         case Deff(a) => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*wtf pipe is $a*/"
         case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*no def node*/"
       }
-    } else {""}
+    } else {
+      globalEnComma = ", "
+      s"${quote(writeCtrl)}_datapath_en /*old behavior mask*/"
+    }
 
     var addrString = ""
     val dataString = offsetPre + dataStr + offsetPost
