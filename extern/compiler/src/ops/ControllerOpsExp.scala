@@ -902,6 +902,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
   def emitCustomCounterChain(cchain: Exp[CounterChain], en: Option[String], rstStr: Option[String], parent: Exp[Any], done: Option[String]=None) = {
     val sym = cchain
     emitComment("CustomCounterChain {")
+
     if (!enDeclaredSet.contains(sym)) {
       emit(s"""DFEVar ${quote(sym)}_en = ${en.get};""")
       enDeclaredSet += sym
@@ -989,6 +990,23 @@ for (int i = 0; i < ${parOf(ctr)-1}; i++) {
         // }
       }
     }
+
+    parent match {
+      case Deff(UnrolledForeach(_,_,counts,vs)) => 
+        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) => 
+          layer.zip(count).map { case (v, c) => 
+            emit(s"DFEVar ${quote(v)} = ${quote(c)} < ${quote(sym)}_max[${i}];")
+          }
+        }
+      case Deff(UnrolledReduce(_,_,_,_,counts,vs,_,_)) => 
+        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) => 
+          layer.zip(count).map { case (v, c) => 
+            emit(s"DFEVar ${quote(v)} = ${quote(c)} < ${quote(sym)}_max[${i}];")
+          }
+        }
+      case _ => 
+    }
+
     emitComment("} CustomCounterChain")
 
   }

@@ -605,7 +605,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
 
   }
 
-  def sramStore(write: Sym[Any], sram: Exp[SRAM[Any]], addr: Exp[Any], value: Exp[Any]) {
+  def sramStore(write: Sym[Any], sram: Exp[SRAM[Any]], addr: Exp[Any], value: Exp[Any], ens: Exp[Any]) {
     emitComment("Sram_store {")
     val dataStr = quote(value)
     val allDups = duplicatesOf(sram)
@@ -650,7 +650,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     var offsetPre = ""
     var offsetPost = ""
     val parentPipe = parentOf(sram).getOrElse(throw UndefinedParentException(sram))
-    var accEn = s"${quote(writeCtrl)}_datapath_en"
+    var accEn = s"${quote(ens)}"//s"${quote(writeCtrl)}_datapath_en"
     if (isAccum(sram) & isAccumCtrl) {
       offsetPre = "stream.offset("
       offsetPost = ", -" + quote(writeCtrl) + "_offset)"
@@ -1147,10 +1147,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       sramLoad(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, true)
 
     case Sram_store(EatAlias(sram), addr, value, en) =>
-      sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value)
+      sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value, en)
 
     case Par_sram_store(EatAlias(sram), addr, value, ens) =>
-      sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value)
+      sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value, ens)
 
     case Fifo_new(size, zero) =>  // FIFO is always parallel
       val duplicates = duplicatesOf(sym)
@@ -1193,8 +1193,14 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       }
 
     case ListVector(elems) =>
-      val ts = tpstr(1)(elems(0).tp.typeArguments(0), implicitly[SourceContext])
-      emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map(quote).mkString(",")}));""")
+      Console.println(s"${elems(0)} \n ${elems(0).tp} \n ${elems(0).tp.typeArguments}")
+      if (isVector(elems(0).tp)) {
+        val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
+        emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${elems.map(quote).mkString(",")};""")
+      } else {
+        val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])        
+        emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map(quote).mkString(",")}));""")
+      }
 
     case _ => super.emitNode(sym, rhs)
   }

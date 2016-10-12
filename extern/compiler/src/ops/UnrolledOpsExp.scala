@@ -174,10 +174,16 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
 
     iters.zipWithIndex.foreach{ case (is, i) =>
       if (is.size == 1) { // This level is not parallelized, so assign the iter as-is
-          emit("DFEVar " + quote(is(0)) + " = " + quote(counters(i)) + ";");
+        emit(quote(is(0)) + " <== " + quote(counters(i)) + ";");
+        withStream(baseStream) {
+          emit(s"DFEVar " + quote(is(0)) + " = dfeInt(32).newInstance(this);")
+        }
       } else { // This level IS parallelized, index into the counters correctly
         is.zipWithIndex.foreach{ case (iter, j) =>
-          emit("DFEVar " + quote(iter) + " = " + quote(counters(i)) + "[" + j + "];")
+          emit(quote(iter) + " <== " + quote(counters(i)) + "[" + j + "];")
+          withStream(baseStream) {
+            emit(s"DFEVar " + quote(iter) + " = dfeInt(32).newInstance(this);")
+          }
         }
       }
     }
