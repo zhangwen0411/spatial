@@ -404,6 +404,8 @@ cd ${PUB_HOME}
 
 # Use magic to free unused semaphores
 for semid in `ipcs -s | cut -d" " -f 2` ; do pid=`ipcs -s -i $semid | tail -n 2 | head -n 1 | awk '{print $5}'`; running=`ps --no-headers -p $pid | wc -l` ; if [ $running -eq 0 ] ; then ipcrm -s $semid ; fi ; done
+# Free old screens
+screen -ls | grep ${branch} | cut -d. -f1 | awk '{print $1}' | xargs kill
 
 IFS=$'\n'
 # Unit test apps (Add more by editing CodegenUnitTests.scala)
