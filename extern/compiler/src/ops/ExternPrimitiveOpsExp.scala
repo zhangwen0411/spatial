@@ -479,12 +479,13 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
 
     case Bit_And(a,b) =>
       val pre = maxJPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)}; /* emit inside and outside kernel for simplicity */""")
+      // rTreeMap(sym) match {
+      //   case Nil =>
+      //     emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
+      //   case m =>
+      //     emit(s"""// ${quote(sym)} already emitted in $m""")
+      // }
 
     case Bit_Or(a,b) =>
       val pre = maxJPre(sym)

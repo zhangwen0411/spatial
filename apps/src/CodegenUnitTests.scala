@@ -669,7 +669,7 @@ trait BlockReduce2DApp extends SpatialApp {
       val accum = SRAM[T](tileSize,tileSize)
       Fold (rowsIn by tileSize, colsIn by tileSize)(accum, 0.as[T]) { (i,j)  =>
         val tile = SRAM[T](tileSize,tileSize)
-        tile := srcFPGA(i::i+tileSize, j::j+tileSize, param(1))
+        tile := srcFPGA(i::i+tileSize, j::j+tileSize)
         tile
       }{_+_}
       dstFPGA (0::tileSize, 0::tileSize) := accum

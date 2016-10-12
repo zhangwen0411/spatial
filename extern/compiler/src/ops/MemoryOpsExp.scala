@@ -651,19 +651,22 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     var offsetPost = ""
     val parentPipe = parentOf(sram).getOrElse(throw UndefinedParentException(sram))
     var accEn = s"${quote(ens)}"//s"${quote(writeCtrl)}_datapath_en"
-    if (isAccum(sram) & isAccumCtrl) {
+    var globalEnComma = ""
+    val globalEn = if (isAccum(sram) & isAccumCtrl) {
       offsetPre = "stream.offset("
       offsetPost = ", -" + quote(writeCtrl) + "_offset)"
-      accEn = writeCtrl match {
+      globalEnComma = ", "
+      writeCtrl match {
         case Deff(_: UnitPipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
         case Deff(a) => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*wtf pipe is $a*/"
         case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*no def node*/"
       }
-    }
+    } else {""}
 
     var addrString = ""
     val dataString = offsetPre + dataStr + offsetPost
     val accString = offsetPre + accEn + offsetPost
+    val globalEnString = globalEnComma + offsetPre + globalEn + offsetPost
     val addrDbg = if (num_dims > 1) "%d %d" else "%d"
     var wrType = "connectWport("
     
@@ -713,7 +716,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       if (isDummy(sram)) {
         addrString = quote(addr)} // Dummy override for char test
       emit(s"""${quote(sram)}_${ii}.${wrType}${addrString}, 
-        $dataString, $accString, new int[] {$p}); //tuple $match_tuple to ${nameOf(sram).getOrElse("")}""")
+        $dataString, ${accString}${globalEnString}, new int[] {$p}); //tuple $match_tuple to ${nameOf(sram).getOrElse("")}""")
       emit(s"""// debug.simPrintf($accString,"${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", $dataString, $addrString);""")
     }
     emitComment("} Sram_store")
