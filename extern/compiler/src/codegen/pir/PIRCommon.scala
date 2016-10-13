@@ -53,13 +53,17 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
 
     def pipe = cu.pipe
 
+    def controlStages: ArrayBuffer[Stage] = cu.controlStages
+
     def pseudoStages: List[PseudoStage]
     def stages: ArrayBuffer[Stage]
     def addStage(stage: Stage): Unit
+    def addControlStage(stage: Stage): Unit = cu.controlStages += stage
     def isWriteContext: Boolean
 
     def mapStages = stages.flatMap{case stage:MapStage => Some(stage); case _ => None}
     def stageNum = mapStages.length+1
+    def controlStageNum = controlStages.length
     def prevStage = stages.lastOption
 
     def mem(mem: Exp[Any], reader: Exp[Any]) = allocateMem(mem, reader, cu)

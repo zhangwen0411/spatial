@@ -21,23 +21,16 @@ trait PIRScheduler extends Traversal with PIRCommon {
 
   val cus = HashMap[Exp[Any], ComputeUnit]()
 
-  var controlSignals: Set[Exp[Any]] = Set.empty
-
   def allocateCU(pipe: Exp[Any]): ComputeUnit = cus(pipe)
 
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) {
-    lhs match {
-      case Deff(e:UnrolledForeach) => controlSignals ++= e.valids.flatten
-      case Deff(e:UnrolledReduce[_,_]) => controlSignals ++= e.valids.flatten
-      case _ =>
-    }
-
     if (isControlNode(lhs) && cus.contains(lhs))
       scheduleCU(lhs, cus(lhs))
   }
 
   def scheduleCU(pipe: Exp[Any], cu: ComputeUnit) {
     debug(s"Scheduling $pipe CU: $cu")
+
     val origRegs = cu.regs
     var writeStageRegs = cu.regs
 
@@ -145,11 +138,6 @@ trait PIRScheduler extends Traversal with PIRCommon {
   }
 
   def mapNodeToStage(lhs: Exp[Any], rhs: Def[Any], ctx: CUContext) = rhs match {
-    // Ignore control-signal only nodes (for now)
-    case node if syms(node).nonEmpty && syms(node).forall(controlSignals contains _) =>
-      controlSignals += lhs
-      debug(s"Ignoring control statement $lhs = $rhs")
-
     // --- Reads
     case Pop_fifo(EatAlias(fifo), en) =>
       val vector = allocateGlobal(fifo).asInstanceOf[VectorMem]
@@ -324,10 +312,22 @@ trait PIRScheduler extends Traversal with PIRCommon {
       ctx.addStage(stage)
     }
     else {
-      val inputs = ins.map{in => ctx.refIn(ctx.reg(in)) }
-      val output = ctx.cu.getOrAddReg(out){ TempReg(out) }
-      val stage = MapStage(op, inputs, List(ctx.refOut(output)))
-      ctx.addStage(stage)
+      val inputRegs = ins.map{in => ctx.reg(in) }
+      val isControlStage = inputRegs.nonEmpty && !inputRegs.exists{reg => !isControl(reg)}
+
+      if (isControlStage) {
+        val n = ctx.controlStageNum
+        val inputs = inputRegs.map{reg => ctx.refIn(reg, n)}
+        val output = ctx.cu.getOrAddReg(out){ ControlReg(out) }
+        val stage = MapStage(op, inputs, List(ctx.refOut(output, n)))
+        ctx.addControlStage(stage)
+      }
+      else {
+        val inputs = inputRegs.map{reg => ctx.refIn(reg) }
+        val output = ctx.cu.getOrAddReg(out){ TempReg(out) }
+        val stage = MapStage(op, inputs, List(ctx.refOut(output)))
+        ctx.addStage(stage)
+      }
     }
   }
 

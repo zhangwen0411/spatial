@@ -54,12 +54,22 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       srcCU.iterators.foreach{ case (iter,CounterReg(cchain,idx)) =>
         destCU.addReg(iter, CounterReg(cchainMapping(cchain),idx))
       }
+      srcCU.valids.foreach{case (iter, ValidReg(cchain,idx)) =>
+        destCU.addReg(iter, ValidReg(cchainMapping(cchain), idx))
+      }
     }
   }
   def addIterators(cu: ComputeUnit, cc: Exp[CounterChain], inds: List[List[Exp[Index]]]) {
     val cchain = cu.cchains.find(_.name == quote(cc)).get
     inds.zipWithIndex.foreach{case (indSet, i) =>
       indSet.foreach{ind => cu.addReg(ind, CounterReg(cchain, i)) }
+    }
+  }
+  def addEnabledIterators(cu: ComputeUnit, cc: Exp[CounterChain], inds: List[List[Exp[Index]]], ens: List[List[Exp[Bit]]]) {
+    addIterators(cu, cc, inds)
+    val cchain = cu.cchains.find(_.name == quote(cc)).get
+    ens.zipWithIndex.foreach{case (enSet, i) =>
+      enSet.foreach{en => cu.addReg(en, ValidReg(cchain, i)) }
     }
   }
 
@@ -123,8 +133,8 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val cu = BasicComputeUnit(quote(pipe), pipe, parent, styleOf(pipe))
       initCU(cu, pipe)
       pipe match {
-        case Deff(e:UnrolledForeach)     => addIterators(cu, e.cc, e.inds)
-        case Deff(e:UnrolledReduce[_,_]) => addIterators(cu, e.cc, e.inds)
+        case Deff(e:UnrolledForeach)     => addEnabledIterators(cu, e.cc, e.inds, e.valids)
+        case Deff(e:UnrolledReduce[_,_]) => addEnabledIterators(cu, e.cc, e.inds, e.valids)
         case Deff(_:UnitPipe | _:Hwblock) =>
           cu.isUnitCompute = isInnerPipe(pipe)
           cu.cchains += UnitCounterChain(quote(pipe)+"_unitCC")
@@ -342,19 +352,6 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       cu.addReg(i, CounterReg(cc, 0))
       //allocateWrittenSRAM(lhs, fifo, Some(i), cu, Nil)
 
-      // HACK!! Fake a read addresss for the fifo
-      /*readersOf(fifo).foreach{case (ctrl,_,reader) =>
-        val readerCU = allocateCU(ctrl)
-        debug(s"HACK: Adding write and read address to $fifo for reader CU $readerCU")
-
-        val chain = readerCU.cchains.filter(_.isInstanceOf[CounterChainInstance]).last
-        val iters = readerCU.iterators.filter{case (iter,reg) => reg.cchain == chain}
-        val iter = iters.reduce{(a,b) => if (a._2.idx < b._2.idx) a else b}
-
-        val readMem = allocateMem(fifo, reader, readerCU)
-        readMem.readAddr = Some(iter._2)
-        readMem.writeAddr = readerCU.get(i)
-      }*/
       val memAddr = fresh[Index]
       cu.addReg(memAddr, ScalarOut(memAddr, cu.ctrl))
       val ofsCalc = OpStage(FixAdd, List(ofs, i), memAddr)

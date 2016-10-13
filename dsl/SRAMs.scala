@@ -50,17 +50,17 @@ trait SRAMs {
 
     val Mem = lookupTpeClass("Mem").get
     val SramMem = tpeClassInst("SramMem", T, TMem(T, SRAM(T)))
-    infix (SramMem) ("ld", T, (SRAM(T), SList(Idx)) :: T) implements composite ${
+    infix (SramMem) ("ld", T, (SRAM(T), SList(Idx), Bit) :: T) implements composite ${
       sram_load_nd($0, $1)
     }
-    infix (SramMem) ("st", T, (SRAM(T), SList(Idx), T) :: MUnit, effect = write(0)) implements composite ${
-      sram_store_nd($0, $1, $2, None)
+    infix (SramMem) ("st", T, (SRAM(T), SList(Idx), T, Bit) :: MUnit, effect = write(0)) implements composite ${
+      sram_store_nd($0, $1, $2, Some($3))
     }
-    infix (SramMem) ("zeroLd", T, (SRAM(T)) :: T) implements composite ${
+    infix (SramMem) ("zeroLd", T, (SRAM(T), Bit) :: T) implements composite ${
       sram_load_nd($0, sram_zero_idx($0))
     }
-    infix (SramMem) ("zeroSt", T, (SRAM(T), T) :: MUnit, effect = write(0)) implements composite ${
-      sram_store_nd($0, sram_zero_idx($0), $1, None)
+    infix (SramMem) ("zeroSt", T, (SRAM(T), T, Bit) :: MUnit, effect = write(0)) implements composite ${
+      sram_store_nd($0, sram_zero_idx($0), $1, Some($2))
     }
     infix (SramMem) ("iterator", T, (SRAM(T), SList(MInt)) :: CounterChain) implements composite ${
       sram_iterator($0, $1)

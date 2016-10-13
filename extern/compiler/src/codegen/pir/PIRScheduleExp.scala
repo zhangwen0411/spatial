@@ -37,6 +37,9 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   case class ConstReg(const: String) extends LocalMem
   case class CounterReg(cchain: CUCounterChain, idx: Int) extends LocalMem
 
+  case class ControlReg(x: Exp[Any]) extends LocalMem
+  case class ValidReg(cchain: CUCounterChain, idx: Int) extends LocalMem
+
   case class ReadAddrWire(mem: CUMemory) extends LocalMem
   case class WriteAddrWire(mem: CUMemory) extends LocalMem
   case class LocalWriteReg(mem: CUMemory) extends LocalMem
@@ -72,14 +75,17 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   }
   def isWritable(mem: LocalMem) = mem match {
     case _:ConstReg | _:CounterReg | _:ScalarIn => false
-    case _:VectorIn | _:SRAMRead => false
+    case _:VectorIn | _:SRAMRead | _:ValidReg => false
     case _ => true
   }
   def isGlobal(mem: LocalMem) = mem match {
     case _:ScalarIn | _:ScalarOut | _:VectorIn | _:VectorOut => true
     case _ => false
   }
-
+  def isControl(mem: LocalMem) = mem match {
+    case _:ControlReg | _:ValidReg => true
+    case _ => false
+  }
 
   // Local memory references
   case class LocalRef(stage: Int, reg: LocalMem)
@@ -183,7 +189,8 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
       if (expTable.contains(reg)) expTable += reg -> (expTable(reg) :+ exp)
       else                        expTable += reg -> List(exp)
     }
-    def iterators = regTable.flatMap{case (exp, reg: CounterReg) => Some((exp,reg)); case _ => None}.toList
+    def iterators = regTable.toList.flatMap{case (exp, reg: CounterReg) => Some((exp,reg)); case _ => None}
+    def valids    = regTable.toList.flatMap{case (exp, reg: ValidReg) => Some((exp,reg)); case _ => None}
 
     def innermostIter(cc: CUCounterChain) = {
       val iters = iterators.flatMap{case (e,CounterReg(`cc`,i)) => Some((e,i)); case _ => None}
@@ -214,6 +221,7 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
     var computePseudoStages: List[PseudoStage] = Nil
     var writeStages = HashMap[List[CUMemory], ArrayBuffer[Stage]]()
     var stages: ArrayBuffer[Stage] = ArrayBuffer.empty
+    var controlStages: ArrayBuffer[Stage] = ArrayBuffer.empty
 
     def dumpString = s"""  cchains = ${cchains.mkString(", ")}
   regs    = ${regs.mkString(", ")}
