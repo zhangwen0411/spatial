@@ -111,7 +111,7 @@ trait CharLoadTestApp extends SpatialApp {
         }
         Parallel {
           dummy.zipWithIndex.foreach{ case (dum, i) =>
-            Pipe {dum := srcFPGA(i*dim0::(i+1)*dim0, i*dim1::(i+1)*dim1, sinnerPar)}
+            Pipe {dum := srcFPGA(i*dim0::(i+1)*dim0, i*dim1::(i+1)*dim1 par sinnerPar)}
           }
         }
         Parallel {
@@ -193,7 +193,7 @@ trait CharStore extends SpatialApp {
         }
         Parallel {
           dummy.zip(dstFPGA).zipWithIndex.foreach{ case ((dum, dst), i) =>
-            Pipe {dst (0::dim0, 0::dim1, sinnerPar) := dum}
+            Pipe {dst (0::dim0, 0::dim1 par sinnerPar) := dum}
           }
         }
       }
