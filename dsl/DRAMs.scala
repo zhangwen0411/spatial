@@ -131,6 +131,7 @@ trait DRAMs {
 
   def importTiles() {
     val T = tpePar("T")
+    val C = hkTpePar("C", T) // high kinded type parameter - memory of type T
 
     val Tile  = lookupTpe("Tile")
     val DRAM  = lookupTpe("DRAM")
@@ -153,38 +154,10 @@ trait DRAMs {
      * @param sram
      **/
     infix (Tile) (":=", T, (Tile(T), SRAM(T)) :: MUnit, TNum(T), effect = write(0)) implements redirect ${ copyTile($0, $1, true) }
-    infix (Tile) (":=", T, (Tile(T), FIFO(T)) :: MUnit, TNum(T), effect = write(0)) implements redirect ${ streamTile($0, $1, true) }
-
-    direct (Tile) ("streamTile", T, (("tile", Tile(T)), ("fifo", FIFO(T)), ("store", SBoolean)) :: MUnit, TNum(T), effect = simple) implements composite ${
-      val mem = $tile.mem
-      val offsets = rangesOf($tile).map(_.start)
-      val tileDims = rangesOf($tile).map(_.len)
-
-      val p = tilePar(rangesOf(tile).last).getOrElse(param(1))
-      val len = tileDims.last
-
-      val px = param(1); domainOf(px) = (1,1,1)
-
-      if (tileDims.length > 1) {
-        Pipe(CounterChain(tileDims.take(tileDims.length - 1).map{d => Counter(min = 0, max = d, step = 1, par = px) }:_*)){inds =>
-          val indices = inds.toList :+ 0.as[Index]
-          val memOfs = calcAddress(offsets.zip(indices).map{case (a,b) => a + b}, dimsOf(mem))
-
-          if ($store) { burst_store(mem, $fifo, memOfs, len, p) }
-          else        { burst_load(mem, $fifo, memOfs, len, p) }
-        }
-      }
-      else {
-        Pipe {  // TODO: Is this needed?
-          val memOfs = calcAddress(offsets, dimsOf(mem))
-          if ($store) { burst_store(mem, $fifo, memOfs, len, p) }
-          else        { burst_load(mem, $fifo, memOfs, len, p) }
-        }
-      }
-    }
+    infix (Tile) (":=", T, (Tile(T), FIFO(T)) :: MUnit, TNum(T), effect = write(0)) implements redirect ${ copyTile($0, $1, true) }
 
     /** @nodoc - not actually a user-facing method for now **/
-    direct (Tile) ("copyTile", T, (("tile",Tile(T)), ("local",SRAM(T)), ("store", SBoolean)) :: MUnit, TNum(T), effect = simple) implements composite ${
+    direct (Tile) ("copyTile", (T,C), (("tile",Tile(T)), ("local",C(T)), ("store", SBoolean)) :: MUnit, (TMem(T,C(T)),TNum(T)), effect = simple) implements composite ${
       val mem      = $tile.mem
       val offsets  = rangesOf($tile).map(_.start)
       val tileDims = rangesOf($tile).map(_.len)
@@ -193,60 +166,59 @@ trait DRAMs {
       val p = tilePar(rangesOf($tile).last).getOrElse(param(1))
       val len = tileDims.last
 
-      val fifo = FIFO[T](512) // TODO: How to determine FIFO depth?
+      val fifo = FIFO[T](512) // Dummy fifo for offchip load/store
 
       val px = param(1); domainOf(px) = (1,1,1)
+      val __mem = implicitly[Mem[T,C]]
 
+
+      def storeBurst(memAddr: () => Rep[Index], addr: Rep[Index] => List[Rep[Index]]) = {
+        val maddr = Reg[Index]
+        Pipe { maddr := memAddr() }
+        Pipe(len par p){i => fifo.push(__mem.ld($local, addr(i), true)) }
+        burst_store(mem, fifo, maddr, len, p)
+      }
+
+      def loadBurst(memAddr: () => Rep[Index], addr: Rep[Index] => List[Rep[Index]]) = {
+        val startBound = Reg[Index]
+        val endBound = Reg[Index]
+        val memAddrDowncast = Reg[Index]
+        val lenUpcast = Reg[Index]
+        Pipe {
+          val maddr = memAddr()
+          val elementsPerBurst = 384*8/nbits(manifest[T])
+          startBound := maddr % elementsPerBurst      // Number of elements to ignore at beginning
+          memAddrDowncast := maddr - startBound.value     // Burst-aligned address
+          endBound  := startBound.value + len             // Index to begin ignoring again
+          if (len % 96 == 0) {
+            lenUpcast := len
+          } else {
+            lenUpcast := (endBound.value - (endBound.value % elementsPerBurst)) + elementsPerBurst // Number of elements aligned to nearest burst length
+          }
+        }
+
+        burst_load(mem, fifo, memAddrDowncast.value, lenUpcast.value, p)
+
+        Pipe(lenUpcast par p){i =>
+          val en = i >= startBound.value && i < endBound.value
+          __mem.st($local, addr(i), fifo.pop(), en)
+        }
+      }
 
       if (tileDims.length > 1) {
         Pipe(CounterChain(tileDims.take(tileDims.length - 1).map{d => Counter(min = 0, max = d, step = 1, par = px) }:_*)){inds =>
           val indices = inds.toList :+ 0.as[Index]
           val localOfs = indices.zip(unitDims).flatMap{case (i,isUnitDim) => if (!isUnitDim) Some(i) else None}
-          val memOfs = calcAddress(offsets.zip(indices).map{case (a,b) => a + b}, dimsOf(mem))
+          def memAddr = () => calcAddress(offsets.zip(indices).map{case (a,b) => a + b}, dimsOf(mem))
 
-          if ($store) {
-            Pipe(len par p){i =>
-              val localAddr = localOfs.take(localOfs.length - 1) :+ (localOfs.last + i)
-              fifo.push($local(localAddr:_*))
-            }
-
-            burst_store(mem, fifo, memOfs, len, p)
-          }
-          else {
-            // val el_per_burst = 384*8/nbits(manifest[T]) // Get number of elements in a burst
-            // val start_bound = memOfs % el_per_burst // Figure out number of elements to ignore before we get desired data
-            // val memOfs_downcast = memOfs - start_bound // Figure out burst-aligned memOfs
-            // val end_bound = start_bound + len // Figure out number of elements before we should ignore again
-            // val len_upcast = (end_bound - (end_bound % el_per_burst)) + el_per_burst // Upcast memory request to nearest burst alignment
-
-            burst_load(mem, fifo, memOfs/*_downcast*/, len/*_upcast*/, p)
-
-            Pipe(len/*_upcast*/ par p){i =>
-              val localAddr = localOfs.take(localOfs.length - 1) :+ (localOfs.last + i)
-              $local(localAddr/*,en = i > start_bound & i < end_bound*/) = fifo.pop()
-            }
-          }
+          if ($store) storeBurst(memAddr, {i => localOfs.take(localOfs.length - 1) :+ (localOfs.last + i) })
+          else         loadBurst(memAddr, {i => localOfs.take(localOfs.length - 1) :+ (localOfs.last + i) })
         }
       }
       else {
-        Pipe {
-          val memOfs = calcAddress(offsets, dimsOf(mem))
-          if ($store) {
-            Pipe(len par p){i => fifo.push($local(i)) }
-            burst_store(mem, fifo, memOfs, len, p)
-          }
-          else {
-            // val el_per_burst = 384*8/nbits(manifest[T]) // Get number of elements in a burst
-            // val start_bound = memOfs % el_per_burst // Figure out number of elements to ignore before we get desired data
-            // val memOfs_downcast = memOfs - start_bound // Figure out burst-aligned memOfs
-            // val end_bound = start_bound + len // Figure out number of elements before we should ignore again
-            // val len_upcast = (end_bound - (end_bound % el_per_burst)) + el_per_burst // Upcast memory request to nearest burst alignment
-
-            burst_load(mem, fifo, memOfs/*_downcast*/, len/*_upcast*/, p)
-
-            Pipe(len/*_upcast*/ par p){i => $local(i/*, en = i > start_bound & i < end_bound*/) = fifo.pop() }
-          }
-        }
+        def memAddr = () => calcAddress(offsets, dimsOf(mem))
+        if ($store) storeBurst(memAddr, {i => List(i) })
+        else         loadBurst(memAddr, {i => List(i)})
       }
     }
   }

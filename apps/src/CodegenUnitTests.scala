@@ -439,7 +439,6 @@ trait SimpleFoldApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val constTileSize = 96
-  val N = 192
 
   def simple_fold(src: Rep[Array[T]]) = {
     val innerPar = param(8); domainOf(innerPar) = (1, 1, 1)

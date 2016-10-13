@@ -30,15 +30,15 @@ trait Memories extends Regs with SRAMs with FIFOs with CAMs with DRAMs with Cach
     val C = hkTpePar("C", T)  // memory type
 
     val CounterChain = lookupTpe("CounterChain")
-    val Indices      = lookupTpe("Indices")
+    val Bit          = lookupTpe("Bit")
     val Idx          = lookupAlias("Index")
 
     val Mem = tpeClass("Mem", TMem, (T, C))
-    infix (Mem) ("ld", (T,C), (C, SList(Idx)) :: T)
-    infix (Mem) ("st", (T,C), (C, SList(Idx), T) :: MUnit, effect = write(0))
-    infix (Mem) ("zeroLd", (T,C), C :: T)
-    infix (Mem) ("zeroSt", (T,C), (C,T) :: MUnit, effect = write(0))
+    infix (Mem) ("ld", (T,C), (C, SList(Idx), Bit) :: T)
+    infix (Mem) ("st", (T,C), (C, SList(Idx), T, Bit) :: MUnit, effect = write(0))
+    infix (Mem) ("zeroLd", (T,C), (C, Bit) :: T)
+    infix (Mem) ("zeroSt", (T,C), (C, T, Bit) :: MUnit, effect = write(0))
     infix (Mem) ("iterator", (T,C), (C, SList(MInt)) :: CounterChain)
-    infix (Mem) ("empty", (T,C), C :: C, TNum(T))
+    infix (Mem) ("empty", (T,C), (C) :: C, TNum(T))
   }
 }

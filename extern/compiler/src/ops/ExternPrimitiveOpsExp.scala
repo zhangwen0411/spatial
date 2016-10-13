@@ -467,6 +467,9 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           emit(s"""// ${quote(sym)} already emitted in $m""")
       }
 
+    case FixPt_Mod(a,b) =>
+      emit(s"""${maxJPre(sym)} ${quote(sym)} = KernelMath.divMod(${quote(a)}.cast(dfeUInt(32)), ${quote(b)}.cast(dfeUInt(32))).getRemainder().cast(${quote(a)}.getType());""")
+
 
     case Bit_Not(a) =>
       val pre = maxJPre(sym)

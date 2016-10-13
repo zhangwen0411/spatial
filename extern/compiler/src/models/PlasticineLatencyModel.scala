@@ -87,9 +87,9 @@ trait PlasticineLatencyModel {
     case Cam_new(_,_) => 0
 
     // TODO
-    case Push_fifo(fifo,_,_) => 0
-    case Pop_fifo(fifo) => 0
-    case Count_fifo(fifo) => 0
+    case _:Push_fifo[_] => 0
+    case _:Pop_fifo[_] => 0
+    case _:Count_fifo[_] => 0
 
     // TODO
     case Cam_load(cam,key) => 1
@@ -173,16 +173,17 @@ trait PlasticineLatencyModel {
       //System.out.println(s"Tile transfer $s: c = $c, r = $r, b = $b, p = $p")
       memoryModel(c,r.toInt,b.toInt,p.toInt)
 
-    case _:ParallelPipe   => 1
-    case _:UnitPipe       => 0
-    case _:OpForeach    => 1
-    case _:OpReduce[_,_]  => 1
+    case _:ParallelPipe     => 1
+    case _:UnitPipe         => 0
+    case _:OpForeach        => 1
+    case _:OpReduce[_,_]    => 1
     case _:OpMemReduce[_,_] => 1
 
-    case _:Reg_read[_]    => 0
-    case _:Reg_write[_]   => 0
-    case _:Reg_reset[_]   => 0
-    case _:Dram_new[_] => 0
+    case _:Reg_read[_]   => 0
+    case _:Reg_write[_]  => 0
+    case _:Reg_reset[_]  => 0
+    case _:Dram_new[_]   => 0
+    case _:ListVector[_] => 0
 
     case Reflect(d,_,_) => latencyOfNode(s, d)
     case Reify(_,_,_) => 0

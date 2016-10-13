@@ -39,7 +39,7 @@ trait ControllerWrapper {
 
   def reduce_op[T,C[T]](cchain: Rep[CounterChain], accum: Rep[C[T]], zero: Option[Rep[T]], func: Rep[Indices] => Rep[T], rFunc: (Rep[T],Rep[T]) => Rep[T], foldAccum: Boolean = true)(implicit ctx: SourceContext, __mem: Mem[T,C], __num: Num[T], __mT: Manifest[T], __mC: Manifest[C[T]]): Rep[Pipeline]  = {
     loop(cchain, 0, Nil, {i: Rep[Indices] =>
-      __mem.zeroSt(accum, rFunc(__mem.zeroLd(accum), func(i)))
+      __mem.zeroSt(accum, rFunc(__mem.zeroLd(accum, true), func(i)), true)
     })
   }
 
@@ -50,9 +50,9 @@ trait ControllerWrapper {
 
       loopList(cchainRed, 0, Nil, {j =>
         if (first && !foldAccum)
-          __mem.st(accum, j, __mem.ld(part, j))
+          __mem.st(accum, j, __mem.ld(part, j, true), true)
         else
-          __mem.st(accum, j, rFunc(__mem.ld(part, j), __mem.ld(accum, j)))
+          __mem.st(accum, j, rFunc(__mem.ld(part, j, true), __mem.ld(accum, j, true)), true)
       })
       first = false
     })

@@ -230,6 +230,7 @@ trait PIRGen extends Traversal with PIRCommon {
   def preallocateRegisters(cu: ComputeUnit) = cu.regs.foreach{
     case reg@TempReg(_)         => emit(s"val ${quote(reg)} = CU.temp")
     case reg@AccumReg(_,init)   => emit(s"val ${quote(reg)} = CU.accum(init = ${quote(init)})")
+    case reg@ControlReg(_)      => emit(s"val ${quote(reg)} = CU.ctrl")
     //case reg@ScalarIn(_,mem)    => emit(s"val ${quote(reg)} = CU.scalarIn(${quote(mem)})")
     //case reg@ScalarOut(_,mem:OutputArg) => emit(s"val ${quote(reg)} = CU.scalarOut(${quote(mem)})")
     //case reg@ScalarOut(_,mem:ScalarMem) => emit(s"val ${quote(reg)} = CU.scalarOut(${quote(mem)})")
@@ -262,6 +263,8 @@ trait PIRGen extends Traversal with PIRCommon {
   def quote(reg: LocalMem): String = reg match {
     case ConstReg(c) => s"""Const("$c")"""                    // Constant
     case CounterReg(cchain, idx) => s"${cchain.name}($idx)"   // Counter
+    case ValidReg(cchain,idx)    => s"${cchain.name}.valids($idx)"
+
 
     case WriteAddrWire(mem) => s"${quote(mem)}.writeAddr"     // Write address wire
     case ReadAddrWire(mem)  => s"${quote(mem)}.readAddr"      // Read address wire
@@ -270,6 +273,7 @@ trait PIRGen extends Traversal with PIRCommon {
     case ReduceReg(_)       => s"rr${reg.id}"                 // Reduction register
     case AccumReg(_,_)      => s"ar${reg.id}"                 // After preallocation
     case TempReg(_)         => s"tr${reg.id}"                 // Temporary register
+    case ControlReg(_)      => s"cr${reg.id}"                 // Control register
 
     case ScalarIn(_, mem:InputArg)   => quote(mem)            // Scalar inputs from input arg
     case ScalarIn(_, mem:ScalarMem)  => quote(mem)            // Scalar inputs from CU
@@ -290,15 +294,17 @@ trait PIRGen extends Traversal with PIRCommon {
   def quote(ref: LocalRef): String = ref match {
     case LocalRef(stage, reg: ConstReg)   => quote(reg)
     case LocalRef(stage, reg: CounterReg) => if (stage >= 0) s"CU.ctr(stage($stage), ${quote(reg)})" else quote(reg)
+    case LocalRef(stage, reg: ValidReg)   => quote(reg)
 
     case LocalRef(stage, wire: WriteAddrWire) => quote(wire)
     case LocalRef(stage, wire: ReadAddrWire)  => quote(wire)
     case LocalRef(stage, reg: LocalWriteReg)  => s"CU.wtAddr(stage($stage), ${quote(reg)})"
 
     case LocalRef(stage, reg: ReduceReg) if allocatedReduce.contains(reg) => quote(reg)
-    case LocalRef(stage, reg: ReduceReg) => s"CU.reduce(stage($stage))"
-    case LocalRef(stage, reg: AccumReg)  => s"CU.accum(stage($stage), ${quote(reg)})"
-    case LocalRef(stage, reg: TempReg)   => s"CU.temp(stage($stage), ${quote(reg)})"
+    case LocalRef(stage, reg: ReduceReg)  => s"CU.reduce(stage($stage))"
+    case LocalRef(stage, reg: AccumReg)   => s"CU.accum(stage($stage), ${quote(reg)})"
+    case LocalRef(stage, reg: TempReg)    => s"CU.temp(stage($stage), ${quote(reg)})"
+    case LocalRef(stage, reg: ControlReg) => s"CU.ctrl(stage($stage), ${quote(reg)})"
 
     case LocalRef(stage, reg: ScalarIn)  => s"CU.scalarIn(stage($stage), ${quote(reg)})"
     case LocalRef(stage, reg: ScalarOut) => s"CU.scalarOut(stage($stage), ${quote(reg)})"
@@ -327,6 +333,12 @@ trait PIRGen extends Traversal with PIRCommon {
 
     if (cu.stages.nonEmpty || cu.writeStages.exists{case (mem,stages) => stages.nonEmpty}) {
       emit(s"var stage: List[Stage] = Nil")
+    }
+    if (cu.controlStages.nonEmpty) {
+      i = 0
+      val nCompute = cu.controlStages.length
+      emit(s"stage = ControlStages(${nCompute})")
+      emitStages(cu.controlStages)
     }
     for ((srams,stages) <- cu.writeStages if stages.nonEmpty) {
       i = 1

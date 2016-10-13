@@ -241,10 +241,10 @@ trait AreaModel extends NodeMetadataOpsExp with MemoryAnalysisExp {
     case ConstFlt(_) => areaOfMemWord(nbits(s))
 
     // ISSUE #33: Need characterization
-    case Fifo_new(_,_) => NoArea
-    case Push_fifo(_,_,_) => NoArea
-    case Pop_fifo(_) => NoArea
-    case Count_fifo(_) => NoArea
+    case _:Fifo_new[_] => NoArea
+    case _:Push_fifo[_] => NoArea
+    case _:Pop_fifo[_] => NoArea
+    case _:Count_fifo[_] => NoArea
 
     // ISSUE #33: Need characterization
     case Cam_new(_,_) => NoArea

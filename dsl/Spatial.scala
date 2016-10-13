@@ -319,7 +319,9 @@ trait SpatialDSL extends ForgeApplication
     schedule(ReductionAnalyzer)     // Reduce/accumulator specialization
     schedule(Unrolling)             // Pipeline unrolling
     schedule(Printer)
-    schedule(RewriteTransformer)
+    schedule(UnrolledControl)       // Pre-analysis for external register reads
+    schedule(RegisterCleanup)       // Duplicate register reads for each use
+    schedule(RewriteTransformer)    // Post-unrolling rewrites
     schedule(Printer)
 
     // --- Final analysis

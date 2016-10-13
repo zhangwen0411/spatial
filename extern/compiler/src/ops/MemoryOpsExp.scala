@@ -64,6 +64,8 @@ trait MemoryTypesExp extends MemoryTypes with BaseExp {
 trait MemoryOpsExp extends MemoryTypesExp with ExternPrimitiveOpsExp with SRAMOpsExp {
   this: SpatialExp =>
 
+  def isTup2[T:Manifest] = isSubtype(manifest[T].runtimeClass, classOf[Tup2[_,_]])
+
   val stream_offset_guess = 20
   // --- Nodes
   case class ListVector[T](elems: List[Exp[T]])(implicit val mT: Manifest[T], val ctx: SourceContext) extends Def[Vector[T]]
@@ -347,11 +349,16 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
   }
 
   override def consumesMemFifo(node: Exp[Any]) = {
-    parentOf(node) match {
-      case Some(parent) => childrenOf(parent).map { n => n match {
-        case Deff(BurstLoad(mem, fifo, ofs, len, par)) => true
-        case _ => false
-      }}.reduce{_|_}
+    parentOf( node) match {
+      case Some(parent) => 
+        val isMem = childrenOf(parent).map { n => 
+          val Deff(nn) = n
+          n match {
+            case Deff(BurstLoad(mem, fifo, ofs, len, par)) => if (quote(fifo) == quote(node)) true else false
+            case Deff(BurstStore(mem, fifo, ofs, len, par)) => if (quote(fifo) == quote(node)) true else false
+            case _ => false
+          }}
+      isMem.reduce{_|_}
       case None => false
     }
   }
@@ -839,6 +846,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 //      emitComment("Offchip store from fifo")
 
     case Reg_new(init) =>
+      val tp = sym.tp.typeArguments(0)
+      Console.println(s"$sym = reg_new")
+      Console.println(s"tp = $tp [${isTup2(tp)}]")
+
       // TODO: This is known to have a def, so it shouldn't be necessary to use EatAlias here
       // sym.tp.typeArguments.head.erasure match {
       //   case a: Tup2[_,_] => Console.println("TUP2")
@@ -1164,36 +1175,47 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       if (duplicates.head.banking.size != 1) throw new Exception(s"More than 1 banking dimension: Don't know how to handle.")
       val par = duplicates.head.banking.head.banks
       val ts = tpstr(1)(sym.tp.typeArguments.head, implicitly[SourceContext])
-      withStream(baseStream){
-        emit(s"""Fifo ${quote(sym)} = new Fifo(this, $ts, ${bound(size).get.toInt}, ${par});""")
-      }
       emit(s"""DFEVector<DFEVar> ${quote(sym)}_rdata = new DFEVectorType<DFEVar>($ts, $par).newInstance(this);""")
       emit(s"""DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>($ts, $par).newInstance(this);""")
       emit(s"""DFEVar ${quote(sym)}_readEn = dfeBool().newInstance(this);""")
       emit(s"""DFEVar ${quote(sym)}_writeEn = dfeBool().newInstance(this);""")
+      if (!consumesMemFifo(sym)) { // Make a real fifo
+        withStream(baseStream){
+          emit(s"""Fifo ${quote(sym)} = new Fifo(this, $ts, ${bound(size).get.toInt * 2}, ${par});""")
+        }
+      }
 
     case Par_push_fifo(fifo, value, en, shuffle) =>
       emit(s"""// Par_push_fifo(${quote(fifo)}, ${quote(value)}, ${quote(en)}, ${quote(shuffle)});""")
       val writer = quote(writersOf(fifo).head.controlNode)  // Not using 'en' or 'shuffle'
       emit(s"""${quote(fifo)}_writeEn <== ${writer}_ctr_en;""")
-      emit(s"""${quote(fifo)}_wdata <== ${quote(value)};""")
-      emit(s"""${quote(fifo)}.push(${quote(value)}, ${quote(en)} & ${quote(fifo)}_writeEn); // Real fifo push""")
+      if (consumesMemFifo(fifo)) {
+        emit(s"""${quote(fifo)}_wdata <== ${quote(value)};""")
+      } else {
+        emit(s"""${quote(fifo)}.push(${quote(value)}, ${quote(en)} & ${quote(fifo)}_writeEn); // Real fifo push""")        
+      }
 
 
-    case Par_pop_fifo(fifo, par) =>
-      emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, ${quote(par)});""")
+    case Par_pop_fifo(fifo, en) =>
+      emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, ${quote(en)});""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       val readEn = s"${reader}_ctr_en"
       emit(s"""${quote(fifo)}_readEn <== ${readEn};""")
-      emit(s"""//DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
-      emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>(${quote(fifo)}.type, ${quote(par)}).newInstance(this, ${quote(fifo)}.pop(${readEn}));""")
+      if (consumesMemFifo(fifo)) {
+        emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
+      } else {
+        emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>(${quote(fifo)}.type, 1).newInstance(this, ${quote(fifo)}.pop(${readEn}));""")
+      }
 
-    case Pop_fifo(fifo) =>
+    case Pop_fifo(fifo,en) =>
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, 1);""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       emit(s"""${quote(fifo)}_readEn <== ${reader}_ctr_en;""")
-      emit(s"""//DFEVar ${quote(sym)} = ${quote(fifo)}_rdata[0];""")
-      emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}.pop(${reader}_ctr_en);""")
+      if (consumesMemFifo(fifo)) {
+        emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}_rdata[0];""")
+      } else {
+        emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}.pop(${reader}_ctr_en);""")
+      }
 
     case Vec_apply(vec, idx) =>
       rTreeMap(sym) match {

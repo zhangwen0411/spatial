@@ -38,24 +38,24 @@ trait Regs {
     /** @nodoc **/
     direct (Reg) ("readReg", T, ("reg", Reg(T)) :: T) implements composite ${ reg_read($0) }
     /** @nodoc **/
-    direct (Reg) ("writeReg", T, (("reg", Reg(T)), ("value", T)) :: MUnit, effect = write(0)) implements composite ${ reg_write($0, $1, true) }
+    direct (Reg) ("writeReg", T, (("reg", Reg(T)), ("value", T), ("en", Bit)) :: MUnit, effect = write(0)) implements composite ${ reg_write($0, $1, $2) }
 
     /** @nodoc **/
     direct (Reg) ("reg_zero_idx", Nil, Nil :: Indices) implements composite ${ indices_create(List(0.as[Index])) }
 
     val Mem = lookupTpeClass("Mem").get
     val RegMem = tpeClassInst("RegMem", T, TMem(T, Reg(T)))
-    infix (RegMem) ("ld", T, (Reg(T), SList(Idx)) :: T) implements composite ${
+    infix (RegMem) ("ld", T, (Reg(T), SList(Idx), Bit) :: T) implements composite ${
       readReg($0)
     }
-    infix (RegMem) ("st", T, (Reg(T), SList(Idx), T) :: MUnit, effect = write(0)) implements composite ${
-      writeReg($0, $2)
+    infix (RegMem) ("st", T, (Reg(T), SList(Idx), T, Bit) :: MUnit, effect = write(0)) implements composite ${
+      writeReg($0, $2, $3)
     }
-    infix (RegMem) ("zeroLd", T, (Reg(T)) :: T) implements composite ${
+    infix (RegMem) ("zeroLd", T, (Reg(T), Bit) :: T) implements composite ${
       readReg($0)
     }
-    infix (RegMem) ("zeroSt", T, (Reg(T), T) :: MUnit, effect = write(0)) implements composite ${
-      writeReg($0, $1)
+    infix (RegMem) ("zeroSt", T, (Reg(T), T, Bit) :: MUnit, effect = write(0)) implements composite ${
+      writeReg($0, $1, $2)
     }
     infix (RegMem) ("iterator", T, (Reg(T), SList(MInt)) :: CounterChain) implements composite ${
       CounterChain(Counter(max=1))
@@ -97,7 +97,7 @@ trait Regs {
       /** Creates a writer to this Reg. Note that Regs and ArgOuts can only have one writer, while ArgIns cannot have any **/
       infix (":=") (("x",T) :: MUnit, effect = write(0)) implements composite ${
         if (regType($self) == ArgumentIn) throw ArgInWriteException($self)
-        writeReg($self, $1)
+        writeReg($self, $1, true)
       }
       /** @nodoc - User register reset is not yet well-defined **/
       infix ("rst") (Nil :: MUnit, effect = write(0)) implements composite ${ reg_reset($self) }

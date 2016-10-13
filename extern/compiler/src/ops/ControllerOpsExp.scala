@@ -104,7 +104,7 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
     val acc = reflectMutableSym( fresh[C[T]] )  // Has to be mutable since we write to "it"
     setProps(acc, getProps(accum))
 
-    val ldBlk = reifyEffects(__mem.zeroLd(acc))
+    val ldBlk = reifyEffects(__mem.zeroLd(acc, true.asBit))
 
    // Reified reduction function
     val rV = (fresh[T], fresh[T])
@@ -112,7 +112,7 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
 
     // Reified store function
     val res = fresh[T]
-    val stBlk = reifyEffects(__mem.zeroSt(acc, res))
+    val stBlk = reifyEffects(__mem.zeroSt(acc, res, true.asBit))
 
     val effects = summarizeEffects(mBlk) andAlso summarizeEffects(ldBlk) andAlso
                   summarizeEffects(rBlk) andAlso summarizeEffects(stBlk) andAlso Write(List(accum.asInstanceOf[Sym[C[T]]]))
@@ -127,12 +127,12 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
     val part = fresh[C[T]]
     setProps(part, getProps(func))
     // Partial result load
-    val ldPartBlk = reifyEffects( __mem.ld(part, isRed) )
+    val ldPartBlk = reifyEffects( __mem.ld(part, isRed, true.asBit) )
 
     val acc = reflectMutableSym( fresh[C[T]] )
     setProps(acc, getProps(accum))
     // Accumulator load
-    val ldBlk = reifyEffects( __mem.ld(acc, isRed) )
+    val ldBlk = reifyEffects( __mem.ld(acc, isRed, true.asBit) )
 
     val rV = (fresh[T],fresh[T])
     // Reified reduction function
@@ -140,7 +140,7 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
 
     val res = fresh[T]
     // Accumulator store function
-    val stBlk = reifyEffects( __mem.st(acc, isRed, res) )
+    val stBlk = reifyEffects( __mem.st(acc, isRed, res, true.asBit) )
 
     val effects = summarizeEffects(func) andAlso summarizeEffects(ldPartBlk) andAlso
                   summarizeEffects(ldBlk) andAlso summarizeEffects(rBlk) andAlso summarizeEffects(stBlk) andAlso Write(List(accum.asInstanceOf[Sym[C[T]]]))
@@ -239,12 +239,16 @@ trait ScalaGenControllerOps extends ScalaGenEffect {
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case ParallelPipe(blk) =>
+      stream.println(s"val ${quote(sym)} = {")
       emitBlock(blk)
-      stream.println(s"val ${quote(sym)} = ()")
+      stream.println("()")
+      stream.println("}")
 
     case UnitPipe(blk) =>
+      stream.println(s"val ${quote(sym)} = {")
       emitBlock(blk)
-      stream.println(s"val ${quote(sym)} = ()")
+      stream.println("()")
+      stream.println("}")
 
     case _ => super.emitNode(sym, rhs)
   }
@@ -618,7 +622,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
                             treeResult = quote(s)
                           }
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        case input @ ( Par_sram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_) ) =>
+                        case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
                           inputVecs += s
                         case _ =>
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
