@@ -597,9 +597,9 @@ object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args: 2
 trait UnalignedLdApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val N = 1920
+  val N = 19200
 
-  val numCols = 155
+  val numCols = 8
   val paddedCols = 1920
 
   def unaligned_1d(src: Rep[ForgeArray[T]], ii: Rep[T]) = {
@@ -1062,7 +1062,47 @@ trait ChangingCtrMaxApp extends SpatialApp {
   }
 }
 
+object FifoPushPop extends SpatialAppCompiler with FifoPushPopApp // Args: none
+trait FifoPushPopApp extends SpatialApp {
+  type T = SInt
 
+  type Array[T] = ForgeArray[T]
+  def fifopushpop(N: Rep[SInt]) = {
+    val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
+
+    val size = ArgIn[SInt]
+    setArg(size, N)
+    val acc = ArgOut[SInt]
+
+    Accel {
+      val f1 = FIFO[SInt](tileSize)
+      val accum = Reg[SInt](0)
+      Fold(size by tileSize)(accum, 0.as[SInt]) { iter => 
+        Pipe(tileSize by 1) { i => f1.push(iter + i) }
+        Reduce(tileSize by 1)(0.as[SInt]) { i => 
+          f1.pop
+        }{_+_}
+      }{_+_}
+      acc := accum
+    }
+    getArg(acc)
+  }
+
+  def main() {
+    val arraySize = args(0).to[SInt]
+
+    val gold = Array.tabulate(arraySize){ i => i }.reduce{_+_}
+    val dst = fifopushpop(arraySize)
+
+    println("gold: " + gold)
+    println("dst: " + dst)
+
+    val cksum = dst == gold
+    println("PASS: " + cksum + " (FifoPushPop)")
+
+
+  }
+}
 // object GroupByReduce extends SpatialAppCompiler with GroupByReduceApp // Args: none
 // trait GroupByReduceApp extends SpatialApp {
 

@@ -1164,7 +1164,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       if (duplicates.head.banking.size != 1) throw new Exception(s"More than 1 banking dimension: Don't know how to handle.")
       val par = duplicates.head.banking.head.banks
       val ts = tpstr(1)(sym.tp.typeArguments.head, implicitly[SourceContext])
-      emit(s"""// FIFO ${quote(sym)} = Fifo_new[$ts](${quote(size)}, ${quote(zero)});""")
+      withStream(baseStream){
+        emit(s"""Fifo ${quote(sym)} = new Fifo(this, $ts, ${bound(size).get.toInt}, ${par});""")
+      }
       emit(s"""DFEVector<DFEVar> ${quote(sym)}_rdata = new DFEVectorType<DFEVar>($ts, $par).newInstance(this);""")
       emit(s"""DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>($ts, $par).newInstance(this);""")
       emit(s"""DFEVar ${quote(sym)}_readEn = dfeBool().newInstance(this);""")
@@ -1175,6 +1177,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val writer = quote(writersOf(fifo).head.controlNode)  // Not using 'en' or 'shuffle'
       emit(s"""${quote(fifo)}_writeEn <== ${writer}_ctr_en;""")
       emit(s"""${quote(fifo)}_wdata <== ${quote(value)};""")
+      emit(s"""${quote(fifo)}.push(${quote(value)}, ${quote(en)} & ${quote(fifo)}_writeEn); // Real fifo push""")
 
 
     case Par_pop_fifo(fifo, par) =>
@@ -1182,13 +1185,15 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       val readEn = s"${reader}_ctr_en"
       emit(s"""${quote(fifo)}_readEn <== ${readEn};""")
-      emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
+      emit(s"""//DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
+      emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>(${quote(fifo)}.type, ${quote(par)}).newInstance(this, ${quote(fifo)}.pop(${readEn}));""")
 
     case Pop_fifo(fifo) =>
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, 1);""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       emit(s"""${quote(fifo)}_readEn <== ${reader}_ctr_en;""")
-      emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}_rdata[0];""")
+      emit(s"""//DFEVar ${quote(sym)} = ${quote(fifo)}_rdata[0];""")
+      emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}.pop(${reader}_ctr_en);""")
 
     case Vec_apply(vec, idx) =>
       rTreeMap(sym) match {
