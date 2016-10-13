@@ -61,7 +61,7 @@ trait MaxJPreCodegen extends Traversal  {
   }
 
 	val argInOuts  = Set.empty[Sym[Reg[_]]]
-	val memStreams = Set.empty[Sym[Any]]
+  val memStreams = Set.empty[Sym[Any]]
 
   override def preprocess[A:Manifest](b: Block[A]): Block[A] = {
 		argInOuts.clear
@@ -163,6 +163,8 @@ trait MaxJPreCodegen extends Traversal  {
                         isReduceStarter(s) = false
                         isReduceResult(s) = false}}}
                   }
+                  case _ => 
+                    Console.println(s"WARNING: Unknown reduce type of accum $accum")
                 }
               }
             case _ =>
@@ -193,6 +195,8 @@ trait MaxJPreCodegen extends Traversal  {
                         isReduceStarter(s) = false
                         isReduceResult(s) = false}}}
                   }
+                  case _ => 
+                    Console.println(s"WARNING: Unknown reduce type of accum $accum")
                 }
         case _ =>
       }
@@ -222,6 +226,8 @@ trait MaxJPreCodegen extends Traversal  {
                         isReduceStarter(s) = false
                         isReduceResult(s) = false}}}
                   }
+                  case _ => 
+                    Console.println(s"WARNING: Unknown reduce type of accum $accum")
                 }
               }
             case _ =>
@@ -246,8 +252,12 @@ trait MaxJPreCodegen extends Traversal  {
 		case e:Argin_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
     case e:Argout_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
 
-    case _:BurstStore[_] => memStreams += sym
-    case _:BurstLoad[_] => memStreams += sym
+    case e@BurstStore(_,fifo,_,_,_) =>
+      memLdFifos += fifo
+      memStreams += sym
+    case e@BurstLoad(_,fifo,_,_,_) => 
+      memLdFifos += fifo
+      memStreams += sym
     case _:Scatter[_] => memStreams += sym
     case _:Gather[_] => memStreams += sym
 

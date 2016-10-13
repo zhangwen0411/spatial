@@ -63,6 +63,8 @@ trait MemoryAnalysisExp extends SpatialAffineAnalysisExp with ControlSignalAnaly
   */
   case class MemInstance(depth: Int, duplicates: Int, banking: List[Banking])
 
+  var memLdFifos = Set.empty[Exp[Any]]
+
   def SimpleInstance = MemInstance(1, 1, List(NoBanking))
 
   case class MemDuplicates(insts: List[MemInstance]) extends Metadata

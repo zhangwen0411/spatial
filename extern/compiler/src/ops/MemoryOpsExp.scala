@@ -349,10 +349,12 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
   }
 
   override def consumesMemFifo(node: Exp[Any]) = {
-    parentOf( node) match {
+    // Console.println(s"on fifo $node")
+    parentOf(node) match {
       case Some(parent) => 
         val isMem = childrenOf(parent).map { n => 
           val Deff(nn) = n
+          // Console.println(s"  parent $parent, $n - $nn")
           n match {
             case Deff(BurstLoad(mem, fifo, ofs, len, par)) => if (quote(fifo) == quote(node)) true else false
             case Deff(BurstStore(mem, fifo, ofs, len, par)) => if (quote(fifo) == quote(node)) true else false
@@ -1179,7 +1181,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       emit(s"""DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>($ts, $par).newInstance(this);""")
       emit(s"""DFEVar ${quote(sym)}_readEn = dfeBool().newInstance(this);""")
       emit(s"""DFEVar ${quote(sym)}_writeEn = dfeBool().newInstance(this);""")
-      if (!consumesMemFifo(sym)) { // Make a real fifo
+      if (!memLdFifos.contains(sym)) { // Make a real fifo
         withStream(baseStream){
           emit(s"""Fifo ${quote(sym)} = new Fifo(this, $ts, ${bound(size).get.toInt * 2}, ${par});""")
         }
@@ -1189,7 +1191,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       emit(s"""// Par_push_fifo(${quote(fifo)}, ${quote(value)}, ${quote(en)}, ${quote(shuffle)});""")
       val writer = quote(writersOf(fifo).head.controlNode)  // Not using 'en' or 'shuffle'
       emit(s"""${quote(fifo)}_writeEn <== ${writer}_ctr_en;""")
-      if (consumesMemFifo(fifo)) {
+      if (memLdFifos.contains(fifo)) {
         emit(s"""${quote(fifo)}_wdata <== ${quote(value)};""")
       } else {
         emit(s"""${quote(fifo)}.push(${quote(value)}, ${quote(en)} & ${quote(fifo)}_writeEn); // Real fifo push""")        
@@ -1201,7 +1203,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       val readEn = s"${reader}_ctr_en"
       emit(s"""${quote(fifo)}_readEn <== ${readEn};""")
-      if (consumesMemFifo(fifo)) {
+      if (memLdFifos.contains(fifo)) {
         emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
       } else {
         emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>(${quote(fifo)}.type, 1).newInstance(this, ${quote(fifo)}.pop(${readEn}));""")
@@ -1211,7 +1213,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, 1);""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       emit(s"""${quote(fifo)}_readEn <== ${reader}_ctr_en;""")
-      if (consumesMemFifo(fifo)) {
+      if (memLdFifos.contains(fifo)) {
         emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}_rdata[0];""")
       } else {
         emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}.pop(${reader}_ctr_en);""")
