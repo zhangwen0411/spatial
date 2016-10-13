@@ -376,7 +376,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} !== {quote(b)};""")
+          emit(s"""${quote(sym)} <== ${quote(a)} !== ${quote(b)};""")
         case m =>
           emit(s"""// ${quote(sym)} already emitted in $m""")
       }

@@ -200,7 +200,8 @@ trait DRAMs {
             startBound := maddr % elementsPerBurst      // Number of elements to ignore at beginning
             memAddrDowncast := maddr - startBound.value     // Burst-aligned address
             endBound  := startBound.value + len             // Index to begin ignoring again
-            lenUpcast := (endBound.value - (endBound.value % elementsPerBurst)) + (if (endBound.value % elementsPerBurst != 0) elementsPerBurst else 0) // Number of elements aligned to nearest burst length
+            // TODO: Statically check if we need to add one more burst
+            lenUpcast := (endBound.value - (endBound.value % elementsPerBurst)) + mux(endBound.value % elementsPerBurst != 0, elementsPerBurst, 0) // Number of elements aligned to nearest burst length
           }                    
         // }
 
