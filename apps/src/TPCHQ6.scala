@@ -37,7 +37,7 @@ WHERE
 
 object TPCHQ6 extends SpatialAppCompiler with TPCHQ6_App
 trait TPCHQ6_App extends SpatialApp {
-  type FT = SInt
+  type FT = Flt
   type Array[T] = ForgeArray[T]
 
   val MIN_DATE = 0
@@ -45,8 +45,8 @@ trait TPCHQ6_App extends SpatialApp {
   val MIN_DISC = 0
   val MAX_DISC = 9999
   val tileSize = 9600
-  val outerPar = 2
-  val innerPar = 32
+  val outerPar = 1
+  val innerPar = 1
 
   def tpchq6(datesIn: Rep[Array[UInt]], quantsIn: Rep[Array[UInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
     val dataSize = ArgIn[SInt]
@@ -114,8 +114,8 @@ trait TPCHQ6_App extends SpatialApp {
     val quants = Array.fill(N){random[UInt](25) }
     // val discts = Array.fill(N){random[FT] * 0.05f + 0.02f}
     // val prices = Array.fill(N){random[FT] * 1000f}
-    val discts = Array.fill(N){random[FT] / 100000}
-    val prices = Array.fill(N){random[FT] / 100000}
+    val discts = Array.fill(N){random[FT] /*/ 100000*/}
+    val prices = Array.fill(N){random[FT] /*/ 100000*/}
 
     val result = tpchq6(dates, quants, discts, prices)
 
