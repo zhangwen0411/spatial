@@ -430,8 +430,13 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
 
         if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
         // Get all siblings of read/write ports and match to ports of buf
-        val allSiblings = childrenOf(parentOf(readers.head.controlNode).get).toSet
-        val orphanedSiblings = allSiblings -- readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.map{a => a.controlNode}.toSet -- writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.map{a => a.controlNode}.toSet
+        val topCtrl = readsByPort.map{case (_, readers) => readers.flatMap{a => topControllerOf(a,mem,i)}.head}.head.node
+        val subReads = readsByPort.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}.toSet
+        val subWrites = writesByPort.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}.toSet
+
+        val prnt = parentOf(topCtrl).get
+        val allSiblings = childrenOf(prnt).toSet //-- List(prnt).map{ case (c,_) => c}.toSet
+        val orphanedSiblings = allSiblings -- subReads -- subWrites
 
         def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String, comment: String = "") {
           val controllers = accesses.flatMap{access => topControllerOf(access, mem, i) }.distinct
@@ -452,21 +457,15 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
           val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
           val fullPorts = (0 until d.depth).map{ i => i }.toSet
-          // val fullPorts = d.depth match {// TODO: proper way to make this list?
-          //   case 1 => Set(0)
-          //   case 2 => Set(0,1)
-          //   case 3 => Set(0,1,2)
-          //   case 4 => Set(0,1,2,3)
-          //   case 5 => Set(0,1,2,3,4)
-          //   case 6 => Set(0,1,2,3,4,5)
-          //   case _ => throw new Exception(s"Cannot handle nBuf this big! How to I do 0 until d.depth properly?")
-          // }
           val dummyWPorts = fullPorts -- wPorts
           val dummyRPorts = fullPorts -- rPorts
           val dummyDonePorts = fullPorts -- wPorts -- rPorts
           readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl",s"read")}
           writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
-          dummyDonePorts.zip(orphanedSiblings).foreach{case (ports, node) => emit(s"""${quoteDuplicate(mem,i)}.connectStageCtrl(${quote(node)}_done, ${quote(node)}_en, new int[] {$ports}); /*orphan*/""")}
+          Console.println(s" port info for ${quoteDuplicate(mem,i)} is ${dummyDonePorts} and ${orphanedSiblings}")
+          dummyDonePorts.toList.zip(orphanedSiblings.toList.take(dummyDonePorts.toList.length)).foreach{case (ports, node) => 
+            emit(s"""${quoteDuplicate(mem,i)}.connectStageCtrl(${quote(node)}_done, ${quote(node)}_en, new int[] {$ports}); /*orphan*/""")
+          }
 
           emit(s"""${quote(mem)}_${i}${suff}.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
           emit(s"""${quote(mem)}_${i}${suff}.connectUnreadPorts(new int[] {${dummyRPorts.mkString(",")}});""")
