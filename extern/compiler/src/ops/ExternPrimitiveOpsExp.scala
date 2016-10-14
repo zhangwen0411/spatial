@@ -201,7 +201,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
     case _ =>
   }
 
-
+  var consumedList = Set[Exp[Any]]()
 	var traversals: List[Traversal{val IR: MaxJGenExternPrimitiveOps.this.IR.type}] = Nil
 
   lazy val preCodegen = new MaxJPreCodegen {
@@ -488,7 +488,14 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
         case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
+          if (consumedList.contains(sym)) {
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
+          } else {
+            consumedList += sym // TODO: Very dangerous hack to fix MultiplexedWriteTest, since we use a sym once inside kernel, then again outside (afterwards)
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+          }
+          
+          
       }
 
     case Bit_Or(a,b) =>
@@ -525,6 +532,34 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           emit(s"""$pre ${quote(sym)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;""")
         case m =>
           emit(s"""// ${quote(sym)} already emitted in $m""")
+      }
+
+    case Vec_apply(vec, idx) =>
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""DFEVar ${quote(sym)} = ${quote(vec)}[${quote(idx)}];""")
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
+    case ListVector(elems) =>
+      rTreeMap(sym) match {
+        case Nil => 
+          if (isVector(elems(0).tp)) {
+            val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
+            emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map{a => quote(a) + "[0]"}.mkString(",")}));""")
+          } else {
+            val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])        
+            emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map(quote).mkString(",")}));""")
+          }
+        case m =>
+          if (isVector(elems(0).tp)) {
+            val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
+            emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this);""")
+          } else {
+            val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])        
+            emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this);""")
+          }
       }
 
     case Tpes_Int_to_fix(x) =>  // Emit this node in MaxJ only if x is a const

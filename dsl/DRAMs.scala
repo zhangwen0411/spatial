@@ -184,7 +184,7 @@ trait DRAMs {
         val endBound = Reg[Index]
         val memAddrDowncast = Reg[Index]
         val lenUpcast = Reg[Index](999)
-        // if (len % (384*8/nbits(manifest[T])) == 0) {
+        // if (bound(len) gives Option[double] % (384*8/nbits(manifest[T])) == 0) {
         //   Pipe {
         //     val maddr = memAddr()
         //     val elementsPerBurst = 384*8/nbits(manifest[T])

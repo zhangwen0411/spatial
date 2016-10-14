@@ -670,6 +670,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                 case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
                   inputVecs += s
                   s"/* Par_pop_fifo */"
+
                 case FieldApply(a, b) => 
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   inputVecs += s
@@ -680,6 +681,18 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                   }
                 case Internal_pack2(a,b) => 
                   s"""DFEVar ${quote(s)} = ${quote(a)}.cast(dfeRawBits(32)).cast(dfeRawBits(64)).shiftLeft(32) ^ ${quote(b)}.cast(dfeRawBits(32)).cast(dfeRawBits(64));"""
+                case ListVector(elems) =>
+                  if (first_reg_read.length > 1) { rTreeMap(s) = sym; inputVecs += s }
+                  if (isVector(elems(0).tp)) {
+                    val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
+                    val allcxns = (0 until elems.size).map{ i => s"""${quote(s)}[$i] <== ${quote(elems(i))};"""}
+                    allcxns.mkString(" ")
+                  } else {
+                    val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])        
+                    val allcxns = (0 until elems.size).map{ i => s"""${quote(s)}[$i] <== ${quote(elems(i))};"""}
+                    allcxns.mkString(" ")
+                  }
+
                 case _ =>
                   s"/* Unknown Deff $s ${dd} inside of MaxJPreCodegen*/"
               }

@@ -293,10 +293,12 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
                   var inputVecs = Set[Sym[Any]]()
                   var consts_args_bnds_list = Set[Exp[Any]]()
                   var treeResultSyms = Set[Sym[Any]]()
-                  focusBlock(func){ // Send reduce tree to separate file
+                  var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
+                  focusBlock(func){ 
                     focusExactScope(func){ stms =>
                       stms.foreach { case TP(s,d) =>
                         val Deff(dd) = s
+                        Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
                         dd match {
                           case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
                             if (isReduceResult(s)) {
@@ -305,8 +307,15 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
                               treeResultSyms += s
                             }
                             consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                          case input @ ( Par_sram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_,_) ) =>
+                          case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
                             inputVecs += s
+                          case input @ (_:Par_sram_load[_]) => 
+                            first_reg_read = first_reg_read :+ 0
+                            inputVecs += s
+                          case input @ ( _:ListVector[_]) => 
+                            if (first_reg_read.length > 1) { inputVecs += s }
+                          case input @ (_:Reg_read[_]) =>
+                            first_reg_read = first_reg_read :+ 0
                           case _ =>
                             consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
                         }
@@ -316,7 +325,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
 
                   emitBlock(func)
                   val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
-                  val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
+                  val inputVecsStr = inputVecs.map {a => quote(a)}.toList.sortWith(_ < _).mkString(",")
                   val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
                   val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
                   val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
@@ -396,21 +405,30 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
             // Putting reduction tree in its own kernel
             var inputVecs = Set[Sym[Any]]()
             var consts_args_bnds_list = Set[Exp[Any]]()
-            var treeResult = ""
-            focusBlock(func){ // Send reduce tree to separate file
+            var treeResultSyms = Set[Sym[Any]]()
+            var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
+            focusBlock(func){ 
               focusExactScope(func){ stms =>
                 stms.foreach { case TP(s,d) =>
                   val Deff(dd) = s
+                  Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
                   dd match {
                     case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
                       if (isReduceResult(s)) {
                         val ts = tpstr(1)(s.tp, implicitly[SourceContext])
                         emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
-                        treeResult = quote(s)
+                        treeResultSyms += s
                       }
                       consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                    case input @ ( Par_sram_load(_,_) | Par_pop_fifo(_,_) | Pop_fifo(_,_) ) =>
+                    case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
                       inputVecs += s
+                    case input @ (_:Par_sram_load[_]) => 
+                      first_reg_read = first_reg_read :+ 0
+                      inputVecs += s
+                    case input @ ( _:ListVector[_]) => 
+                      if (first_reg_read.length > 1) { inputVecs += s }
+                    case input @ (_:Reg_read[_]) =>
+                      first_reg_read = first_reg_read :+ 0
                     case _ =>
                       consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
                   }
@@ -422,7 +440,8 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
             emitBlock(func)
             emitComment(s"""} ${quote(sym)} func block""")
 
-            val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
+            val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
+            val inputVecsStr = inputVecs.map {a => quote(a)}.toList.sortWith(_ < _).mkString(",")
             val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
             val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
             val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this

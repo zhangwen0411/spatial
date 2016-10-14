@@ -604,12 +604,13 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
             }
           }
           if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
-            styleOf(sym) match {
+            styleOf(sym) match { // TODO: Do we even ever touch
               case InnerPipe =>
                 // Putting reduction tree in its own kernel
                 var inputVecs = Set[Sym[Any]]()
                 var consts_args_bnds_list = Set[Exp[Any]]()
                 var treeResult = ""
+                var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
                 focusBlock(func){ // Send reduce tree to separate file
                   focusExactScope(func){ stms =>
                     stms.foreach { case TP(s,d) =>
@@ -622,23 +623,30 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
                             treeResult = quote(s)
                           }
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
+                        case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
                           inputVecs += s
+                        case input @ (_:Par_sram_load[_]) => 
+                          first_reg_read = first_reg_read :+ 0
+                          inputVecs += s
+                        case input @ ( _:ListVector[_]) => 
+                          if (first_reg_read.length > 1) { inputVecs += s }
+                        case input @ (_:Reg_read[_]) =>
+                          first_reg_read = first_reg_read :+ 0
                         case _ =>
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
                       }
                     }
                   }
-
-                  emitBlock(func, s"${quote(sym)} Unitpipe", true /*do not close*/)
-                  val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
-                  val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-                  val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                  val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-                  val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                  emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
-                  emit(s"}")
                 }
+
+                emitBlock(func, s"${quote(sym)} Unitpipe", true /*do not close*/)
+                val inputVecsStr = inputVecs.map {a => quote(a)}.toList.sortWith(_ < _).mkString(",")
+                val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
+                val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+                val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
+                val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+                emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+                emit(s"}")
               case _ =>
                 emitBlock(func, s"${quote(sym)} Unitpipe")
             }

@@ -1226,22 +1226,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}.popSingle(${reader}_ctr_en);""")
       }
 
-    case Vec_apply(vec, idx) =>
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""DFEVar ${quote(sym)} = ${quote(vec)}[${quote(idx)}];""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
-      }
-
-    case ListVector(elems) =>
-      if (isVector(elems(0).tp)) {
-        val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
-        emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map{a => quote(a) + "[0]"}.mkString(",")}));""")
-      } else {
-        val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])        
-        emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map(quote).mkString(",")}));""")
-      }
 
     case _ => super.emitNode(sym, rhs)
   }
