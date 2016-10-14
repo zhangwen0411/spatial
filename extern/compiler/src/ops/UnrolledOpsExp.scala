@@ -312,7 +312,9 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
                           case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
                             inputVecs += s
                           case input @ (_:Par_sram_load[_]) => 
-                            first_reg_read = first_reg_read :+ 0
+                            if (true) { // Assume there is no reg_write in UnrolledForeach stage, so use par_sram_load
+                              first_reg_read = first_reg_read :+ 0
+                            }
                             inputVecs += s
                           case input @ ( _:ListVector[_]) => 
                             if (first_reg_read.length > 1) { inputVecs += s }
@@ -427,7 +429,9 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
                     case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
                       inputVecs += s
                     case input @ (_:Par_sram_load[_]) => 
-                      first_reg_read = first_reg_read :+ 0
+                      if (false) { // Assume there is no reg_write in UnrolledForeach stage, so use par_sram_load
+                        first_reg_read = first_reg_read :+ 0
+                      }
                       inputVecs += s
                     case input @ ( _:ListVector[_]) => 
                       if (first_reg_read.length > 1) { inputVecs += s }
