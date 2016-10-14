@@ -12,6 +12,8 @@ import spatial.compiler.ops._
 trait UnrolledOpsExp extends ExternPrimitiveTypesExp with MemoryOpsExp {
   this: SpatialExp =>
 
+  var insideReduceKernel = false
+
   val controller_tree = new PrintWriter(new File("controller_tree.html" ))
   val table_init = """<TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">"""
 
@@ -323,7 +325,9 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
                     }
                   }
 
+                  insideReduceKernel = true
                   emitBlock(func)
+                  insideReduceKernel = false
                   val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
                   val inputVecsStr = inputVecs.map {a => quote(a)}.toList.sortWith(_ < _).mkString(",")
                   val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
@@ -437,7 +441,9 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
             }
             emitRegChains(sym, inds.flatten)
             emitComment(s"""UnrolledReduce ${quote(sym)} func block {""")
+            insideReduceKernel = true
             emitBlock(func)
+            insideReduceKernel = false
             emitComment(s"""} ${quote(sym)} func block""")
 
             val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")

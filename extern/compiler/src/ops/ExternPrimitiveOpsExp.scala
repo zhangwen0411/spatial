@@ -201,7 +201,6 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
     case _ =>
   }
 
-  var consumedList = Set[Exp[Any]]()
 	var traversals: List[Traversal{val IR: MaxJGenExternPrimitiveOps.this.IR.type}] = Nil
 
   lazy val preCodegen = new MaxJPreCodegen {
@@ -488,10 +487,9 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
         case m =>
-          if (consumedList.contains(sym)) {
+          if (!insideReduceKernel) {
             emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
           } else {
-            consumedList += sym // TODO: Very dangerous hack to fix MultiplexedWriteTest, since we use a sym once inside kernel, then again outside (afterwards)
             emit(s"""// ${quote(sym)} already emitted in $m""")
           }
           
