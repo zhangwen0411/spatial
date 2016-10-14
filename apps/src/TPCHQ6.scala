@@ -47,6 +47,7 @@ trait TPCHQ6_App extends SpatialApp {
   val tileSize = 96
   val outerPar = 1
   val innerPar = 2
+  val margin = 0.5
 
   def tpchq6(datesIn: Rep[Array[UInt]], quantsIn: Rep[Array[UInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
     val dataSize = ArgIn[SInt]
@@ -129,7 +130,7 @@ trait TPCHQ6_App extends SpatialApp {
     println("expected " + gold)
     println("result " + result)
 
-    val cksum = gold == result
+    val cksum = (gold < result + margin && gold > result - margin)
     println("PASS: " + cksum + " (TPCHQ6)")
   }
 }

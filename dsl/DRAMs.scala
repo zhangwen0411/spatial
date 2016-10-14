@@ -184,26 +184,46 @@ trait DRAMs {
         val endBound = Reg[Index]
         val memAddrDowncast = Reg[Index]
         val lenUpcast = Reg[Index](999)
-        // if (bound(len) gives Option[double] % (384*8/nbits(manifest[T])) == 0) {
-        //   Pipe {
-        //     val maddr = memAddr()
-        //     val elementsPerBurst = 384*8/nbits(manifest[T])
-        //     startBound := maddr      // Number of elements to ignore at beginning
-        //     memAddrDowncast := maddr     // Burst-aligned address
-        //     endBound  := startBound.value + len             // Index to begin ignoring again
-        //     lenUpcast := len // Number of elements aligned to nearest burst length
-        //   }          
-        // } else {
-        Pipe {
-          val maddr = memAddr()
-          val elementsPerBurst = 384*8/nbits(manifest[T])
-          startBound := maddr % elementsPerBurst      // Number of elements to ignore at beginning
-          memAddrDowncast := maddr - startBound.value     // Burst-aligned address
-          endBound  := startBound.value + len             // Index to begin ignoring again
-          // TODO: Statically check if we need to add one more burst
-          lenUpcast := (endBound.value - (endBound.value % elementsPerBurst)) + mux(endBound.value % elementsPerBurst != 0, elementsPerBurst, 0) // Number of elements aligned to nearest burst length
-        }                    
-        // }
+        bound(len) match { // TODO: Why doesn't this match....
+          case Some(_: Double) =>
+            if (bound(len).get % (384*8/nbits(manifest[T])) == 0) {
+              Pipe {
+                val maddr = memAddr()
+                val elementsPerBurst = 384*8/nbits(manifest[T])
+                startBound := maddr      // Number of elements to ignore at beginning
+                memAddrDowncast := maddr     // Burst-aligned address
+                endBound  := startBound.value + len             // Index to begin ignoring again
+                lenUpcast := len // Number of elements aligned to nearest burst length
+              }
+            } else {
+              Pipe {
+                val maddr = memAddr()
+                val elementsPerBurst = 384*8/nbits(manifest[T])
+                startBound := maddr % elementsPerBurst      // Number of elements to ignore at beginning
+                memAddrDowncast := maddr - startBound.value     // Burst-aligned address
+                endBound  := startBound.value + len             // Index to begin ignoring again
+                lenUpcast := (endBound.value - (endBound.value % elementsPerBurst)) + mux(endBound.value % elementsPerBurst != 0, elementsPerBurst, 0) // Number of elements aligned to nearest burst length
+              }
+            }
+          case _ =>
+            Pipe {
+              val maddr = memAddr()
+              val elementsPerBurst = 384*8/nbits(manifest[T])
+              startBound := maddr % elementsPerBurst      // Number of elements to ignore at beginning
+              memAddrDowncast := maddr - startBound.value     // Burst-aligned address
+              endBound  := startBound.value + len             // Index to begin ignoring again
+              lenUpcast := (endBound.value - (endBound.value % elementsPerBurst)) + mux(endBound.value % elementsPerBurst != 0, elementsPerBurst, 0) // Number of elements aligned to nearest burst length
+            }                    
+        }
+        // Pipe {
+        //   val maddr = memAddr()
+        //   val elementsPerBurst = 384*8/nbits(manifest[T])
+        //   startBound := maddr % elementsPerBurst      // Number of elements to ignore at beginning
+        //   memAddrDowncast := maddr - startBound.value     // Burst-aligned address
+        //   endBound  := startBound.value + len             // Index to begin ignoring again
+        //   // TODO: Statically check if we need to add one more burst
+        //   lenUpcast := (endBound.value - (endBound.value % elementsPerBurst)) + mux(endBound.value % elementsPerBurst != 0, elementsPerBurst, 0) // Number of elements aligned to nearest burst length
+        // }                    
 
         burst_load(mem, fifo, memAddrDowncast.value, lenUpcast.value, p)
 
