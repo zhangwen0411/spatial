@@ -6,9 +6,9 @@ object DotProduct extends SpatialAppCompiler with DotProductApp
 trait DotProductApp extends SpatialApp {
   type T = SInt
 
-  val tileSize = 960
-  val innerPar = 2
-  val outerPar = 2
+  val tileSize = 96
+  val innerPar = 1
+  val outerPar = 1
   type Array[T] = ForgeArray[T]
 
   def dotproduct(a: Rep[Array[T]], b: Rep[Array[T]]) = {
@@ -34,7 +34,7 @@ trait DotProductApp extends SpatialApp {
       Fold(N by B par P1)(reg, 0.as[T]){ i =>
         val b1 = FIFO[T](B)
         val b2 = FIFO[T](B)
-        val bn = Reg[SInt]
+        val bn = Reg[SInt](999)
         Parallel {
           b1 := v1(i::i+B par P3)
           b2 := v2(i::i+B par P3)
@@ -65,8 +65,8 @@ trait DotProductApp extends SpatialApp {
 
     val result = dotproduct(a, b)
     val gold = a.zip(b){_*_}.reduce{_+_}
-    // println("expected: " + gold)
-    // println("result: " + result)
+    println("expected: " + gold)
+    println("result: " + result)
 
     val cksum = gold == result
     println("PASS: " + cksum + " (DotProduct)")

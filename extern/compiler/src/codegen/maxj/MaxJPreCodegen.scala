@@ -964,9 +964,9 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
 
   for(i <- 0 until numCtrs) {
     if(i == numCtrs - 1){
-      stream.println(s"""               (countFF[${i}] + ff_extensions[${i}] >= max[${i}] - strides[${i}])) {""")
+      stream.println(s"""               (countFF[${i}] + ff_extensions[${i}] >= max[${i}] - strides[${i}]) & max[${i}] !== 0) {""")
     } else {
-      stream.println(s"""               (countFF[${i}] + ff_extensions[${i}] >= max[${i}] - strides[${i}]) &""")
+      stream.println(s"""               (countFF[${i}] + ff_extensions[${i}] >= max[${i}] - strides[${i}]) & max[${i}] !== 0 &""")
     }
   }
 

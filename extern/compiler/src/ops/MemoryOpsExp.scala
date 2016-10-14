@@ -429,6 +429,9 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
         val writesByPort = writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
 
         if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
+        // Get all siblings of read/write ports and match to ports of buf
+        val allSiblings = childrenOf(parentOf(readers.head.controlNode).get).toSet
+        val orphanedSiblings = allSiblings -- readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.map{a => a.controlNode}.toSet -- writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.map{a => a.controlNode}.toSet
 
         def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String, comment: String = "") {
           val controllers = accesses.flatMap{access => topControllerOf(access, mem, i) }.distinct
@@ -461,11 +464,13 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           val dummyWPorts = fullPorts -- wPorts
           val dummyRPorts = fullPorts -- rPorts
           val dummyDonePorts = fullPorts -- wPorts -- rPorts
-          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl","read") }
+          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl",s"read")}
           writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
+          dummyDonePorts.zip(orphanedSiblings).foreach{case (ports, node) => emit(s"""${quoteDuplicate(mem,i)}.connectStageCtrl(${quote(node)}_done, ${quote(node)}_en, new int[] {$ports}); /*orphan*/""")}
+
           emit(s"""${quote(mem)}_${i}${suff}.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
           emit(s"""${quote(mem)}_${i}${suff}.connectUnreadPorts(new int[] {${dummyRPorts.mkString(",")}});""")
-          emit(s"""${quote(mem)}_${i}${suff}.connectUntouchedPorts(new int[] {${dummyDonePorts.mkString(",")}});""")
+          // emit(s"""${quote(mem)}_${i}${suff}.connectUntouchedPorts(new int[] {}); //new int[] {${dummyDonePorts.mkString(",")}});""")
           if (writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }.toList.length == 0) {
             emit(s"""${quote(mem)}_${i}${suff}.connectDummyBroadcast();""")
           }
@@ -1046,8 +1051,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     case FixPtSum =>
                       emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
                       emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
+                      emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)", ${quote(reg)}, ${quote(value)});""")
                     case FltPtSum =>
                       emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
+                      emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)", ${quote(reg)}, ${quote(value)});""")
                     case _ =>
                       // TODO: This is very bad assumption!  Actually check which reg to write to!!! 
                       emit(s"""DFEVar ${quote(reg)} = ${quote(value)}; // redtype ${fps} unknown, just assign wire""")
@@ -1194,7 +1201,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       if (memLdFifos.contains(fifo)) {
         emit(s"""${quote(fifo)}_wdata <== ${quote(value)};""")
       } else {
-        emit(s"""${quote(fifo)}.push(${quote(value)}, ${quote(en)} & ${quote(fifo)}_writeEn); // Real fifo push""")        
+        emit(s"""${quote(fifo)}.push(${quote(value)}, ${quote(en)}, ${quote(fifo)}_writeEn); // Real fifo push""")        
       }
 
 
@@ -1206,7 +1213,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       if (memLdFifos.contains(fifo)) {
         emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
       } else {
-        emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>(${quote(fifo)}.type, 1).newInstance(this, ${quote(fifo)}.pop(${readEn}));""")
+        emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}.pop(${readEn});""")
       }
 
     case Pop_fifo(fifo,en) =>
@@ -1216,7 +1223,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       if (memLdFifos.contains(fifo)) {
         emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}_rdata[0];""")
       } else {
-        emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}.pop(${reader}_ctr_en);""")
+        emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}.popSingle(${reader}_ctr_en);""")
       }
 
     case Vec_apply(vec, idx) =>
