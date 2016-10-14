@@ -655,5 +655,5 @@ git commit -m "automated status update via cron"
 git push
 
 sleep 9
-rm -rf ${TESTS_HOME}
+rm -rf ${TESTS_HOME} | tee /kunle/users/mattfel/why_didnt_delete
 
