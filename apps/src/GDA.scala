@@ -10,9 +10,9 @@ trait GDA_App extends SpatialApp {
   val margin = 1
   val innerPar = 2
   val outerPar = 2
-  val MAXC = 8
-  val tileSize = 4
-  val pLoopPar = 1
+  val MAXC = 96
+  val tileSize = 96
+  val pLoopPar = 2
 
   def gda(xCPU: Rep[Array[T]], yCPU: Rep[Array[SInt]], mu0CPU: Rep[Array[T]], mu1CPU: Rep[Array[T]]) = {
     val rTileSize     = tileSize (96 -> 19200)

@@ -12,6 +12,8 @@ import spatial.compiler.ops._
 trait UnrolledOpsExp extends ExternPrimitiveTypesExp with MemoryOpsExp {
   this: SpatialExp =>
 
+  var insideReduceKernel = false
+
   val controller_tree = new PrintWriter(new File("controller_tree.html" ))
   val table_init = """<TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">"""
 
@@ -174,10 +176,16 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
 
     iters.zipWithIndex.foreach{ case (is, i) =>
       if (is.size == 1) { // This level is not parallelized, so assign the iter as-is
-          emit("DFEVar " + quote(is(0)) + " = " + quote(counters(i)) + ";");
+        emit(quote(is(0)) + " <== " + quote(counters(i)) + ";");
+        withStream(baseStream) {
+          emit(s"DFEVar " + quote(is(0)) + " = dfeInt(32).newInstance(this);")
+        }
       } else { // This level IS parallelized, index into the counters correctly
         is.zipWithIndex.foreach{ case (iter, j) =>
-          emit("DFEVar " + quote(iter) + " = " + quote(counters(i)) + "[" + j + "];")
+          emit(quote(iter) + " <== " + quote(counters(i)) + "[" + j + "];")
+          withStream(baseStream) {
+            emit(s"DFEVar " + quote(iter) + " = dfeInt(32).newInstance(this);")
+          }
         }
       }
     }
@@ -270,43 +278,68 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
       emitRegChains(sym, inds.flatten)
 
       parentOf(sym).get match {
-        case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
+        case e@Deff(UnrolledReduce(_,accum,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
           if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
+            val isKerneledRed = reduceType(accum) match {
+              case Some(fps: ReduceFunction) => fps match {
+                case FixPtSum => true
+                case FltPtSum => true
+                case _ => false
+              }
+            }
+
             styleOf(sym) match {
               case InnerPipe =>
-                // Putting reduction tree in its own kernel
-                var inputVecs = Set[Sym[Any]]()
-                var consts_args_bnds_list = Set[Exp[Any]]()
-                var treeResultSyms = Set[Sym[Any]]()
-                focusBlock(func){ // Send reduce tree to separate file
-                  focusExactScope(func){ stms =>
-                    stms.foreach { case TP(s,d) =>
-                      val Deff(dd) = s
-                      dd match {
-                        case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                          if (isReduceResult(s)) {
-                            val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                            emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
-                            treeResultSyms += s
-                          }
-                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-                          inputVecs += s
-                        case _ =>
-                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                if (isKerneledRed) {
+                  // Putting reduction tree in its own kernel
+                  var inputVecs = Set[Sym[Any]]()
+                  var consts_args_bnds_list = Set[Exp[Any]]()
+                  var treeResultSyms = Set[Sym[Any]]()
+                  var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
+                  focusBlock(func){ 
+                    focusExactScope(func){ stms =>
+                      stms.foreach { case TP(s,d) =>
+                        val Deff(dd) = s
+                        // Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
+                        dd match {
+                          case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
+                            if (isReduceResult(s)) {
+                              val ts = tpstr(1)(s.tp, implicitly[SourceContext])
+                              emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
+                              treeResultSyms += s
+                            }
+                            consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                          case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
+                            inputVecs += s
+                          case input @ (_:Par_sram_load[_]) => 
+                            if (true) { // Assume there is no reg_write in UnrolledForeach stage, so use par_sram_load
+                              first_reg_read = first_reg_read :+ 0
+                            }
+                            inputVecs += s
+                          case input @ ( _:ListVector[_]) => 
+                            if (first_reg_read.length > 1) { inputVecs += s }
+                          case input @ (_:Reg_read[_]) =>
+                            first_reg_read = first_reg_read :+ 0
+                          case _ =>
+                            consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                        }
                       }
                     }
                   }
-                }
 
-                emitBlock(func)
-                val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
-                val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
-                val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-                val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-                val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+                  insideReduceKernel = true
+                  emitBlock(func)
+                  insideReduceKernel = false
+                  val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
+                  val inputVecsStr = inputVecs.map {a => quote(a)}.toList.sortWith(_ < _).mkString(",")
+                  val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
+                  val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+                  val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
+                  val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+                  emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+                } else {
+                  emitBlock(func)
+                }
               case _ =>
                 emitBlock(func)
               }
@@ -364,44 +397,73 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
       emitParallelizedLoop(inds, cchain)
       emitComment(s"""} ${quote(sym)} par loop""")
 
+      val isKerneledRed = reduceType(accum) match {
+        case Some(fps: ReduceFunction) => fps match {
+          case FixPtSum => true
+          case FltPtSum => true
+          case _ => false
+        }
+      }
+
       styleOf(sym) match {
         case InnerPipe =>
-          // Putting reduction tree in its own kernel
-          var inputVecs = Set[Sym[Any]]()
-          var consts_args_bnds_list = Set[Exp[Any]]()
-          var treeResult = ""
-          focusBlock(func){ // Send reduce tree to separate file
-            focusExactScope(func){ stms =>
-              stms.foreach { case TP(s,d) =>
-                val Deff(dd) = s
-                dd match {
-                  case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                    if (isReduceResult(s)) {
-                      val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                      emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
-                      treeResult = quote(s)
-                    }
-                    consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                  case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-                    inputVecs += s
-                  case _ =>
-                    consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+          if (isKerneledRed) {
+            // Putting reduction tree in its own kernel
+            var inputVecs = Set[Sym[Any]]()
+            var consts_args_bnds_list = Set[Exp[Any]]()
+            var treeResultSyms = Set[Sym[Any]]()
+            var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
+            focusBlock(func){ 
+              focusExactScope(func){ stms =>
+                stms.foreach { case TP(s,d) =>
+                  val Deff(dd) = s
+                  // Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
+                  dd match {
+                    case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
+                      if (isReduceResult(s)) {
+                        val ts = tpstr(1)(s.tp, implicitly[SourceContext])
+                        emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
+                        treeResultSyms += s
+                      }
+                      consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                    case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
+                      inputVecs += s
+                    case input @ (_:Par_sram_load[_]) => 
+                      if (false) { // Assume there is no reg_write in UnrolledForeach stage, so use par_sram_load
+                        first_reg_read = first_reg_read :+ 0
+                      }
+                      inputVecs += s
+                    case input @ ( _:ListVector[_]) => 
+                      if (first_reg_read.length > 1) { inputVecs += s }
+                    case input @ (_:Reg_read[_]) =>
+                      first_reg_read = first_reg_read :+ 0
+                    case _ =>
+                      consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                  }
                 }
               }
             }
+            emitRegChains(sym, inds.flatten)
+            emitComment(s"""UnrolledReduce ${quote(sym)} func block {""")
+            insideReduceKernel = true
+            emitBlock(func)
+            insideReduceKernel = false
+            emitComment(s"""} ${quote(sym)} func block""")
+
+            val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
+            val inputVecsStr = inputVecs.map {a => quote(a)}.toList.sortWith(_ < _).mkString(",")
+            val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
+            val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+            val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
+            val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+            emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+          } else {
+            emitRegChains(sym, inds.flatten)
+            emitComment(s"""ParPipeReduce ${quote(sym)} func block {""")
+            emitBlock(func)
+            emitComment(s"""} ${quote(sym)} func block""")
           }
 
-          emitRegChains(sym, inds.flatten)
-          emitComment(s"""UnrolledReduce ${quote(sym)} func block {""")
-          emitBlock(func)
-          emitComment(s"""} ${quote(sym)} func block""")
-
-          val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
-          val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-          val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-          val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-          val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-          emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
         case _ =>
           emitRegChains(sym, inds.flatten)
           emitComment(s"""UnrolledReduce ${quote(sym)} func block {""")

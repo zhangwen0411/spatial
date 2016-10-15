@@ -32,17 +32,16 @@ trait DotProductApp extends SpatialApp {
     Accel {
       val reg = Reg[T]
       Fold(N by B par P1)(reg, 0.as[T]){ i =>
-        val b1 = SRAM[T](B)
-        val b2 = SRAM[T](B)
-        val bn = Reg[SInt]
+        val b1 = FIFO[T](B)
+        val b2 = FIFO[T](B)
+        val bn = Reg[SInt](999)
         Parallel {
           b1 := v1(i::i+B par P3)
           b2 := v2(i::i+B par P3)
           Pipe{ bn := min(N.value - i, B) } // ISSUE #2
         }
-
         Reduce(bn par P2)(0.as[T]){ii =>
-          b1(ii) * b2(ii)
+          b1.pop * b2.pop
         }{_+_} // Reg
       }{_+_} // Reg
       Pipe { out := reg }
@@ -58,11 +57,11 @@ trait DotProductApp extends SpatialApp {
 
   def main() {
     val N = args(0).to[SInt]
-    val a = Array.fill(N)(random[T](10))
-    val b = Array.fill(N)(random[T](10))
+    val a = Array.fill(N)(/*random[T](10)*/ 1)
+    val b = Array.fill(N)(/*random[T](10)*/ 1)
 
-    printArr(a, "a")
-    printArr(b, "b")
+    // printArr(a, "a")
+    // printArr(b, "b")
 
     val result = dotproduct(a, b)
     val gold = a.zip(b){_*_}.reduce{_+_}

@@ -595,14 +595,22 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
 
 
       parentOf(sym).get match {
-        case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
+        case e@Deff(UnrolledReduce(_,accum,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+          val isKerneledRed = reduceType(accum) match {
+            case Some(fps: ReduceFunction) => fps match {
+              case FixPtSum => true
+              case FltPtSum => true
+              case _ => false
+            }
+          }
           if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
-            styleOf(sym) match {
+            styleOf(sym) match { // TODO: Do we even ever touch
               case InnerPipe =>
                 // Putting reduction tree in its own kernel
                 var inputVecs = Set[Sym[Any]]()
                 var consts_args_bnds_list = Set[Exp[Any]]()
                 var treeResult = ""
+                var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
                 focusBlock(func){ // Send reduce tree to separate file
                   focusExactScope(func){ stms =>
                     stms.foreach { case TP(s,d) =>
@@ -615,8 +623,15 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
                             treeResult = quote(s)
                           }
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
+                        case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
                           inputVecs += s
+                        case input @ (_:Par_sram_load[_]) => 
+                          first_reg_read = first_reg_read :+ 0
+                          inputVecs += s
+                        case input @ ( _:ListVector[_]) => 
+                          if (first_reg_read.length > 1) { inputVecs += s }
+                        case input @ (_:Reg_read[_]) =>
+                          first_reg_read = first_reg_read :+ 0
                         case _ =>
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
                       }
@@ -625,7 +640,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
                 }
 
                 emitBlock(func, s"${quote(sym)} Unitpipe", true /*do not close*/)
-                val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
+                val inputVecsStr = inputVecs.map {a => quote(a)}.toList.sortWith(_ < _).mkString(",")
                 val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
                 val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
                 val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
@@ -634,10 +649,10 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
                 emit(s"}")
               case _ =>
                 emitBlock(func, s"${quote(sym)} Unitpipe")
-              }
-            } else {
-              emitBlock(func, s"${quote(sym)} Unitpipe")
             }
+          } else {
+            emitBlock(func, s"${quote(sym)} Unitpipe")
+          }
         case _ =>
           emitBlock(func, s"${quote(sym)} Unitpipe")
       }
@@ -899,6 +914,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
   def emitCustomCounterChain(cchain: Exp[CounterChain], en: Option[String], rstStr: Option[String], parent: Exp[Any], done: Option[String]=None) = {
     val sym = cchain
     emitComment("CustomCounterChain {")
+
     if (!enDeclaredSet.contains(sym)) {
       emit(s"""DFEVar ${quote(sym)}_en = ${en.get};""")
       enDeclaredSet += sym
@@ -986,6 +1002,23 @@ for (int i = 0; i < ${parOf(ctr)-1}; i++) {
         // }
       }
     }
+
+    parent match {
+      case Deff(UnrolledForeach(_,_,counts,vs)) => 
+        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) => 
+          layer.zip(count).map { case (v, c) => 
+            emit(s"DFEVar ${quote(v)} = ${quote(c)} < ${quote(sym)}_max[${i}];")
+          }
+        }
+      case Deff(UnrolledReduce(_,_,_,_,counts,vs,_,_)) => 
+        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) => 
+          layer.zip(count).map { case (v, c) => 
+            emit(s"DFEVar ${quote(v)} = ${quote(c)} < ${quote(sym)}_max[${i}];")
+          }
+        }
+      case _ => 
+    }
+
     emitComment("} CustomCounterChain")
 
   }

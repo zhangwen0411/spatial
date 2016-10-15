@@ -10,9 +10,9 @@ trait MatMult_innerApp extends SpatialApp {
   val tileSizeM = 4
   val tileSizeN = 96
   val tileSizeP = 96
-  val innerPar = 1
+  val innerPar = 2
   val midPar = 1
-  val outerPar = 1
+  val outerPar = 2
   val storePar = 1
 
   def MatMult_inner(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
@@ -30,9 +30,9 @@ trait MatMult_innerApp extends SpatialApp {
     val bm = tileSizeM (1 -> 1536)
     val bn = tileSizeN (96 -> 96 -> 1536)
     val bp = tileSizeP (96 -> 96 -> 1536)
-    val op = 2 (1 -> 6)
+    val op = 1 (1 -> 6)
     val mp = 1 (1 -> 96)
-    val ip = 2 (1 -> 96)
+    val ip = 1 (1 -> 96)
     val upMidPar = 1 (1 -> 1)
     val stPar    = 1 (1 -> 1)
 

@@ -11,12 +11,14 @@ trait LogRegApp extends SpatialApp {
   val tileSizeH = 192
   val innerParH = 4
   val outerParH = 2
+  val margin = 1
 
   val A = 1
 
   def sigmoid(t:Rep[Elem]) = 1.as[Elem]/(exp(-t)+1)
 
-  def logreg(x_in: Rep[Array[Elem]], y_in: Rep[Array[Elem]], tt: Rep[Array[Elem]]) {
+  def logreg(x_in: Rep[Array[Elem]], y_in: Rep[Array[Elem]], tt: Rep[Array[Elem]]) = {
+
     val D = 384
 
     val n = y_in.length; bound(n) = 9600
@@ -49,7 +51,7 @@ trait LogRegApp extends SpatialApp {
         val yB = SRAM[Elem](BN)
         Parallel {
           xB := x(i::i+BN, 0::D par P2)
-          yB := y(i::i+BN, P2)
+          yB := y(i::i+BN par P2)
         }
         val gradient = SRAM[Elem](D)
         Fold(BN par P3, P2)(gradient, 0.as[T]){ ii =>
@@ -70,6 +72,12 @@ trait LogRegApp extends SpatialApp {
     getMem(theta)
   }
 
+  def printArr(a: Rep[Array[Elem]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
   def main() {
     val N = args(0).to[SInt]
     val D = 384
@@ -80,8 +88,19 @@ trait LogRegApp extends SpatialApp {
 
     val result = logreg(sX.flatten,sY, theta)
 
-    // println("x: " + sX.mkString(", "))
-    // println("y: " + sY.mkString(", "))
+    val gold = Array.empty[Elem](D)
+    val ids = Array.tabulate(D){i => i}
+    val all_accums = sX.zip(sY) {case (row, y) => 
+      val sub = y - sigmoid(row.zip(theta){_*_}.reduce{_+_})
+      row.map{a => a - sub}
+    }
+    all_accums.map{ a => a.zip(ids) { case (u,i) => gold(i) = gold(i) + u}}
+
+    printArr(gold, "gold: ")
+    printArr(result, "result: ")
+
+    val cksum = gold.zip(result){ case (a,b) => a < b + margin && a > b - margin }.reduce{_&&_}
+    println("PASS: " + cksum  + " (LogReg)")
 
 
 
