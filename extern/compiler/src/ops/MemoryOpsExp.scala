@@ -462,7 +462,6 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           val dummyDonePorts = fullPorts -- wPorts -- rPorts
           readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl",s"read")}
           writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
-          Console.println(s" port info for ${quoteDuplicate(mem,i)} is ${dummyDonePorts} and ${orphanedSiblings}")
           dummyDonePorts.toList.zip(orphanedSiblings.toList.take(dummyDonePorts.toList.length)).foreach{case (ports, node) => 
             emit(s"""${quoteDuplicate(mem,i)}.connectStageCtrl(${quote(node)}_done, ${quote(node)}_en, new int[] {$ports}); /*orphan*/""")
           }
@@ -853,8 +852,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
     case Reg_new(init) =>
       val tp = sym.tp.typeArguments(0)
-      Console.println(s"$sym = reg_new")
-      Console.println(s"tp = $tp [${isTup2(tp)}]")
 
       // TODO: This is known to have a def, so it shouldn't be necessary to use EatAlias here
       // sym.tp.typeArguments.head.erasure match {
@@ -999,7 +996,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
       assert(writersOf(reg).nonEmpty, s"Register ${quote(reg)} is not written by a controller")
 
-      Console.println(s"Checking writers of $reg (" + writersOf(reg).mkString(", ") + s") for $sym")
       val writer = writersOf(reg).find(_.node == sym).get
 
       val writeCtrl = writersOf(reg).head.controlNode  // Regs have unique writer which also drives reset

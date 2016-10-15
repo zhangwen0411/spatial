@@ -51,7 +51,7 @@ trait LogRegApp extends SpatialApp {
         val yB = SRAM[Elem](BN)
         Parallel {
           xB := x(i::i+BN, 0::D par P2)
-          yB := y(i::i+BN, P2)
+          yB := y(i::i+BN par P2)
         }
         val gradient = SRAM[Elem](D)
         Fold(BN par P3, P2)(gradient, 0.as[T]){ ii =>

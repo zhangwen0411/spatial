@@ -300,7 +300,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
                     focusExactScope(func){ stms =>
                       stms.foreach { case TP(s,d) =>
                         val Deff(dd) = s
-                        Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
+                        // Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
                         dd match {
                           case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
                             if (isReduceResult(s)) {
@@ -417,7 +417,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
               focusExactScope(func){ stms =>
                 stms.foreach { case TP(s,d) =>
                   val Deff(dd) = s
-                  Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
+                  // Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
                   dd match {
                     case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
                       if (isReduceResult(s)) {
