@@ -175,10 +175,11 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:Sram_new[_])      => true
     case EatReflect(_:Fifo_new[_])      => true
     case EatReflect(_:Cam_new[_,_])     => true
-    case EatReflect(_:Dram_new[_])   => true
+    case EatReflect(_:Dram_new[_])      => true
     case EatReflect(_:Counter_new)      => true
     case EatReflect(_:Counterchain_new) => true
     case EatReflect(_:DeliteStruct[_])  => true
+    case EatReflect(_:ListVector[_])    => true
     case _ => false
   }
 
@@ -188,6 +189,7 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:Counter_new)      => true
     case EatReflect(_:Counterchain_new) => true
     case EatReflect(_:DeliteStruct[_])  => true
+    case EatReflect(_:ListVector[_])    => true
     case _ => false
   }
 
