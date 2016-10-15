@@ -30,7 +30,7 @@ trait BFSApp extends SpatialApp {
   type T = Flt
   type Array[T] = ForgeArray[T]
 
-  val tileSize = 192
+  val tileSize = 96
   val edges_per_node = 6 // Will make this random later
 
 
@@ -50,16 +50,33 @@ trait BFSApp extends SpatialApp {
 
     Accel {
       val frontierNodes = SRAM[SInt](tileSize)
-      // val frontierCounts = SRAM[SInt](tileSize)
-      // val frontierIds = SRAM[SInt](tileSize)
+      val frontierCounts = SRAM[SInt](tileSize)
+      val frontierIds = SRAM[SInt](tileSize)
+      val currentNodes = SRAM[SInt](tileSize)
       val frontierLevels = SRAM[SInt](tileSize)
-      // frontierCounts := OCcounts(0::1)
-      // frontierIds := OCids(0::1)
-      // val id = frontierIds(0)
-      // val count = frontierCounts(0)
-      frontierNodes := OCedges(0::tileSize)
-      Pipe(edges_per_node by 1) { i => frontierLevels(i) = 1 }
-      OCresult(frontierNodes, edges_per_node) := frontierLevels
+      val pieceMem = SRAM[SInt](tileSize)
+      val concatReg = Reg[SInt](0)
+      Parallel {
+        Pipe{frontierIds := OCids(0::tileSize)}
+        Pipe{frontierCounts := OCcounts(0::tileSize)}
+      }
+
+      val numEdges = Reg[SInt](1)
+      Sequential(1 by 1) { i =>
+        Fold(numEdges.value by 1)(concatReg, 0.as[SInt]) { k => 
+          val nextLen = Reg[SInt]
+          val fetch = currentNodes(k)
+          val nextId = frontierIds(fetch)
+          nextLen := frontierCounts(fetch)
+          pieceMem := OCedges(nextId :: nextId + nextLen.value)
+          Sequential(nextLen by 1) { kk => frontierNodes(kk + concatReg.value) = pieceMem(kk)}
+          nextLen
+        }{_+_}
+        Pipe{numEdges.value by 1} { kk => currentNodes(kk) = frontierNodes(kk)}
+        Sequential(concatReg.value by 1) { k => frontierLevels(k) = i+1 }
+        OCresult(currentNodes, concatReg.value) := frontierLevels
+        numEdges := concatReg.value
+      }
       // Sequential(count by 1) { i => 
     }
     getMem(OCresult)
@@ -72,20 +89,21 @@ trait BFSApp extends SpatialApp {
   }
 
   def main() {
-    val layers = 5
-    val nodes = (scala.math.pow(edges_per_node, layers) - 1).toInt
+    // val layers = 5
+    // val nodes = (scala.math.pow(edges_per_node, layers) - 1).toInt
+    val nodes = 96
 
     val OCnodes = Array.tabulate(nodes) {i => 0}
     val OCedges = Array.tabulate(nodes*edges_per_node){i => i+1}
     val OCcounts = Array.tabulate(nodes) { i => edges_per_node }
     val OCids = Array.tabulate(nodes) { i => i*edges_per_node }
-    val gold = Array.empty[SInt](layers)
-    (0 until nodes) foreach { i => 
-      gold(i) = Array.tabulate(i) { j => i}.reduce{_*_}}
+    // val gold = Array.empty[SInt](layers)
+    // (0 until nodes) foreach { i => 
+    //   gold(i) = Array.tabulate(i) { j => i}.reduce{_*_}}
     val result = bfs(OCnodes, OCedges, OCcounts, OCids, nodes, nodes*edges_per_node)
     // println("expected: " + gold.mkString(","))
 
-    printArr(gold, "result: ")
+    printArr(result, "result: ")
 
   }
 }
