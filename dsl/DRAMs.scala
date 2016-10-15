@@ -212,9 +212,11 @@ trait DRAMs {
         }
       }
       else {
-        def memAddr = () => calcAddress(offsets, dimsOf(mem))
-        if ($store) storeBurst(memAddr, {i => List(i) })
-        else         loadBurst(memAddr, {i => List(i)})
+        Pipe {
+          def memAddr = () => calcAddress(offsets, dimsOf(mem))
+          if ($store) storeBurst(memAddr, {i => List(i) })
+          else         loadBurst(memAddr, {i => List(i)})
+        }
       }
     }
   }

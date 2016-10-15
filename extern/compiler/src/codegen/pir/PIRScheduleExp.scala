@@ -110,6 +110,7 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   case object FixSub extends PIROp
   case object FixMul extends PIROp
   case object FixDiv extends PIROp
+  case object FixMod extends PIROp
   case object FixLt  extends PIROp
   case object FixLeq extends PIROp
   case object FixEql extends PIROp
@@ -134,6 +135,43 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
 
   case object BitAnd extends PIROp
   case object BitOr  extends PIROp
+
+  def nodeToOp(node: Def[Any]): Option[PIROp] = node match {
+    case Mux2(_,_,_)    => Some(ALUMux)
+    case FixPt_Add(_,_) => Some(FixAdd)
+    case FixPt_Sub(_,_) => Some(FixSub)
+    case FixPt_Mul(_,_) => Some(FixMul)
+    case FixPt_Div(_,_) => Some(FixDiv)
+    case FixPt_Mod(_,_) => Some(FixMod)
+    case FixPt_Lt(_,_)  => Some(FixLt)
+    case FixPt_Leq(_,_) => Some(FixLeq)
+    case FixPt_Eql(_,_) => Some(FixEql)
+    case FixPt_Neq(_,_) => Some(FixNeq)
+    case e: Min2[_] if isFixPtType(e.mT) => Some(FltMin)
+    case e: Max2[_] if isFixPtType(e.mT) => Some(FltMax)
+
+    // Float ops currently assumed to be single op
+    case FltPt_Add(_,_) => Some(FltAdd)
+    case FltPt_Sub(_,_) => Some(FltSub)
+    case FltPt_Mul(_,_) => Some(FltMul)
+    case FltPt_Div(_,_) => Some(FltDiv)
+    case FltPt_Lt(_,_)  => Some(FltLt)
+    case FltPt_Leq(_,_) => Some(FltLeq)
+    case FltPt_Eql(_,_) => Some(FltEql)
+    case FltPt_Neq(_,_) => Some(FltNeq)
+
+    case FltPt_Abs(_)   => Some(FltAbs)
+    case FltPt_Exp(_)   => Some(FltExp)
+    case FltPt_Log(_)   => Some(FltLog)
+    case FltPt_Sqrt(_)  => Some(FltSqrt)
+    case e: Min2[_] if isFltPtType(e.mT) => Some(FltMin)
+    case e: Max2[_] if isFltPtType(e.mT) => Some(FltMax)
+
+    case Bit_And(_,_)   => Some(BitAnd)
+    case Bit_Or(_,_)    => Some(BitOr)
+    case _ => None
+  }
+
 
   // --- Stages prior to scheduling
   sealed abstract class PseudoStage { def output: Option[Exp[Any]] }
@@ -222,6 +260,8 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
     var writeStages = HashMap[List[CUMemory], ArrayBuffer[Stage]]()
     var stages: ArrayBuffer[Stage] = ArrayBuffer.empty
     var controlStages: ArrayBuffer[Stage] = ArrayBuffer.empty
+
+    def allStages = (writeStages.values.flatten ++ stages).toList
 
     def dumpString = s"""  cchains = ${cchains.mkString(", ")}
   regs    = ${regs.mkString(", ")}

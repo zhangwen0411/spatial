@@ -122,6 +122,10 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
       if (add) addReg(e, out)
       else cu.regs += out // No mapping, only list
     }
+    def isUnitCompute = cu match {
+      case x:BasicComputeUnit => x.isUnitCompute
+      case _ => false
+    }
   }
 
   case class ComputeContext(override val cu: ComputeUnit) extends CUContext(cu) {
