@@ -268,9 +268,9 @@ trait FifoLoadStoreApp extends SpatialApp {
           f1 := srcFPGA(0::tileSize)
           dstFPGA(0::tileSize) := f1
         }
-        Pipe(tileSize by 1) { i =>
-          dummyOut := i
-        }
+        // Pipe(tileSize by 1) { i => // This pipe forces the loadstore to run for enough iters
+        //   dummyOut := i
+        // }
       }
       ()
     }

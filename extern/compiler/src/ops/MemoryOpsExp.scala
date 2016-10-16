@@ -1051,10 +1051,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     case FixPtSum =>
                       emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
                       emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
-                      emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)", ${quote(reg)}, ${quote(value)});""")
+                      emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
                     case FltPtSum =>
                       emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
-                      emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)", ${quote(reg)}, ${quote(value)});""")
+                      emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
                     case _ =>
                       // TODO: This is very bad assumption!  Actually check which reg to write to!!! 
                       emit(s"""DFEVar ${quote(reg)} = ${quote(value)}; // redtype ${fps} unknown, just assign wire""")
@@ -1066,14 +1066,20 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   // TODO: Assume duplicate 0 is used for reduction, all others need writes
                   dups.foreach { case (dup, ii) => 
                     val port = portsOf(writer, reg, ii).head 
-                    if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(stream.offset(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset /*offset makes BFS work*/),
- $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                    writeCtrl match { // Match is necessary for DotProduct because damn thing hangs at compile time if I offset enable and data together
+                      case pp@Deff(_:UnitPipe) =>
+                        if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
+     stream.offset($enable, -${quote(writeCtrl)}_offset) /*makes BFS work*/, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                      case _ =>
+                        if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(stream.offset(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset /*offset makes BFS work*/),
+     $enable /*makes BFS work*/, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                    }
                   }
                   case None =>
                     dups.foreach { case (dup, ii) => 
                       val port = portsOf(writer, reg, ii).head 
                       emit(s"""${quote(reg)}_${ii}_lib.write(stream.offset(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset /*offset makes BFS work*/), 
- $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+ stream.offset($enable, -${quote(writeCtrl)}_offset) /*makes BFS work*/, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
                     }
                     // throw new Exception(s"No reduce function found for $reg ${reduceType(reg)}")
                 }
