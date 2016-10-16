@@ -187,6 +187,7 @@ trait DRAMs {
         bound(len) match { // TODO: Why doesn't this match....
           case Some(_: Double) =>
             if (bound(len).get % (384*8/nbits(manifest[T])) == 0) {
+              val maddr = memAddr()
               burst_load(mem, fifo, maddr, len, p)
 
               Pipe(len par p){i =>
