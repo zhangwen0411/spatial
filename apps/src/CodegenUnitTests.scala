@@ -1061,7 +1061,7 @@ trait ChangingCtrMaxApp extends SpatialApp {
   }
 }
 
-object FifoPushPop extends SpatialAppCompiler with FifoPushPopApp // Args: none
+object FifoPushPop extends SpatialAppCompiler with FifoPushPopApp // Args: 384
 trait FifoPushPopApp extends SpatialApp {
   type T = SInt
 
