@@ -96,7 +96,7 @@ trait PIRGen extends Traversal with PIRCommon {
     emit("import pir.PIRApp")
     emit("")
     open(s"""object ${app}Design extends PIRApp {""")
-    emit(s"""override val arch = Config0""")
+    emit(s"""override val arch = P2P_4CU_4TT""")
     open(s"""def main(args: String*)(top:Top) = {""")
     //emit(s"""top = Top()""")
   }
