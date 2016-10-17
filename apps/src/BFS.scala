@@ -4,25 +4,25 @@ import spatial.shared._
 
 /*
        frontier     ids                  counts           edges
-  (ids of nodes   (index in "edges"   (number of edges   (list of                           
-  on next layer)   where this node's   for this node)     edges)                        
-                   cxns starts)                                                                                                                                   
-         _            _                   _                _                                                                
-        | |          | |                 | |              | |                                                                   
-        | |          | |                 | |              | |                                                                   
-        | |          | |                 | |              | |                                                                   
-        | |          | |                 | |              | |                                                                   
-        | |          | |                 | |              | |                                                                   
-        | |          | |                 | |              | |                                                                   
-        |_|          |_|                 |_|              | |                                                                   
-                                                          | |                                             
-                                                          | |                       
-                                                          | |                       
-                                                          | |                       
-                                                          | |                       
-                                                          | |                       
-                                                          | |                       
-                                                          |_|                       
+  (ids of nodes   (index in "edges"   (number of edges   (list of
+  on next layer)   where this node's   for this node)     edges)
+                   cxns starts)
+         _            _                   _                _
+        | |          | |                 | |              | |
+        | |          | |                 | |              | |
+        | |          | |                 | |              | |
+        | |          | |                 | |              | |
+        | |          | |                 | |              | |
+        | |          | |                 | |              | |
+        |_|          |_|                 |_|              | |
+                                                          | |
+                                                          | |
+                                                          | |
+                                                          | |
+                                                          | |
+                                                          | |
+                                                          | |
+                                                          |_|
 */
 object BFS extends SpatialAppCompiler with BFSApp
 trait BFSApp extends SpatialApp {
@@ -36,11 +36,11 @@ trait BFSApp extends SpatialApp {
 
 
   def bfs(INnodes: Rep[Array[SInt]], INedges: Rep[Array[SInt]], INcounts: Rep[Array[SInt]], INids: Rep[Array[SInt]], n: Rep[SInt], e: Rep[SInt]) = {
-    
+
     val OCnodes = DRAM[SInt](n)
-    val OCedges = DRAM[SInt](e) 
-    val OCcounts = DRAM[SInt](n) 
-    val OCids = DRAM[SInt](n) 
+    val OCedges = DRAM[SInt](e)
+    val OCcounts = DRAM[SInt](n)
+    val OCids = DRAM[SInt](n)
     val OCresult = DRAM[SInt](n)
 
     setMem(OCnodes, INnodes)
@@ -49,12 +49,12 @@ trait BFSApp extends SpatialApp {
     setMem(OCids, INids)
 
     Accel {
-      // val frontierNodes = SRAM[SInt](tileSize)
+      val frontierNodes = SRAM[SInt](tileSize)
       val frontierCounts = SRAM[SInt](tileSize)
       val frontierIds = SRAM[SInt](tileSize)
       val currentNodes = SRAM[SInt](tileSize)
       val frontierLevels = SRAM[SInt](tileSize)
-      // val pieceMem = SRAM[SInt](tileSize)
+      val pieceMem = SRAM[SInt](tileSize)
       val concatReg = Reg[SInt](0)
       Parallel {
         Pipe{frontierIds := OCids(0::tileSize)}
@@ -63,14 +63,14 @@ trait BFSApp extends SpatialApp {
 
       val numEdges = Reg[SInt](1)
       Sequential(2 by 1) { i =>
-        Fold(numEdges.value by 1)(concatReg, 0.as[SInt]) { k => 
+        Fold(numEdges.value by 1)(concatReg, 0.as[SInt]) { k =>
           val nextLen = Reg[SInt]
           val nextId = Reg[SInt]
           val fetch = currentNodes(k)
           Pipe{nextId := frontierIds(fetch)}
           Pipe{nextLen := frontierCounts(fetch)}
-        //   Pipe{pieceMem := OCedges(nextId :: nextId + nextLen.value)}
-        //   Sequential(nextLen.value by 1) { kk => frontierNodes(kk + concatReg.value) = pieceMem(kk)}
+          Pipe{pieceMem := OCedges(nextId :: nextId + nextLen.value)}
+          Sequential(nextLen.value by 1) { kk => frontierNodes(kk + concatReg.value) = pieceMem(kk)}
           nextLen
         }{_+_}
         Pipe{numEdges.value by 1} { kk => currentNodes(kk) = (kk)}
@@ -78,7 +78,7 @@ trait BFSApp extends SpatialApp {
         OCresult(currentNodes, concatReg.value) := frontierLevels
         Pipe{numEdges := concatReg.value}
       }
-      // Sequential(count by 1) { i => 
+      // Sequential(count by 1) { i =>
     }
     getMem(OCresult)
   }
@@ -99,7 +99,7 @@ trait BFSApp extends SpatialApp {
     val OCcounts = Array.tabulate(nodes) { i => edges_per_node }
     val OCids = Array.tabulate(nodes) { i => i*edges_per_node }
     // val gold = Array.empty[SInt](layers)
-    // (0 until nodes) foreach { i => 
+    // (0 until nodes) foreach { i =>
     //   gold(i) = Array.tabulate(i) { j => i}.reduce{_*_}}
     val result = bfs(OCnodes, OCedges, OCcounts, OCids, nodes, nodes*edges_per_node)
     // println("expected: " + gold.mkString(","))

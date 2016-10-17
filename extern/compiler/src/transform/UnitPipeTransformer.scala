@@ -75,7 +75,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
   }).asInstanceOf[Exp[T]]
 
   private def zero[T:Manifest](e: Exp[T])(implicit ctx: SourceContext): Exp[T] = (e match {
-    case Deff(ListVector(elems)) => vectorize(elems.map{x => zero(x)})(elems.head.tp, ctx)
+    case Deff(ListVector(elems)) => vectorize(elems.map{x => zero(x)(x.tp,ctx) })(elems.head.tp, ctx)
     case _ => zero(manifest[T])
   }).asInstanceOf[Exp[T]]
 
