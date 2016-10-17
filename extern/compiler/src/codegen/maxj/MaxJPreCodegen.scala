@@ -458,6 +458,7 @@ trait MaxJPreCodegen extends Traversal  {
       case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
       case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case ListVector(elems) => elems.map{ e => {if (isConstOrArgOrBnd(e)) {ret += e}}}
       case FieldApply(a,b) => {if (isConstOrArgOrBnd(a)) {ret +=a}}
       case Internal_pack2(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case _ =>
@@ -523,7 +524,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
             stms.zipWithIndex.map { case (TP(s,d), ii) =>
               val Deff(dd) = s
               consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-              // Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+              Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
               dd match {
                 case Reg_read(_) =>
                   first_reg_read = first_reg_read :+ ii
@@ -685,7 +686,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym; inputVecs += s }
                   if (isVector(elems(0).tp)) {
                     val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
-                    val allcxns = (0 until elems.size).map{ i => s"""${quote(s)}[$i] <== ${quote(elems(i))};"""}
+                    val allcxns = (0 until elems.size).map{ i => s"""${quote(s)}[$i] <== ${quote(elems(i))}[$i];"""}
                     allcxns.mkString(" ")
                   } else {
                     val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])        

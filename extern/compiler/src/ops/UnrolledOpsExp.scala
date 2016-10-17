@@ -233,6 +233,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
       case Bit_Xor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
+      case ListVector(elems) => elems.map{ e => {if (isConstOrArgOrBnd(e)) {ret += e}}}
       case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case _ =>
     }
@@ -300,7 +301,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
                     focusExactScope(func){ stms =>
                       stms.foreach { case TP(s,d) =>
                         val Deff(dd) = s
-                        // Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
+                        Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
                         dd match {
                           case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
                             if (isReduceResult(s)) {
@@ -317,6 +318,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
                             }
                             inputVecs += s
                           case input @ ( _:ListVector[_]) => 
+                            consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
                             if (first_reg_read.length > 1) { inputVecs += s }
                           case input @ (_:Reg_read[_]) =>
                             first_reg_read = first_reg_read :+ 0
@@ -434,6 +436,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
                       }
                       inputVecs += s
                     case input @ ( _:ListVector[_]) => 
+                      consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
                       if (first_reg_read.length > 1) { inputVecs += s }
                     case input @ (_:Reg_read[_]) =>
                       first_reg_read = first_reg_read :+ 0

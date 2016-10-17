@@ -897,7 +897,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 }
               case _ => false
             }
-            Console.println(s"register ${sym}_$i is kernreg ${skipKerneledReg}")
             regType(sym) match {
               case Regular =>
                 if (!skipKerneledReg | (skipKerneledReg & d.depth>1)) {
@@ -1068,7 +1067,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     val port = portsOf(writer, reg, ii).head 
                     writeCtrl match { // Match is necessary for DotProduct because damn thing hangs at compile time if I offset enable and data together
                       case pp@Deff(_:UnitPipe) =>
-                        if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
+                        if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(stream.offset(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset),
      stream.offset($enable, -${quote(writeCtrl)}_offset) /*makes BFS work*/, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
                       case _ =>
                         if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(stream.offset(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset /*offset makes BFS work*/),
