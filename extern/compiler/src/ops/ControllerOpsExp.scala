@@ -296,6 +296,15 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
     }
   }
 
+  var bd = ""
+
+  def newStream(fileName:String):PrintWriter = {
+    val path = bd + java.io.File.separator + fileName + ".maxj"
+    Console.println(s"[StreamWriter] Making newstream $path")
+    val pw = new PrintWriter(path)
+    pw
+  }
+
   def addConstOrArgOrBnd(x: Exp[Any], set: Set[Exp[Any]]) = {
     var ret = Set[Exp[Any]]()
     val Deff(dd) = x
@@ -322,10 +331,20 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
       case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
       case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case _ =>
+      case ListVector(elems) => elems.map{ e => {if (isConstOrArgOrBnd(e)) {ret += e}}}
+      case FieldApply(a,b) => {if (isConstOrArgOrBnd(a)) {ret +=a}}
+      case Internal_pack2(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case Par_sram_load(EatAlias(sram), addr) => {if (isConstOrArgOrBnd(sram)) {ret += sram}; if (isConstOrArgOrBnd(addr)) {ret += addr}}
+      case Par_pop_fifo(fifo,en) => {if (isConstOrArgOrBnd(fifo)) {ret += fifo}; if (isConstOrArgOrBnd(en)) {ret += en}} 
+      case Pop_fifo(fifo,en) => {if (isConstOrArgOrBnd(fifo)) {ret += fifo}; if (isConstOrArgOrBnd(en)) {ret += en}} 
+      case Reg_read(EatAlias(reg)) => {if (isConstOrArgOrBnd(reg)) {ret += reg} }
+      case Vec_apply(vec,idx) => {if (isConstOrArgOrBnd(vec)) {ret += vec}; if (isConstOrArgOrBnd(idx)) {ret += idx}} 
+      case _ => throw new Exception(s"No match for $x $dd in reduce kernel")
     }
     set ++ ret
   }
+
+
   // HACK alert [TODO Raghu] : This code is duplicated in MaxJManagerGen so that argin and argout
   // have a consistent name. Code is duplicated because MaxJManagerGen is currently
   // a standalone thing that does not have a means to share things.
@@ -388,6 +407,8 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
   val doneDeclaredSet = Set.empty[Exp[Any]]
 
   override def initializeGenerator(buildDir:String): Unit = {
+    bd = buildDir
+    // Console.println(s"[Initialize] Setting buildDir to $bd")
 		enDeclaredSet.clear
 		doneDeclaredSet.clear
 		super.initializeGenerator(buildDir)
@@ -605,48 +626,30 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
           }
           if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
             styleOf(sym) match { // TODO: Do we even ever touch
-              case InnerPipe =>
-                // Putting reduction tree in its own kernel
-                var inputVecs = Set[Sym[Any]]()
-                var consts_args_bnds_list = Set[Exp[Any]]()
-                var treeResult = ""
-                var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
-                focusBlock(func){ // Send reduce tree to separate file
-                  focusExactScope(func){ stms =>
-                    stms.foreach { case TP(s,d) =>
-                      val Deff(dd) = s
-                      dd match {
-                        case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                          if (isReduceResult(s)) {
-                            val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                            emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
-                            treeResult = quote(s)
-                          }
-                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-                          inputVecs += s
-                        case input @ (_:Par_sram_load[_]) => 
-                          first_reg_read = first_reg_read :+ 0
-                          inputVecs += s
-                        case input @ ( _:ListVector[_]) => 
-                          if (first_reg_read.length > 1) { inputVecs += s }
-                        case input @ (_:Reg_read[_]) =>
-                          first_reg_read = first_reg_read :+ 0
-                        case _ =>
-                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                      }
-                    }
-                  }
-                }
+              // case InnerPipe =>
+              //   // Putting reduction tree in its own kernel
+              //   var consts_args_bnds_set = Set[Exp[Any]]()
+              //   // First pass, collect input args
+              //   focusBlock(func){ // Send reduce tree to separate file
+              //     focusExactScope(func){ stms =>
+              //       stms.zipWithIndex.map { case (TP(s,d), ii) =>
+              //         val Deff(dd) = s
+              //         consts_args_bnds_set = addConstOrArgOrBnd(s, consts_args_bnds_set)
+              //         Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+              //         // emitNode(s, dd)
+              //       }
+              //     }
+              //   }
 
-                emitBlock(func, s"${quote(sym)} Unitpipe", true /*do not close*/)
-                val inputVecsStr = inputVecs.map {a => quote(a)}.toList.sortWith(_ < _).mkString(",")
-                val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-                val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-                val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
-                emit(s"}")
+              //   val sortedInputArgs = consts_args_bnds_set.toList.map(quote(_)).sortWith(_ < _)
+
+              //   withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+              //     emitReduction(sym, rhs, sortedInputArgs)
+              //   }                
+
+              //   emitBlock(func, s"${quote(sym)} Unitpipe", true /*do not close*/)
+              //   emit(s"THIS KIND OF REDUCE KERNEL NOT SUPPORTED YET! new ${quote(sym)}_reduce_kernel(owner $sortedInputArgs); // Reduce kernel")
+              //   emit(s"}")
               case _ =>
                 emitBlock(func, s"${quote(sym)} Unitpipe")
             }

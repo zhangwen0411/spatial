@@ -195,6 +195,9 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
     case s@Sym(n) => {
       s match {
         case Deff(ConstFixPt(_,_,_,_)) => true
+        case Deff(Sram_new(_,_)) => true
+        case Deff(Fifo_new(_,_)) => true
+        case Deff(Reg_new(_)) => true
         case Deff(ConstFltPt(_,_,_)) => true
         case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
           xx match {
@@ -233,11 +236,91 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
       case Bit_Xor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
-      case ListVector(elems) => elems.map{ e => {if (isConstOrArgOrBnd(e)) {ret += e}}}
       case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case _ =>
+      case ListVector(elems) => elems.map{ e => {if (isConstOrArgOrBnd(e)) {ret += e}}}
+      case FieldApply(a,b) => {if (isConstOrArgOrBnd(a)) {ret +=a}}
+      case Internal_pack2(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case Par_sram_load(EatAlias(sram), addr) => {if (isConstOrArgOrBnd(sram)) {ret += sram}; if (isConstOrArgOrBnd(addr)) {ret += addr}}
+      case Par_pop_fifo(fifo,en) => {if (isConstOrArgOrBnd(fifo)) {ret += fifo}; if (isConstOrArgOrBnd(en)) {ret += en}} 
+      case Pop_fifo(fifo,en) => {if (isConstOrArgOrBnd(fifo)) {ret += fifo}; if (isConstOrArgOrBnd(en)) {ret += en}} 
+      case Reg_read(EatAlias(reg)) => {if (isConstOrArgOrBnd(reg)) {ret += reg} }
+      case Vec_apply(vec,idx) => {if (isConstOrArgOrBnd(vec)) {ret += vec}; if (isConstOrArgOrBnd(idx)) {ret += idx}} 
+      case Par_sram_store(EatAlias(sram), addr, value, ens) => {
+        if (isConstOrArgOrBnd(sram)) {ret += sram}
+        if (isConstOrArgOrBnd(addr)) {ret += addr}
+        if (isConstOrArgOrBnd(value)) {ret += value}
+        if (isConstOrArgOrBnd(ens)) {ret += ens}
+      }
+      case Sram_store(EatAlias(sram), addr, value, ens) => {
+        if (isConstOrArgOrBnd(sram)) {ret += sram}
+        if (isConstOrArgOrBnd(addr)) {ret += addr}
+        if (isConstOrArgOrBnd(value)) {ret += value}
+        if (isConstOrArgOrBnd(ens)) {ret += ens}
+      }
+      case Reify(_,_,_) => 
+      case _ => throw new Exception(s"No match for $x $dd in reduce kernel")
     }
     set ++ ret
+  }
+
+  def emitPreReduction(sym: Sym[Any], rhs: Def[Any], inputArgs: List[String], inputTypes: List[String]) {
+      emit(s"""package engine;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.CounterChain;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.WrapMode;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Params;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.memory.Memory;
+import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+import com.maxeler.maxcompiler.v2.utils.MathUtils;
+import com.maxeler.maxcompiler.v2.utils.Bits;
+import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.KernelMath;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Stream.OffsetExpr;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Reductions;
+import com.maxeler.maxcompiler.v2.kernelcompiler.SMIO;
+import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Accumulator;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVector;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
+import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
+import java.util.Arrays;
+class ${quote(sym)}_reduce_kernel extends KernelLib {""")
+    // rhs match {
+    //   case _:UnrolledReduce[_,_] | _:UnrolledForeach | _:UnitPipe =>
+      val func = rhs match {
+        case e:UnrolledReduce[_,_] => e.func
+        case e:UnrolledForeach     => e.func
+        case UnitPipe(func) => func
+      }
+
+      val inputArgsWithPrefix = inputArgs.zip(inputTypes).map{case (a:String,b:String) => b + " " + a}.mkString(",")
+      emit(s"""void common(OffsetExpr ${quote(sym)}_offset, 
+  DFEVar ${quote(sym)}_done, DFEVar ${quote(sym)}_datapath_en, DFEVar ${quote(sym)}_redLoop_done,
+  $inputArgsWithPrefix) {
+      """)
+    
+  }
+
+  def emitPostReduction(sym: Sym[Any], rhs: Def[Any], inputArgs: List[String], inputTypes: List[String]) {
+    val inputArgsWithPrefix = inputArgs.zip(inputTypes).map{case (a:String,b:String) => b + " " + a}.mkString(",")
+    emit(s"""
+}
+
+${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, 
+  DFEVar ${quote(sym)}_done, DFEVar ${quote(sym)}_datapath_en, DFEVar ${quote(sym)}_redLoop_done,
+  ${inputArgsWithPrefix}) {
+  super(owner);
+  common(${quote(sym)}_offset, 
+  ${quote(sym)}_done, ${quote(sym)}_datapath_en, ${quote(sym)}_redLoop_done,
+  ${inputArgs.mkString(",")});
+}
+}""")
+
+    
   }
 
 
@@ -292,53 +375,58 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
             styleOf(sym) match {
               case InnerPipe =>
                 if (isKerneledRed) {
-                  // Putting reduction tree in its own kernel
-                  var inputVecs = Set[Sym[Any]]()
-                  var consts_args_bnds_list = Set[Exp[Any]]()
-                  var treeResultSyms = Set[Sym[Any]]()
-                  var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
-                  focusBlock(func){ 
+                  var consts_args_bnds_set = Set[Exp[Any]]()
+                  // First pass, collect input args
+                  focusBlock(func){ // Send reduce tree to separate file
                     focusExactScope(func){ stms =>
-                      stms.foreach { case TP(s,d) =>
+                      stms.zipWithIndex.map { case (TP(s,d), ii) =>
                         val Deff(dd) = s
-                        Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
-                        dd match {
-                          case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                            if (isReduceResult(s)) {
-                              val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                              emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
-                              treeResultSyms += s
-                            }
-                            consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                          case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-                            inputVecs += s
-                          case input @ (_:Par_sram_load[_]) => 
-                            if (true) { // Assume there is no reg_write in UnrolledForeach stage, so use par_sram_load
-                              first_reg_read = first_reg_read :+ 0
-                            }
-                            inputVecs += s
-                          case input @ ( _:ListVector[_]) => 
-                            consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                            if (first_reg_read.length > 1) { inputVecs += s }
-                          case input @ (_:Reg_read[_]) =>
-                            first_reg_read = first_reg_read :+ 0
-                          case _ =>
-                            consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        }
+                        consts_args_bnds_set = addConstOrArgOrBnd(s, consts_args_bnds_set)
+                        Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+                        isReduceResult(s) = false // No specialized accum for unrolledForeach
                       }
                     }
                   }
 
-                  insideReduceKernel = true
-                  emitBlock(func)
-                  insideReduceKernel = false
-                  val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
-                  val inputVecsStr = inputVecs.map {a => quote(a)}.toList.sortWith(_ < _).mkString(",")
-                  val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-                  val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                  val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-                  val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                  emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+                  val inputArgs = consts_args_bnds_set.toList.map{ a => 
+                    a match {
+                      case Deff(Sram_new(_,_)) => 
+                        val dups = duplicatesOf(a)
+                        dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
+                      case Deff(Reg_new(_)) => 
+                        val dups = duplicatesOf(a)
+                        dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
+                      case _ => List(quote(a))
+                    }
+                  }.flatten
+                  val inputTypes = consts_args_bnds_set.toList.map{ a => 
+                    a match {
+                      case Deff(Sram_new(_,_)) => 
+                        val dups = duplicatesOf(a)
+                        dups.zipWithIndex.map { case (r, i) => 
+                          if (r.depth == 1) "BramLib" else "NBufKernelLib"
+                        }.toList
+                      case Deff(Reg_new(_)) => 
+                        val dups = duplicatesOf(a)
+                        dups.zipWithIndex.map { case (r, i) => 
+                          if (r.depth == 1) "DelayLib" else "NBufReg"
+                        }.toList
+                      case Deff(Fifo_new(_,_)) => List("Fifo")
+                      case _ => List(maxJPre(a))
+                    }
+                  }.flatten
+
+                  withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                    emitPreReduction(sym, rhs, inputArgs, inputTypes)
+                    insideReduceKernel = true
+                    emitBlock(func)
+                    insideReduceKernel = false
+                    emitPostReduction(sym, rhs, inputArgs, inputTypes)
+                  }                
+
+                  emit(s"""new ${quote(sym)}_reduce_kernel(owner, ${quote(sym)}_offset, 
+${quote(sym)}_done, ${quote(sym)}_datapath_en, ${quote(sym)}_redLoop_done,
+${inputArgs.mkString(",")}); // Reduce kernel""")
                 } else {
                   emitBlock(func)
                 }
@@ -411,55 +499,61 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
         case InnerPipe =>
           if (isKerneledRed) {
             // Putting reduction tree in its own kernel
-            var inputVecs = Set[Sym[Any]]()
-            var consts_args_bnds_list = Set[Exp[Any]]()
-            var treeResultSyms = Set[Sym[Any]]()
-            var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
-            focusBlock(func){ 
+            var consts_args_bnds_set = Set[Exp[Any]]()
+            // First pass, collect input args
+            focusBlock(func){ // Send reduce tree to separate file
               focusExactScope(func){ stms =>
-                stms.foreach { case TP(s,d) =>
+                stms.zipWithIndex.map { case (TP(s,d), ii) =>
                   val Deff(dd) = s
-                  // Console.println(s" Outside1 reduction ${quote(sym)} unroll ${s} ${dd}")
-                  dd match {
-                    case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                      if (isReduceResult(s)) {
-                        val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                        emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
-                        treeResultSyms += s
-                      }
-                      consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                    case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-                      inputVecs += s
-                    case input @ (_:Par_sram_load[_]) => 
-                      if (false) { // Assume there is no reg_write in UnrolledForeach stage, so use par_sram_load
-                        first_reg_read = first_reg_read :+ 0
-                      }
-                      inputVecs += s
-                    case input @ ( _:ListVector[_]) => 
-                      consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                      if (first_reg_read.length > 1) { inputVecs += s }
-                    case input @ (_:Reg_read[_]) =>
-                      first_reg_read = first_reg_read :+ 0
-                    case _ =>
-                      consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                  }
+                  consts_args_bnds_set = addConstOrArgOrBnd(s, consts_args_bnds_set)
+                  Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+                  // emitNode(s, dd)
                 }
               }
             }
+
+            val inputArgs = consts_args_bnds_set.toList.map{ a => 
+              a match {
+                case Deff(Sram_new(_,_)) => 
+                  val dups = duplicatesOf(a)
+                  dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
+                case Deff(Reg_new(_)) => 
+                  val dups = duplicatesOf(a)
+                  dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
+                case _ => List(quote(a))
+              }
+            }.flatten
+            val inputTypes = consts_args_bnds_set.toList.map{ a => 
+              a match {
+                case Deff(Sram_new(_,_)) => 
+                  val dups = duplicatesOf(a)
+                  dups.zipWithIndex.map { case (r, i) => 
+                    if (r.depth == 1) "BramLib" else "NBufKernelLib"
+                  }.toList
+                case Deff(Reg_new(_)) => 
+                  val dups = duplicatesOf(a)
+                  dups.zipWithIndex.map { case (r, i) => 
+                    if (r.depth == 1) "DelayLib" else "NBufReg"
+                  }.toList
+                case Deff(Fifo_new(_,_)) => List("Fifo")
+                case _ => List(maxJPre(a))
+              }
+            }.flatten
+
             emitRegChains(sym, inds.flatten)
             emitComment(s"""UnrolledReduce ${quote(sym)} func block {""")
-            insideReduceKernel = true
-            emitBlock(func)
-            insideReduceKernel = false
+            withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+              emitPreReduction(sym, rhs, inputArgs, inputTypes)
+              insideReduceKernel = true
+              emitBlock(func)
+              insideReduceKernel = false
+              emitPostReduction(sym, rhs, inputArgs, inputTypes)
+            }                
             emitComment(s"""} ${quote(sym)} func block""")
 
-            val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
-            val inputVecsStr = inputVecs.map {a => quote(a)}.toList.sortWith(_ < _).mkString(",")
-            val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-            val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-            val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-            val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-            emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+            emit(s"""new ${quote(sym)}_reduce_kernel(owner, ${quote(sym)}_offset, 
+${quote(sym)}_done, ${quote(sym)}_datapath_en, ${quote(sym)}_redLoop_done,
+${inputArgs.mkString(",")}); // Reduce kernel""")
           } else {
             emitRegChains(sym, inds.flatten)
             emitComment(s"""ParPipeReduce ${quote(sym)} func block {""")
