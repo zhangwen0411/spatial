@@ -244,7 +244,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
       case Par_pop_fifo(fifo,en) => {if (isConstOrArgOrBnd(fifo)) {ret += fifo}; if (isConstOrArgOrBnd(en)) {ret += en}} 
       case Pop_fifo(fifo,en) => {if (isConstOrArgOrBnd(fifo)) {ret += fifo}; if (isConstOrArgOrBnd(en)) {ret += en}} 
       case Reg_read(EatAlias(reg)) => {if (isConstOrArgOrBnd(reg)) {ret += reg} }
-      case Vec_apply(vec,idx) => {if (isConstOrArgOrBnd(vec)) {ret += vec}; if (isConstOrArgOrBnd(idx)) {ret += idx}} 
+      case Vec_apply(vec,idx) => {if (isConstOrArgOrBnd(vec)) {ret += vec}} 
       case Par_sram_store(EatAlias(sram), addr, value, ens) => {
         if (isConstOrArgOrBnd(sram)) {ret += sram}
         if (isConstOrArgOrBnd(addr)) {ret += addr}
@@ -257,9 +257,18 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
         if (isConstOrArgOrBnd(value)) {ret += value}
         if (isConstOrArgOrBnd(ens)) {ret += ens}
       }
+      case Reg_write(EatAlias(reg), value, en) => {
+        if (isConstOrArgOrBnd(reg)) {ret += reg}
+        if (isConstOrArgOrBnd(value)) {ret += value}
+        if (isConstOrArgOrBnd(en)) {ret += en}        
+      }
       case Reify(_,_,_) => 
+      case ConstBit(a) => // Never add a bool constant
+      // case FixPt(a) => ret += x // Always add constant
+      // case FltPt(a) => ret += x // Always add constant
       case _ => throw new Exception(s"No match for $x $dd in reduce kernel")
     }
+    // Console.println(s" Upon analyzing $x $dd, set $set ++ $ret")
     set ++ ret
   }
 
@@ -519,10 +528,18 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
                   dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
                 case Deff(Reg_new(_)) => 
                   val dups = duplicatesOf(a)
-                  dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
+                  dups.zipWithIndex.map { case (r, i) => (reduceType(a.asInstanceOf[Exp[Any]]), i) match {
+                    case (Some(fps: ReduceFunction), 0) =>
+                      fps match {
+                        case FixPtSum => "na"
+                        case FltPtSum => "na"
+                        case _ => quote(a) + "_" + i + "_lib"
+                      }
+                    case _ => quote(a) + "_" + i + "_lib" 
+                  }}.toList
                 case _ => List(quote(a))
               }
-            }.flatten
+            }.flatten.filterNot{el => el == "na"}
             val inputTypes = consts_args_bnds_set.toList.map{ a => 
               a match {
                 case Deff(Sram_new(_,_)) => 
@@ -532,13 +549,19 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
                   }.toList
                 case Deff(Reg_new(_)) => 
                   val dups = duplicatesOf(a)
-                  dups.zipWithIndex.map { case (r, i) => 
-                    if (r.depth == 1) "DelayLib" else "NBufReg"
-                  }.toList
+                  dups.zipWithIndex.map { case (r, i) => (reduceType(a.asInstanceOf[Exp[Any]]), i) match {
+                    case (Some(fps: ReduceFunction), 0) =>
+                      fps match {
+                        case FixPtSum => "na"
+                        case FltPtSum => "na"
+                        case _ => if (r.depth == 1) "DelayLib" else "NBufReg"
+                      }
+                    case _ => if (r.depth == 1) "DelayLib" else "NBufReg"
+                  }}.toList
                 case Deff(Fifo_new(_,_)) => List("Fifo")
                 case _ => List(maxJPre(a))
               }
-            }.flatten
+            }.flatten.filterNot{el => el == "na"}
 
             emitRegChains(sym, inds.flatten)
             emitComment(s"""UnrolledReduce ${quote(sym)} func block {""")
