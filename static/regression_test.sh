@@ -642,6 +642,8 @@ if [ $commitlines -ge $hist ]; then
 fi
 echo "$stamp- $hash_str / $dhash_str $marker" >> $pretty_file
 
+echo "rm -rf ${TESTS_HOME}" | tee /kunle/users/mattfel/why_didnt_delete
+
 # git push
 cd ${SPATIAL_HOME}/spatial.wiki
 git stash

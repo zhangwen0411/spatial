@@ -256,41 +256,6 @@ trait PIRScheduler extends Traversal with PIRCommon {
     case _ => stageWarn(s"No ALU operation known for $lhs = $rhs")
   }
 
-  def nodeToOp(node: Def[Any]): Option[PIROp] = node match {
-    case Mux2(_,_,_)    => Some(ALUMux)
-    case FixPt_Add(_,_) => Some(FixAdd)
-    case FixPt_Sub(_,_) => Some(FixSub)
-    case FixPt_Mul(_,_) => Some(FixMul)
-    case FixPt_Div(_,_) => Some(FixDiv)
-    case FixPt_Lt(_,_)  => Some(FixLt)
-    case FixPt_Leq(_,_) => Some(FixLeq)
-    case FixPt_Eql(_,_) => Some(FixEql)
-    case FixPt_Neq(_,_) => Some(FixNeq)
-    case e: Min2[_] if isFixPtType(e.mT) => Some(FltMin)
-    case e: Max2[_] if isFixPtType(e.mT) => Some(FltMax)
-
-    // Float ops currently assumed to be single op
-    case FltPt_Add(_,_) => Some(FltAdd)
-    case FltPt_Sub(_,_) => Some(FltSub)
-    case FltPt_Mul(_,_) => Some(FltMul)
-    case FltPt_Div(_,_) => Some(FltDiv)
-    case FltPt_Lt(_,_)  => Some(FltLt)
-    case FltPt_Leq(_,_) => Some(FltLeq)
-    case FltPt_Eql(_,_) => Some(FltEql)
-    case FltPt_Neq(_,_) => Some(FltNeq)
-
-    case FltPt_Abs(_)   => Some(FltAbs)
-    case FltPt_Exp(_)   => Some(FltExp)
-    case FltPt_Log(_)   => Some(FltLog)
-    case FltPt_Sqrt(_)  => Some(FltSqrt)
-    case e: Min2[_] if isFltPtType(e.mT) => Some(FltMin)
-    case e: Max2[_] if isFltPtType(e.mT) => Some(FltMax)
-
-    case Bit_And(_,_)   => Some(BitAnd)
-    case Bit_Or(_,_)    => Some(BitOr)
-    case _ => None
-  }
-
   // FIXME: Assumes a single node reduction function right now, change to allow multi-node later
   def opStageToStage(op: PIROp, ins: List[Exp[Any]], out: Exp[Any], ctx: CUContext, isReduce: Boolean) = {
     if (isReduce) {

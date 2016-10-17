@@ -61,6 +61,13 @@ trait ConstantFolding extends SinglePassTransformer {
     case Deff(FixPt_Sub(a,Fixed(0))) => Some(a)
     case Deff(FixPt_Sub(Fixed(0),b)) => Some(b)
     case Deff(FixPt_Div(a,Fixed(1))) => Some(a)
+    case n@Deff(FixPt_Mod(a,b)) => 
+      (a,b) match {
+        case (ConstFix(aa: Int), ConstFix(bb: Int)) =>
+          Some(lift_to(aa % bb)(manifest[Int],lhs.tp,ctx,implicitly[Numeric[Int]]))
+        case _ => 
+          Some(n)
+      }
     // Can't do 0/b, as b may be zero..
 
     case _ => None

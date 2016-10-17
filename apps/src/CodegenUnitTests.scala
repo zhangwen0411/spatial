@@ -258,12 +258,12 @@ trait FifoLoadStoreApp extends SpatialApp {
 
     val srcFPGA = DRAM[SInt](N)
     val dstFPGA = DRAM[SInt](N)
-    val dummyOut = ArgOut[SInt]
+    // val dummyOut = ArgOut[SInt]
     setMem(srcFPGA, srcHost)
 
     Accel {
       val f1 = FIFO[SInt](tileSize)
-      Parallel {
+      // Parallel {
         Sequential {
           f1 := srcFPGA(0::tileSize)
           dstFPGA(0::tileSize) := f1
@@ -271,7 +271,7 @@ trait FifoLoadStoreApp extends SpatialApp {
         // Pipe(tileSize by 1) { i => // This pipe forces the loadstore to run for enough iters
         //   dummyOut := i
         // }
-      }
+      // }
       ()
     }
     getMem(dstFPGA)
