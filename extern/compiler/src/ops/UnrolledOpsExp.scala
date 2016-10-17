@@ -191,7 +191,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
     }
   }
 
-  override def isConstOrArgOrBnd(x: Exp[Any]) = x match {
+  def isConstOrArgOrBnd(x: Exp[Any]) = x match {
     case s@Sym(n) => {
       s match {
         case Deff(ConstFixPt(_,_,_,_)) => true

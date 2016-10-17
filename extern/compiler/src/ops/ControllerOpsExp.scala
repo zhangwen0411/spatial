@@ -279,24 +279,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
     }
   }
 
-  def isConstOrArgOrBnd(x: Exp[Any]) = x match {
-    case s@Sym(n) => {
-      s match {
-        case Deff(ConstFixPt(_,_,_,_)) => true
-        case Deff(ConstFltPt(_,_,_)) => true
-        case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
-          xx match {
-            case Deff(Argin_new(_)) => true
-            case _ =>
-              if (isReduceStarter(s)) {false} else {true}
-          }
-        case Deff(_) => false // None
-        case _ => true // Is bound
-      }
-    }
-  }
-
-  var bd = ""
+  // var bd = ""
 
   def newStream(fileName:String):PrintWriter = {
     val path = bd + java.io.File.separator + fileName + ".maxj"
@@ -304,46 +287,6 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
     val pw = new PrintWriter(path)
     pw
   }
-
-  def addConstOrArgOrBnd(x: Exp[Any], set: Set[Exp[Any]]) = {
-    var ret = Set[Exp[Any]]()
-    val Deff(dd) = x
-    dd match {
-      case FltPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Lsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Rsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Xor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
-      case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case ListVector(elems) => elems.map{ e => {if (isConstOrArgOrBnd(e)) {ret += e}}}
-      case FieldApply(a,b) => {if (isConstOrArgOrBnd(a)) {ret +=a}}
-      case Internal_pack2(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Par_sram_load(EatAlias(sram), addr) => {if (isConstOrArgOrBnd(sram)) {ret += sram}; if (isConstOrArgOrBnd(addr)) {ret += addr}}
-      case Par_pop_fifo(fifo,en) => {if (isConstOrArgOrBnd(fifo)) {ret += fifo}; if (isConstOrArgOrBnd(en)) {ret += en}} 
-      case Pop_fifo(fifo,en) => {if (isConstOrArgOrBnd(fifo)) {ret += fifo}; if (isConstOrArgOrBnd(en)) {ret += en}} 
-      case Reg_read(EatAlias(reg)) => {if (isConstOrArgOrBnd(reg)) {ret += reg} }
-      case Vec_apply(vec,idx) => {if (isConstOrArgOrBnd(vec)) {ret += vec}; if (isConstOrArgOrBnd(idx)) {ret += idx}} 
-      case _ => throw new Exception(s"No match for $x $dd in reduce kernel")
-    }
-    set ++ ret
-  }
-
 
   // HACK alert [TODO Raghu] : This code is duplicated in MaxJManagerGen so that argin and argout
   // have a consistent name. Code is duplicated because MaxJManagerGen is currently
@@ -615,50 +558,11 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
       }
 
 
-      parentOf(sym).get match {
-        case e@Deff(UnrolledReduce(_,accum,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
-          val isKerneledRed = reduceType(accum) match {
-            case Some(fps: ReduceFunction) => fps match {
-              case FixPtSum => true
-              case FltPtSum => true
-              case _ => false
-            }
-          }
-          if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
-            styleOf(sym) match { // TODO: Do we even ever touch
-              // case InnerPipe =>
-              //   // Putting reduction tree in its own kernel
-              //   var consts_args_bnds_set = Set[Exp[Any]]()
-              //   // First pass, collect input args
-              //   focusBlock(func){ // Send reduce tree to separate file
-              //     focusExactScope(func){ stms =>
-              //       stms.zipWithIndex.map { case (TP(s,d), ii) =>
-              //         val Deff(dd) = s
-              //         consts_args_bnds_set = addConstOrArgOrBnd(s, consts_args_bnds_set)
-              //         Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
-              //         // emitNode(s, dd)
-              //       }
-              //     }
-              //   }
-
-              //   val sortedInputArgs = consts_args_bnds_set.toList.map(quote(_)).sortWith(_ < _)
-
-              //   withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-              //     emitReduction(sym, rhs, sortedInputArgs)
-              //   }                
-
-              //   emitBlock(func, s"${quote(sym)} Unitpipe", true /*do not close*/)
-              //   emit(s"THIS KIND OF REDUCE KERNEL NOT SUPPORTED YET! new ${quote(sym)}_reduce_kernel(owner $sortedInputArgs); // Reduce kernel")
-              //   emit(s"}")
-              case _ =>
-                emitBlock(func, s"${quote(sym)} Unitpipe")
-            }
-          } else {
-            emitBlock(func, s"${quote(sym)} Unitpipe")
-          }
-        case _ =>
-          emitBlock(func, s"${quote(sym)} Unitpipe")
-      }
+      emitBlock(func, s"${quote(sym)} Unitpipe")
+      // parentOf(sym).get match {
+      //   case e@Deff(UnrolledReduce(_,accum,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+      //     emitBlock(func, s"${quote(sym)} Unitpipe")
+      // }
 
       print_stage_suffix(quote(sym), hadThingsInside)
       controlNodeStack.pop

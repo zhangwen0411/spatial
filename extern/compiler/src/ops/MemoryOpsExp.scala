@@ -406,79 +406,82 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
   val connectedArgs = Set[Exp[Any]]()
 
   def emitBufferControlSignals() {
-    emit(s"""// rdone signals for N-Buffers go here""")
+    withStream(baseStream) {
+      emit(s"""{
+// rdone signals for N-Buffers go here, eventually put them in their own class extending this one""")
 
-    // Quote duplicate
-    // TODO: Change to common "quote duplicate" method?
-    def quoteDuplicate(mem: Exp[Any], i: Int): String = {
-      if      (isSRAM(mem.tp)) s"""${quote(mem)}_${i}"""
-      else if (isReg(mem.tp))  s"""${quote(mem)}_${i}_lib"""
-      else throw new Exception("Cannot double buffer type " + mem.tp)
-    }
+      // Quote duplicate
+      // TODO: Change to common "quote duplicate" method?
+      def quoteDuplicate(mem: Exp[Any], i: Int): String = {
+        if      (isSRAM(mem.tp)) s"""${quote(mem)}_${i}"""
+        else if (isReg(mem.tp))  s"""${quote(mem)}_${i}_lib"""
+        else throw new Exception("Cannot double buffer type " + mem.tp)
+      }
 
-    val nonBoundMemories = (srams ++ regs).map(aliasOf(_)).filter{case Def(_) => true; case _ => false}
+      val nonBoundMemories = (srams ++ regs).map(aliasOf(_)).filter{case Def(_) => true; case _ => false}
 
-    nonBoundMemories.foreach{mem =>
-      val buffers = duplicatesOf(mem).zipWithIndex.filter{case (d,i) => d.depth > 1}
-      val readers = readersOf(mem)
-      val writers = writersOf(mem)
+      nonBoundMemories.foreach{mem =>
+        val buffers = duplicatesOf(mem).zipWithIndex.filter{case (d,i) => d.depth > 1}
+        val readers = readersOf(mem)
+        val writers = writersOf(mem)
 
-      buffers.foreach{ case (d, i) =>
-        // Note: Grouping by sets of integers here. Accesses to a buffer should either have one port or all ports, so this is ok
-        val readsByPort = readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
-        val writesByPort = writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
+        buffers.foreach{ case (d, i) =>
+          // Note: Grouping by sets of integers here. Accesses to a buffer should either have one port or all ports, so this is ok
+          val readsByPort = readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
+          val writesByPort = writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
 
-        if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
-        // Get all siblings of read/write ports and match to ports of buf
-        val topCtrl = readsByPort.map{case (_, readers) => readers.flatMap{a => topControllerOf(a,mem,i)}.head}.head.node
-        val subReads = readsByPort.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}.toSet
-        val subWrites = writesByPort.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}.toSet
+          if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
+          // Get all siblings of read/write ports and match to ports of buf
+          val topCtrl = readsByPort.map{case (_, readers) => readers.flatMap{a => topControllerOf(a,mem,i)}.head}.head.node
+          val subReads = readsByPort.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}.toSet
+          val subWrites = writesByPort.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}.toSet
 
-        val prnt = parentOf(topCtrl).get
-        val allSiblings = childrenOf(prnt).toSet //-- List(prnt).map{ case (c,_) => c}.toSet
-        val orphanedSiblings = allSiblings -- subReads -- subWrites
+          val prnt = parentOf(topCtrl).get
+          val allSiblings = childrenOf(prnt).toSet //-- List(prnt).map{ case (c,_) => c}.toSet
+          val orphanedSiblings = allSiblings -- subReads -- subWrites
 
-        def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String, comment: String = "") {
-          val controllers = accesses.flatMap{access => topControllerOf(access, mem, i) }.distinct
-          val isBuffered = ports.size == 1 && accesses.nonEmpty
+          def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String, comment: String = "") {
+            val controllers = accesses.flatMap{access => topControllerOf(access, mem, i) }.distinct
+            val isBuffered = ports.size == 1 && accesses.nonEmpty
 
-          if (isBuffered && controllers.length > 1)
-            throw MultipleSwapControllersException(mem, i, accesses, ports.head)
-          else if (isBuffered && controllers.isEmpty)
-            throw UndefinedSwapControllerException(mem, i, accesses, ports.head)
-          else if (isBuffered) {
-            val portlist = ports.mkString{","} // TODO: Can probably use ports.head here
-            emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, new int[] { $portlist }); /*$comment*/""")
+            if (isBuffered && controllers.length > 1)
+              throw MultipleSwapControllersException(mem, i, accesses, ports.head)
+            else if (isBuffered && controllers.isEmpty)
+              throw UndefinedSwapControllerException(mem, i, accesses, ports.head)
+            else if (isBuffered) {
+              val portlist = ports.mkString{","} // TODO: Can probably use ports.head here
+              emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, new int[] { $portlist }); /*$comment*/""")
+            }
           }
-        }
-        if (d.depth > 1) { // Deprecated dblbuf
-          val suff = if (isSRAM(mem.tp)) {""} else if (isReg(mem.tp)) {"_lib"}
-          val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length == 1 }.flatten
-          val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
-          val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
-          val fullPorts = (0 until d.depth).map{ i => i }.toSet
-          val dummyWPorts = fullPorts -- wPorts
-          val dummyRPorts = fullPorts -- rPorts
-          val dummyDonePorts = fullPorts -- wPorts -- rPorts
-          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl",s"read")}
-          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
-          dummyDonePorts.toList.zip(orphanedSiblings.toList.take(dummyDonePorts.toList.length)).foreach{case (ports, node) =>
-            emit(s"""${quoteDuplicate(mem,i)}.connectStageCtrl(${quote(node)}_done, ${quote(node)}_en, new int[] {$ports}); /*orphan*/""")
-          }
+          if (d.depth > 1) { // Deprecated dblbuf
+            val suff = if (isSRAM(mem.tp)) {""} else if (isReg(mem.tp)) {"_lib"}
+            val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length == 1 }.flatten
+            val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
+            val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
+            val fullPorts = (0 until d.depth).map{ i => i }.toSet
+            val dummyWPorts = fullPorts -- wPorts
+            val dummyRPorts = fullPorts -- rPorts
+            val dummyDonePorts = fullPorts -- wPorts -- rPorts
+            readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl",s"read")}
+            writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
+            dummyDonePorts.toList.zip(orphanedSiblings.toList.take(dummyDonePorts.toList.length)).foreach{case (ports, node) =>
+              emit(s"""${quoteDuplicate(mem,i)}.connectStageCtrl(${quote(node)}_done, ${quote(node)}_en, new int[] {$ports}); /*orphan*/""")
+            }
 
-          emit(s"""${quote(mem)}_${i}${suff}.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
-          emit(s"""${quote(mem)}_${i}${suff}.connectUnreadPorts(new int[] {${dummyRPorts.mkString(",")}});""")
-          // emit(s"""${quote(mem)}_${i}${suff}.connectUntouchedPorts(new int[] {}); //new int[] {${dummyDonePorts.mkString(",")}});""")
-          if (writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }.toList.length == 0) {
-            emit(s"""${quote(mem)}_${i}${suff}.connectDummyBroadcast();""")
+            emit(s"""${quote(mem)}_${i}${suff}.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
+            emit(s"""${quote(mem)}_${i}${suff}.connectUnreadPorts(new int[] {${dummyRPorts.mkString(",")}});""")
+            // emit(s"""${quote(mem)}_${i}${suff}.connectUntouchedPorts(new int[] {}); //new int[] {${dummyDonePorts.mkString(",")}});""")
+            if (writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }.toList.length == 0) {
+              emit(s"""${quote(mem)}_${i}${suff}.connectDummyBroadcast();""")
+            }
+          } else {
+            readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectRdone") }
+            writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectWdone") }
           }
-        } else {
-          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectRdone") }
-          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectWdone") }
         }
       }
+      emit(s"}")
     }
-
   }
 
   override def emitFileFooter() = {
