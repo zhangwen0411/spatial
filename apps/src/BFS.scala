@@ -49,12 +49,12 @@ trait BFSApp extends SpatialApp {
     setMem(OCids, INids)
 
     Accel {
-      val frontierNodes = SRAM[SInt](tileSize)
+      // val frontierNodes = SRAM[SInt](tileSize)
       val frontierCounts = SRAM[SInt](tileSize)
       val frontierIds = SRAM[SInt](tileSize)
       val currentNodes = SRAM[SInt](tileSize)
       val frontierLevels = SRAM[SInt](tileSize)
-      val pieceMem = SRAM[SInt](tileSize)
+      // val pieceMem = SRAM[SInt](tileSize)
       val concatReg = Reg[SInt](0)
       Parallel {
         Pipe{frontierIds := OCids(0::tileSize)}
@@ -62,20 +62,21 @@ trait BFSApp extends SpatialApp {
       }
 
       val numEdges = Reg[SInt](1)
-      Sequential(1 by 1) { i =>
+      Sequential(2 by 1) { i =>
         Fold(numEdges.value by 1)(concatReg, 0.as[SInt]) { k => 
           val nextLen = Reg[SInt]
+          val nextId = Reg[SInt]
           val fetch = currentNodes(k)
-          val nextId = frontierIds(fetch)
-          nextLen := frontierCounts(fetch)
-          pieceMem := OCedges(nextId :: nextId + nextLen.value)
-          Sequential(nextLen by 1) { kk => frontierNodes(kk + concatReg.value) = pieceMem(kk)}
+          Pipe{nextId := frontierIds(fetch)}
+          Pipe{nextLen := frontierCounts(fetch)}
+        //   Pipe{pieceMem := OCedges(nextId :: nextId + nextLen.value)}
+        //   Sequential(nextLen.value by 1) { kk => frontierNodes(kk + concatReg.value) = pieceMem(kk)}
           nextLen
         }{_+_}
-        Pipe{numEdges.value by 1} { kk => currentNodes(kk) = frontierNodes(kk)}
+        Pipe{numEdges.value by 1} { kk => currentNodes(kk) = (kk)}
         Sequential(concatReg.value by 1) { k => frontierLevels(k) = i+1 }
         OCresult(currentNodes, concatReg.value) := frontierLevels
-        numEdges := concatReg.value
+        Pipe{numEdges := concatReg.value}
       }
       // Sequential(count by 1) { i => 
     }
