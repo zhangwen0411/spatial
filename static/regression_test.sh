@@ -642,6 +642,8 @@ if [ $commitlines -ge $hist ]; then
 fi
 echo "$stamp- $hash_str / $dhash_str $marker" >> $pretty_file
 
+echo "rm -rf ${TESTS_HOME}" | tee /kunle/users/mattfel/why_didnt_delete
+
 # git push
 cd ${SPATIAL_HOME}/spatial.wiki
 git stash
@@ -654,6 +656,6 @@ git add *
 git commit -m "automated status update via cron"
 git push
 
-sleep 9
+echo "rm -rf ${TESTS_HOME}" | tee /kunle/users/mattfel/why_didnt_delete
 rm -rf ${TESTS_HOME} | tee /kunle/users/mattfel/why_didnt_delete
 

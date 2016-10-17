@@ -732,7 +732,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
             niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}))"
           }
           emit(s"""DFEVar ${quote(sym)}_niter = ${quote(niter_str)};""")
-          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", ${quote(sym)}_niter.cast(dfeUInt(32)));""")
+          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", stream.offset(${quote(sym)}_niter.cast(dfeUInt(32)),-1)/*makes BFS work*/);""")
         } else {
           emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", constant.var(dfeUInt(32), 1));""")
         }
