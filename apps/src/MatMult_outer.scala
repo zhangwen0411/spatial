@@ -7,7 +7,7 @@ trait MatMult_outerApp extends SpatialApp {
   type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
 
-  def MatMult_outer(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
+  def MatMult_outer(A: Rep[Array[T]], B: Rep[Array[T]], C_init: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
     val M = ArgIn[SInt]
     val N = ArgIn[SInt]
     val P = ArgIn[SInt]
@@ -15,35 +15,38 @@ trait MatMult_outerApp extends SpatialApp {
     setArg(N,nn)
     setArg(P,pp)
 
-    val a = OffChipMem[T](M, P)
-    val b = OffChipMem[T](P, N)
-    val c = OffChipMem[T](M, N)
+    val a = DRAM[T](M, P)
+    val b = DRAM[T](P, N)
+    val c_init = DRAM[T](M, N)
+    val c = DRAM[T](M, N)
 
-    val bm        = param(4) 
-    val bn        = param(96) 
-    val bp        = param(96) 
+    val bm        = param(4)
+    val bn        = param(96)
+    val bp        = param(96)
 
     setMem(a, A)
     setMem(b, B)
+    setMem(c, C_init)
 
     Accel {
-      Pipe(M by bm, N by bn) { (i,j) =>
+      Sequential(M by bm, N by bn) { (i,j) =>
+        val tileC = SRAM[T](bm, bn)
+        tileC := c(i::i+bm, j::j+bn)
        	Pipe(P by bp) { k =>
-          val tileA = BRAM[T](bm, bp)
-          val tileB = BRAM[T](bp, bn)
-          val tileC = BRAM[T](bm, bn)
+          val tileA = SRAM[T](bm, bp)
+          val tileB = SRAM[T](bp, bn)
           Parallel {
-            tileA := a(i::i+bm, k::k+bp, param(1))
-            tileB := b(k::k+bp, j::j+bn, param(1))
+            tileA := a(i::i+bm, k::k+bp)
+            tileB := b(k::k+bp, j::j+bn)
           }
           Fold(bp by 1)(tileC, 0.as[T]) { kk =>
-            val tileC_partial = BRAM[T](bm,bn)
+            val tileC_partial = SRAM[T](bm,bn)
             Pipe(bm by 1, bn by 1){ (ii,jj) =>
               tileC_partial(ii,jj) = tileA(ii,kk) * tileB(kk,jj)
             }
             tileC_partial
           }{_+_}
-          c(i::i+bm, j::j+bn, param(1)) := tileC
+          c(i::i+bm, j::j+bn) := tileC
      		}
      	}
     }
@@ -63,10 +66,11 @@ trait MatMult_outerApp extends SpatialApp {
 
     val a = Array.fill(M){ Array.fill(P){1} }
     val b = Array.fill(P){ Array.fill(N){1} }
+    val c_init = Array.fill(M){ Array.fill(N){0} }
     // val a = Array.fill(M){ Array.fill(P){random[T](100)} }
     // val b = Array.fill(P){ Array.fill(N){random[T](100)} }
 
-    val result = MatMult_outer(a.flatten, b.flatten, M, N, P)
+    val result = MatMult_outer(a.flatten, b.flatten, c_init.flatten, M, N, P)
 
     val gold = Array.tabulate(M){i =>
       val aRow = a(i)
@@ -78,6 +82,8 @@ trait MatMult_outerApp extends SpatialApp {
 
     println("expected cksum: " + gold.map(a => a).reduce{_+_})
     println("result cksum: " + result.map(a => a).reduce{_+_})
+    printArr(gold, "Gold: ")
+    printArr(result, "Result: ")
 
     val cksum = result.zip(gold){_ == _}.reduce{_&&_}
     println("PASS: " + cksum + " (MatMult_outer)")

@@ -354,10 +354,10 @@ trait SpatialMath {
     //         @ val pre = maxJPre(sym)
     //     $pre $sym = $0 + $1 ;
     //     }))
-    impl (sub_fix) (codegen(maxj, ${
-      @ val pre = maxJPre(sym)
-      $pre $sym = $0 - $1 ;
-    }))
+    // impl (sub_fix) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 - $1 ;
+    // }))
     // impl (mul_fix) (codegen(maxj, ${
     //         @ val pre = maxJPre(sym)
     //     $pre $sym = $0 * $1 ;
@@ -407,22 +407,22 @@ trait SpatialMath {
 			@ val pre = maxJPre(sym)
     	$pre $sym = -$0 ;
 		}))
-    impl (sub_flt) (codegen(maxj, ${
-      @ val pre = maxJPre(sym)
-      $pre $sym = $0 - $1 ;
-    }))
-    impl (div_flt) (codegen(maxj, ${
-      @ val pre = maxJPre(sym)
-      $pre $sym = $0 / $1 ;
-    }))
-    impl (add_flt) (codegen(maxj, ${
-      @ val pre = maxJPre(sym)
-      $pre $sym = $0 + $1 ;
-    }))
-    impl (mul_flt) (codegen(maxj, ${
-      @ val pre = maxJPre(sym)
-      $pre $sym = $0 * $1 ;
-    }))
+    // impl (sub_flt) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 - $1 ;
+    // }))
+    // impl (div_flt) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 / $1 ;
+    // }))
+    // impl (add_flt) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 + $1 ;
+    // }))
+    // impl (mul_flt) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 * $1 ;
+    // }))
   //   impl (lt_flt)  (codegen(maxj, ${
 		// 	@ val pre = maxJPre(sym)
 		// 	$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);

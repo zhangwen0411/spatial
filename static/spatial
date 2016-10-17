@@ -27,7 +27,7 @@ def main():
 
   java_opts = os.getenv("JAVA_OPTS", "")
 
-  if opts.test == True:
+  if opts.test == True or opts.cgra == True:
     opts.maxj = False
     opts.cpp = False
 
@@ -79,13 +79,14 @@ def main():
     os.system(publish + 'bin/parse-log.py')
 
   if opts.maxj and opts.cpp:
+    print 'Running Spatial with arguments: ' + ' '.join(args[1:])
     if opts.outdir == "out":
-      os.system(publish + 'bin/delite ' + args[0] + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + os.getenv("HYPER_HOME", "") + '/spatial/published/Spatial/out 2>&1 | tee run.log')
+      os.system(publish + 'bin/delite ' + args[0] + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + os.getenv("HYPER_HOME", "") + '/spatial/published/Spatial/out ' + ' '.join(args[1:]) + ' 2>&1 | tee run.log')
     else:
-      os.system(publish + 'bin/delite ' + args[0] + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + opts.outdir + ' 2>&1 | tee run.log')
-  else:
-    print 'Running Spatial Scala Test'
-    os.system(publish + 'bin/delite ' + args[0] + ' --codecache=' + opts.outdir + ' 2>&1 | tee run.log')
+      os.system(publish + 'bin/delite ' + args[0] + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + opts.outdir + ' ' + ' '.join(args[1:]) + ' 2>&1 | tee run.log')
+  elif opts.test:
+    print 'Running Spatial Scala Test with arguments: ' + ' '.join(args[1:])
+    os.system(publish + 'bin/delite ' + args[0] + ' --codecache=' + opts.outdir + ' ' + ' '.join(args[1:]) + ' 2>&1 | tee run.log')
 
 if __name__ == "__main__":
     main()

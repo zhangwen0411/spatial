@@ -10,7 +10,6 @@ trait FIFOs {
   def importFIFOs() {
     val T = tpePar("T")
     val FIFO         = lookupTpe("FIFO")
-    val BRAM         = lookupTpe("BRAM")
     val Tile         = lookupTpe("Tile")
     val SparseTile   = lookupTpe("SparseTile")
     val Indices      = lookupTpe("Indices")
@@ -26,8 +25,49 @@ trait FIFOs {
     val fifo_store = internal (FIFO) ("fifo_store", T, (("fifo", FIFO(T)), ("addr", Idx), ("value", T)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
 
     val fifo_push = internal (FIFO) ("push_fifo", T, (("fifo", FIFO(T)), ("value",T), ("en", Bit)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
-    val fifo_pop  = internal (FIFO) ("pop_fifo", T, ("fifo", FIFO(T)) :: T, aliasHint = aliases(Nil))
+    val fifo_pop  = internal (FIFO) ("pop_fifo", T, (("fifo", FIFO(T)), ("en", Bit)) :: T, aliasHint = aliases(Nil))
     val fifo_count = internal (FIFO) ("count_fifo", T, ("fifo", FIFO(T)) :: Idx, aliasHint = aliases(Nil))
+
+    // --- Internal
+    /** @nodoc -- only used for Mem typeclass instance **/
+    direct (FIFO) ("popFIFO", T, (FIFO(T), Bit) :: T) implements composite ${
+      pop_fifo($0, $1)
+    }
+    /** @nodoc -- only used for Mem typeclass instance **/
+    direct (FIFO) ("pushFIFO", T, (FIFO(T), T, Bit) :: MUnit, effect = write(0)) implements composite ${
+      push_fifo($0, $1, $2)
+    }
+    /** @nodoc -- only used for Mem typeclass instance **/
+    direct (FIFO) ("fifo_iterator", T, (FIFO(T), SList(MInt)) :: CounterChain) implements composite ${
+      val dims = dimsOf($0)
+      val pars = List.fill(dims.length - $1.length)(param(1)) ++ $1
+      val ctrs = dims.zip(pars).map{case (d,p) => Counter(min = 0, max = d, step = 1, par = p) }
+      CounterChain(ctrs:_*)
+    }
+    /** @nodoc -- only used for Mem typeclass instance **/
+    direct (FIFO) ("fifo_empty", T, FIFO(T) :: FIFO(T), TNum(T)) implements composite ${ FIFO[T](dimsOf($0).head) }
+
+
+    val Mem = lookupTpeClass("Mem").get
+    val FifoMem = tpeClassInst("FifoMem", T, TMem(T, FIFO(T)))
+    infix (FifoMem) ("ld", T, (FIFO(T), SList(Idx), Bit) :: T) implements composite ${
+      popFIFO($0, $2)
+    }
+    infix (FifoMem) ("st", T, (FIFO(T), SList(Idx), T, Bit) :: MUnit, effect = write(0)) implements composite ${
+      pushFIFO($0, $2, $3)
+    }
+    infix (FifoMem) ("zeroLd", T, (FIFO(T), Bit) :: T) implements composite ${
+      popFIFO($0, $1)
+    }
+    infix (FifoMem) ("zeroSt", T, (FIFO(T), T, Bit) :: MUnit, effect = write(0)) implements composite ${
+      pushFIFO($0, $1, $2)
+    }
+    infix (FifoMem) ("iterator", T, (FIFO(T), SList(MInt)) :: CounterChain) implements composite ${
+      fifo_iterator($0, $1)
+    }
+    infix (FifoMem) ("empty", T, FIFO(T) :: FIFO(T), TNum(T)) implements composite ${
+      fifo_empty($0)
+    }
 
     // --- API
     /** Creates a FIFO with given size. Size must be a statically known signed integer (constant or parameter).
@@ -54,14 +94,15 @@ trait FIFOs {
       infix ("push") ((T, Bit) :: MUnit, effect = write(0)) implements composite ${ push_fifo($self, $1, $2) }
 
       /** Creates a pop (read) port to this FIFO **/
-      infix ("pop") (Nil :: T) implements composite ${ pop_fifo($self) }
+      infix ("pop") (Nil :: T) implements composite ${ pop_fifo($self, true.asBit) }
+      infix ("pop") (Bit :: T) implements composite ${ pop_fifo($self, $1)}
 
       infix ("count") (Nil :: Idx) implements composite ${ count_fifo($self) }
 
-      /** Streams a Tile of an OffChipMem to this FIFO.
+      /** Streams a Tile of a DRAM memory to this FIFO.
        * @param tile
        **/
-      infix (":=") (Tile(T) :: MUnit, TNum(T), effect = write(0)) implements redirect ${ streamTile($1, $self, false) }
+      infix (":=") (Tile(T) :: MUnit, TNum(T), effect = write(0)) implements redirect ${ copyTile($1, $self, false) }
     }
 
     // --- Scala Backend
@@ -69,27 +110,22 @@ trait FIFOs {
     impl (fifo_load)  (codegen($cala, ${ $fifo.apply($addr.toInt) }))
     impl (fifo_store) (codegen($cala, ${ $fifo.update($addr.toInt, $value) }))
     impl (fifo_push)  (codegen($cala, ${ if ($en) $fifo.enqueue($value); () }))
-    impl (fifo_pop)   (codegen($cala, ${ $fifo.dequeue() }))
+    impl (fifo_pop)   (codegen($cala, ${ if ($en) $fifo.dequeue() else $fifo.front }))
     impl (fifo_count) (codegen($cala, ${ FixedPoint[Signed,B32,B0]($fifo.length) }))
 
 
     // --- Unrolled nodes
     val push = internal (FIFO) ("par_push_fifo", T, (("fifo", FIFO(T)), ("value",MVector(T)), ("en", MVector(Bit)), ("shuffle", SBoolean)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
-    val pop  = internal (FIFO) ("par_pop_fifo", T, (("fifo", FIFO(T)), ("len", SInt)) :: MVector(T), aliasHint = aliases(Nil))
+    val pop  = internal (FIFO) ("par_pop_fifo", T, (("fifo", FIFO(T)), ("en", MVector(Bit))) :: MVector(T), aliasHint = aliases(Nil))
 
     impl (push) (codegen($cala, ${
       $value.zip($en).foreach{ case (v,e) => if (e) $fifo.enqueue(v) }
     }))
 
     impl (pop) (codegen($cala, ${
-      if ($len < $fifo.length) {
-        // Assumes there's at least one element
-        val first = $fifo.front
-        Array.tabulate($len){i => if ($fifo.nonEmpty) $fifo.dequeue() else first }
-      }
-      else {
-        Array.tabulate($len){i => $fifo.dequeue() }
-      }
+      // Assumes there's at least one element
+      val first = $fifo.front
+      $en.map{e => if ($fifo.nonEmpty && e) $fifo.dequeue() else first }
     }))
 
   }

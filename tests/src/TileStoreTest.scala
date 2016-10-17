@@ -10,8 +10,8 @@ trait TileStoreTest extends SpatialApp {
   lazy val rows = 1000.as[SInt]
   lazy val cols = 1920.as[SInt]
 
-  def stores(v1: Rep[OffChipMem[Flt]]) {
-    val b1 = List.tabulate(c){i => BRAM[Flt](rows, cols) }
+  def stores(v1: Rep[DRAM[Flt]]) {
+    val b1 = List.tabulate(c){i => SRAM[Flt](rows, cols) }
 
     Sequential.foreach(0 until 5000){ i =>
       Parallel {
@@ -26,7 +26,7 @@ trait TileStoreTest extends SpatialApp {
 
     bound(N) = 9993600
     bound(C) = 9993600
-    val v1 = OffChipMem[Flt](N, C)
+    val v1 = DRAM[Flt](N, C)
 
     val vec1 = Array.fill(N)(random[Flt](10))
 

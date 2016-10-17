@@ -10,9 +10,9 @@ trait MatMult_innerApp extends SpatialApp {
   val tileSizeM = 4
   val tileSizeN = 96
   val tileSizeP = 96
-  val innerPar = 1
+  val innerPar = 2
   val midPar = 1
-  val outerPar = 1
+  val outerPar = 2
   val storePar = 1
 
   def MatMult_inner(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
@@ -23,24 +23,18 @@ trait MatMult_innerApp extends SpatialApp {
     setArg(N,nn)
     setArg(P,pp)
 
-    val a = OffChipMem[T](M, P)
-    val b = OffChipMem[T](P, N)
-    val c = OffChipMem[T](M, N)
+    val a = DRAM[T](M, P)
+    val b = DRAM[T](P, N)
+    val c = DRAM[T](M, N)
 
-    val bm        = param(tileSizeM);   domainOf(bm) = (1,1536,1)
-    val bn        = param(tileSizeN);   domainOf(bn) = (96,1536,96)
-    val bp        = param(tileSizeP);   domainOf(bp) = (96,1536,96)
-    val op  = param(2);   
-    val mp = param(2);   
-    val ip  = param(2);   
-    val upMidPar  = param(1);   
-    val stPar     = param(1);   
-
-    domainOf(op)  = (1,6,1)
-    domainOf(mp) = (1,96,1)
-    domainOf(ip)  = (1,96,1)
-    domainOf(upMidPar)  = (1,1,1)
-    domainOf(stPar)     = (1,1,1)
+    val bm = tileSizeM (1 -> 1536)
+    val bn = tileSizeN (96 -> 96 -> 1536)
+    val bp = tileSizeP (96 -> 96 -> 1536)
+    val op = 1 (1 -> 6)
+    val mp = 1 (1 -> 96)
+    val ip = 1 (1 -> 96)
+    val upMidPar = 1 (1 -> 1)
+    val stPar    = 1 (1 -> 1)
 
     setMem(a, A)
     setMem(b, B)
@@ -48,19 +42,19 @@ trait MatMult_innerApp extends SpatialApp {
     Accel {
       Pipe(M by bm, (N by bn) par op){(i,j) =>
         Pipe((P by bp) par upMidPar){k =>
-          val tileA = BRAM[T](bm, bp)
-          val tileB = BRAM[T](bp, bn)
-          val tileC = BRAM[T](bm, bn)
+          val tileA = SRAM[T](bm, bp)
+          val tileB = SRAM[T](bp, bn)
+          val tileC = SRAM[T](bm, bn)
           Parallel {
-            tileA := a(i::i+bm, k::k+bp, param(1))
-            tileB := b(k::k+bp, j::j+bn, param(1))
+            tileA := a(i::i+bm, k::k+bp)
+            tileB := b(k::k+bp, j::j+bn)
           }
           Sequential(bm by 1, (bn by 1) par mp){ (ii,jj) =>    // MetaPipe?
             val prod = Reduce((bp by 1) par ip)(0.as[T]){ kk => tileA(ii, kk) * tileB(kk, jj) }{_+_}
             val prev = mux(k == 0, 0.as[T], tileC(ii,jj))
-            tileC(ii,jj) = prev + prod.value
+            tileC(ii,jj) = prev + prod.value // Is a unit pipe that should be recognized as accum
           }
-          c(i::i+bm, j::j+bn, stPar) := tileC
+          c(i::i+bm, j::j+bn par stPar) := tileC
         }
       }
     }

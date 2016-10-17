@@ -44,7 +44,7 @@ trait Controllers {
     val C = hkTpePar("C", T) // high kinded type parameter - memory of type T
 
     val Reg  = lookupTpe("Reg")
-    val BRAM = lookupTpe("BRAM")
+    val SRAM = lookupTpe("SRAM")
     val Idx  = lookupAlias("Index")
 
     val Indices = lookupTpe("Indices")
@@ -58,11 +58,7 @@ trait Controllers {
     val Stream = grp("Stream")
     val Parallel = grp("Parallel")
 
-    // --- Nodes
-    // pipe_foreach, pipe_reduce, accum_fold - see Template in extern
-    val pipe_parallel = internal (Parallel) ("pipe_parallel", Nil, ("func", MThunk(MUnit,cold)) :: MUnit, effect = simple)
-    val unit_pipe = internal (Pipe) ("unit_pipe", Nil, ("func", MThunk(MUnit,cold)) :: MUnit, effect = simple)
-
+    // --- Syntax
     val controllers = List(Pipe, Sequential, Stream)
     val styles  = List("InnerPipe", "SequentialPipe", "StreamPipe")
     val objects = List("Pipe", "Sequential", "Stream")
@@ -83,7 +79,7 @@ trait Controllers {
        * @param func: the function to be executed each iteration
        **/
       static (ctrl) ("foreach", Nil, CurriedMethodSignature(List(List(CounterChain),List(Indices ==> MUnit)), MUnit)) implements composite ${
-        val pipe = pipe_foreach($0, $1)
+        val pipe = foreach_op($0, $1)
         styleOf(pipe) = \$style
       }
       /** Creates a $desc state machine which iterates through the 1D domain defined by the supplied counter, executing the specified function
@@ -179,7 +175,7 @@ trait Controllers {
        **/
       static (ctrl) ("reduce", T, CurriedMethodSignature(List(List(CounterChain), List(T), List(Indices ==> T), List((T,T) ==> T)), Reg(T)), TNum(T)) implements composite ${
         val accumulator = Reg[T]
-        val pipe = pipe_fold($0, accumulator, Some($1), $2, $3)
+        val pipe = reduce_op($0, accumulator, Some($1), $2, $3)
         styleOf(pipe) = \$style
         accumulator
       }
@@ -233,9 +229,9 @@ trait Controllers {
       /** Multi-dimensional fused map-reduce of memories.
        * Creates a state machine which iterates over the supplied multi-dimensional domain, reducing the collection resulting from
        * each iteration of the map using the supplied associative scalar reduction function. This state machine is always
-       * run as an outer loop of state machines. If the memory result of the map function has multiple elements (e.g. BRAMs), the reduction is
+       * run as an outer loop of state machines. If the memory result of the map function has multiple elements (e.g. SRAMs), the reduction is
        * run as an inner loop where the supplied associative reduction is used on each iteration.
-       * Supported memory types are: Regs and BRAMs.
+       * Supported memory types are: Regs and SRAMs.
        * @param cchain: counterchain specifying the index domain
        * @param accum: accumulator for holding intermediate reduction values
        * @param map: map function
@@ -244,16 +240,16 @@ trait Controllers {
        **/
       static (ctrl) ("fold", (T,C), CurriedMethodSignature(List(List(CounterChain, MInt),List(C(T)),List(Indices ==> C(T)), List((T,T) ==> T)), C(T)), (TMem(T,C(T)),TNum(T))) implements composite ${
         val ccInner = $2.iterator(List($1))
-        val pipe = accum_fold[T,C]($0, ccInner, $2, None, $3, $4)
+        val pipe = memreduce_op[T,C]($0, ccInner, $2, None, $3, $4)
         styleOf(pipe) = \$style
         $2
       }
       /** 1-dimensional fused map-reduce of memories.
        * Creates a state machine which iterates over the supplied 1D domain, reducing the collection resulting from
        * each iteration of the map using the supplied associative scalar reduction function. This state machine is always
-       * run as an outer loop of state machines. If the memory result of the map function has multiple elements (e.g. BRAMs), the reduction is
+       * run as an outer loop of state machines. If the memory result of the map function has multiple elements (e.g. SRAMs), the reduction is
        * run as an inner loop where the supplied associative reduction is used on each iteration.
-       * Supported memory types are: Regs and BRAMs.
+       * Supported memory types are: Regs and SRAMs.
        * @param c0: counter specifying the 1D index domain
        * @param accum: accumulator for holding intermediate reduction values
        * @param map: map function
@@ -266,9 +262,9 @@ trait Controllers {
       /** 2-dimensional fused map-reduce of memories.
        * Creates a state machine which iterates over the supplied 2D domain, reducing the collection resulting from
        * each iteration of the map using the supplied associative scalar reduction function. This state machine is always
-       * run as an outer loop of state machines. If the memory result of the map function has multiple elements (e.g. BRAMs), the reduction is
+       * run as an outer loop of state machines. If the memory result of the map function has multiple elements (e.g. SRAMs), the reduction is
        * run as an inner loop where the supplied associative reduction is used on each iteration.
-       * Supported memory types are: Regs and BRAMs.
+       * Supported memory types are: Regs and SRAMs.
        * @param c0: counter for the first dimension
        * @param c1: counter for the second dimension
        * @param accum: accumulator for holding intermediate reduction values
@@ -282,9 +278,9 @@ trait Controllers {
       /** 3-dimensional fused map-reduce of memories.
        * Creates a state machine which iterates over the supplied 3D domain, reducing the collection resulting from
        * each iteration of the map using the supplied associative scalar reduction function. This state machine is always
-       * run as an outer loop of state machines. If the memory result of the map function has multiple elements (e.g. BRAMs), the reduction is
+       * run as an outer loop of state machines. If the memory result of the map function has multiple elements (e.g. SRAMs), the reduction is
        * run as an inner loop where the supplied associative reduction is used on each iteration.
-       * Supported memory types are: Regs and BRAMs.
+       * Supported memory types are: Regs and SRAMs.
        * @param c0: counter for the first dimension
        * @param c1: counter for the second dimension
        * @param c2: counter for the third dimension
@@ -326,7 +322,7 @@ trait Controllers {
      * @param body
      **/
     static (Parallel) ("apply", Nil, MThunk(MUnit) :: MUnit) implements composite ${
-      val pipe = pipe_parallel($0)
+      val pipe = parallel_pipe($0)
       styleOf(pipe) = ForkJoin
     }
 
@@ -335,7 +331,7 @@ trait Controllers {
 
     direct (Pipe) ("Reduce", T, CurriedMethodSignature(List(List(CounterChain), List(T), List(Indices ==> T), List((T,T) ==> T)), Reg(T)), TNum(T)) implements composite ${
       val accumulator = Reg[T]
-      val pipe = pipe_fold($0, accumulator, Some($1), $2, $3)
+      val pipe = reduce_op($0, accumulator, Some($1), $2, $3)
       styleOf(pipe) = InnerPipe
       accumulator
     }
@@ -353,7 +349,7 @@ trait Controllers {
 
     direct (Pipe) ("Fold", (T,C), CurriedMethodSignature(List(List(CounterChain, MInt),List(C(T),T),List(Indices ==> C(T)), List((T,T) ==> T)), C(T)), (TMem(T,C(T)),TNum(T))) implements composite ${
       val ccInner = $2.iterator(List($1))
-      val pipe = accum_fold[T,C]($0, ccInner, $2, Some($3), $4, $5)
+      val pipe = memreduce_op[T,C]($0, ccInner, $2, Some($3), $4, $5)
       styleOf(pipe) = InnerPipe
       $2
     }
@@ -376,22 +372,6 @@ trait Controllers {
     direct (Pipe) ("Fold", (T,C), CurriedMethodSignature(List(List(Counter,Counter,Counter, MInt),List(C(T),T),List((Idx,Idx,Idx) ==> C(T)), List((T,T) ==> T)), C(T)), (TMem(T,C(T)),TNum(T))) implements composite ${
       Fold(CounterChain($0,$1,$2), $3)($4, $5){inds => $6(inds(0),inds(1),inds(2))}($7)
     }
-
-    // --- Scala Backend
-    // See TemplateOpsExp for others
-    impl (pipe_parallel) (codegen ($cala, ${
-      $b[func]
-      ()
-    }))
-    impl (unit_pipe) (codegen($cala, ${
-      $b[func]
-      ()
-    }))
-
-    // --- MaxJ Backend
-    //pipe_parallel (extern)
-
-    //unit_pipe (extern)
 	}
 
 }

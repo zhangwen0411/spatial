@@ -19,11 +19,11 @@ import spatial.shared._
                                P      |                   |
                                       |                   |
                                       |                   |
-                                      |                   |     
+                                      |                   |
                                       |                   |
           (k)                         |___________________|
           ↓                        x
-                      P          
+                      P
           ___kc_________________       ___________________
          |         |            |     |                   |
          |         |            |     |                   |
@@ -34,14 +34,14 @@ import spatial.shared._
          |         |            |     |                   |
          | tileA   |            |     | tileC             |
          |_________|____________|     |___________________|
-          
-                
-                         
-             
+
+
+
+
     ###########
     # LAYER 2 #
     ##################
-        # outer pipe #                     
+        # outer pipe #
         ##############                              N
                                        ___________________
                                       |                   |
@@ -51,7 +51,7 @@ import spatial.shared._
                                   P   .                   .
                                       .                   .
                                       .                   .
-                                      .                   .     
+                                      .                   .
                                       .                   .
                                       .....................
                                x
@@ -71,7 +71,7 @@ import spatial.shared._
     ###########
     # LAYER 2 #
     ##################
-        # inner pipe #                     
+        # inner pipe #
         ##############
                                   (local_n)
                                       ↓
@@ -83,7 +83,7 @@ import spatial.shared._
                                       .                   .
                                       .                   .
                                       .                   .
-                                      .                   .     
+                                      .                   .
                                       .                   .
                                       .....................
                         x
@@ -103,7 +103,7 @@ import spatial.shared._
     ###########
     # LAYER 3 #
     ###########
-                                 
+
 
                                              (compute_n)
                                       ↓ ↓
@@ -115,11 +115,11 @@ import spatial.shared._
                                      .                   .
                                      .                   .
     (compute_m)                      .                   .
-    |                                .                   .     
+    |                                .                   .
     | (accum_m)                      .                   .
     |  |                             .....................
     |  | (compute_k)           x
-    |  | ↓     
+    |  | ↓
     |  ↳ ____kc___ ............      ___ ................
     ↳   |o        |            .    |o o|               .
     ↳   |o        |            .    |o o|               .
@@ -151,9 +151,9 @@ trait GEMMApp extends SpatialApp {
     val P = 96
 
 
-    val a = OffChipMem[T](M, P) 
-    val b = OffChipMem[T](P, N) 
-    val c = OffChipMem[T](M, N)
+    val a = DRAM[T](M, P)
+    val b = DRAM[T](P, N)
+    val c = DRAM[T](M, N)
     levelOf(a) = 0
     levelOf(b) = 0
     levelOf(c) = 0
@@ -161,12 +161,12 @@ trait GEMMApp extends SpatialApp {
 // lets solve  A(480x96)x B(96x480)= C (480x480)
 
 
-    val n_r        = param(96) // rank-1 updated width/height
+    val n_r        = parameter(96) // rank-1 updated width/height
     // We could have two n_r but we assume we do square rank-1 updated
 
-    val m_c        = param(96) // blockram number of A matrix rows in each tile
-    val k_c        = param(96) // number of B rows/A Columns  in each tile
-    val n_r_par    = param(1)
+    val m_c        = parameter(96) // blockram number of A matrix rows in each tile
+    val k_c        = parameter(96) // number of B rows/A Columns  in each tile
+    val n_r_par    = parameter(1)
 
     setMem(a, A)
     setMem(b, B)
@@ -175,20 +175,20 @@ trait GEMMApp extends SpatialApp {
     Accel {
 
 
-      // **LAYER 1** ON-CHIP MEMORY 
-      val tileC = BRAM[T](M, N)
+      // **LAYER 1** ON-CHIP MEMORY
+      val tileC = SRAM[T](M, N)
       // TODO: Let tileC load from offchip here, because it currently complains about multiple writers
       // tileC := c(0::M, 0::N, param(1));
       //loaded C into the chip
 
       Pipe(P by k_c) { k =>
-        val tileA = BRAM[T](M, k_c)
-        val tileB = BRAM[T](k_c, N)
+        val tileA = SRAM[T](M, k_c)
+        val tileB = SRAM[T](k_c, N)
         levelOf(tileA) = 1
         levelOf(tileB) = 1
         Parallel {
-          tileA := a(0::M, k::k+k_c, param(1))
-          tileB := b(k::k+k_c, 0::N, param(1))
+          tileA := a(0::M, k::k+k_c)
+          tileB := b(k::k+k_c, 0::N)
         }
         // Loaded On-chip memory
 
@@ -196,8 +196,8 @@ trait GEMMApp extends SpatialApp {
         // **LAYER 2** LOCAL-LEVEL STORE
         //      *outer*
         Pipe(M by m_c) { local_m =>
-          val tileA_ip = BRAM[T](m_c, k_c)
-          val tileB_pj = BRAM[T](k_c, n_r) 
+          val tileA_ip = SRAM[T](m_c, k_c)
+          val tileB_pj = SRAM[T](k_c, n_r)
 
           // DATA MOVEMENT
           Pipe(m_c by 1, k_c by 1) { (copy_m, copy_k) => tileA_ip(copy_m, copy_k) = tileA(local_m + copy_m, copy_k) }
@@ -211,23 +211,23 @@ trait GEMMApp extends SpatialApp {
             // Loaded local store level of tileB_pj
 
 
-            // **LAYER 3** ACCUMULATOR (REGISTER LEVEL)     
-            val tileC_prev = BRAM[T](n_r,n_r)
-            val tileC_acc = BRAM[T](n_r,n_r) // TODO: Merge these three double buffers into a triple buffer?
-            // val tileC_acc_post = BRAM[T](n_r,n_r)
+            // **LAYER 3** ACCUMULATOR (REGISTER LEVEL)
+            val tileC_prev = SRAM[T](n_r,n_r)
+            val tileC_acc = SRAM[T](n_r,n_r) // TODO: Merge these three double buffers into a triple buffer?
+            // val tileC_acc_post = SRAM[T](n_r,n_r)
             Pipe(m_c by n_r){ accum_m =>
               // DATA MOVEMENT
-              Pipe(n_r by 1, n_r by 1) { (copy_m, copy_n) => 
+              Pipe(n_r by 1, n_r by 1) { (copy_m, copy_n) =>
                 // TODO: Use tileC_acc as accumulator, which doesn't work now because multiple writers to it...
-                // tileC_acc(copy_m, copy_n) = tileC(local_m + accum_m + copy_m, local_n + copy_n) 
-                tileC_prev(copy_m, copy_n) = tileC(local_m + accum_m + copy_m, local_n + copy_n) 
+                // tileC_acc(copy_m, copy_n) = tileC(local_m + accum_m + copy_m, local_n + copy_n)
+                tileC_prev(copy_m, copy_n) = tileC(local_m + accum_m + copy_m, local_n + copy_n)
                 // TODO: Handle corner cases if triple buffered
               }
 
 
               Fold(k_c by 1)(tileC_acc, 0.as[T]) { compute_k =>
-              	val tileC_partial = BRAM[T](n_r,n_r)
-                Pipe(n_r by 1, n_r by 1) { (compute_m, compute_n) => 
+              	val tileC_partial = SRAM[T](n_r,n_r)
+                Pipe(n_r by 1, n_r by 1) { (compute_m, compute_n) =>
                   tileC_partial(compute_m, compute_n) = tileA_ip(compute_m, compute_k) * tileB_pj(compute_k, compute_n) + tileC_prev(compute_k, compute_n)
                 }
                 tileC_partial
@@ -239,9 +239,9 @@ trait GEMMApp extends SpatialApp {
               }
             }
           }
-        
+
 }      }
-      c(0::M, 0::N, param(1)) := tileC
+      c(0::M, 0::N) := tileC
 
     }
     getMem(c)

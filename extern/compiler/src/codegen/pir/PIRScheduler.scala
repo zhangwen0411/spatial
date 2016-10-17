@@ -30,6 +30,7 @@ trait PIRScheduler extends Traversal with PIRCommon {
 
   def scheduleCU(pipe: Exp[Any], cu: ComputeUnit) {
     debug(s"Scheduling $pipe CU: $cu")
+
     val origRegs = cu.regs
     var writeStageRegs = cu.regs
 
@@ -58,15 +59,15 @@ trait PIRScheduler extends Traversal with PIRCommon {
     ctx.pseudoStages.foreach {stage => scheduleStage(stage, ctx) }
   }
 
-  def scheduleStage(stage: PseudoStage, ctx: CUContext) = stage match {
+  def scheduleStage(stage: PseudoStage, ctx: CUContext): Unit = stage match {
     case DefStage(lhs@Deff(rhs), isReduce) =>
       debug(s"""    $lhs = $rhs ${if (isReduce) "[REDUCE]" else ""}""")
       if (isReduce) reduceNodeToStage(lhs,rhs,ctx)
       else          mapNodeToStage(lhs,rhs,ctx)
 
-    case WriteAddrStage(lhs@Deff(rhs)) =>
-      debug(s"""    $lhs = $rhs [WRITE]""")
-      writeAddrToStage(lhs, rhs, ctx)
+    case WriteAddrStage(mem, addr) =>
+      debug(s"""    $mem @ $addr [WRITE]""")
+      writeAddrToStage(mem, addr, ctx)
 
     case OpStage(op, ins, out, isReduce) =>
       debug(s"""    $out = $op(${ins.mkString(",")}) [OP]""")
@@ -111,28 +112,23 @@ trait PIRScheduler extends Traversal with PIRCommon {
   }
 
   // Addresses only, not values
-  def writeAddrToStage(lhs: Exp[Any], rhs: Def[Any], ctx: CUContext) = rhs match {
-    case Bram_store(bram, addr, value) =>
-      ctx.memories(bram).foreach{sram =>
-        sram.writeAddr = Some(allocateAddrReg(sram, addr, ctx, write=true))
-      }
-
-    case Par_bram_store(bram, addrs, values) =>
-      ctx.memories(bram).foreach{sram =>
-        sram.writeAddr = Some(allocateAddrReg(sram, addrs, ctx, write=true))
-      }
-
-    case _ => stageError(s"Unrecognized write address node $lhs = $rhs")
+  def writeAddrToStage(mem: Exp[Any], addr: Exp[Any], ctx: CUContext, local: Boolean = false) = {
+    ctx.memories(mem).foreach{sram =>
+      sram.writeAddr = Some(allocateAddrReg(sram, addr, ctx, write=true, local=local))
+    }
   }
 
-  def bufferWrite(mem: Exp[Any], value: Exp[Any], addr: Option[Exp[Any]], ctx: CUContext) {
+  def bufferWrite(mem: Exp[Any], value: Exp[Any], ndAddr: Option[Exp[Any]], ctx: CUContext) {
     if (isReadInPipe(mem, ctx.pipe)) {
+      val flatOpt = ndAddr.map{a => flattenNDAddress(a, dimsOf(mem)) }
+      val addr = flatOpt.map(_._1)
+      val addrStages = flatOpt.map(_._2).getOrElse(Nil)
+      addrStages.foreach{stage => scheduleStage(stage, ctx) }
+      addr.foreach{a => writeAddrToStage(mem, a, ctx, local=true) }
+
       // TODO: Should we allow multiple versions of local accumulator?
       ctx.memories(mem).foreach{sram =>
         propagateReg(value, ctx.reg(value), VectorLocal(fresh[Any], sram), ctx)
-
-        if (addr.isDefined)
-          sram.writeAddr = Some(allocateAddrReg(sram, addr.get, ctx, write=true, local=true))
       }
     }
     if (isReadOutsidePipe(mem, ctx.pipe)) { // Should always be true?
@@ -143,28 +139,32 @@ trait PIRScheduler extends Traversal with PIRCommon {
 
   def mapNodeToStage(lhs: Exp[Any], rhs: Def[Any], ctx: CUContext) = rhs match {
     // --- Reads
-    case Pop_fifo(EatAlias(fifo)) =>
+    case Pop_fifo(EatAlias(fifo), en) =>
       val vector = allocateGlobal(fifo).asInstanceOf[VectorMem]
       ctx.addReg(lhs, VectorIn(vector))
 
-    case Par_pop_fifo(EatAlias(fifo), len) =>
+    case Par_pop_fifo(EatAlias(fifo), en) =>
       val vector = allocateGlobal(fifo).asInstanceOf[VectorMem]
       ctx.addReg(lhs, VectorIn(vector))
 
-    // Create a reference to this BRAM and
-    case Bram_load(EatAlias(bram), addr) =>
-      val sram = ctx.mem(bram,lhs)
-      ctx.addReg(lhs, InputReg(sram))
+    // Create a reference to this SRAM
+    case Sram_load(EatAlias(ram), ndAddr) =>
+      val sram = ctx.mem(ram,lhs)
+      // Insert flat address computation
+      val (addr, addrStages) = flattenNDAddress(ndAddr, dimsOf(ram))
+      addrStages.foreach{stage => scheduleStage(stage, ctx) }
       sram.readAddr = Some(allocateAddrReg(sram, addr, ctx, write=false, local=true))
+      ctx.addReg(lhs, SRAMRead(sram))
 
-    case Par_bram_load(EatAlias(bram), addrs) =>
-      val sram = ctx.mem(bram,lhs)
-      ctx.addReg(lhs, InputReg(sram))
-      sram.readAddr = Some(allocateAddrReg(sram, addrs, ctx, write=false, local=true))
+    case Par_sram_load(EatAlias(ram), ndAddrs) =>
+      val sram = ctx.mem(ram,lhs)
+      // Insert flat address computation
+      val (addr, addrStages) = flattenNDAddress(ndAddrs, dimsOf(ram))
+      addrStages.foreach{stage => scheduleStage(stage, ctx) }
+      sram.readAddr = Some(allocateAddrReg(sram, addr, ctx, write=false, local=true))
+      ctx.addReg(lhs, SRAMRead(sram))
 
-    case Vector_from_list(elems) =>
-      if (elems.length != 1) stageError("Expected parallelization of 1 in inner loop in PIR generation")
-      ctx.addReg(lhs, ctx.reg(elems.head))
+    case ListVector(elems) => ctx.addReg(lhs, ctx.reg(elems.head))
 
     case Vec_apply(vec, idx) =>
       if (idx != 0) stageError("Expected parallelization of 1 in inner loop in PIR generation")
@@ -185,10 +185,10 @@ trait PIRScheduler extends Traversal with PIRCommon {
     case Par_push_fifo(EatAlias(fifo),values,ens,_) =>
       bufferWrite(fifo,values,None,ctx)
 
-    case Bram_store(EatAlias(bram), addr, value) =>
-      bufferWrite(bram,value,Some(addr),ctx)
-    case Par_bram_store(EatAlias(bram), addrs, values) =>
-      bufferWrite(bram,values,Some(addrs),ctx)
+    case Sram_store(EatAlias(sram), addr, value, ens) =>
+      bufferWrite(sram,value,Some(addr),ctx)
+    case Par_sram_store(EatAlias(sram), addrs, values, ens) =>
+      bufferWrite(sram,values,Some(addrs),ctx)
 
     // Cases: 1. Inner Accumulator (read -> write)
     //        2. Outer Accumulator (read -> write)
@@ -199,7 +199,7 @@ trait PIRScheduler extends Traversal with PIRCommon {
     // - 2: Update producer of value to have accumulator as output
     // - 3: Update reg to map to register of value (for later use in reads)
     // - 4: If any of first 3 options, add bypass value to scalar out, otherwise update producer
-    case Reg_write(EatAlias(reg), value) =>
+    case Reg_write(EatAlias(reg), value, en) =>
       val isLocallyRead = isReadInPipe(reg, ctx.pipe)
       val isLocallyWritten = isWrittenInPipe(reg, ctx.pipe, Some(lhs)) // Always true?
       val isInnerAcc = isInnerAccum(reg) && isLocallyRead && isLocallyWritten
@@ -242,7 +242,10 @@ trait PIRScheduler extends Traversal with PIRCommon {
         ctx.addStage(stage)
 
       case _ => nodeToOp(rhs) match {
-        case Some(op) => opStageToStage(op, syms(rhs), lhs, ctx, false)
+        case Some(op) =>
+          val inputs = syms(rhs)
+          opStageToStage(op, inputs, lhs, ctx, false)
+
         case None => stageWarn(s"No ALU operation known for $lhs = $rhs")
       }
     }
@@ -251,41 +254,6 @@ trait PIRScheduler extends Traversal with PIRCommon {
   def reduceNodeToStage(lhs: Exp[Any], rhs: Def[Any], ctx: CUContext) = nodeToOp(rhs) match {
     case Some(op) => opStageToStage(op, syms(rhs), lhs, ctx, true)
     case _ => stageWarn(s"No ALU operation known for $lhs = $rhs")
-  }
-
-  def nodeToOp(node: Def[Any]): Option[PIROp] = node match {
-    case Mux2(_,_,_)    => Some(ALUMux)
-    case FixPt_Add(_,_) => Some(FixAdd)
-    case FixPt_Sub(_,_) => Some(FixSub)
-    case FixPt_Mul(_,_) => Some(FixMul)
-    case FixPt_Div(_,_) => Some(FixDiv)
-    case FixPt_Lt(_,_)  => Some(FixLt)
-    case FixPt_Leq(_,_) => Some(FixLeq)
-    case FixPt_Eql(_,_) => Some(FixEql)
-    case FixPt_Neq(_,_) => Some(FixNeq)
-    case e: Min2[_] if isFixPtType(e.mT) => Some(FltMin)
-    case e: Max2[_] if isFixPtType(e.mT) => Some(FltMax)
-
-    // Float ops currently assumed to be single op
-    case FltPt_Add(_,_) => Some(FltAdd)
-    case FltPt_Sub(_,_) => Some(FltSub)
-    case FltPt_Mul(_,_) => Some(FltMul)
-    case FltPt_Div(_,_) => Some(FltDiv)
-    case FltPt_Lt(_,_)  => Some(FltLt)
-    case FltPt_Leq(_,_) => Some(FltLeq)
-    case FltPt_Eql(_,_) => Some(FltEql)
-    case FltPt_Neq(_,_) => Some(FltNeq)
-
-    case FltPt_Abs(_)   => Some(FltAbs)
-    case FltPt_Exp(_)   => Some(FltExp)
-    case FltPt_Log(_)   => Some(FltLog)
-    case FltPt_Sqrt(_)  => Some(FltSqrt)
-    case e: Min2[_] if isFltPtType(e.mT) => Some(FltMin)
-    case e: Max2[_] if isFltPtType(e.mT) => Some(FltMax)
-
-    case Bit_And(_,_)   => Some(BitAnd)
-    case Bit_Or(_,_)    => Some(BitOr)
-    case _ => None
   }
 
   // FIXME: Assumes a single node reduction function right now, change to allow multi-node later
@@ -298,21 +266,33 @@ trait PIRScheduler extends Traversal with PIRCommon {
       val input = ins.head
       val accum = ins.last
       val inputReg = ctx.reg(input)
-      propagateReg(input, inputReg, ReduceReg(fresh[Any]), ctx)
+      val usedInput = propagateReg(input, inputReg, ReduceReg(fresh[Any]), ctx)
       val zero = accum match {
         case Deff(Reg_read(acc)) => allocateConst(resetValue(acc))
         case _ => ConstReg("0l")
       }
       val acc = ReduceReg(out)
-      val stage = ReduceStage(op, zero, acc)
+      val stage = ReduceStage(op, zero, ctx.refIn(usedInput), acc)
       ctx.addReg(out, acc)
       ctx.addStage(stage)
     }
     else {
-      val inputs = ins.map{in => ctx.refIn(ctx.reg(in)) }
-      val output = ctx.cu.getOrAddReg(out){ TempReg(out) }
-      val stage = MapStage(op, inputs, List(ctx.refOut(output)))
-      ctx.addStage(stage)
+      val inputRegs = ins.map{in => ctx.reg(in) }
+      val isControlStage = inputRegs.nonEmpty && !inputRegs.exists{reg => !isControl(reg)}
+
+      if (isControlStage) {
+        val n = ctx.controlStageNum
+        val inputs = inputRegs.map{reg => ctx.refIn(reg, n)}
+        val output = ctx.cu.getOrAddReg(out){ ControlReg(out) }
+        val stage = MapStage(op, inputs, List(ctx.refOut(output, n)))
+        ctx.addControlStage(stage)
+      }
+      else {
+        val inputs = inputRegs.map{reg => ctx.refIn(reg) }
+        val output = ctx.cu.getOrAddReg(out){ TempReg(out) }
+        val stage = MapStage(op, inputs, List(ctx.refOut(output)))
+        ctx.addStage(stage)
+      }
     }
   }
 

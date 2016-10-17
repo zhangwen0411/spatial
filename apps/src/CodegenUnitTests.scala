@@ -17,7 +17,7 @@ trait SimpleSequentialApp extends SpatialApp {
     setArg(y, yin)
 
     Accel {
-      val b1 = BRAM[SInt](tileSize)
+      val b1 = SRAM[SInt](tileSize)
       Pipe(tileSize by 1 par innerPar){ ii =>
         b1(ii) = x.value * ii
       }
@@ -43,7 +43,6 @@ trait SimpleSequentialApp extends SpatialApp {
 }
 
 
-// 3
 object DeviceMemcpy extends SpatialAppCompiler with DeviceMemcpyApp // Args: 5
 trait DeviceMemcpyApp extends SpatialApp {
   type T = SInt
@@ -51,7 +50,7 @@ trait DeviceMemcpyApp extends SpatialApp {
 
   val N = 192
   def memcpyViaFPGA(srcHost: Rep[Array[T]]) = {
-    val fpgamem = OffChipMem[SInt](N)
+    val fpgamem = DRAM[SInt](N)
     setMem(fpgamem, srcHost)
 
   	val y = ArgOut[SInt]
@@ -85,7 +84,6 @@ trait DeviceMemcpyApp extends SpatialApp {
 
 }
 
-// 4
 object SimpleTileLoadStore extends SpatialAppCompiler with SimpleTileLoadStoreApp // Args: 960 5
 trait SimpleTileLoadStoreApp extends SpatialApp {
   type T = SInt
@@ -96,8 +94,8 @@ trait SimpleTileLoadStoreApp extends SpatialApp {
     val storePar = param(1); domainOf(storePar) = (1, 1, 1)
     val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
 
-    val srcFPGA = OffChipMem[SInt](N)
-    val dstFPGA = OffChipMem[SInt](N)
+    val srcFPGA = DRAM[SInt](N)
+    val dstFPGA = DRAM[SInt](N)
     setMem(srcFPGA, srcHost)
 
   	val size = ArgIn[SInt]
@@ -105,11 +103,11 @@ trait SimpleTileLoadStoreApp extends SpatialApp {
     setArg(x, value)
     setArg(size, N)
     Accel {
-      val b1 = BRAM[SInt](tileSize)
+      val b1 = SRAM[SInt](tileSize)
       Sequential(size by tileSize) { i =>
         b1 := srcFPGA(i::i+tileSize)
 
-        val b2 = BRAM[SInt](tileSize)
+        val b2 = SRAM[SInt](tileSize)
         Pipe (tileSize by 1) { ii =>
           b2(ii) = b1(ii) * x
         }
@@ -153,15 +151,15 @@ trait FifoLoadApp extends SpatialApp {
   	val size = ArgIn[SInt]
   	setArg(size, N)
 
-    val srcFPGA = OffChipMem[SInt](size)
-    val dstFPGA = OffChipMem[SInt](size)
+    val srcFPGA = DRAM[SInt](size)
+    val dstFPGA = DRAM[SInt](size)
     setMem(srcFPGA, srcHost)
 
     Accel {
       val f1 = FIFO[SInt](tileSize)
       Sequential(size by tileSize) { i =>
         f1 := srcFPGA(i::i + tileSize)
-        val b1 = BRAM[SInt](tileSize)
+        val b1 = SRAM[SInt](tileSize)
         Pipe(tileSize by 1) { i =>
           b1(i) = f1.pop
         }
@@ -205,8 +203,8 @@ trait ParFifoLoadApp extends SpatialApp {
     val N = ArgIn[T]
     setArg(N, in)
 
-    val src1FPGA = OffChipMem[T](N)
-    val src2FPGA = OffChipMem[T](N)
+    val src1FPGA = DRAM[T](N)
+    val src2FPGA = DRAM[T](N)
     val out = ArgOut[T]
     setMem(src1FPGA, src1)
     setMem(src2FPGA, src2)
@@ -249,7 +247,7 @@ trait ParFifoLoadApp extends SpatialApp {
   }
 }
 
-object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args:
+object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args: none
 trait FifoLoadStoreApp extends SpatialApp {
   type T = SInt
   val N = 192
@@ -258,22 +256,22 @@ trait FifoLoadStoreApp extends SpatialApp {
   def fifoLoadStore(srcHost: Rep[Array[T]]) = {
     val tileSize = N
 
-    val srcFPGA = OffChipMem[SInt](N)
-    val dstFPGA = OffChipMem[SInt](N)
-    val dummyOut = ArgOut[SInt]
+    val srcFPGA = DRAM[SInt](N)
+    val dstFPGA = DRAM[SInt](N)
+    // val dummyOut = ArgOut[SInt]
     setMem(srcFPGA, srcHost)
 
     Accel {
       val f1 = FIFO[SInt](tileSize)
-      Parallel {
+      // Parallel {
         Sequential {
           f1 := srcFPGA(0::tileSize)
           dstFPGA(0::tileSize) := f1
         }
-        Pipe(tileSize by 1) { i =>
-          dummyOut := i
-        }
-      }
+        // Pipe(tileSize by 1) { i => // This pipe forces the loadstore to run for enough iters
+        //   dummyOut := i
+        // }
+      // }
       ()
     }
     getMem(dstFPGA)
@@ -336,7 +334,7 @@ trait SimpleReduceApp extends SpatialApp {
   }
 }
 
-// object SimpleUnitTest extends SpatialAppCompiler with SimpleUnit // Args:
+// object SimpleUnitTest extends SpatialAppCompiler with SimpleUnit // Args: none
 // trait SimpleUnit extends SpatialApp {
 //   val N = 96.as[SInt]
 
@@ -441,7 +439,6 @@ trait SimpleFoldApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val constTileSize = 96
-  val N = 192
 
   def simple_fold(src: Rep[Array[T]]) = {
     val innerPar = param(1); domainOf(innerPar) = (1, 1, 1)
@@ -452,14 +449,14 @@ trait SimpleFoldApp extends SpatialApp {
     val out = ArgOut[T]
     setArg(N, len)
 
-    val v1 = OffChipMem[T](N)
+    val v1 = DRAM[T](N)
     setMem(v1, src)
 
     Accel {
       Sequential {
         val accum = Reg[T]
         Fold (N by tileSize)(accum, 0.as[T]) { i =>
-          val b1 = BRAM[T](tileSize)
+          val b1 = SRAM[T](tileSize)
           b1 := v1(i::i+tileSize)
           Reduce (tileSize par innerPar)(0.as[T]) { ii =>
             b1(ii)
@@ -488,7 +485,7 @@ trait SimpleFoldApp extends SpatialApp {
   }
 }
 
-object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args:
+object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args: none
 trait Memcpy2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -496,21 +493,21 @@ trait Memcpy2DApp extends SpatialApp {
   val C = 96
 
   def memcpy_2d(src: Rep[ForgeArray[T]], rows: Rep[SInt], cols: Rep[SInt]) = {
-    val tileDim1 = param(2);
+    val tileDim1 = param(96);
     val tileDim2 = param(96);  domainOf(tileDim2) = (96, 96, 96)
 
     val rowsIn = rows
     val colsIn = cols
 
-    val srcFPGA = OffChipMem[T](rows, cols)
-    val dstFPGA = OffChipMem[T](rows, cols)
+    val srcFPGA = DRAM[T](rows, cols)
+    val dstFPGA = DRAM[T](rows, cols)
 
     // Transfer data and start accelerator
     setMem(srcFPGA, src)
 
     Accel {
       Sequential(rowsIn by tileDim1, colsIn by tileDim2) { (i,j) =>
-        val tile = BRAM[T](tileDim1, tileDim2)
+        val tile = SRAM[T](tileDim1, tileDim2)
         tile := srcFPGA(i::i+tileDim1, j::j+tileDim2)
         dstFPGA (i::i+tileDim1, j::j+tileDim2) := tile
       }
@@ -544,23 +541,23 @@ object BlockReduce1D extends SpatialAppCompiler with BlockReduce1DApp // Args: 1
 trait BlockReduce1DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val N = 1920
 
   val tileSize = 96
+  val p = 2
 
   def blockreduce_1d(src: Rep[ForgeArray[T]], size: Rep[SInt]) = {
 
     val sizeIn = ArgIn[SInt]; setArg(sizeIn, size)
 
-    val srcFPGA = OffChipMem[T](sizeIn)
-    val dstFPGA = OffChipMem[T](tileSize)
+    val srcFPGA = DRAM[T](sizeIn)
+    val dstFPGA = DRAM[T](tileSize)
 
     setMem(srcFPGA, src)
 
     Accel {
-      val accum = BRAM[T](tileSize)
+      val accum = SRAM[T](tileSize)
       Fold (sizeIn by tileSize)(accum, 0.as[T]) { i  =>
-        val tile = BRAM[T](tileSize)
+        val tile = SRAM[T](tileSize)
         tile := srcFPGA(i::i+tileSize)
         tile
       }{_+_}
@@ -577,7 +574,6 @@ trait BlockReduce1DApp extends SpatialApp {
 
   def main() = {
     val size = args(0).to[SInt]
-    // val size = N
     val src = Array.tabulate(size) { i => i }
 
     val dst = blockreduce_1d(src, size)
@@ -596,26 +592,31 @@ trait BlockReduce1DApp extends SpatialApp {
   }
 }
 
-object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args:
+object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args: 100
 trait UnalignedLdApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val N = 1920
+  val N = 19200
 
-  val numCols = 155
-  val paddedCols = 192
+  val numCols = 8
+  val paddedCols = 1920
 
-  def unaligned_1d(src: Rep[ForgeArray[T]]) = {
-
-    val srcFPGA = OffChipMem[T](paddedCols)
+  def unaligned_1d(src: Rep[ForgeArray[T]], ii: Rep[T]) = {
+    val iters = ArgIn[T]
+    val srcFPGA = DRAM[T](paddedCols)
     val acc = ArgOut[T]
 
+    setArg(iters, ii)
     setMem(srcFPGA, src)
 
     Accel {
-      val mem = BRAM[T](numCols)
-      Pipe { mem := srcFPGA(0::numCols) }
-      acc := Reduce(numCols by 1)(0.as[T]) { i => mem(i) }{_+_}
+      val mem = SRAM[T](numCols)
+      val accum = Reg[T](0)
+      Fold(iters by 1)(accum, 0.as[T]) { k =>
+        Pipe { mem := srcFPGA(k*numCols::k*numCols+numCols) }
+        Reduce(numCols by 1)(0.as[T]) { i => mem(i) }{_+_}
+      }{_+_}
+      acc := accum
     }
     getArg(acc)
   }
@@ -628,12 +629,13 @@ trait UnalignedLdApp extends SpatialApp {
 
   def main() = {
     // val size = args(unit(0)).to[SInt]
+    val ii = args(0).to[T]
     val size = paddedCols
     val src = Array.tabulate(size) { i => i }
 
-    val dst = unaligned_1d(src)
+    val dst = unaligned_1d(src, ii)
 
-    val gold = Array.tabulate(numCols) { i => i }.reduce{_+_}
+    val gold = Array.tabulate(ii*numCols) { i => i }.reduce{_+_}
 
     println("src:" + gold)
     println("dst:" + dst)
@@ -644,7 +646,7 @@ trait UnalignedLdApp extends SpatialApp {
   }
 }
 
-object BlockReduce2D extends SpatialAppCompiler with BlockReduce2DApp // Args: 960 960
+object BlockReduce2D extends SpatialAppCompiler with BlockReduce2DApp // Args: 192 384
 trait BlockReduce2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -652,21 +654,21 @@ trait BlockReduce2DApp extends SpatialApp {
 
   val tileSize = 96
 
-  def blockreduce_2d(/*src: Rep[ForgeArray[T]],*/ rows: Rep[SInt], cols: Rep[SInt]) = {
+  def blockreduce_2d(src: Rep[ForgeArray[T]], rows: Rep[SInt], cols: Rep[SInt]) = {
 
     val rowsIn = ArgIn[SInt]; setArg(rowsIn, rows)
     val colsIn = ArgIn[SInt]; setArg(colsIn, cols)
 
-    val srcFPGA = OffChipMem[T](rowsIn,colsIn)
-    val dstFPGA = OffChipMem[T](tileSize,tileSize)
+    val srcFPGA = DRAM[T](rowsIn,colsIn)
+    val dstFPGA = DRAM[T](tileSize,tileSize)
 
-    //setMem(srcFPGA, src)
+    setMem(srcFPGA, src)
 
     Accel {
-      val accum = BRAM[T](tileSize,tileSize)
+      val accum = SRAM[T](tileSize,tileSize)
       Fold (rowsIn by tileSize, colsIn by tileSize)(accum, 0.as[T]) { (i,j)  =>
-        val tile = BRAM[T](tileSize,tileSize)
-        tile := srcFPGA(i::i+tileSize, j::j+tileSize, param(1))
+        val tile = SRAM[T](tileSize,tileSize)
+        tile := srcFPGA(i::i+tileSize, j::j+tileSize)
         tile
       }{_+_}
       dstFPGA (0::tileSize, 0::tileSize) := accum
@@ -683,52 +685,77 @@ trait BlockReduce2DApp extends SpatialApp {
   def main() = {
     val numRows = args(0).to[SInt]
     val numCols = args(1).to[SInt]
-    //val src = Array.tabulate(numRows) { i => Array.tabulate(numCols) { j => i*numCols + j} }
+    val src = Array.tabulate(numRows) { i => Array.tabulate(numCols) { j => i*numCols + j} }
+    val flatsrc = src.flatten
 
-    val dst = blockreduce_2d(numRows, numCols)
+    val dst = blockreduce_2d(src.flatten, numRows, numCols)
 
-    /*val numBlocks = numRows*numCols/(tileSize*tileSize)
-    val first = ((numBlocks*(numBlocks-1))/2)*tileSize*tileSize
-    val gold = Array.tabulate(tileSize*tileSize) { i => first + i*numBlocks }
+    val numHorizontal = numRows/tileSize
+    val numVertical = numCols/tileSize
+    val numBlocks = numHorizontal*numVertical
+    // val gold = Array.tabulate(tileSize){i =>
+    //   Array.tabulate(tileSize){j =>
+
+    //     flatsrc(i*tileSize*tileSize + j*tileSize) }}.flatten
+    // }.reduce{(a,b) => a.zip(b){_+_}}
+
+    val a1 = Array.tabulate(tileSize) { i => i }
+    val a2 = Array.tabulate(tileSize) { i => i }
+    val a3 = Array.tabulate(numHorizontal) { i => i }
+    val a4 = Array.tabulate(numVertical) { i => i }
+    val gold = Array.tabulate(tileSize) { i => Array.tabulate(tileSize) {j =>
+      Array.tabulate(numHorizontal) { case ii => Array.tabulate(numVertical) {case jj =>
+          i*tileSize*numVertical + j + ii*tileSize*numVertical*tileSize + jj*tileSize
+        }}.flatten.reduce{_+_}
+      }}.flatten
+    // val first_el = (0 until numVertical).map{ case j => (0 until numHorizontal).map {case i => src.flatten(tileSize*j + tileSize*tileSize*i)}}.flatten.reduce{_+_}
+    // val first_collapse_cols = ((numVertical*tileSize)/2)*(numVertical-1)
+    // val last_collapse_cols = (( numVertical*tileSize*tileSize*(numHorizontal-1) + (first_collapse_cols + numVertical*tileSize*tileSize*(numHorizontal-1)) ) / 2)*(numVertical-1)
+    // val first_collapse_rows = if (numHorizontal == 1) {first_collapse_cols} else { ((first_collapse_cols + last_collapse_cols) / 2) * (numHorizontal-1) }
+    // // TODO: Why does DEG crash if I add first_collapse_rows rather???
+    // val gold = Array.tabulate(tileSize*tileSize) { i => first_collapse_cols + i*numBlocks }
+
     printArr(gold, "src:")
     printArr(dst, "dst:")
     // dst.zip(gold){_==_} foreach {println(_)}
     val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
-    println("PASS: " + cksum + " (BlockReduce2D)")*/
+    println("PASS: " + cksum + " (BlockReduce2D)")
 
 //    (0 until tileSize) foreach { i => assert(dst(i) == gold(i)) }
   }
 }
 
 
-object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Args: 192
+object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Args: none
 trait ScatterGatherApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val N = 1920
 
-  val tileSize = 96
-  val maxNumAddrs = 192
-  val offchip_dataSize = 19200
+  val tileSize = 384
+  val maxNumAddrs = 1536
+  val offchip_dataSize = maxNumAddrs*6
+  val P = parameter(1)
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
-    val numAddrs = ArgIn[SInt]; setArg(numAddrs, size)
-
-    val srcAddrs = OffChipMem[T](numAddrs)
-    val gatherData = OffChipMem[T](offchip_dataSize)
-    val scatterResult = OffChipMem[T](offchip_dataSize)
+    val srcAddrs = DRAM[T](maxNumAddrs)
+    val gatherData = DRAM[T](offchip_dataSize)
+    val scatterResult = DRAM[T](offchip_dataSize)
 
     setMem(srcAddrs, addrs)
     setMem(gatherData, offchip_data)
 
     Accel {
-      val addrs = BRAM[T](maxNumAddrs)
-      val gathered = BRAM[T](maxNumAddrs)
-      addrs := srcAddrs(0::numAddrs, param(1))
-      gathered := gatherData(addrs)
-      scatterResult(addrs) := gathered
+      val addrs = SRAM[T](maxNumAddrs)
+      Sequential (maxNumAddrs by tileSize) { i =>
+        val gathered = SRAM[T](maxNumAddrs)
+        addrs := srcAddrs(i::i + tileSize par P)
+        gathered := gatherData(addrs par P, tileSize)
+        scatterResult(addrs par P, tileSize) := gathered // What to do about parallel scatter when sending to same burst simultaneously???
+      }
     }
+
     getMem(scatterResult)
   }
 
@@ -740,35 +767,20 @@ trait ScatterGatherApp extends SpatialApp {
 
   def main() = {
     // val size = args(unit(0)).to[SInt]
-    val size = args(0).to[SInt]
+
+    val size = maxNumAddrs
     val dataSize = offchip_dataSize
-    val addrs = Array.tabulate[SInt](size) { i => i*2
-      // i match {
-      //   case 5 => 199
-      //   case 6 => 201
-      //   case 7 => 191
-      //   case 8 => 203
-      //   case 9 => 381
-      //   case 10 => 385
-      //   case 15 => 97
-      //   case 94 => 3
-      //   case 95 => 1
-      //   case 83 => 101
-      //   case 70 => 203
-      //   case _ => i*2
-      // }
+    val addrs = Array.tabulate[SInt](size) { i =>
+      // i*2 // for debug
+      if (i == 4) 199 else if (i == 6) offchip_dataSize-2 else if (i == 7) 191 else if (i==8) 203
+        else if (i == 9) 381 else if (i == 10) offchip_dataSize-97 else if (i == 15) 97
+        else if (i == 16) 11 else if (i == 17) 99 else if (i == 18) 245
+        else if (i == 94) 3 else if (i == 95) 1 else if (i == 83) 101
+        else if (i == 70) 203 else if (i == 71) (offchip_dataSize-1)
+        else if (i % 2 == 0) i*2 else i*2 + offchip_dataSize/2
     }
-    // Scramble some of the addrs
-    // addrs(5) = 199
-    // addrs(6) = 201
-    // addrs(7) = 191
-    // addrs(8) = 203
-    // addrs(9) = 381
-    // addrs(10) = 385
-    // addrs(15) = 97
-    // addrs(94) = 3
-    // addrs(95) = 1
     val offchip_data = Array.fill(dataSize) {random[SInt](dataSize)}
+    // val offchip_data = Array.tabulate (dataSize) { i => i}
 
     val received = scattergather(addrs, offchip_data, size, dataSize)
 
@@ -817,37 +829,354 @@ trait InOutArgApp extends SpatialApp {
   }
 }
 
-object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteApp
+object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteApp // Args: none
 trait MultiplexedWriteApp extends SpatialApp {
-  type Array[T] = ForgeArray[T]
+  type Array[SInt] = ForgeArray[SInt]
 
-  val tileSize = 16
+  val tileSize = 96
+  val I = 5
+  val N = 192
 
-  def main() = {
-    val N = 1024
+  def multiplexedwrtest(w: Rep[Array[SInt]], i: Rep[Array[SInt]]) = {
     val T = param(tileSize)
     val P = param(4)
-    val I = 5.as[SInt]
-    val weights = OffChipMem[SInt](N)
-    val inputs  = OffChipMem[SInt](N)
+    val weights = DRAM[SInt](N)
+    val inputs  = DRAM[SInt](N)
+    val weightsResult = DRAM[SInt](N*I)
+    setMem(weights, w)
+    setMem(inputs,i)
     Accel {
-      val wt = BRAM[SInt](T)
-      val in = BRAM[SInt](T)
+      val wt = SRAM[SInt](T)
+      val in = SRAM[SInt](T)
       Sequential(N by T){i =>
         wt := weights(i::i+T)
         in := inputs(i::i+T)
 
         // Some math nonsense (definitely not a correct implementation of anything)
         Pipe(I by 1){x =>
-          Pipe(T par P){j => wt(j) = wt(j) - ((wt(j) - in(j))/in(j)) }
-          val sum = Reduce(T par P)(0.as[SInt]){j => wt(j) }{_+_}
-          Pipe(T par P){j => wt(j) = (wt(j) * tileSize) / sum }
-
-          weights(i::i+T) := wt
+          Fold(1 by 1)(wt, 0.as[SInt]){ k =>  // s0 write
+            in
+          }{_+_}
+          weightsResult(i*I+x*T::i*I+x*T+T) := wt //s1 read
         }
       }
 
     }
+    getMem(weightsResult)
+
+  }
+
+  def printArr(a: Rep[Array[SInt]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def main() = {
+    val w = Array.tabulate[SInt](N){ i => i }
+    val i = Array.tabulate[SInt](N){ i => i*2 }
+
+    val result = multiplexedwrtest(w, i)
+
+    val gold = Array.tabulate(N/tileSize){ k =>
+      Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten
+    }.flatten
+    printArr(gold, "gold: ");
+    printArr(result, "result: ");
+
+    val cksum = gold.zip(result){_==_}.reduce{_&&_}
+    println("PASS: " + cksum  + " (MultiplexedWriteTest)")
+
+
   }
 }
 
+// TODO: Make this actually check a bubbled NBuf (i.e.- s0 = wr, s2 = wr, s4 =rd, s1s2 = n/a)
+// because I think this will break the NBuf SM since it won't detect drain completion properly
+object BubbledWriteTest extends SpatialAppCompiler with BubbledWriteApp // Args: none
+trait BubbledWriteApp extends SpatialApp {
+  type Array[SInt] = ForgeArray[SInt]
+
+  val tileSize = 96
+  val I = 5
+  val N = 192
+
+  def bubbledwrtest(w: Rep[Array[SInt]], i: Rep[Array[SInt]]) = {
+    val T = param(tileSize)
+    val P = param(4)
+    val weights = DRAM[SInt](N)
+    val inputs  = DRAM[SInt](N)
+    val weightsResult = DRAM[SInt](N*I)
+    val dummyWeightsResult = DRAM[SInt](T)
+    val dummyOut = DRAM[SInt](T)
+    val dummyOut2 = DRAM[SInt](T)
+    setMem(weights, w)
+    setMem(inputs,i)
+    Accel {
+      val wt = SRAM[SInt](T)
+      val in = SRAM[SInt](T)
+      Sequential(N by T){i =>
+        wt := weights(i::i+T)
+        in := inputs(i::i+T)
+
+        Pipe(I by 1){x =>
+          Fold(1 by 1)(wt, 0.as[SInt]){ k =>  // s0 write
+            in
+          }{_+_}
+          dummyOut(0::T) := in // s1 do not touch
+          dummyWeightsResult(0::T) := wt // s2 read
+          dummyOut2(0::T) := in // s3 do not touch
+          weightsResult(i*I+x*T::i*I+x*T+T) := wt //s4 read
+        }
+      }
+
+    }
+    getMem(weightsResult)
+
+  }
+
+  def printArr(a: Rep[Array[SInt]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def main() = {
+    val w = Array.tabulate[SInt](N){ i => i }
+    val i = Array.tabulate[SInt](N){ i => i*2 }
+
+    val result = bubbledwrtest(w, i)
+
+    val gold = Array.tabulate(N/tileSize){ k =>
+      Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten
+    }.flatten
+    printArr(gold, "gold: ");
+    printArr(result, "result: ");
+
+    val cksum = gold.zip(result){_==_}.reduce{_&&_}
+    println("PASS: " + cksum  + " (MultiplexedWriteTest)")
+
+
+  }
+}
+
+
+object SequentialWrites extends SpatialAppCompiler with SequentialWritesApp // Args: none
+trait SequentialWritesApp extends SpatialApp {
+  type T = SInt
+  type Array[T] = ForgeArray[T]
+
+  val tileSize = 96
+  val N = 5
+
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def sequentialwrites(srcData: Rep[ForgeArray[T]], x: Rep[T]) = {
+    val T = param(tileSize)
+    val P = param(4)
+    val src = DRAM[SInt](T)
+    val dst = DRAM[SInt](T)
+    val xx = ArgIn[T]
+    setArg(xx, x)
+    setMem(src, srcData)
+    Accel {
+      val in = SRAM[SInt](T)
+      in := src(0::T)
+
+      Fold (N by 1)(in, 0.as[T]) { i =>
+        val d = SRAM[SInt](T)
+        Pipe(T by 1){ i => d(i) = xx.value + i }
+        d
+      } {_+_}
+
+      dst(0::T) := in
+    }
+    getMem(dst)
+  }
+
+  def main() = {
+    val x = args(0).to[SInt]
+    val srcData = Array.tabulate(tileSize) { i => i }
+
+    val result = sequentialwrites(srcData, x)
+
+    val first = x*N
+    val diff = N+1
+    val gold = Array.tabulate(tileSize) { i => first + i*diff}
+
+    printArr(gold, "gold: ")
+    printArr(result, "result: ")
+    val cksum = result.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum  + " (SequentialWrites)")
+
+  }
+}
+
+object ChangingCtrMax extends SpatialAppCompiler with ChangingCtrMaxApp // Args: none
+trait ChangingCtrMaxApp extends SpatialApp {
+  type T = SInt
+  type Array[T] = ForgeArray[T]
+
+  val tileSize = 96
+  val N = 5
+
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
+  def changingctrmax() = {
+    val result = DRAM[T](96)
+    Accel {
+      val rMem = SRAM[T](96)
+      Sequential(96 by 1) { i =>
+        val accum = Reduce(i by 1)(0.as[SInt]){ j =>
+          j
+        }{_+_}
+        Pipe{rMem(i) = accum}
+      }
+      result(0::96) := rMem
+    }
+    getMem(result)
+  }
+
+  def main() = {
+    val i = args(0).to[SInt]
+
+    val result = changingctrmax()
+
+    // Use strange if (i==0) b/c iter1: 0 by 1 and iter2: 1 by 1 both reduce to 0
+    val gold = Array.tabulate(tileSize) { i => if (i==0) 0 else (i-1)*i/2}
+
+    printArr(gold, "gold: ")
+    printArr(result, "result: ")
+    val cksum = result.zip(gold){_ == _}.reduce{_&&_}
+    println("PASS: " + cksum  + " (ChangingCtrMax)")
+
+  }
+}
+
+object FifoPushPop extends SpatialAppCompiler with FifoPushPopApp // Args: 384
+trait FifoPushPopApp extends SpatialApp {
+  type T = SInt
+
+  type Array[T] = ForgeArray[T]
+  def fifopushpop(N: Rep[SInt]) = {
+    val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
+
+    val size = ArgIn[SInt]
+    setArg(size, N)
+    val acc = ArgOut[SInt]
+
+    Accel {
+      val f1 = FIFO[SInt](tileSize)
+      val accum = Reg[SInt](0)
+      Fold(size by tileSize)(accum, 0.as[SInt]) { iter => 
+        Pipe(tileSize by 1) { i => f1.push(iter + i) }
+        Reduce(tileSize by 1)(0.as[SInt]) { i => 
+          f1.pop
+        }{_+_}
+      }{_+_}
+      acc := accum
+    }
+    getArg(acc)
+  }
+
+  def main() {
+    val arraySize = args(0).to[SInt]
+
+    val gold = Array.tabulate(arraySize){ i => i }.reduce{_+_}
+    val dst = fifopushpop(arraySize)
+
+    println("gold: " + gold)
+    println("dst: " + dst)
+
+    val cksum = dst == gold
+    println("PASS: " + cksum + " (FifoPushPop)")
+
+
+  }
+}
+// object GroupByReduce extends SpatialAppCompiler with GroupByReduceApp // Args: none
+// trait GroupByReduceApp extends SpatialApp {
+
+//   val tileSize = 96
+
+//   def groupbyreduce(keys: Rep[Array[SInt]], values: Rep[Array[SInt]], numPars: Rep[SInt]) = {
+//     // Declare off-chip data arrays
+//     val N = ArgIn[SInt]
+//     val OCkeys = OffChipMem(T)("keys", numPars)
+//     val OCvalues = OffChipMem(T)("values", numPars)
+//     val OCresult = OffChipMem(T)("groups", tileSize)
+//     val OCaccum = OffChipMem (T)("accums", tileSize)
+//     setArg(N, numPars)
+//     setMem(OCkeys, keys)
+//     setMem(OCvalues, values)
+
+//     Accel {
+//       Sequential(N by tileSize) { i => 
+//         val kTile = BRAM[SInt](tileSize)
+//         val vTile = BRAM[SInt](tileSize)
+//         val rTile = BRAM[SInt](tileSize)
+//         val aTile = BRAM[SInt](tileSize)
+//         kTile := OCkeys(i::i+tileSize, param(1))
+//         vTile := OCvalues(i::i+tileSize, param(1))
+//         (rTile, aTile) = GrpByRdc(kTile, vTile)
+//       }
+//       OCresult(0::tileSize) := rTile
+//       OCaccum(0::tileSize) := aTile
+//     }
+
+//     getMem(OCresult)
+//     getMem(OCaccum)
+//   }
+
+//   def main() = {
+
+   // // Read input args
+   //  val dim = args(0).toInt
+
+   //  // Use input args to make random off chip array values 
+   //  setArg("B",dim)
+
+   //  // Generate new data
+   //  val keys = Array.tabulate(dim){i => scala.util.Random.nextInt(31)}
+   //  val values = Array.tabulate(dim){i => scala.util.Random.nextInt(20)}
+
+   //  // Set offchip data tiles
+   //  setMem("values", values)
+   //  setMem("keys", keys)
+
+   //  // Show user what off chip array values are
+   //  println("\nkey-value pairs:")
+   //  if (dim > 100) {
+   //    println("<supressed>")
+   //  }
+   //  else {
+   //    keys.zip(values).map { case (a,b) => println(a + " - " + b)} 
+   //  }
+
+   //  // val results = keys.zip(values).groupBy(_._1).mapValues(_.map(_._2).sum)
+   //  var buckets = keys.distinct
+   //  var reductions = buckets map {_ => 0}
+   //  for (i <- 0 until buckets.length) {
+   //    reductions(i) = keys.zip(values).filter(_._1 == buckets(i)).map(_._2).sum
+   //  } 
+
+
+
+   //  println("\nbucket-reduction pairs:")
+   //  if (reductions.length > 100) {
+   //    println("<supressed>")
+   //  }
+   //  else {
+   //    buckets.zip(reductions).map { case (a,b) => println(a + " - " + b)} 
+   //  }
+
+//   }
+// }

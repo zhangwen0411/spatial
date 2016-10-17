@@ -37,6 +37,9 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   case class ConstReg(const: String) extends LocalMem
   case class CounterReg(cchain: CUCounterChain, idx: Int) extends LocalMem
 
+  case class ControlReg(x: Exp[Any]) extends LocalMem
+  case class ValidReg(cchain: CUCounterChain, idx: Int) extends LocalMem
+
   case class ReadAddrWire(mem: CUMemory) extends LocalMem
   case class WriteAddrWire(mem: CUMemory) extends LocalMem
   case class LocalWriteReg(mem: CUMemory) extends LocalMem
@@ -44,15 +47,27 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   case class ReduceReg(x: Exp[Any]) extends LocalMem
   case class AccumReg(x: Exp[Any], init: ConstReg) extends LocalMem
   case class TempReg(x: Exp[Any]) extends LocalMem
+  case class SRAMRead(mem: CUMemory) extends LocalMem
 
   case class ScalarIn(x: Exp[Any], mem: GlobalMem) extends LocalMem
   case class ScalarOut(x: Exp[Any], mem: GlobalMem) extends LocalMem
 
   case class VectorIn(mem: VectorMem) extends LocalMem
-  case class InputReg(mem: CUMemory) extends LocalMem
   case class VectorLocal(x: Exp[Any], mem: CUMemory) extends LocalMem
   case class VectorOut(x: Exp[Any], mem: GlobalMem) extends LocalMem
 
+  def isAccum(mem: LocalMem): Boolean = mem match {
+    case _:AccumReg | _:ReduceReg => true
+    case _ => false
+  }
+  def isCUOutput(mem: LocalMem): Boolean = mem match {
+    case _:ScalarOut | _:VectorOut => true
+    case _ => false
+  }
+  def isCUInput(mem: LocalMem): Boolean = mem match {
+    case _:VectorIn | _:ScalarIn => true
+    case _ => false
+  }
   def isReadable(mem: LocalMem) = mem match {
     case _:ReadAddrWire | _:WriteAddrWire | _:LocalWriteReg => false
     case _:ScalarOut | _:VectorLocal | _:VectorOut => false
@@ -60,8 +75,16 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   }
   def isWritable(mem: LocalMem) = mem match {
     case _:ConstReg | _:CounterReg | _:ScalarIn => false
-    case _:VectorIn | _:InputReg => false
+    case _:VectorIn | _:SRAMRead | _:ValidReg => false
     case _ => true
+  }
+  def isGlobal(mem: LocalMem) = mem match {
+    case _:ScalarIn | _:ScalarOut | _:VectorIn | _:VectorOut => true
+    case _ => false
+  }
+  def isControl(mem: LocalMem) = mem match {
+    case _:ControlReg | _:ValidReg => true
+    case _ => false
   }
 
   // Local memory references
@@ -87,6 +110,7 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   case object FixSub extends PIROp
   case object FixMul extends PIROp
   case object FixDiv extends PIROp
+  case object FixMod extends PIROp
   case object FixLt  extends PIROp
   case object FixLeq extends PIROp
   case object FixEql extends PIROp
@@ -112,11 +136,48 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   case object BitAnd extends PIROp
   case object BitOr  extends PIROp
 
+  def nodeToOp(node: Def[Any]): Option[PIROp] = node match {
+    case Mux2(_,_,_)    => Some(ALUMux)
+    case FixPt_Add(_,_) => Some(FixAdd)
+    case FixPt_Sub(_,_) => Some(FixSub)
+    case FixPt_Mul(_,_) => Some(FixMul)
+    case FixPt_Div(_,_) => Some(FixDiv)
+    case FixPt_Mod(_,_) => Some(FixMod)
+    case FixPt_Lt(_,_)  => Some(FixLt)
+    case FixPt_Leq(_,_) => Some(FixLeq)
+    case FixPt_Eql(_,_) => Some(FixEql)
+    case FixPt_Neq(_,_) => Some(FixNeq)
+    case e: Min2[_] if isFixPtType(e.mT) => Some(FltMin)
+    case e: Max2[_] if isFixPtType(e.mT) => Some(FltMax)
+
+    // Float ops currently assumed to be single op
+    case FltPt_Add(_,_) => Some(FltAdd)
+    case FltPt_Sub(_,_) => Some(FltSub)
+    case FltPt_Mul(_,_) => Some(FltMul)
+    case FltPt_Div(_,_) => Some(FltDiv)
+    case FltPt_Lt(_,_)  => Some(FltLt)
+    case FltPt_Leq(_,_) => Some(FltLeq)
+    case FltPt_Eql(_,_) => Some(FltEql)
+    case FltPt_Neq(_,_) => Some(FltNeq)
+
+    case FltPt_Abs(_)   => Some(FltAbs)
+    case FltPt_Exp(_)   => Some(FltExp)
+    case FltPt_Log(_)   => Some(FltLog)
+    case FltPt_Sqrt(_)  => Some(FltSqrt)
+    case e: Min2[_] if isFltPtType(e.mT) => Some(FltMin)
+    case e: Max2[_] if isFltPtType(e.mT) => Some(FltMax)
+
+    case Bit_And(_,_)   => Some(BitAnd)
+    case Bit_Or(_,_)    => Some(BitOr)
+    case _ => None
+  }
+
+
   // --- Stages prior to scheduling
-  sealed abstract class PseudoStage { def output: Exp[Any] }
-  case class DefStage(op: Exp[Any], isReduce: Boolean = false) extends PseudoStage { def output = op }
-  case class OpStage(op: PIROp, inputs: List[Exp[Any]], out: Exp[Any], isReduce: Boolean = false) extends PseudoStage { def output = out }
-  case class WriteAddrStage(write: Exp[Any]) extends PseudoStage { def output = write }
+  sealed abstract class PseudoStage { def output: Option[Exp[Any]] }
+  case class DefStage(op: Exp[Any], isReduce: Boolean = false) extends PseudoStage { def output = Some(op) }
+  case class OpStage(op: PIROp, inputs: List[Exp[Any]], out: Exp[Any], isReduce: Boolean = false) extends PseudoStage { def output = Some(out) }
+  case class WriteAddrStage(mem: Exp[Any], addr: Exp[Any]) extends PseudoStage { def output = None }
 
   // --- Stages after scheduling
   sealed abstract class Stage {
@@ -127,9 +188,9 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
     def outputMems = outs.map(_.reg)
     def inputMems = ins.map(_.reg)
   }
-  case class ReduceStage(op: PIROp, init: LocalMem, acc: ReduceReg) extends Stage {
+  case class ReduceStage(op: PIROp, init: LocalMem, in: LocalRef, acc: ReduceReg) extends Stage {
     def outputMems = List(acc)
-    def inputMems = Nil //throw new Exception("Inputs on ReduceStage not available") // Should really be a reducereg and acc
+    def inputMems = List(in.reg, acc)
   }
 
   // --- Compute units
@@ -139,7 +200,6 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
     case Const(c: Double) => ConstReg(s"${c}d")
     case Const(c: Float)  => ConstReg(s"${c}f")
     case Param(c: Int)    => ConstReg(s"${c}i")
-    case Param(c: Long)   => ConstReg(s"${c}l")
     case Param(c: Double) => ConstReg(s"${c}d")
     case Param(c: Float)  => ConstReg(s"${c}f")
 
@@ -167,7 +227,8 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
       if (expTable.contains(reg)) expTable += reg -> (expTable(reg) :+ exp)
       else                        expTable += reg -> List(exp)
     }
-    def iterators = regTable.flatMap{case (exp, reg: CounterReg) => Some((exp,reg)); case _ => None}.toList
+    def iterators = regTable.toList.flatMap{case (exp, reg: CounterReg) => Some((exp,reg)); case _ => None}
+    def valids    = regTable.toList.flatMap{case (exp, reg: ValidReg) => Some((exp,reg)); case _ => None}
 
     def innermostIter(cc: CUCounterChain) = {
       val iters = iterators.flatMap{case (e,CounterReg(`cc`,i)) => Some((e,i)); case _ => None}
@@ -198,6 +259,9 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
     var computePseudoStages: List[PseudoStage] = Nil
     var writeStages = HashMap[List[CUMemory], ArrayBuffer[Stage]]()
     var stages: ArrayBuffer[Stage] = ArrayBuffer.empty
+    var controlStages: ArrayBuffer[Stage] = ArrayBuffer.empty
+
+    def allStages = (writeStages.values.flatten ++ stages).toList
 
     def dumpString = s"""  cchains = ${cchains.mkString(", ")}
   regs    = ${regs.mkString(", ")}
@@ -216,7 +280,7 @@ ${super.dumpString}
 }"""
     override def toString() = s"BasicComputeUnit($name, ${parent.map(_.name)})"
 
-    var isUnitCompute =false
+    var isUnitCompute = false
   }
 
   case class TileTransferUnit(
@@ -261,7 +325,7 @@ ${super.dumpString}
     var swapRead: Option[CUCounterChain] = None
     var writeCtrl: Option[CUCounterChain] = None
     var banking: Option[SRAMBanking] = None
-    var bufferDepth:Int = 1 
+    var bufferDepth:Int = 1
 
     def dumpString = s"""CUMemory($name, $size) {
   vector = $vector

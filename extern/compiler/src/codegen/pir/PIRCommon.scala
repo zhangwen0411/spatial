@@ -27,14 +27,14 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
 
   // HACK: Skip parallel pipes in PIR gen
   def parentOfHack(x: Exp[Any]): Option[Exp[Any]] = parentOf(x) match {
-    case Some(pipe@Deff(Pipe_parallel(_))) => parentOfHack(pipe)
+    case Some(pipe@Deff(ParallelPipe(_))) => parentOfHack(pipe)
     case parentOpt => parentOpt
   }
 
 
   // Give top controller or first controller below which is not a Parallel
   def topControllerHack(access: Access, ctrl: Controller): Controller = ctrl.node match {
-    case pipe@Deff(Pipe_parallel(_)) =>
+    case pipe@Deff(ParallelPipe(_)) =>
       topControllerHack(access, childContaining(ctrl, access))
     case _ => ctrl
   }
@@ -53,21 +53,28 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
 
     def pipe = cu.pipe
 
+    def controlStages: ArrayBuffer[Stage] = cu.controlStages
+
     def pseudoStages: List[PseudoStage]
     def stages: ArrayBuffer[Stage]
     def addStage(stage: Stage): Unit
+    def addControlStage(stage: Stage): Unit = cu.controlStages += stage
     def isWriteContext: Boolean
 
     def mapStages = stages.flatMap{case stage:MapStage => Some(stage); case _ => None}
     def stageNum = mapStages.length+1
-    def prevStage = stages.headOption
+    def controlStageNum = controlStages.length
+    def prevStage = stages.lastOption
 
     def mem(mem: Exp[Any], reader: Exp[Any]) = allocateMem(mem, reader, cu)
 
     // A CU can have multiple SRAMs for a given mem symbol, one for each local read
     def memories(mem: Exp[Any]) = readersOf(mem).filter(_.controlNode == cu.pipe).map{read => allocateMem(mem, read.node, cu) }
 
-    def addReg(x: Exp[Any], reg: LocalMem) { cu.addReg(x, reg) }
+    def addReg(x: Exp[Any], reg: LocalMem) {
+      debug(s"Adding register mapping $x -> $reg")
+      cu.addReg(x, reg)
+    }
     def addRef(x: Exp[Any], ref: LocalRef) { refs += x -> ref }
     def getReg(x: Exp[Any]) = cu.get(x)
     def reg(x: Exp[Any]) = cu.get(x).getOrElse(throw new Exception(s"No register defined for $x"))
@@ -81,7 +88,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     def ref(reg: LocalMem, out: Boolean, stage: Int = stageNum): LocalRef = reg match {
       // If the previous stage computed the read address for this load, use the registered output
       // of the memory directly. Otherwise, use the previous stage
-      case InputReg(mem) =>
+      case SRAMRead(mem) =>
         debug(s"Referencing SRAM $mem in stage $stage")
         debug(s"  Previous stage: $prevStage")
         debug(s"  SRAM read addr: ${mem.readAddr.get}")
@@ -117,6 +124,10 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
       }
       if (add) addReg(e, out)
       else cu.regs += out // No mapping, only list
+    }
+    def isUnitCompute = cu match {
+      case x:BasicComputeUnit => x.isUnitCompute
+      case _ => false
     }
   }
 
@@ -170,17 +181,19 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
   }
 
 
+
+
   // Create a vector for communication to/from a given memory
   def allocateGlobal(mem: Exp[Any]) = {
     val name = quote(mem)
     val global = mem match {
-      case Deff(Offchip_new(_)) => Offchip(name)
+      case Deff(Dram_new(_)) => Offchip(name)
       case Deff(Argin_new(_))   => InputArg(name)
       case Deff(Argout_new(_))  => OutputArg(name)
       case Deff(Reg_new(_))     => ScalarMem(name)
       case mem if isArgIn(mem)  => InputArg(name)
       case mem if isArgOut(mem) => OutputArg(name)
-      case mem if isRegister(mem.tp) => ScalarMem(name)
+      case mem if isReg(mem.tp) => ScalarMem(name)
       case _                    => VectorMem(name)
     }
     debug(s"### Adding global for $mem: $global")
@@ -228,7 +241,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     case _ => TempReg(mem)
   }
 
-  def isBuffer(mem: Exp[Any]) = isBRAM(mem.tp) // || isFIFO(mem.tp)
+  def isBuffer(mem: Exp[Any]) = isSRAM(mem.tp) // || isFIFO(mem.tp)
 
   /* How much to bank by in Plasticine:
      - Which dimension (stride) has a predictable, parallelizable access with inner index
@@ -355,4 +368,28 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
         sram
     }
   }
+
+
+  def flattenNDAddress(addr: Exp[Any], dims: List[Exp[Index]]) = addr match {
+    case Deff(ListVector(List(Deff(ListVector(indices))))) if indices.nonEmpty => flattenNDIndices(indices, dims)
+    case Deff(ListVector(indices)) if indices.nonEmpty => flattenNDIndices(indices, dims)
+    case _ => throw new Exception(s"Unsupported address in PIR generation: $addr")
+  }
+  private def flattenNDIndices(indices: List[Exp[Any]], dims: List[Exp[Index]]) = {
+    val cdims = dims.map{case Bound(d) => d.toInt; case _ => throw new Exception("Unable to get bound of memory size") }
+    val strides = List.tabulate(dims.length){d =>
+      if (d == dims.length - 1) 1.as[Index]
+      else cdims.drop(d+1).reduce(_*_).as[Index]
+    }
+    var partialAddr: Exp[Any] = indices.last
+    var addrCompute: List[OpStage] = Nil
+    for (i <- dims.length-2 to 0 by -1) { // If dims.length <= 1 this won't run
+      val mul = OpStage(FixMul, List(indices(i),strides(i)), fresh[Index])
+      val add = OpStage(FixAdd, List(mul.out, partialAddr),  fresh[Index])
+      partialAddr = add.out
+      addrCompute ++= List(mul,add)
+    }
+    (partialAddr, addrCompute)
+  }
+
 }

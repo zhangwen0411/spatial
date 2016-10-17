@@ -4,16 +4,12 @@ import spatial.shared._
 
 object BlackScholes extends SpatialAppCompiler with BlackScholesApp
 trait BlackScholesApp extends SpatialApp {
-  // type Array[T] = ForgeArray[T]
+  type Array[B] = ForgeArray[B]
 
   val margin = 0.5f // Validates true if within +/- margin
   val tileSize = 96
   val outerPar = 1
   val innerPar = 2
-  lazy val ts = param(tileSize)
-  lazy val op = param(outerPar)
-  lazy val ip = param(innerPar)
-  lazy val numOptions = ArgIn[SInt]
 
   final val inv_sqrt_2xPI = 0.39894228040143270286f
 
@@ -68,39 +64,63 @@ trait BlackScholesApp extends SpatialApp {
   }
 
   def blackscholes(
-    otype:      Rep[OffChipMem[UInt]],
-    sptprice:   Rep[OffChipMem[Flt]],
-    strike:     Rep[OffChipMem[Flt]],
-    rate:       Rep[OffChipMem[Flt]],
-    volatility: Rep[OffChipMem[Flt]],
-    otime:      Rep[OffChipMem[Flt]],
-    optprice:   Rep[OffChipMem[Flt]]
-  ): Rep[Unit] = {
+    stypes:      Rep[Array[UInt]],
+    sprices:     Rep[Array[Flt]],
+    sstrike:     Rep[Array[Flt]],
+    srate:       Rep[Array[Flt]],
+    svolatility: Rep[Array[Flt]],
+    stimes:      Rep[Array[Flt]]
+  ): Rep[Array[Flt]] = {
+    val B  = tileSize (96 -> 96 -> 19200)
+    val OP = outerPar (1 -> 1)
+    val IP = innerPar (1 -> 96)
 
-    Pipe((numOptions by ts) par op) { i =>
-      val otypeRAM      = BRAM[UInt](ts)
-      val sptpriceRAM   = BRAM[Flt](ts)
-      val strikeRAM     = BRAM[Flt](ts)
-      val rateRAM       = BRAM[Flt](ts)
-      val volatilityRAM = BRAM[Flt](ts)
-      val otimeRAM      = BRAM[Flt](ts)
+    val size = stypes.length; bound(size) = 9995328
 
-      Parallel {
-        otypeRAM := otype(i::i+ts, ip)
-        sptpriceRAM := sptprice(i::i+ts, ip)
-        strikeRAM := strike(i::i+ts, ip)
-        rateRAM := rate(i::i+ts, ip)
-        volatilityRAM := volatility(i::i+ts, ip)
-        otimeRAM := otime(i::i+ts, ip)
+    lazy val N = ArgIn[SInt]
+    setArg(N, size)
+
+    val types    = DRAM[UInt](N)
+    val prices   = DRAM[Flt](N)
+    val strike   = DRAM[Flt](N)
+    val rate     = DRAM[Flt](N)
+    val vol      = DRAM[Flt](N)
+    val times    = DRAM[Flt](N)
+    val optprice = DRAM[Flt](N)
+    setMem(types, stypes)
+    setMem(prices, sprices)
+    setMem(strike, sstrike)
+    setMem(rate, srate)
+    setMem(vol, svolatility)
+    setMem(times, stimes)
+
+    Accel {
+      Pipe(N by B par OP) { i =>
+        val typeBlk   = FIFO[UInt](B)
+        val priceBlk  = FIFO[Flt](B)
+        val strikeBlk = FIFO[Flt](B)
+        val rateBlk   = FIFO[Flt](B)
+        val volBlk    = FIFO[Flt](B)
+        val timeBlk   = FIFO[Flt](B)
+        val optpriceBlk = SRAM[Flt](B)
+
+        Parallel {
+          typeBlk   := types(i::i+B par IP)
+          priceBlk  := prices(i::i+B par IP)
+          strikeBlk := strike(i::i+B par IP)
+          rateBlk   := rate(i::i+B par IP)
+          volBlk    := vol(i::i+B par IP)
+          timeBlk   := times(i::i+B par IP)
+        }
+
+        Pipe(B par IP){ j =>
+          val price = BlkSchlsEqEuroNoDiv(priceBlk.pop, strikeBlk.pop, rateBlk.pop, volBlk.pop, timeBlk.pop, typeBlk.pop)
+          optpriceBlk(j) = price
+        }
+        optprice(i::i+B par IP) := optpriceBlk
       }
-
-      val optpriceRAM = BRAM[Flt](ts)
-      Pipe((ts by 1) par ip){ j =>
-        val price = BlkSchlsEqEuroNoDiv(sptpriceRAM(j), strikeRAM(j), rateRAM(j), volatilityRAM(j), otimeRAM(j), otypeRAM(j))
-        optpriceRAM(j) = price
-      }
-      optprice(i::i+ts, ip) := optpriceRAM
     }
+    getMem(optprice)
   }
 
   def printArr(a: Rep[ForgeArray[Flt]], str: String = "") {
@@ -111,44 +131,21 @@ trait BlackScholesApp extends SpatialApp {
   def main() {
     val N = args(0).to[SInt]
 
-    bound(N) = 9995328
-    domainOf(ts) = (96,19200,96)
-    domainOf(op) = (1,1,1)
-    domainOf(ip) = (1,96,1)
+    val types  = Array.fill(N)(random[UInt](2))
+    val prices = Array.fill(N)(random[Flt])
+    val strike = Array.fill(N)(random[Flt])
+    val rate   = Array.fill(N)(random[Flt])
+    val vol    = Array.fill(N)(random[Flt])
+    val time   = Array.fill(N)(random[Flt])
 
-    setArg(numOptions, N)
-    val types  = OffChipMem[UInt](numOptions)
-    val prices = OffChipMem[Flt](numOptions)
-    val strike = OffChipMem[Flt](numOptions)
-    val rate   = OffChipMem[Flt](numOptions)
-    val vol    = OffChipMem[Flt](numOptions)
-    val time   = OffChipMem[Flt](numOptions)
-    val optprice = OffChipMem[Flt](numOptions)
-
-    val sotype      = Array.fill(N)(random[UInt](2))
-    val ssptprice   = Array.fill(N)(random[Flt])
-    val sstrike     = Array.fill(N)(random[Flt])
-    val srate       = Array.fill(N)(random[Flt])
-    val svolatility = Array.fill(N)(random[Flt])
-    val sotime      = Array.fill(N)(random[Flt])
-
-    setMem(types, sotype)
-    setMem(prices, ssptprice)
-    setMem(strike, sstrike)
-    setMem(rate, srate)
-    setMem(vol, svolatility)
-    setMem(time, sotime)
-
-    Accel{ blackscholes(types, prices, strike, rate, vol, time, optprice) }
-
-    val out = getMem(optprice)
+    val out = blackscholes(types, prices, strike, rate, vol, time)
 
     val inds_array = Array.tabulate(N)(j =>
       // j
-      BlkSchlsEqEuroNoDiv(ssptprice(j), sstrike(j), srate(j), svolatility(j), sotime(j), sotype(j))
+      BlkSchlsEqEuroNoDiv(prices(j), strike(j), rate(j), vol(j), time(j), types(j))
     )
     val gold = inds_array
-    // val gold = (inds_array) map { i => 
+    // val gold = (inds_array) map { i =>
     //   val rate = srate(i)
     //   val strike = sstrike(i)
     //   val sptprice = ssptprice(i)

@@ -8,35 +8,33 @@ trait GDA_App extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   val margin = 1
-  val innerPar = 1
-  val outerPar = 1
-  val maxCols = 96
+  val innerPar = 2
+  val outerPar = 2
+  val MAXC = 96
   val tileSize = 96
-  val pLoopPar = 1
+  val pLoopPar = 2
 
   def gda(xCPU: Rep[Array[T]], yCPU: Rep[Array[SInt]], mu0CPU: Rep[Array[T]], mu1CPU: Rep[Array[T]]) = {
-    val rTileSize     = param(tileSize);  domainOf(rTileSize) = (96, 19200, 1)
-    val op      = param(outerPar);  domainOf(op)  = (1, 8, 1)
-    val ip      = param(innerPar);  domainOf(ip)  = (1, 12, 1)
-    val subLoopPar    = param(innerPar);  domainOf(subLoopPar)    = (1, 16, 1)
-    val prodLoopPar   = param(pLoopPar);  domainOf(prodLoopPar)   = (1, 96, 1)
-    val outerAccumPar = param(innerPar);  domainOf(outerAccumPar) = (1, 1, 1)
+    val rTileSize     = tileSize (96 -> 19200)
+    val op            = outerPar (1 -> 8)
+    val ip            = innerPar (1 -> 12)
+    val subLoopPar    = innerPar (1 -> 16)
+    val prodLoopPar   = pLoopPar (1 -> 96)
+    val outerAccumPar = innerPar (1 -> 1)
 
     val rows = yCPU.length;   bound(rows) = 360000
-    val cols = param(maxCols); bound(cols) = maxCols
-
+    val cols = mu0CPU.length; bound(cols) = MAXC
 
     val R = ArgIn[SInt]
     val C = ArgIn[SInt]
+    setArg(R, rows)
+    setArg(C, cols)
 
-    setArg(R, yCPU.length)
-    setArg(C, mu0CPU.length)
-
-    val x     = OffChipMem[T](R, C)
-    val y     = OffChipMem[SInt](R)
-    val mu0   = OffChipMem[T](C)
-    val mu1   = OffChipMem[T](C)
-    val sigma = OffChipMem[T](C, C)
+    val x     = DRAM[T](R, C)
+    val y     = DRAM[SInt](R)
+    val mu0   = DRAM[T](C)
+    val mu1   = DRAM[T](C)
+    val sigma = DRAM[T](C, C)
 
     setMem(x, xCPU)
     setMem(y, yCPU)
@@ -44,29 +42,31 @@ trait GDA_App extends SpatialApp {
     setMem(mu1, mu1CPU)
 
     Accel {
-      val mu0Tile = BRAM[T](cols)
-      val mu1Tile = BRAM[T](cols)
+      val mu0Tile = SRAM[T](MAXC)
+      val mu1Tile = SRAM[T](MAXC)
       Parallel {
-        mu0Tile := mu0(0::cols, subLoopPar)  // Load mu0
-        mu1Tile := mu1(0::cols, subLoopPar)  // Load mu1
+        mu0Tile := mu0(0::C par subLoopPar)  // Load mu0
+        mu1Tile := mu1(0::C par subLoopPar)  // Load mu1
       }
 
-      val sigmaOut = BRAM[T](cols, cols)
+      val sigmaOut = SRAM[T](MAXC, MAXC)
 
       Fold(R by rTileSize par op, outerAccumPar)(sigmaOut, 0.as[T]){ r =>
-        val yTile = BRAM[SInt](rTileSize)
-        val xTile = BRAM[T](rTileSize, cols)
+        val yTile = SRAM[SInt](rTileSize)
+        val xTile = SRAM[T](rTileSize, MAXC)
+        val blk = Reg[SInt]
         Parallel {
-          yTile := y(r::r+rTileSize, subLoopPar)
-          xTile := x(r::r+rTileSize, 0::cols, subLoopPar)  // Load tile of x
+          yTile := y(r::r+rTileSize par subLoopPar)
+          xTile := x(r::r+rTileSize, 0::C par subLoopPar)  // Load tile of x
+          Pipe { blk := min(R.value - r, rTileSize) }
         }
 
-        val sigmaBlk = BRAM[T](cols, cols)
-        Fold(rTileSize par ip)(sigmaBlk, 0.as[Flt]){rr =>
-          val subTile = BRAM[T](cols)
-          val sigmaTile = BRAM[T](cols, cols)
-          Pipe(C par subLoopPar){ cols =>
-            subTile(cols) = xTile(rr,cols) - mux(yTile(rr) == 1, mu1Tile(cols), mu0Tile(cols))
+        val sigmaBlk = SRAM[T](MAXC,MAXC)
+        Fold(blk par ip)(sigmaBlk, 0.as[Flt]){rr =>
+          val subTile = SRAM[T](MAXC)
+          val sigmaTile = SRAM[T](MAXC, MAXC)
+          Pipe(C par subLoopPar){ cc =>
+            subTile(cc) = xTile(rr,cc) - mux(yTile(rr) == 1, mu1Tile(cc), mu0Tile(cc))
           }
           Pipe(C by 1, C par prodLoopPar){ (ii,jj) =>
             sigmaTile(ii,jj) = subTile(ii) * subTile(jj);
@@ -75,7 +75,7 @@ trait GDA_App extends SpatialApp {
         }{_+_}
       }{_+_}
 
-      sigma(0::cols, 0::cols, prodLoopPar) := sigmaOut
+      sigma(0::C, 0::C par prodLoopPar) := sigmaOut
     }
 
     getMem(sigma)

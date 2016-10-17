@@ -22,10 +22,10 @@ trait SimpleParallel extends SpatialApp {
     setArg(y, yin)
 
     Accel {
-//      val b1 = BRAM[SInt]("b1", tileSize1)
-//      val b2 = BRAM[SInt]("b2", tileSize2)
-      val b1 = BRAM[SInt](tileSize1)
-      val b2 = BRAM[SInt](tileSize2)
+//      val b1 = SRAM[SInt]("b1", tileSize1)
+//      val b2 = SRAM[SInt]("b2", tileSize2)
+      val b1 = SRAM[SInt](tileSize1)
+      val b2 = SRAM[SInt](tileSize2)
       Sequential(1 by 1) { i =>
         Parallel {
           Pipe.foreach(tileSize1 par innerPar) { ii =>
@@ -35,8 +35,8 @@ trait SimpleParallel extends SpatialApp {
             b2(ii) = x.value * ii
           }
         }
-//        val b3 = BRAM[SInt]("b3", tileSize1, tileSize2)
-        val b3 = BRAM[SInt](tileSize1, tileSize2)
+//        val b3 = SRAM[SInt]("b3", tileSize1, tileSize2)
+        val b3 = SRAM[SInt](tileSize1, tileSize2)
         Pipe (tileSize1 by 1, tileSize2 by 1) { (ii, jj) =>
           b3(ii, jj) = b1(ii) * b2(jj)
         }

@@ -102,39 +102,69 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
 
   // Returns written memory, optional value, optional address
   private def writerUnapply(d: Def[Any]): Option[List[LocalWrite]] = d match {
-    case EatReflect(Reg_write(reg,value))             => Some(LocalWrite(reg,value))
-    case EatReflect(Bram_store(bram,addr,value))      => Some(LocalWrite(bram,value,addr))
-    case EatReflect(Push_fifo(fifo,value,_))          => Some(LocalWrite(fifo,value))
-    case EatReflect(Cam_store(cam,key,value))         => Some(LocalWrite(cam,value,key))
-    case EatReflect(Par_bram_store(bram,addr,value))  => Some(LocalWrite(bram,value,addr))
-    case EatReflect(Par_push_fifo(fifo,value,_,_))    => Some(LocalWrite(fifo,value))
-    case EatReflect(Offchip_load_cmd(mem,fifo,_,_,_)) => Some(LocalWrite(fifo))
-    case EatReflect(Gather(mem,local,addrs,_,_))      => Some(LocalWrite(local))
+    case EatReflect(Reg_write(reg,value,_))            => Some(LocalWrite(reg,value))
+    case EatReflect(Sram_store(sram,addr,value,_))     => Some(LocalWrite(sram,value,addr))
+    case EatReflect(Push_fifo(fifo,value,_))           => Some(LocalWrite(fifo,value))
+    case EatReflect(Cam_store(cam,key,value))          => Some(LocalWrite(cam,value,key))
+    case EatReflect(Par_sram_store(sram,addr,value,_)) => Some(LocalWrite(sram,value,addr))
+    case EatReflect(Par_push_fifo(fifo,value,_,_))     => Some(LocalWrite(fifo,value))
+    case EatReflect(BurstLoad(mem,fifo,_,_,_))         => Some(LocalWrite(fifo))
+    case EatReflect(Gather(mem,local,addrs,_,_,_))     => Some(LocalWrite(local))
     case _ => None
   }
 
   // Returns read memory, optional address
   private def readerUnapply(d: Def[Any]): Option[List[LocalRead]] = d match {
-    case EatReflect(Reg_read(reg))                     => Some(LocalRead(reg))
-    case EatReflect(Bram_load(bram,addr))              => Some(LocalRead(bram,addr))
-    case EatReflect(Pop_fifo(fifo))                    => Some(LocalRead(fifo))
-    case EatReflect(Cam_load(cam,key))                 => Some(LocalRead(cam,key))
-    case EatReflect(Par_bram_load(bram,addr))          => Some(LocalRead(bram,addr))
-    case EatReflect(Par_pop_fifo(fifo,_))              => Some(LocalRead(fifo))
-    case EatReflect(Offchip_store_cmd(mem,fifo,_,_,_)) => Some(LocalRead(fifo))
-    case EatReflect(Gather(mem,local,addrs,_,_))       => Some(LocalRead(addrs))
-    case EatReflect(Scatter(mem,local,addrs,_,_))      => Some(LocalRead(local) ++ LocalRead(addrs))
+    case EatReflect(Reg_read(reg))                  => Some(LocalRead(reg))
+    case EatReflect(Sram_load(sram,addr))           => Some(LocalRead(sram,addr))
+    case EatReflect(Pop_fifo(fifo,_))               => Some(LocalRead(fifo))
+    case EatReflect(Cam_load(cam,key))              => Some(LocalRead(cam,key))
+    case EatReflect(Par_sram_load(sram,addr))       => Some(LocalRead(sram,addr))
+    case EatReflect(Par_pop_fifo(fifo,_))           => Some(LocalRead(fifo))
+    case EatReflect(BurstStore(mem,fifo,_,_,_))     => Some(LocalRead(fifo))
+    case EatReflect(Gather(mem,local,addrs,_,_,_))  => Some(LocalRead(addrs))
+    case EatReflect(Scatter(mem,local,addrs,_,_,_)) => Some(LocalRead(local) ++ LocalRead(addrs))
     case _ => None
+  }
+
+  private def indicesOf(addr: Exp[Any]): List[Exp[Index]] = addr match {
+    case Deff(ListVector(indices)) => indices.flatMap{
+      case i if isIndexType(i.tp) => Some(i.asInstanceOf[Exp[Index]])
+      case _ => None
+    }
+    case s: Sym[_] if isIndexType(s.tp) => List(s.asInstanceOf[Exp[Index]])
+    case _ => Nil
+  }
+  private def vectorIndicesOf(addr: Exp[Any]): List[List[Exp[Index]]] = addr match {
+    case Deff(ListVector(vector)) if vector.isEmpty => Nil
+    case Deff(ListVector(vector)) if isIndexType(vector.head.tp) => List(indicesOf(addr))
+    case Deff(ListVector(vector)) =>
+      val vecs = vector.map(indicesOf(_))
+      if (vecs.exists(_.isEmpty)) Nil else vecs // forall or exists?
+    case _ => Nil
+  }
+
+  // HACK: Only uses first access (assumed that access to multiple mems is with same address)
+  def accessIndicesOf(x: Exp[Any]): List[Exp[Index]] = x match {
+    case LocalWriter(accesses) => accesses.flatMap(_._3).headOption.map(indicesOf(_)).getOrElse(Nil)
+    case LocalReader(accesses) => accesses.flatMap(_._2).headOption.map(indicesOf(_)).getOrElse(Nil)
+    case _ => Nil
+  }
+  // HACK: Only uses first access (assumed that access to multiple mems is with same address)
+  def parIndicesOf(x: Exp[Any]): List[List[Exp[Index]]] = x match {
+    case LocalWriter(accesses) => accesses.flatMap(_._3).headOption.map(vectorIndicesOf(_)).getOrElse(Nil)
+    case LocalReader(accesses) => accesses.flatMap(_._2).headOption.map(vectorIndicesOf(_)).getOrElse(Nil)
+    case _ => Nil
   }
 
   // Parallelization factors associated with this node
   override def parFactors(e: Exp[Any])(implicit ctx: SourceContext): List[Exp[Int]] = e match {
-    case Deff(Counterchain_new(ctrs))         => ctrs.flatMap{ctr => parFactors(ctr) }
-    case Deff(Counter_new(_,_,_,par))         => List(par)
-    case Deff(Offchip_load_cmd(_,_,_,_,par))  => List(par)
-    case Deff(Offchip_store_cmd(_,_,_,_,par)) => List(par)
-    case Deff(Scatter(_,_,_,_,par))           => List(par)
-    case Deff(Gather(_,_,_,_,par))            => List(par)
+    case Deff(Counterchain_new(ctrs))  => ctrs.flatMap{ctr => parFactors(ctr) }
+    case Deff(Counter_new(_,_,_,par))  => List(par)
+    case Deff(BurstLoad(_,_,_,_,par))  => List(par)
+    case Deff(BurstStore(_,_,_,_,par)) => List(par)
+    case Deff(Scatter(_,_,_,_,par,_))  => List(par)
+    case Deff(Gather(_,_,_,_,par,_))   => List(par)
     case _ => super.parFactors(e)
   }
 
@@ -142,17 +172,30 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:Reg_new[_])       => true
     case EatReflect(_:Argin_new[_])     => true
     case EatReflect(_:Argout_new[_])    => true
-    case EatReflect(_:Bram_new[_])      => true
+    case EatReflect(_:Sram_new[_])      => true
     case EatReflect(_:Fifo_new[_])      => true
     case EatReflect(_:Cam_new[_,_])     => true
-    case EatReflect(_:Offchip_new[_])   => true
+    case EatReflect(_:Dram_new[_])      => true
     case EatReflect(_:Counter_new)      => true
     case EatReflect(_:Counterchain_new) => true
+    case EatReflect(_:DeliteStruct[_])  => true
+    case EatReflect(_:ListVector[_])    => true
     case _ => false
   }
+
+  // Allocations which can depend on local, dynamic values
+  // Should DRAM be included here? Does it matter?
+  def isDynamicAllocation(d: Def[Any]): Boolean = d match {
+    case EatReflect(_:Counter_new)      => true
+    case EatReflect(_:Counterchain_new) => true
+    case EatReflect(_:DeliteStruct[_])  => true
+    case EatReflect(_:ListVector[_])    => true
+    case _ => false
+  }
+
   def isOffChipTransfer(d: Def[Any]): Boolean = d match {
-    case EatReflect(_:Offchip_load_cmd[_])  => true
-    case EatReflect(_:Offchip_store_cmd[_]) => true
+    case EatReflect(_:BurstLoad[_])  => true
+    case EatReflect(_:BurstStore[_]) => true
     case EatReflect(_:Gather[_]) => true
     case EatReflect(_:Scatter[_]) => true
     case _ => false
@@ -163,7 +206,7 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
   }
 
   def isParallel(d: Def[Any]): Boolean = d match {
-    case EatReflect(_:Pipe_parallel) => true
+    case EatReflect(_:ParallelPipe) => true
     case _ => false
   }
   def isParallel(s: Exp[Any]): Boolean = s match {
@@ -172,21 +215,21 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
   }
 
   def isPipeline(d: Def[Any]): Boolean = d match {
-    case EatReflect(_:Pipe_foreach)    => true
-    case EatReflect(_:Pipe_fold[_,_])  => true
-    case EatReflect(_:Accum_fold[_,_]) => true
-    case EatReflect(_:Unit_pipe)       => true
+    case EatReflect(_:OpForeach)    => true
+    case EatReflect(_:OpReduce[_,_])  => true
+    case EatReflect(_:OpMemReduce[_,_]) => true
+    case EatReflect(_:UnitPipe)       => true
     case EatReflect(_:Hwblock)         => true
-    case EatReflect(_:ParPipeForeach)  => true
-    case EatReflect(_:ParPipeReduce[_,_]) => true
+    case EatReflect(_:UnrolledForeach)  => true
+    case EatReflect(_:UnrolledReduce[_,_]) => true
     case _ => false
   }
   def isLoop(d: Def[Any]): Boolean = d match {
-    case EatReflect(_:ParPipeForeach)  => true
-    case EatReflect(_:ParPipeReduce[_,_]) => true
-    case EatReflect(_:Pipe_foreach)    => true
-    case EatReflect(_:Pipe_fold[_,_])  => true
-    case EatReflect(_:Accum_fold[_,_]) => true
+    case EatReflect(_:UnrolledForeach)  => true
+    case EatReflect(_:UnrolledReduce[_,_]) => true
+    case EatReflect(_:OpForeach)    => true
+    case EatReflect(_:OpReduce[_,_])  => true
+    case EatReflect(_:OpMemReduce[_,_]) => true
     case _ => false
   }
   def isLoop(e: Exp[Any]): Boolean = e match {
@@ -240,6 +283,8 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case LocalReader(_) => true
     case _ => false
   }
+
+  def isAccess(s: Exp[Any]) = isReader(s) || isWriter(s)
 
   // Register reads are currently "special" nodes - neither controllers nor primitives
   def isRegisterRead(s: Exp[Any]): Boolean = s match {
@@ -313,7 +358,11 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case Def(d) => isAllocation(d)
     case _ => false
   }
-  def isLocalMemory(s: Exp[Any]) = isRegister(s.tp) || isBRAM(s.tp) || isFIFO(s.tp) || isCache(s.tp)
+  def isDynamicAllocation(s: Exp[Any]): Boolean = s match {
+    case Def(d) => isDynamicAllocation(d)
+    case _ => false
+  }
+  def isLocalMemory(s: Exp[Any]) = isReg(s.tp) || isSRAM(s.tp) || isFIFO(s.tp) || isCache(s.tp)
 
   // Checks to see if lhs is dependent on rhs (used for checking for accum. cycles)
   def hasDependency(lhs: Exp[Any], rhs: Exp[Any]): Boolean = {
