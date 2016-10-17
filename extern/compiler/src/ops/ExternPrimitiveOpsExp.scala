@@ -56,14 +56,14 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
   object ConstFix {
     def unapply(x: Any): Option[Any] = x match {
       case ConstFixPt(x,_,_,_) => Some(x)
-      case Def(ConstFixPt(x,_,_,_)) => Some(x)
+      case Deff(ConstFixPt(x,_,_,_)) => Some(x)
       case _ => None
     }
   }
   object ConstFlt {
     def unapply(x: Any): Option[Any] = x match {
       case ConstFltPt(x,_,_) => Some(x)
-      case Def(ConstFltPt(x,_,_)) => Some(x)
+      case Deff(ConstFltPt(x,_,_)) => Some(x)
       case _ => None
     }
   }
@@ -153,6 +153,10 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
     case _ => super.int_to_fix(x)
   }
 
+  override def mod[S:Manifest,I:Manifest](x: Rep[FixPt[S,I,B0]], y: Rep[FixPt[S,I,B0]])(implicit ctx: SourceContext) = (x,y) match {
+    case (ConstFix(a: Int), ConstFix(b: Int)) => lift_to[Int,FixPt[S,I,B0]](a % b)
+    case _ => super.mod(x,y)
+  }
 
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = (e match {
     case EatReflect(e@Min2(a,b)) => reflectPure(Min2(f(a),f(b))(e.mT,e.oT,e.nT,e.ctx))(mtype(manifest[A]),pos)
@@ -300,11 +304,11 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 
-    case FieldApply(a, b) => 
+    case FieldApply(a, b) =>
       val pre = maxJPre(sym)
       val tp = tpstr(parOf(sym))(sym.tp, implicitly[SourceContext])
       rTreeMap(sym) match {
-        case Nil => 
+        case Nil =>
           b match { // TODO: Decide slice based on bit lengths
             case "_1" => emit(s"""$pre ${quote(sym)} = ${quote(a)}.slice(0,32).cast($tp);""")
             case "_2" => emit(s"""$pre ${quote(sym)} = ${quote(a)}.slice(32,32).cast($tp);""")
@@ -313,9 +317,9 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 
-    case Internal_pack2(a,b) => 
+    case Internal_pack2(a,b) =>
       rTreeMap(sym) match {
-        case Nil => 
+        case Nil =>
           emit(s"""DFEVar ${quote(sym)} = ${quote(a)}.cast(dfeRawBits(32)).cast(dfeUInt(32)).cast(dfeUInt(64)).cast(dfeRawBits(64)).shiftLeft(32) ^ ${quote(b)}.cast(dfeRawBits(32)).cast(dfeUInt(32)).cast(dfeUInt(64)).cast(dfeRawBits(64));""")
 
         case m =>
@@ -492,8 +496,8 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           } else {
             emit(s"""// ${quote(sym)} already emitted in $m""")
           }
-          
-          
+
+
       }
 
     case Bit_Or(a,b) =>
@@ -542,12 +546,12 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
 
     case ListVector(elems) =>
       rTreeMap(sym) match {
-        case Nil => 
+        case Nil =>
           if (isVector(elems(0).tp)) {
             val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
             emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map{a => quote(a) + "[0]"}.mkString(",")}));""")
           } else {
-            val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])        
+            val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])
             emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map(quote).mkString(",")}));""")
           }
         case m =>
@@ -555,7 +559,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
             val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
             emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this);""")
           } else {
-            val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])        
+            val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])
             emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this);""")
           }
       }
