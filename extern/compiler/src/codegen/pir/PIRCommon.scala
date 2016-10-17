@@ -71,7 +71,10 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     // A CU can have multiple SRAMs for a given mem symbol, one for each local read
     def memories(mem: Exp[Any]) = readersOf(mem).filter(_.controlNode == cu.pipe).map{read => allocateMem(mem, read.node, cu) }
 
-    def addReg(x: Exp[Any], reg: LocalMem) { cu.addReg(x, reg) }
+    def addReg(x: Exp[Any], reg: LocalMem) {
+      debug(s"Adding register mapping $x -> $reg")
+      cu.addReg(x, reg)
+    }
     def addRef(x: Exp[Any], ref: LocalRef) { refs += x -> ref }
     def getReg(x: Exp[Any]) = cu.get(x)
     def reg(x: Exp[Any]) = cu.get(x).getOrElse(throw new Exception(s"No register defined for $x"))

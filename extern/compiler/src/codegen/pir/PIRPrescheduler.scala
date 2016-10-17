@@ -308,7 +308,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
         traverse(lhs.asInstanceOf[Sym[Any]], rhs)
     }
 
-    val localCompute = stages.filter{s => (isPrimitiveNode(s) || isRegisterRead(s) || isGlobal(s)) && !remoteStages.contains(s) }
+    val localCompute = stages.filter{s => (isPrimitiveNode(s) || isRegisterRead(s) || isGlobal(s) || isDynamicAllocation(s)) && !remoteStages.contains(s) }
 
     // Sanity check
     val trueComputation = localCompute.filterNot{case Exact(_) => true; case Def(ConstBit(_)) => true; case s => isRegisterRead(s)}
