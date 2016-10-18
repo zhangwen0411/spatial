@@ -1219,7 +1219,11 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, ${quote(en)});""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       val readEn = s"${reader}_ctr_en"
-      emit(s"""${quote(fifo)}_readEn <== ${readEn};""")
+      if (insideReduceKernel) {
+        emit(s"""DFEVar ${quote(fifo)}_readEn = ${readEn}; // Make a new one""")
+      } else {
+        emit(s"""${quote(fifo)}_readEn <== ${readEn};""")
+      }
       if (memLdFifos.contains(fifo)) {
         emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
       } else {
@@ -1229,7 +1233,11 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
     case Pop_fifo(fifo,en) =>
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, 1);""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
-      emit(s"""${quote(fifo)}_readEn <== ${reader}_ctr_en;""")
+      if (insideReduceKernel) {
+        emit(s"""DFEVar ${quote(fifo)}_readEn = ${reader}_ctr_en; // Make a new one""")
+      } else {
+        emit(s"""${quote(fifo)}_readEn <== ${reader}_ctr_en;""")
+      }
       if (memLdFifos.contains(fifo)) {
         emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}_rdata[0];""")
       } else {

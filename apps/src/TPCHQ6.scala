@@ -37,7 +37,7 @@ WHERE
 
 object TPCHQ6 extends SpatialAppCompiler with TPCHQ6_App
 trait TPCHQ6_App extends SpatialApp {
-  type FT = Flt
+  type FT = SInt
   type Array[T] = ForgeArray[T]
 
   val MIN_DATE = 0
