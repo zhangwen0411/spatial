@@ -279,10 +279,10 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
     }
   }
 
-  // var bd = ""
+  var bbd = ""
 
   def newStream(fileName:String):PrintWriter = {
-    val path = bd + java.io.File.separator + fileName + ".maxj"
+    val path = bbd + java.io.File.separator + fileName + ".maxj"
     Console.println(s"[StreamWriter] Making newstream $path")
     val pw = new PrintWriter(path)
     pw
@@ -350,7 +350,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
   val doneDeclaredSet = Set.empty[Exp[Any]]
 
   override def initializeGenerator(buildDir:String): Unit = {
-    bd = buildDir
+    bbd = buildDir
     // Console.println(s"[Initialize] Setting buildDir to $bd")
 		enDeclaredSet.clear
 		doneDeclaredSet.clear
@@ -619,7 +619,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
             niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}))"
           }
           emit(s"""DFEVar ${quote(sym)}_niter = ${quote(niter_str)};""")
-          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", ${quote(sym)}_niter.cast(dfeUInt(32)));""")
+          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", stream.offset(${quote(sym)}_niter.cast(dfeUInt(32)),-1)/*makes BFS work*/);""")
         } else {
           emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", constant.var(dfeUInt(32), 1));""")
         }

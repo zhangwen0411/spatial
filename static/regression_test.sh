@@ -19,7 +19,8 @@ sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
 sparse_args_list=("960" "960"      "960"              "960"       "960"   )    
 
 # Seconds to pause while waiting for apps to run
-delay=1200
+delay=1300
+spacing=20
 
 # random=(`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 4`) # Random chars to add to directory to avoid new workers from wiping old
 random=(`date +"%H-%M"`) # Chars to add to directory to avoid new workers from wiping old
@@ -157,7 +158,7 @@ export LMS_HOME=${HYPER_HOME}/virtualization-lms-core
 export PIR_HOME=${HYPER_HOME}/spatial/published/Spatial
 export PATH=/opt/maxeler/maxcompiler-2014.1/bin:$PATH
 
-sleep \$((${3}*30)) # Backoff time to prevent those weird file IO errors
+sleep \$((${3}*${spacing})) # Backoff time to prevent those weird file IO errors
 
 cd ${PUB_HOME}
 ${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} 2>&1 | tee -a ${5}/log
