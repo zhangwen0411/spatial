@@ -1097,7 +1097,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
               if (dup.depth > 1) {
                 emit(s"""${regname}_lib.write(stream.offset(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset /* breaks BFS loop*/),
- $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
+ stream.offset($enable, -${quote(writeCtrl)}_offset), constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
               }
               else {
                 // Using an enable signal instead of "always true" is causing an illegal loop.
