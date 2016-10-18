@@ -80,7 +80,7 @@ trait MemoryOpsExp extends MemoryTypesExp with ExternPrimitiveOpsExp with SRAMOp
   case class Sram_store[T](mem: Exp[SRAM[T]], addr: Exp[Vector[Index]], value: Exp[T], en: Exp[Bit])(implicit val ctx: SourceContext, val mT: Manifest[T]) extends Def[Unit]
 
   // --- Internal API
-  def vector_from_list[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]] = reflectEffect(ListVector(elems), Simple)
+  def vector_from_list[T:Manifest](elems: List[Rep[T]])(implicit ctx: SourceContext): Rep[Vector[T]] = reflectMutable(ListVector(elems)) // Not actually mutable...
 
   def gather[T:Manifest](mem: Rep[DRAM[T]],local: Rep[SRAM[T]],addrs: Rep[SRAM[FixPt[Signed,B32,B0]]],len: Rep[FixPt[Signed,B32,B0]],par: Rep[Int])(implicit ctx: SourceContext) = {
     reflectWrite[Unit](local)(Gather[T](mem,local,addrs,len,par,fresh[FixPt[Signed,B32,B0]])(ctx, implicitly[Manifest[T]]))
@@ -595,15 +595,15 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     }
 
     val dummyOverride = if (isDummy(sram)) {bankOverride(read) match {
-        case -1 => 
+        case -1 =>
           rdPre = s"${quote(sram_name)}.connectRport("
           rdPost = ")"
           addrString = quote(addr)
           ""
-        case b => 
+        case b =>
           rdPre = s"${quote(sram_name)}.connectRport("
           rdPost = ")"
-          addrString = quote(addr)  
+          addrString = quote(addr)
           s", $b"
       }} else {""}
 
@@ -1064,8 +1064,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       // throw new Exception(s"Reduction $fps codegen unknown!")
                   }
                   // TODO: Assume duplicate 0 is used for reduction, all others need writes
-                  dups.foreach { case (dup, ii) => 
-                    val port = portsOf(writer, reg, ii).head 
+                  dups.foreach { case (dup, ii) =>
+                    val port = portsOf(writer, reg, ii).head
                     writeCtrl match { // Match is necessary for DotProduct because damn thing hangs at compile time if I offset enable and data together
                       case pp@Deff(_:UnitPipe) =>
                         if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
@@ -1076,9 +1076,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     }
                   }
                   case None =>
-                    dups.foreach { case (dup, ii) => 
-                      val port = portsOf(writer, reg, ii).head 
-                      emit(s"""${quote(reg)}_${ii}_lib.write(stream.offset(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset /*offset makes BFS work*/), 
+                    dups.foreach { case (dup, ii) =>
+                      val port = portsOf(writer, reg, ii).head
+                      emit(s"""${quote(reg)}_${ii}_lib.write(stream.offset(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset /*offset makes BFS work*/),
  stream.offset($enable, -${quote(writeCtrl)}_offset) /*makes BFS work*/, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
                     }
                     // throw new Exception(s"No reduce function found for $reg ${reduceType(reg)}")
@@ -1095,7 +1095,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
               if (dup.depth > 1) {
                 emit(s"""${regname}_lib.write(stream.offset(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset /* breaks BFS loop*/),
- $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
+ $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
               }
               else {
                 // Using an enable signal instead of "always true" is causing an illegal loop.

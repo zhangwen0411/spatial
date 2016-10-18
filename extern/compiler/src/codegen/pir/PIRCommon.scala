@@ -66,10 +66,10 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     def controlStageNum = controlStages.length
     def prevStage = stages.lastOption
 
-    def mem(mem: Exp[Any], reader: Exp[Any]) = allocateMem(mem, reader, cu)
+    def mem(mem: Exp[Any], reader: Exp[Any]) = allocateMem(mem, reader, cu, false)
 
     // A CU can have multiple SRAMs for a given mem symbol, one for each local read
-    def memories(mem: Exp[Any]) = readersOf(mem).filter(_.controlNode == cu.pipe).map{read => allocateMem(mem, read.node, cu) }
+    def memories(mem: Exp[Any]) = readersOf(mem).filter(_.controlNode == cu.pipe).map{reader => this.mem(mem, reader.node) }
 
     def addReg(x: Exp[Any], reg: LocalMem) {
       debug(s"Adding register mapping $x -> $reg")
@@ -253,9 +253,9 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     val allStrides = constDimsToStrides(dimsOf(mem).map{case Exact(d) => d.toInt})
     val strides = if (indices.length == 1) List(allStrides.last) else allStrides
 
-    debug(s"  access: $access")
+    /*debug(s"  access: $access")
     debug(s"  indices: $indices")
-    debug(s"  pattern: $pattern")
+    debug(s"  pattern: $pattern")*/
 
     def bankFactor(i: Exp[Any]) = if (iter.isDefined && i == iter.get) 16 else 1
 
@@ -267,7 +267,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
       case InvariantAccess(b)         => NoBanking // Duplicate in this dimension
       case RandomAccess               => NoBanking // Duplicate in this dimension
     }}
-    debug(s"  banking: $banking")
+    //debug(s"  banking: $banking")
 
     val form = banking.find(_.banks > 1).getOrElse(NoBanking)
     form match {
@@ -287,8 +287,8 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
 
   private def initializeSRAM(sram: CUMemory, mem_in: Exp[Any], read: Exp[Any], cu: ComputeUnit) {
     // TODO: Assumes we see the mapping prior to any uses
-    debug(s"Creating SRAM for memory $mem_in: ")
-    getProps(mem_in).foreach{m => debug(makeString(m)) }
+    //debug(s"Creating SRAM for memory $mem_in: ")
+    //getProps(mem_in).foreach{m => debug(makeString(m)) }
 
     val mem = aliasOf(mem_in)
     val reader = readersOf(mem).find{_.node == read}.get
@@ -315,10 +315,10 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     }
     val swapReadCU = swapReadPipe.map{ctrl => topControllerHack(reader, ctrl)}.map{ctrl => allocateCU(ctrl.node) }
 
-    debug(s"  readerCU: $cu")
+    /*debug(s"  readerCU: $cu")
     debug(s"  writerCU: $writerCU")
     debug(s"  swapWriteCU: $swapWriteCU")
-    debug(s"  swapReadCU: $swapReadCU")
+    debug(s"  swapReadCU: $swapReadCU")*/
 
     // ASSUMPTION: Each CU originally only instantiates only one counterchain
     val remoteWriteCtrl = writerCU.flatMap{cu => cu.cchains.find{case _:UnitCounterChain | _:CounterChainInstance => true; case _ => false }}
@@ -333,14 +333,14 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     val writeIter = writeCtrl.flatMap{cc => cu.innermostIter(cc) }
     val readIter = readCtrl.flatMap{cc => cu.innermostIter(cc) }
 
-    debug(s"  readIter: $readIter")
-    debug(s"  writeIter: $writeIter")
+    //debug(s"  readIter: $readIter")
+    //debug(s"  writeIter: $writeIter")
 
     val readBanking = bank(mem, read, readIter)
     val writeBanking = writer.map{writer => bank(mem, writer.node, writeIter) }.getOrElse(NoBanks)
 
-    debug(s"  read banking: $readBanking")
-    debug(s"  write banking: $writeBanking")
+    //debug(s"  read banking: $readBanking")
+    //debug(s"  write banking: $writeBanking")
 
     val banking = matchBanking(writeBanking, readBanking)
 
@@ -349,10 +349,9 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     sram.swapRead = swapRead
     sram.banking = Some(banking)
     sram.bufferDepth = instance.depth
-
   }
 
-  def allocateMem(mem: Exp[Any], reader: Exp[Any], cu: ComputeUnit) = {
+  def allocateMem(mem: Exp[Any], reader: Exp[Any], cu: ComputeUnit, add: Boolean) = {
     if (!isBuffer(mem))
       throw new Exception(s"Cannot allocate SRAM for non-buffer $mem")
 
@@ -360,12 +359,13 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     //debug(s"### Looking for mem $name in $cu")
     cu.srams.find(_.name == name) match {
       case Some(sram) => sram
-      case None =>
+      case None if add =>
         val size = memSize(mem)
         val sram = CUMemory(name, size)
         initializeSRAM(sram, mem, reader, cu)
         cu.srams += sram
         sram
+      case None => throw new Exception(s"Cannot find sram $name in cu $cu")
     }
   }
 

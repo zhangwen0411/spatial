@@ -181,13 +181,23 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       copyIterators(readerCU, writerCU)
       val isLocallyRead = readerCU == writerCU
 
-      val sram = allocateMem(mem, reader.node, readerCU)
+      val sram = allocateMem(mem, reader.node, readerCU, true)
       val vector = if (isLocallyRead) LocalVector else allocateGlobal(mem)
       sram.vector = Some(vector)
+
+      debug(s"Allocating written SRAM $mem")
+      debug(s"  writer   = $writer")
+      debug(s"  writerCU = $writerCU")
+      debug(s"  readerCU = $readerCU")
+      debug(sram.dumpString)
+
       (readerCU, sram)
     }
 
     if (stages.nonEmpty) {
+      debug(s"  write stages: ")
+      stages.foreach{stage => debug(s"    $stage")}
+
       val groups = srams.groupBy(_._1).mapValues(_.map(_._2))
       for ((readerCU,srams) <- groups if readerCU != writerCU) {
         debug(s"""Adding write stages to $readerCU for SRAMs: ${srams.mkString(", ")}""")
@@ -196,7 +206,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     }
   }
   def allocateReadSRAM(reader: Exp[Any], mem: Exp[Any], readerCU: ComputeUnit) {
-    allocateMem(mem, reader, readerCU)
+    allocateMem(mem, reader, readerCU, true)
   }
 
   def foreachSymInBlock(b: Block[Any])(func: Sym[Any] => Unit) {
@@ -224,7 +234,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
 
   def prescheduleStages(pipe: Exp[Any], func: Block[Any]) {
     val Def(d) = pipe
-    debug(s"Getting states of $pipe = $d")
+    //debug(s"Getting states of $pipe = $d")
     val cu = allocateCU(pipe)
 
     val remotelyAddedStages = cu.computePseudoStages // Stages added prior to traversing this pipe
@@ -252,24 +262,43 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val result = func.res
       val xx = GraphUtil.stronglyConnectedComponents[Stm](scheduleDepsWithIndex(mysyms(result), scopeIndex), t => scheduleDepsWithIndex(mysyms(t.rhs), scopeIndex)).flatten
 
-      debug(s"  Schedule without write addresses:")
-      xx.reverse.foreach{case TP(lhs, rhs) => debug(s"    $lhs = $rhs")}
+      //debug(s"  Schedule without write addresses:")
+      //xx.reverse.foreach{case TP(lhs, rhs) => debug(s"    $lhs = $rhs")}
 
       exps.filterNot{case sym: Sym[_] => xx.exists(_.defines(sym).isDefined) }
     }
 
-    stms.foreach{case TP(lhs, rhs) => debug(s"  $lhs = $rhs")}
-    debug(s"Prescheduling $pipe = $d")
+    // HACK: Ignore simple dependencies in remote writes
+    def getRemoteWriteSchedule(addr: Exp[Any]) = {
+      def mysyms(rhs: Any) = rhs match {
+        case d@Reflect(x, u, es) if u.maySimple =>
+          val dataDeps = syms(x)
+          val schedDeps = syms(es) filter {
+            case Def(Reflect(_,uu,_)) => uu != Simple
+            case _ => true
+          }
+          dataDeps ++ schedDeps
+        case _ => syms(rhs)
+      }
+      val scopeIndex = buildScopeIndex(stms)
+      GraphUtil.stronglyConnectedComponents[Stm](scheduleDepsWithIndex(mysyms(addr), scopeIndex),
+        t => scheduleDepsWithIndex(mysyms(t.rhs), scopeIndex)).flatten.reverse
+    }
+
+    //stms.foreach{case TP(lhs, rhs) => debug(s"  $lhs = $rhs")}
+    //debug(s"Prescheduling $pipe = $d")
     cu.computePseudoStages = Nil // Clear stages so we don't duplicate existing stages
 
     foreachSymInBlock(func){
       // NOTE: Writers always appear to occur in the associated writer controller
       // However, register reads may appear outside their corresponding controller
       case writer@LocalWriter(writes) if !isControlNode(writer) =>
-        debug(s"  $writer [WRITER]")
+        val rhs = writer match {case Def(d) => d; case _ => null }
+
+        debug(s"  $writer = $rhs [WRITER]")
         writes.foreach{case (EatAlias(mem), value, indices) =>
           if (isBuffer(mem)) {
-            val indexComputation = indices.map{is => getSchedule(stms)(is,false) }.getOrElse(Nil)
+            val indexComputation = indices.map{is => getRemoteWriteSchedule(is) }.getOrElse(Nil)
             val indexSyms = indexComputation.map{case TP(s,d) => s }
             val indexStages = indexSyms.map{s => DefStage(s) }
             val flatOpt = indices.map{is => flattenNDAddress(is, dimsOf(mem)) }
@@ -278,37 +307,40 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
             val addrStages = indexStages ++ flatOpt.map(_._2).getOrElse(Nil) ++ remoteWriteStage
 
             allocateWrittenSRAM(writer, mem, cu, addrStages)
+
             val isLocallyRead = isReadInPipe(mem, pipe)
             // Currently have to duplicate if used in both address and compute
             if (indexSyms.nonEmpty && !isLocallyRead) {
-              debug(s"  Checking if symbols calculating ${addr.get} are used in current scope $pipe")
+              //debug(s"  Checking if symbols calculating ${addr.get} are used in current scope $pipe")
               remoteStages ++= symsOnlyUsedInWriteAddr(indexSyms)
             }
           }
         }
 
       case reader@LocalReader(reads) if !isControlNode(reader) =>
-        debug(s"  $reader [READER]")
+        val rhs = reader match {case Def(d) => d; case _ => null }
+
+        debug(s"  $reader = $rhs [READER]")
         reads.foreach{case (EatAlias(mem),indices) =>
           if (isReg(mem.tp)) {
             prescheduleRegisterRead(mem, reader, Some(pipe))
             val isLocallyRead = isReadInPipe(mem, pipe, Some(reader))
             val isLocallyWritten = isWrittenInPipe(mem, pipe)
-            debug(s"  isLocallyRead: $isLocallyRead, isLocallyWritten: $isLocallyWritten")
+            //debug(s"  isLocallyRead: $isLocallyRead, isLocallyWritten: $isLocallyWritten")
             if (!isLocallyWritten || !isLocallyRead || isInnerAccum(mem)) remoteStages += reader
           }
           else if (isBuffer(mem)) {
-            debug(s"  Local buffer read: $reader")
+            //debug(s"  Local buffer read: $reader")
             allocateReadSRAM(reader, mem, cu)
           }
         }
 
       case lhs@Def(rhs) =>
-        debug(s"  $lhs = $rhs [OTHER]")
+        //debug(s"  $lhs = $rhs [OTHER]")
         traverse(lhs.asInstanceOf[Sym[Any]], rhs)
     }
 
-    val localCompute = stages.filter{s => (isPrimitiveNode(s) || isRegisterRead(s) || isGlobal(s) || isDynamicAllocation(s)) && !remoteStages.contains(s) }
+    val localCompute = stages.filter{s => (isPrimitiveNode(s) || isRegisterRead(s) || isGlobal(s) || isVector(s.tp)) && !remoteStages.contains(s) }
 
     // Sanity check
     val trueComputation = localCompute.filterNot{case Exact(_) => true; case Def(ConstBit(_)) => true; case s => isRegisterRead(s)}
@@ -366,7 +398,9 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val i = fresh[Index]
       cu.cchains += cc
       cu.addReg(i, CounterReg(cc, 0))
+
       //allocateReadSRAM(lhs, fifo, Some(i), cu)
+
       val memAddr = fresh[Index]
       cu.addReg(memAddr, ScalarOut(memAddr, cu.ctrl))
       val ofsCalc = OpStage(FixAdd, List(ofs, i), memAddr)
