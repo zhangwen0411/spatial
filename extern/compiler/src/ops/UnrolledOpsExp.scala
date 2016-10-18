@@ -413,7 +413,9 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset,
                       case Deff(Sram_new(_,_)) => 
                         val dups = duplicatesOf(a)
                         dups.zipWithIndex.map { case (r, i) => 
-                          if (r.depth == 1) "BramLib" else "NBufKernelLib"
+                          if (isDummy(a)) "DummyMemLib" else {
+                            if (r.depth == 1) "BramLib" else "NBufKernelLib"
+                          }
                         }.toList
                       case Deff(Reg_new(_)) => 
                         val dups = duplicatesOf(a)
@@ -545,7 +547,9 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
                 case Deff(Sram_new(_,_)) => 
                   val dups = duplicatesOf(a)
                   dups.zipWithIndex.map { case (r, i) => 
-                    if (r.depth == 1) "BramLib" else "NBufKernelLib"
+                    if (isDummy(a)) "DummyMemLib" else {
+                      if (r.depth == 1) "BramLib" else "NBufKernelLib"
+                    }
                   }.toList
                 case Deff(Reg_new(_)) => 
                   val dups = duplicatesOf(a)
