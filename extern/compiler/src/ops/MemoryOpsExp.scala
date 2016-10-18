@@ -611,7 +611,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       }} else {""}
 
     emit(s"""$pre ${quote(read)} = ${rdPre}${addrString}${portInfo}${dummyOverride}${rdPost}; // matched $match_tuple ${nameOf(sram).getOrElse("")}""")
-    emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(sram_name)} %d @ %d", ${quote(read)}, ${addrString});""")
+    emit(s"""// debug.simPrintf(<insert enable>, "read ${nameOf(sram).getOrElse("")}-${quote(sram_name)} %d @ %d", ${quote(read)}, ${addrString});""")
     // Handle if loading a composite type
     //n.compositeValues.zipWithIndex.map { t =>
     //  val v = t._1
@@ -739,7 +739,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
         addrString = quote(addr)} // Dummy override for char test
       emit(s"""${quote(sram)}_${ii}.${wrType}${addrString},
         $dataString, ${accString}${globalEnString}, new int[] {$p}); //tuple $match_tuple to ${nameOf(sram).getOrElse("")}""")
-      emit(s"""// debug.simPrintf($accString,"${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", $dataString, $addrString);""")
+      emit(s"""// debug.simPrintf(${accString}[0],"${nameOf(sram).getOrElse("")}-${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", ${dataString}[0], ${addrString}[0]);""")
     }
     emitComment("} Sram_store")
   }
@@ -1070,18 +1070,18 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     val port = portsOf(writer, reg, ii).head 
                     writeCtrl match { // Match is necessary for DotProduct because damn thing hangs at compile time if I offset enable and data together
                       case pp@Deff(_:UnitPipe) =>
-                        if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(stream.offset(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset),
-     stream.offset($enable, -${quote(writeCtrl)}_offset) /*makes BFS work*/, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                        if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
+     $enable /*makes BFS work*/, constant.var(false), $port); // 1 ${nameOf(reg).getOrElse("")}""")
                       case _ =>
-                        if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(stream.offset(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset /*offset makes BFS work*/),
-     $enable /*makes BFS work*/, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                        if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits))/*offset makes BFS work*/,
+     $enable /*makes BFS work*/, constant.var(false), $port); // 2 ${nameOf(reg).getOrElse("")}""")
                     }
                   }
                   case None =>
                     dups.foreach { case (dup, ii) => 
                       val port = portsOf(writer, reg, ii).head 
-                      emit(s"""${quote(reg)}_${ii}_lib.write(stream.offset(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset /*offset makes BFS work*/), 
- stream.offset($enable, -${quote(writeCtrl)}_offset) /*makes BFS work*/, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                      emit(s"""${quote(reg)}_${ii}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)) /*offset makes BFS work*/, 
+ $enable /*makes BFS work*/, constant.var(false), $port); // 3 ${nameOf(reg).getOrElse("")}""")
                     }
                     // throw new Exception(s"No reduce function found for $reg ${reduceType(reg)}")
                 }
@@ -1096,8 +1096,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               val rstStr = quote(parentOf(reg).get) + "_rst_en"
               // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
               if (dup.depth > 1) {
-                emit(s"""${regname}_lib.write(stream.offset(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), -${quote(writeCtrl)}_offset /* breaks BFS loop*/),
- stream.offset($enable, -${quote(writeCtrl)}_offset), constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
+                emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
+ $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
               }
               else {
                 // Using an enable signal instead of "always true" is causing an illegal loop.

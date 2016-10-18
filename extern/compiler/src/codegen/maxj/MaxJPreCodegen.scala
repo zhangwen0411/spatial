@@ -1151,7 +1151,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
     if (state == max) {
       emit(s"""
       counterFF.next <== counterFF + 1;
-      IF (counterFF >= sm_numIter-1) {
+      IF (counterFF >= sizeFF-1) {
         stateFF.next <== States.DONE;
       } ELSE {
         stateFF.next <== States.S0;
@@ -1211,7 +1211,7 @@ package engine;
 
   emit(s"""
     // State storage
-    // private final DFEsmStateValue sizeFF;
+    private final DFEsmStateValue sizeFF;
 //    private final DFEsmStateValue lastFF;
     private final DFEsmStateEnum<States> stateFF;
     private final DFEsmStateValue counterFF;
@@ -1248,7 +1248,7 @@ package engine;
       stateFF = state.enumerated(States.class, States.INIT);
       counterFF = state.value(counterType, 0);
       rstCounterFF = state.value(counterType, 0);
-      // sizeFF = state.value(counterType, 0);
+      sizeFF = state.value(counterType, 0);
 //      lastFF = state.value(wireType, 0);
 
       // Bitvector keeps track of which kernels have finished execution
@@ -1283,7 +1283,7 @@ package engine;
   emit(s"""
         SWITCH(stateFF) {
           CASE (States.INIT) {
-            // sizeFF.next <== sm_numIter;
+            sizeFF.next <== sm_numIter;
             stateFF.next <== States.RSET;
             counterFF.next <== 0;
             rstCounterFF.next <== 0;
@@ -1292,6 +1292,7 @@ package engine;
 
           CASE (States.RSET) {
             rstCounterFF.next <== rstCounterFF + 1;
+            sizeFF.next <== sm_numIter;
             IF (rstCounterFF === rstCycles) {
               stateFF.next <== States.S0;
             } ELSE {
@@ -1338,7 +1339,7 @@ package engine;
 
   emit(s"""
      IF (sm_en) {
-//        IF (counterFF >= sm_numIter-1) {
+//        IF (counterFF >= sizeFF-1) {
 //          sm_last <== 1;
 //        } ELSE {
 //          sm_last <== 0;
@@ -1545,7 +1546,7 @@ package engine;
     } else {
       if (state.contains(0)) {
         emit("  counterFF.next <== counterFF + 1;")
-        emit("  IF (counterFF >= sm_numIter-1) {")
+        emit("  IF (counterFF >= sizeFF-1) {")
         stream.print("    stateFF.next <== States.")
         if (state.max == max) {
           if (state.size == 1) {  // Only state 0
@@ -1622,7 +1623,7 @@ package engine;
 
   emit(s"""
     // State storage
-    // private final DFEsmStateValue sizeFF;
+    private final DFEsmStateValue sizeFF;
     private final DFEsmStateValue lastFF;
     private final DFEsmStateEnum<States> stateFF;
     private final DFEsmStateValue counterFF;
@@ -1659,7 +1660,7 @@ package engine;
       stateFF = state.enumerated(States.class, States.INIT);
       counterFF = state.value(counterType, 0);
       rstCounterFF = state.value(counterType, 0);
-      // sizeFF = state.value(counterType, 0);
+      sizeFF = state.value(counterType, 0);
       lastFF = state.value(wireType, 0);
 
       // Bitvector keeps track of which kernels have finished execution
@@ -1692,14 +1693,14 @@ package engine;
   }
 
 emit("""
-        IF (counterFF === sm_numIter-2) {
+        IF (counterFF === sizeFF-2) {
           lastFF.next <== 1;
         }""")
 
   emit(s"""
         SWITCH(stateFF) {
           CASE (States.INIT) {
-            // sizeFF.next <== sm_numIter;
+            sizeFF.next <== sm_numIter;
             stateFF.next <== States.RSET;
             counterFF.next <== 0;
             rstCounterFF.next <== 0;
@@ -1708,6 +1709,7 @@ emit("""
 
           CASE (States.RSET) {
             rstCounterFF.next <== rstCounterFF + 1;
+            sizeFF.next <== sm_numIter;
             IF (rstCounterFF === rstCycles) {
               stateFF.next <== States.S0;
             } ELSE {
@@ -1754,7 +1756,7 @@ emit("""
 
   emit(s"""
      IF (sm_en) {
-        IF (counterFF >= sm_numIter-1) {
+        IF (counterFF >= sizeFF-1) {
           sm_last <== 1;
         } ELSE {
           sm_last <== 0;
