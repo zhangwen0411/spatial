@@ -19,7 +19,7 @@ sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
 sparse_args_list=("960" "960"      "960"              "960"       "960"   )    
 
 # Seconds to pause while waiting for apps to run
-delay=1300
+delay=1200
 spacing=20
 
 # random=(`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 4`) # Random chars to add to directory to avoid new workers from wiping old
