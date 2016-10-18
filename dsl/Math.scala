@@ -464,6 +464,127 @@ trait SpatialMath {
 		// 	@ val pre = maxJPre(sym)
   //   	$pre $sym = ~ ( $0 ^ $1 ) ;
 		// }))
+  
+
+  // --- Chisel Backend
+    impl (neg_fix) (codegen(chisel, ${
+            @ val pre = maxJPre(sym)
+        $pre $sym = -$0 ;
+    }))
+    // impl (add_fix) (codegen(maxj, ${
+    //         @ val pre = maxJPre(sym)
+    //     $pre $sym = $0 + $1 ;
+    //     }))
+    impl (sub_fix) (codegen(chisel, ${
+      @ val pre = maxJPre(sym)
+      $pre $sym = $0 - $1 ;
+    }))
+    // impl (mul_fix) (codegen(maxj, ${
+    //         @ val pre = maxJPre(sym)
+    //     $pre $sym = $0 * $1 ;
+    //     }))
+    impl (div_fix) (codegen(chisel, ${
+      @ val pre = maxJPre(sym)
+      $pre $sym = $0 / $1 ;
+    }))
+  //   impl (lt_fix)  (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+        //  $pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //    $sym <== $0 < $1 ;
+        // }))
+  //   impl (leq_fix) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+        //  $pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //    $sym <== $0 <= $1 ;
+        // }))
+  //   impl (neq_fix) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+        //  $pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //    $sym <== ( $0 !== $1 );
+        // }))
+  //   impl (eql_fix) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+        //  $pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+        //  $sym <== ( $0 === $1) ;
+        // }))
+  //   impl (and_fix) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+  //    $pre $sym = $0 & $1 ;
+        // }))
+  //   impl (or_fix)  (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+  //    $pre $sym = $0 | $1 ;
+        // }))
+  //   impl (lsh_fix) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+  //    $pre $sym = $0 << $1 ;
+        // }))
+  //   impl (rsh_fix) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+        //  $pre $sym = $0 >> $1 ;
+        // }))
+
+    impl (neg_flt) (codegen(chisel, ${
+            @ val pre = maxJPre(sym)
+        $pre $sym = -$0 ;
+    }))
+    impl (sub_flt) (codegen(chisel, ${
+      @ val pre = maxJPre(sym)
+      $pre $sym = $0 - $1 ;
+    }))
+    // impl (div_flt) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 / $1 ;
+    // }))
+    impl (add_flt) (codegen(chisel, ${
+      @ val pre = maxJPre(sym)
+      $pre $sym = $0 + $1 ;
+    }))
+    impl (mul_flt) (codegen(chisel, ${
+      @ val pre = maxJPre(sym)
+      $pre $sym = $0 * $1 ;
+    }))
+  //   impl (lt_flt)  (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+        //  $pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //    $sym <== $0 < $1 ;
+        // }))
+  //   impl (leq_flt) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+        //  $pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //    $sym <== $0 <= $1 ;
+        // }))
+  //   impl (neq_flt) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+        //  $pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //    $sym <== ( $0 !== $1 );
+        // }))
+  //   impl (eql_flt) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+        //  $pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+        //  $sym <== $0 === $1 ;
+        // }))
+
+  //   impl (not_bit) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+  //    $pre $sym = ~( $0 );
+        // }))
+  //   impl (and_bit) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+  //    $pre $sym = $0 & $1 ;
+        // }))
+  //   impl (or_bit)  (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+  //    $pre $sym = $0 | $1 ;
+        // }))
+  //   impl (xor_bit) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+  //    $pre $sym = $0 ^ $1 ;
+        // }))
+  //   impl (xnor_bit) (codegen(maxj, ${
+        //  @ val pre = maxJPre(sym)
+  //    $pre $sym = ~ ( $0 ^ $1 ) ;
+        // }))
   }
 
   def importBasicMath() {

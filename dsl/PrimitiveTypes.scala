@@ -254,5 +254,38 @@ trait PrimitiveTypes {
 			@ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
       DFEVar $sym = $0.cast( $ts );
 		}))
+
+
+    // --- Chisel Backend
+    impl (boolean_to_bit) (codegen(chisel, ${
+            DFEVar $sym = constant.var( $0 );
+        }))
+  //   impl (const_to_fixpt) (codegen(maxj, ${
+        //      @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
+        //      DFEVar $sym = constant.var( $ts, $0 );
+        // }))
+    impl (const_to_fltpt) (codegen(chisel, ${
+                @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
+        DFEVar $sym = constant.var( $ts, $0 );
+        }))
+
+    impl (fixpt_to_fltpt) (codegen(chisel, ${
+            @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
+      DFEVar $sym = $0.cast( $ts );
+        }))
+    impl (convert_fixpt)  (codegen(chisel, ${
+            //TODO: right way to do this?
+            @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
+      DFEVar $sym = $0.cast( $ts );
+        }))
+    impl (fltpt_to_fixpt) (codegen(chisel, ${
+            @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
+      DFEVar $sym = $0.cast( $ts );
+        }))
+    impl (convert_fltpt)  (codegen(chisel, ${
+            //TODO: right way to do this?
+            @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
+      DFEVar $sym = $0.cast( $ts );
+        }))
 	}
 }

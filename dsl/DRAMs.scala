@@ -126,6 +126,10 @@ trait DRAMs {
 
     // --- MaxJ Backend
     //dram_new (extern)
+
+    // --- Chisel Backend
+    //dram_new (extern)
+
   }
 
 

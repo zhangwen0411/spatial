@@ -248,6 +248,14 @@ trait SpatialMisc {
       DFEVar $sym = Rand_flt
     }))
     //impl (rand_bit) (codegen(maxj, ${  }))
+
+    // --- Chisel Backend
+    //impl (rand_fix_bnd) (codegen(chisel, ${  }))
+    //impl (rand_fix) (codegen(chisel, ${  }))
+    impl (rand_flt) (codegen(chisel, ${
+      DFEVar $sym = Rand_flt
+    }))
+    //impl (rand_bit) (codegen(chisel, ${  }))
   }
 
 
