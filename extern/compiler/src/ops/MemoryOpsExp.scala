@@ -663,6 +663,11 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
         case p => throw UnknownParentControllerException(sram, write, writeCtrl)
     }
 
+    val isAlwaysEn = ens match { // Hack to turn off damn stream offset if wr always enabled. MaxJ sucks
+      case Deff(ConstBit(_)) => true
+      case _ => false
+    }
+
     val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(writer,sram).contains(dup._2) }
 
     val inds = parIndicesOf(write)
@@ -671,8 +676,8 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     if (inds.isEmpty) throw NoParIndicesException(sram, write)
 
     emit(s"// BTW, always add offset b/c it doesn't matter anyway")
-    var offsetPre = if (isAccumCtrl) "stream.offset(" else ""
-    var offsetPost = if (isAccumCtrl) {", -" + quote(writeCtrl) + "_offset)"} else "" 
+    var offsetPre = if (isAccumCtrl & !isAlwaysEn) "stream.offset(" else ""
+    var offsetPost = if (isAccumCtrl & !isAlwaysEn) {", -" + quote(writeCtrl) + "_offset)"} else "" 
     val parentPipe = parentOf(sram).getOrElse(throw UndefinedParentException(sram))
     var accEn = s"${quote(ens)}"//s"${quote(writeCtrl)}_datapath_en"
     var globalEnComma = ""
