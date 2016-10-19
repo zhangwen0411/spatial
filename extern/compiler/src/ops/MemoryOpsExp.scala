@@ -1081,16 +1081,16 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       // throw new Exception(s"Reduction $fps codegen unknown!")
                   }
                   // TODO: Assume duplicate 0 is used for reduction, all others need writes
-                  val e = if (delayWrenToo) {s"stream.offset($enable, -1-${quote(writeCtrl)}_offset)"} else s"$enable"
+                  val e = if (delayWrenToo) {s"stream.offset($enable, -1)"} else s"$enable"
                   dups.foreach { case (dup, ii) => 
                     val port = portsOf(writer, reg, ii).head 
                     writeCtrl match { // Match is necessary for DotProduct because damn thing hangs at compile time if I offset enable and data together
                       case pp@Deff(_:UnitPipe) =>
                         if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
-     $e /*makes BFS work*/, constant.var(false), $port); // 1 ${nameOf(reg).getOrElse("")}""")
+     $e /*makes simplefold work*/, constant.var(false), $port); // 1 ${nameOf(reg).getOrElse("")}""")
                       case _ =>
                         if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits))/*offset makes BFS work*/,
-     $e /*makes BFS work*/, constant.var(false), $port); // 2 ${nameOf(reg).getOrElse("")}""")
+     $e /*makes simplefold work*/, constant.var(false), $port); // 2 ${nameOf(reg).getOrElse("")}""")
                     }
                   }
                   case None =>
