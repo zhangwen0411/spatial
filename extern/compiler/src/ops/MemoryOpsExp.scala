@@ -433,12 +433,11 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
           // Get all siblings of read/write ports and match to ports of buf
           val topCtrl = readsByPort.map{case (_, readers) => readers.flatMap{a => topControllerOf(a,mem,i)}.head}.head.node
-          val subReads = readsByPort.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}.toSet
-          val subWrites = writesByPort.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}.toSet
+          val subReads = readsByPort.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}
+          val subWrites = writesByPort.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}
 
           val prnt = parentOf(topCtrl).get
-          val allSiblings = childrenOf(prnt).toSet //-- List(prnt).map{ case (c,_) => c}.toSet
-          val orphanedSiblings = allSiblings -- subReads -- subWrites
+          val allSiblings = childrenOf(prnt) //-- List(prnt).map{ case (c,_) => c}.toSet
 
           def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String, comment: String = "") {
             val controllers = accesses.flatMap{access => topControllerOf(access, mem, i) }.distinct
@@ -461,11 +460,15 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
             val fullPorts = (0 until d.depth).map{ i => i }.toSet
             val dummyWPorts = fullPorts -- wPorts
             val dummyRPorts = fullPorts -- rPorts
+            val firstActivePort = math.min(allSiblings.indexOf(subReads.head), allSiblings.indexOf(subWrites.head))
             val dummyDonePorts = fullPorts -- wPorts -- rPorts
+            val dummyDoneCtrlIds = dummyDonePorts.map{ a => a + firstActivePort }
             readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl",s"read")}
             writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
-            dummyDonePorts.toList.zip(orphanedSiblings.toList.take(dummyDonePorts.toList.length)).foreach{case (ports, node) =>
-              emit(s"""${quoteDuplicate(mem,i)}.connectStageCtrl(${quote(node)}_done, ${quote(node)}_en, new int[] {$ports}); /*orphan*/""")
+            dummyDonePorts.foreach{ port =>
+              val ctrlId = port + firstActivePort
+              val node = allSiblings(ctrlId)
+              emit(s"""${quoteDuplicate(mem,i)}.connectStageCtrl(${quote(node)}_done, ${quote(node)}_en, new int[] {$port}); /*orphan, connecting port ${port} + ${firstActivePort}*/""")
             }
 
             emit(s"""${quote(mem)}_${i}${suff}.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
@@ -548,6 +551,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     val reader = readers.find{_.node == read}.get   // Corresponding reader for this read node
     val b_i = instanceIndicesOf(reader, sram).head    // Instance indices should have exactly one index for reads
     val p = portsOf(read, sram, b_i).head
+    val readCtrl = reader.controlNode
 
     val sram_name = s"${quote(sram)}_${b_i}"
     val pre = if (!par) maxJPre(sram) else "DFEVector<DFEVar>"
@@ -562,8 +566,9 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
 
     match_tuple match { //(inds_length, num_dims, par)
       case (1,1,false) =>
-        rdPre = s"${quote(sram_name)}.connectRport("
-        rdPost = ")"
+        emit(s"// This could be part of indirect addressing, so delay it for BFS")
+        rdPre = s"stream.offset(${quote(sram_name)}.connectRport("
+        rdPost = s"),-${quote(readCtrl)}_offset)"
         addrString = quote(inds(0)(0))
         addEmittedConsts(inds(0)(0))
       case (1,1,true) =>
@@ -658,7 +663,6 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
         case p => throw UnknownParentControllerException(sram, write, writeCtrl)
     }
 
-
     val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(writer,sram).contains(dup._2) }
 
     val inds = parIndicesOf(write)
@@ -666,8 +670,9 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     val match_tuple = (writers.length, distinctParents.length, inds.length, num_dims)
     if (inds.isEmpty) throw NoParIndicesException(sram, write)
 
-    var offsetPre = ""
-    var offsetPost = ""
+    emit(s"// BTW, always add offset b/c it doesn't matter anyway")
+    var offsetPre = if (isAccumCtrl) "stream.offset(" else ""
+    var offsetPost = if (isAccumCtrl) {", -" + quote(writeCtrl) + "_offset)"} else "" 
     val parentPipe = parentOf(sram).getOrElse(throw UndefinedParentException(sram))
     var accEn = s"${quote(ens)}"//s"${quote(writeCtrl)}_datapath_en"
     var globalEnComma = ""
@@ -738,7 +743,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       if (isDummy(sram)) {
         addrString = quote(addr)} // Dummy override for char test
       emit(s"""${quote(sram)}_${ii}.${wrType}${addrString},
-        $dataString, ${accString}${globalEnString}, new int[] {$p}); //tuple $match_tuple to ${nameOf(sram).getOrElse("")}""")
+        $dataString, ${accString}${globalEnString}, new int[] {$p}); // tuple $match_tuple to ${nameOf(sram).getOrElse("")}""")
       emit(s"""// debug.simPrintf(${accString}[0],"${nameOf(sram).getOrElse("")}-${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", ${dataString}[0], ${addrString}[0]);""")
     }
     emitComment("} Sram_store")
@@ -1051,8 +1056,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 reduceType(reg) match {
                   case Some(fps: ReduceFunction) => fps match {
                     case FixPtSum =>
-                      emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
-                      emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
+                      emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(stream.offset(${rstStr}, -1) /*-1 for BFS*/).withEnable(stream.offset(${quote(reg)}_en, -${quote(writeCtrl)}_offset));""")
+                      emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(stream.offset(${quote(value)}, -${quote(writeCtrl)}_offset), ${quote(reg)}_accParams);""")
                       emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
                     case FltPtSum =>
                       emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")

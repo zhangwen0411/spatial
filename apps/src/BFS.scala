@@ -70,11 +70,11 @@ trait BFSApp extends SpatialApp {
           Pipe{nextId := frontierIds(fetch)}
           Pipe{nextLen := frontierCounts(fetch)}
           Pipe{pieceMem := OCedges(nextId :: nextId + nextLen.value)}
-          Sequential(nextLen.value by 1) { kk => frontierNodes(kk + concatReg.value) = pieceMem(kk)}
+          Pipe(nextLen.value by 1) { kk => frontierNodes(kk + concatReg.value) = pieceMem(kk)}
           nextLen
         }{_+_}
         Pipe{numEdges.value by 1} { kk => currentNodes(kk) = frontierNodes(kk)}
-        Sequential(concatReg.value by 1) { k => frontierLevels(k) = i+1 }
+        Pipe(concatReg.value by 1) { k => frontierLevels(k) = i+1 }
         OCresult(currentNodes, concatReg.value) := frontierLevels
         Pipe{numEdges := concatReg.value}
       }
