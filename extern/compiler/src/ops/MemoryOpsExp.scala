@@ -1047,7 +1047,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
         case _ =>
           if (isAccum(reg)) {
-
+            var delayWrenToo = false // Hack to fix specialized accumulators where inputs to accum are delayed (since it makes BFS work)
             // Not sure how to decide this now...
             val accEn = writeCtrl match {
               case Deff(_: UnitPipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
@@ -1065,6 +1065,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 reduceType(reg) match {
                   case Some(fps: ReduceFunction) => fps match {
                     case FixPtSum =>
+                      delayWrenToo = true
                       emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(stream.offset(${rstStr}, -1) /*-1 for BFS*/).withEnable(stream.offset(${quote(reg)}_en, -${quote(writeCtrl)}_offset));""")
                       emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(stream.offset(${quote(value)}, -${quote(writeCtrl)}_offset), ${quote(reg)}_accParams);""")
                       emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
@@ -1080,15 +1081,16 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       // throw new Exception(s"Reduction $fps codegen unknown!")
                   }
                   // TODO: Assume duplicate 0 is used for reduction, all others need writes
+                  val e = if (delayWrenToo) {s"stream.offset($enable, -1-${quote(writeCtrl)}_offset)"} else s"$enable"
                   dups.foreach { case (dup, ii) => 
                     val port = portsOf(writer, reg, ii).head 
                     writeCtrl match { // Match is necessary for DotProduct because damn thing hangs at compile time if I offset enable and data together
                       case pp@Deff(_:UnitPipe) =>
                         if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
-     $enable /*makes BFS work*/, constant.var(false), $port); // 1 ${nameOf(reg).getOrElse("")}""")
+     $e /*makes BFS work*/, constant.var(false), $port); // 1 ${nameOf(reg).getOrElse("")}""")
                       case _ =>
                         if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits))/*offset makes BFS work*/,
-     $enable /*makes BFS work*/, constant.var(false), $port); // 2 ${nameOf(reg).getOrElse("")}""")
+     $e /*makes BFS work*/, constant.var(false), $port); // 2 ${nameOf(reg).getOrElse("")}""")
                     }
                   }
                   case None =>
