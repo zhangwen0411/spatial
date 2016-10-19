@@ -1171,7 +1171,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   ${all_same}, /*all_same access (row_major or col_major)*/
                   new boolean[] {${row_majors.map{a => a | size1==1}.mkString(",")}}, /*rowmajor read?*/
                   ${write_head}, ${read_head} /*writepar, readpar*/,
-                  ${varying_rd_sizes}, new int[] {${read_pars.map{a => a}.mkString(",")}} /*varying rd sizes, rdpars*/); // ${nameOf(sym).getOrElse("")}""")
+                  ${varying_rd_sizes}, new int[] {${read_pars.map{a => a}.mkString(",")}} /*varying rd sizes, rdpars*/); // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}""")
               }
             }
           }
