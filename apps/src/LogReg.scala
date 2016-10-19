@@ -88,13 +88,13 @@ trait LogRegApp extends SpatialApp {
 
     val result = logreg(sX.flatten,sY, theta)
 
-    val gold = Array.empty[Elem](D)
+    // val gold = Array.empty[Elem](D)
     val ids = Array.tabulate(D){i => i}
     val all_accums = sX.zip(sY) {case (row, y) => 
       val sub = y - sigmoid(row.zip(theta){_*_}.reduce{_+_})
       row.map{a => a - sub}
     }
-    all_accums.map{ a => a.zip(ids) { case (u,i) => gold(i) = gold(i) + u}}
+    val gold = all_accums.reduce{(a,b) => a.zip(b){_+_}}
 
     printArr(gold, "gold: ")
     printArr(result, "result: ")
