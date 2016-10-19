@@ -696,9 +696,6 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     }
 
     var addrString = ""
-    val dataString = offsetPre + dataStr + offsetPost
-    val accString = offsetPre + accEn + offsetPost
-    val globalEnString = globalEnComma + offsetPre + globalEn + offsetPost
     val addrDbg = if (num_dims > 1) "%d %d" else "%d"
     var wrType = "connectWport("
 
@@ -711,6 +708,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
         case (1,1,1,2) =>
           addrString = offsetPre + quote(inds(0)(0)) + offsetPost + ", " + offsetPre + quote(inds(0)(1)) + offsetPost
         case (_,1,1,1) => // Hardcode banks to writers and hope for best
+          offsetPre = "";offsetPost = "" // Turn off offset b/c it makes BramTest work....
           val bank_num = writersOf(sram).map{_.node}.indexOf(write)
           wrType = s"connectBankWport($bank_num, "
           addrString = offsetPre + quote(addr) + offsetPost
@@ -718,10 +716,12 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
           addrString = offsetPre + quote(addr) + offsetPost
         case (_,1,_,1) =>
+          offsetPre = "";offsetPost = "" // Turn off offset b/c it makes BramTest work....
           val bank_num = writersOf(sram).map{_.node}.indexOf(write)
           wrType = s"connectBankWport($bank_num, "
           addrString = offsetPre + quote(addr) + offsetPost
         case (_,1,1,2) =>
+          offsetPre = "";offsetPost = "" // Turn off offset b/c it makes BramTest work....
           val bank_num = writersOf(sram).map{_.node}.indexOf(write)
           wrType = s"connectBankWport($bank_num, "
           addrString = offsetPre + quote(inds(0)(0)) + offsetPost + ", " + offsetPre + quote(inds(0)(1)) + offsetPost
@@ -736,6 +736,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
           addrString = offsetPre + quote(inds(0)(0)) + offsetPost + ", " + offsetPre + quote(inds(0)(1)) + offsetPost
         case (_,1,_,2) =>
+          offsetPre = "";offsetPost = "" // Turn off offset b/c it makes BramTest work....
           val bank_num = writersOf(sram).map{_.node}.indexOf(write)
           wrType = s"connectBankWport($bank_num, "
           addrString = row_col_indices(inds, offsetPre, offsetPost)
@@ -745,6 +746,9 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
         case (_,_,_,_) =>
           throw new Exception("MaxJ generation of more than 2D sRAMs is currently unsupported.")
       }
+      val dataString = offsetPre + dataStr + offsetPost
+      val accString = offsetPre + accEn + offsetPost
+      val globalEnString = globalEnComma + offsetPre + globalEn + offsetPost
       if (isDummy(sram)) {
         addrString = quote(addr)} // Dummy override for char test
       emit(s"""${quote(sram)}_${ii}.${wrType}${addrString},
@@ -1155,12 +1159,16 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               //     ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
               } else {
                 def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
-                val row_majors = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
+                val row_majors = readersOf(sym).filter{read => 
+                  instanceIndicesOf(read,sym).head == i
+                }.map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
                 val all_same = (row_majors.reduce{_&_} == row_majors.reduce{_|_})
                 // {
                 //   throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
                 // }
-                val read_pars = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.length}
+                val read_pars = readersOf(sym).filter{ read =>
+                  instanceIndicesOf(read,sym).head == i
+                }.map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.length}
                 val read_head = read_pars.head
                 val varying_rd_sizes = if (!(read_pars.map{a => a == read_head}.reduce{_&_})) {true} else {false}
                   // Console.println(s"Warning!  NBuf has readers of different pars.  Template will do its best to handle this")
