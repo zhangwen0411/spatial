@@ -1066,8 +1066,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   case Some(fps: ReduceFunction) => fps match {
                     case FixPtSum =>
                       delayWrenToo = true
-                      emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(stream.offset(${rstStr}, -1) /*-1 for BFS*/).withEnable(stream.offset(${quote(reg)}_en, -${quote(writeCtrl)}_offset));""")
-                      emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(stream.offset(${quote(value)}, -${quote(writeCtrl)}_offset), ${quote(reg)}_accParams);""")
+                      emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(stream.offset(${rstStr}, -1) /*-1 for BFS*/).withEnable(${quote(reg)}_en);""")
+                      emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(stream.offset(${quote(value)}, /*found dlay empirically*/1-${quote(writeCtrl)}_offset), ${quote(reg)}_accParams);""")
                       emit(s"""debug.simPrintf(${quote(reg)}_en & stream.offset(${quote(reg)}_en, -1) /* uncommented because maxj sucks */, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
                     case FltPtSum =>
                       emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
@@ -1081,16 +1081,16 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       // throw new Exception(s"Reduction $fps codegen unknown!")
                   }
                   // TODO: Assume duplicate 0 is used for reduction, all others need writes
-                  val e = if (delayWrenToo) {s"stream.offset($enable, -1)"} else s"$enable"
+                  val e = if (delayWrenToo) {s"stream.offset($enable, -${quote(writeCtrl)}_offset)"} else s"$enable"
                   dups.foreach { case (dup, ii) => 
                     val port = portsOf(writer, reg, ii).head 
                     writeCtrl match { // Match is necessary for DotProduct because damn thing hangs at compile time if I offset enable and data together
                       case pp@Deff(_:UnitPipe) =>
                         if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
-     $e /*makes simplefold work*/, constant.var(false), $port); // 1 ${nameOf(reg).getOrElse("")}""")
+     $enable /*makes simplefold work*/, constant.var(false), $port); // 1 ${nameOf(reg).getOrElse("")}""")
                       case _ =>
                         if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits))/*offset makes BFS work*/,
-     $e /*makes simplefold work*/, constant.var(false), $port); // 2 ${nameOf(reg).getOrElse("")}""")
+     $enable /*makes simplefold work*/, constant.var(false), $port); // 2 ${nameOf(reg).getOrElse("")}""")
                     }
                   }
                   case None =>
@@ -1119,7 +1119,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 // Using an enable signal instead of "always true" is causing an illegal loop.
                 // Using a reset signal instead of "always false" is causing an illegal loop.
                 // These signals don't matter for pass-through registers anyways.
-                emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), constant.var(true) /*TODO: must attach sig*/, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), constant.var(true), constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
               }
             }
           } // End non-accumulator case

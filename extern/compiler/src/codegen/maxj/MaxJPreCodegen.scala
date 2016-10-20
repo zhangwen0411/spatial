@@ -1152,7 +1152,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
     if (state == max) {
       emit(s"""
       counterFF.next <== counterFF + 1;
-      IF (counterFF >= sizeFF-1) {
+      IF (counterFF >= sizeFF-1 | sizeFF === 0 /*hack for when reg inits to 0*/) {
         stateFF.next <== States.DONE;
       } ELSE {
         stateFF.next <== States.S0;
@@ -1340,7 +1340,7 @@ package engine;
 
   emit(s"""
      IF (sm_en) {
-//        IF (counterFF >= sizeFF-1) {
+//        IF (counterFF >= sizeFF-1  | sizeFF === 0 /*hack for when reg inits to 0*/) {
 //          sm_last <== 1;
 //        } ELSE {
 //          sm_last <== 0;
@@ -1547,7 +1547,7 @@ package engine;
     } else {
       if (state.contains(0)) {
         emit("  counterFF.next <== counterFF + 1;")
-        emit("  IF (counterFF >= sizeFF-1) {")
+        emit("  IF (counterFF >= sizeFF-1  | sizeFF === 0 /*hack for when reg inits to 0*/) {")
         stream.print("    stateFF.next <== States.")
         if (state.max == max) {
           if (state.size == 1) {  // Only state 0
@@ -1757,7 +1757,7 @@ emit("""
 
   emit(s"""
      IF (sm_en) {
-        IF (counterFF >= sizeFF-1) {
+        IF (counterFF >= sizeFF-1  | sizeFF === 0 /*hack for when reg inits to 0*/) {
           sm_last <== 1;
         } ELSE {
           sm_last <== 0;
