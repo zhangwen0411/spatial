@@ -1068,7 +1068,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       delayWrenToo = true
                       emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(stream.offset(${rstStr}, -1) /*-1 for BFS*/).withEnable(stream.offset(${quote(reg)}_en, -${quote(writeCtrl)}_offset));""")
                       emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(stream.offset(${quote(value)}, -${quote(writeCtrl)}_offset), ${quote(reg)}_accParams);""")
-                      emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
+                      emit(s"""debug.simPrintf(${quote(reg)}_en & stream.offset(${quote(reg)}_en, -1) /* uncommented because maxj sucks */, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
                     case FltPtSum =>
                       emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
                       emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")

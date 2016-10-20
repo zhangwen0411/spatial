@@ -52,7 +52,8 @@ trait MaxJPreCodegen extends Traversal  {
         case Def(ConstFix(value)) =>
           s"const${value}_" + s.tp.erasure.getSimpleName() + n
         case Def(ConstFlt(value)) =>
-          s"const${value}_" + s.tp.erasure.getSimpleName() + n
+          val str = s"${value}"
+          s"const${str.replace('.', 'p').replace('-', 'n')}_" + s.tp.erasure.getSimpleName() + n
         case _ =>
           maxJManagerGen.quote(x)
       }}
