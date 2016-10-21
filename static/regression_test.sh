@@ -48,11 +48,11 @@ function write_comments {
 
 Comments
 --------
-* Expected FifoLoadStore to fail validation
-* Fix parallel ScatterGather to support interleaved banking rather than strided
+* ~~Expected FifoLoadStore to fail validation~~
+* ~~Fix parallel ScatterGather to support interleaved banking rather than strided~~
 * Expected GEMM to fail validation
 * Tighten validation margin on BlackScholes
-* Fix UnalignedLd bug with calculating burst address and cmd enable for unaligned lds
+* ~~Fix UnalignedLd bug with calculating burst address and cmd enable for unaligned lds~~
 * Make SGD work on more than 1 epoch
 " >> $1
 }
@@ -194,7 +194,7 @@ cd ${5}/out
 # Patch makefile, Because ant won't run inside a makefile if I set the symlinks correctly
 sed -i \"s/JAVA_HOME = \/usr\/lib\/jvm\/java-7-openjdk-amd64/JAVA_HOME = \/usr/g\" Makefile
 sed -i \"s/ant/\/usr\/share\/ant\/bin\/ant/g\" Makefile
-sed -i '4i J_HOME=/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.36.x86_64' Makefile
+sed -i '4i J_HOME=/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.40.x86_64' Makefile
 sed -i \"s/-I\\\$(JAVA_HOME)\/include -I\\\$(JAVA_HOME)\/include\/linux/-I\\\$(J_HOME)\/include -I\\\$(J_HOME)\/include\/linux/g\" Makefile
 
 make clean sim 2>&1 | tee -a ${5}/log
@@ -657,6 +657,6 @@ git add *
 git commit -m "automated status update via cron"
 git push
 
-echo "rm -rf ${TESTS_HOME}" | tee /kunle/users/mattfel/why_didnt_delete
+echo "rm -rf ${TESTS_HOME}" > /kunle/users/mattfel/why_didnt_delete
 rm -rf ${TESTS_HOME} | tee /kunle/users/mattfel/why_didnt_delete
-
+killall screen
