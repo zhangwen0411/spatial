@@ -1084,7 +1084,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   val e = if (delayWrenToo) {s"stream.offset($enable, -${quote(writeCtrl)}_offset)"} else s"$enable"
                   dups.foreach { case (dup, ii) => 
                     val specialCase0Acc = (ii == 0 & dup.depth > 1)
-                    val realRst = if (specialCase0Acc) "stream.offset(${rstStr}, -1)" else "global_rst"
+                    val realRst = if (specialCase0Acc) s"stream.offset(${rstStr}, -1)" else "global_rst"
                     val port = portsOf(writer, reg, ii).head 
                     writeCtrl match { // Match is necessary for DotProduct because damn thing hangs at compile time if I offset enable and data together
                       case pp@Deff(_:UnitPipe) =>
