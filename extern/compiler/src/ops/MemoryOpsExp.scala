@@ -1076,28 +1076,30 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       // TODO: This is very bad assumption!  Actually check which reg to write to!!!
                       emit(s"""DFEVar ${quote(reg)} = ${quote(value)}; // redtype ${fps} unknown, just assign wire""")
                       val port = portsOf(writer, reg, 0).head
-                      emit(s"""${quote(reg)}_0_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_0_lib.bits)), $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                      emit(s"""${quote(reg)}_0_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_0_lib.bits)), $enable, global_rst, $port); // ${nameOf(reg).getOrElse("")}""")
                       emit(s"""${quote(reg)}_0_delayed <== stream.offset(${quote(reg)}_0, -${quote(writeCtrl)}_offset);""")
                       // throw new Exception(s"Reduction $fps codegen unknown!")
                   }
                   // TODO: Assume duplicate 0 is used for reduction, all others need writes
                   val e = if (delayWrenToo) {s"stream.offset($enable, -${quote(writeCtrl)}_offset)"} else s"$enable"
                   dups.foreach { case (dup, ii) => 
+                    val specialCase0Acc = (ii == 0 & dup.depth > 1)
+                    val realRst = if (specialCase0Acc) "stream.offset(${rstStr}, -1)" else "global_rst"
                     val port = portsOf(writer, reg, ii).head 
                     writeCtrl match { // Match is necessary for DotProduct because damn thing hangs at compile time if I offset enable and data together
                       case pp@Deff(_:UnitPipe) =>
-                        if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
-     $enable /*makes simplefold work*/, constant.var(false), $port); // 1 ${nameOf(reg).getOrElse("")}""")
+                        if (ii > 0 | specialCase0Acc) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
+     $enable /*makes simplefold work*/, $realRst, $port); // 1 ${nameOf(reg).getOrElse("")}""")
                       case _ =>
-                        if (ii > 0 | (ii == 0 & dup.depth > 1)) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits))/*offset makes BFS work*/,
-     $enable /*makes simplefold work*/, constant.var(false), $port); // 2 ${nameOf(reg).getOrElse("")}""")
+                        if (ii > 0 | specialCase0Acc) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits))/*offset makes BFS work*/,
+     $enable /*makes simplefold work*/, $realRst, $port); // 2 ${nameOf(reg).getOrElse("")}""")
                     }
                   }
                   case None =>
                     dups.foreach { case (dup, ii) => 
                       val port = portsOf(writer, reg, ii).head 
                       emit(s"""${quote(reg)}_${ii}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)) /*offset makes BFS work*/, 
- $enable /*makes BFS work*/, constant.var(false), $port); // 3 ${nameOf(reg).getOrElse("")}""")
+ $enable /*makes BFS work*/, global_rst, $port); // 3 ${nameOf(reg).getOrElse("")}""")
                     }
                     // throw new Exception(s"No reduce function found for $reg ${reduceType(reg)}")
                 }
@@ -1113,13 +1115,13 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
               if (dup.depth > 1) {
                 emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
- $enable, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")                    
+ $enable, global_rst, $port); // ${nameOf(reg).getOrElse("")}""")                    
               }
               else {
                 // Using an enable signal instead of "always true" is causing an illegal loop.
                 // Using a reset signal instead of "always false" is causing an illegal loop.
                 // These signals don't matter for pass-through registers anyways.
-                emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), constant.var(true), constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
+                emit(s"""${regname}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)), $enable/*true was problematic for BFS rst reg to 1*/, global_rst, $port); // ${nameOf(reg).getOrElse("")}""")
               }
             }
           } // End non-accumulator case

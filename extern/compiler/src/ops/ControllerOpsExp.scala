@@ -428,6 +428,15 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
 
       print_stage_prefix(s"Hwblock",s"",s"${quote(sym)}")
 			inHwScope = true
+      emit(s"""
+// Dummy counter to initialize all registers on first cycle
+Count.Params initParams = control.count.makeParams(2)
+                          .withEnable(top_en)
+                          .withMax(2)
+                          .withWrapMode(WrapMode.STOP_AT_MAX);
+Counter init = control.count.makeCounter(initParams); 
+DFEVar global_rst = init.getCount() === 0;
+""")
 			emitComment("Emitting Hwblock dependencies {")
       val hwblockDeps = recursiveDeps(rhs)
       expToArg.keys.filterNot { hwblockDeps.contains(_) } foreach { argToExp -= expToArg(_) }

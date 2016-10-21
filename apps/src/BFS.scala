@@ -30,7 +30,7 @@ trait BFSApp extends SpatialApp {
   type T = Flt
   type Array[T] = ForgeArray[T]
 
-  val tileSize = 96
+  val tileSize = 384
   val edges_per_node = 6 // Will make this random later
 
 
@@ -62,7 +62,7 @@ trait BFSApp extends SpatialApp {
       }
 
       val numEdges = Reg[SInt](1)
-      Sequential(2 by 1) { i =>
+      Sequential(3 by 1) { i =>
         Fold(numEdges.value by 1)(concatReg, 0.as[SInt]) { k =>
           val nextLen = Reg[SInt]
           val nextId = Reg[SInt]
@@ -70,10 +70,20 @@ trait BFSApp extends SpatialApp {
           Pipe{nextId := frontierIds(fetch)}
           Pipe{nextLen := frontierCounts(fetch)}
           Pipe{pieceMem := OCedges(nextId :: nextId + nextLen.value)}
-          Pipe(nextLen.value by 1) { kk => frontierNodes(kk + concatReg.value) = pieceMem(kk)}
+          Pipe(nextLen.value by 1) { kk => 
+            /* Since Fold is a metapipe and we read concatReg before
+               we write to it, this means iter0 and iter1 both read 
+               0 in concatReg.  I.e. we always see the previous iter's
+               value of concatReg, so we should add nextLen to it here
+               if we are not on the first iter (since concatReg is and
+               should be 0)
+            */
+            val plus = mux(k == 0, 0, nextLen.value)
+            frontierNodes(kk + concatReg.value + plus) = pieceMem(kk)
+          }
           nextLen
         }{_+_}
-        Pipe{numEdges.value by 1} { kk => currentNodes(kk) = frontierNodes(kk)}
+        Pipe{concatReg.value by 1} { kk => currentNodes(kk) = frontierNodes(kk)}
         Pipe(concatReg.value by 1) { k => frontierLevels(k) = i+1 }
         OCresult(currentNodes, concatReg.value) := frontierLevels
         Pipe{numEdges := concatReg.value}
@@ -92,7 +102,7 @@ trait BFSApp extends SpatialApp {
   def main() {
     // val layers = 5
     // val nodes = (scala.math.pow(edges_per_node, layers) - 1).toInt
-    val nodes = 96
+    val nodes = tileSize
 
     val OCnodes = Array.tabulate(nodes) {i => 0}
     val OCedges = Array.tabulate(nodes*edges_per_node){i => i+1}

@@ -307,7 +307,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
       }
 
       val inputArgsWithPrefix = inputArgs.zip(inputTypes).map{case (a:String,b:String) => b + " " + a}.mkString(",")
-      emit(s"""void common(OffsetExpr ${quote(sym)}_offset, 
+      emit(s"""void common(OffsetExpr ${quote(sym)}_offset, DFEVar global_rst,
   DFEVar ${quote(sym)}_done, DFEVar ${quote(sym)}_datapath_en, DFEVar ${quote(sym)}_redLoop_done, DFEVar ${quote(sym)}_ctr_en,
   $inputArgsWithPrefix) {
       """)
@@ -319,11 +319,11 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
     emit(s"""
 }
 
-${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, 
+${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DFEVar global_rst, 
   DFEVar ${quote(sym)}_done, DFEVar ${quote(sym)}_datapath_en, DFEVar ${quote(sym)}_redLoop_done, DFEVar ${quote(sym)}_ctr_en,
   ${inputArgsWithPrefix}) {
   super(owner);
-  common(${quote(sym)}_offset, 
+  common(${quote(sym)}_offset, global_rst,
   ${quote(sym)}_done, ${quote(sym)}_datapath_en, ${quote(sym)}_redLoop_done, ${quote(sym)}_ctr_en,
   ${inputArgs.mkString(",")});
 }
@@ -435,7 +435,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset,
                     emitPostReduction(sym, rhs, inputArgs, inputTypes)
                   }                
 
-                  emit(s"""new ${quote(sym)}_reduce_kernel(owner, ${quote(sym)}_offset, 
+                  emit(s"""new ${quote(sym)}_reduce_kernel(owner, ${quote(sym)}_offset, global_rst,
 ${quote(sym)}_done, ${quote(sym)}_datapath_en, ${quote(sym)}_redLoop_done, ${quote(sym)}_ctr_en,
 ${inputArgs.mkString(",")}); // Reduce kernel""")
                 } else {
@@ -578,7 +578,7 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
             }                
             emitComment(s"""} ${quote(sym)} func block""")
 
-            emit(s"""new ${quote(sym)}_reduce_kernel(owner, ${quote(sym)}_offset, 
+            emit(s"""new ${quote(sym)}_reduce_kernel(owner, ${quote(sym)}_offset, global_rst,
 ${quote(sym)}_done, ${quote(sym)}_datapath_en, ${quote(sym)}_redLoop_done, ${quote(sym)}_ctr_en,
 ${inputArgs.mkString(",")}); // Reduce kernel""")
           } else {
