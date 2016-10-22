@@ -348,16 +348,16 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     case _ => super.remap(m)
   }
 
-  override def consumesMemFifo(node: Exp[Any]) = {
-    // Console.println(s"on fifo $node")
+  def consumesMemFifo(f: Exp[Any]) = {
+    val node = readersOf(f).head.controlNode
     parentOf(node) match {
       case Some(parent) =>
         val isMem = childrenOf(parent).map { n =>
           val Deff(nn) = n
           // Console.println(s"  parent $parent, $n - $nn")
           n match {
-            case Deff(BurstLoad(mem, fifo, ofs, len, par)) => if (quote(fifo) == quote(node)) true else false
-            case Deff(BurstStore(mem, fifo, ofs, len, par)) => if (quote(fifo) == quote(node)) true else false
+            case Deff(BurstLoad(mem, fifo, ofs, len, par)) => if (quote(f) == quote(fifo)) true else false
+            case Deff(BurstStore(mem, fifo, ofs, len, par)) => if (quote(f) == quote(fifo)) true else false
             case _ => false
           }}
       isMem.reduce{_|_}
@@ -1243,6 +1243,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val readEn = s"${reader}_ctr_en"
       if (insideReduceKernel) {
         emit(s"""DFEVar ${quote(fifo)}_readEn = ${readEn}; // Make a new one""")
+      } else if (consumesMemFifo(fifo)) {
+        emit(s"""${quote(fifo)}_readEn <== ${readEn} & ${reader}_sm.getOutput("ctr_maxOut_0") > 0; // Hack to prevent Fifo loads of size 0 from halting while ctr_en is high for a cycle""")
       } else {
         emit(s"""${quote(fifo)}_readEn <== ${readEn};""")
       }

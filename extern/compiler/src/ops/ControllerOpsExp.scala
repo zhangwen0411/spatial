@@ -263,22 +263,6 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
  import IR._ //{__ifThenElse => _, Nosynth___ifThenElse => _, __whileDo => _,
              // Forloop => _, println => _ , _}
 
-  def consumesMemFifo(node: Exp[Any]) = {
-    childrenOf(parentOf(node).get).map{ n => n match {
-        case Deff(BurstLoad(mem, fifo, ofs, len, par)) => true
-        case _ => false
-      }
-    }.reduce{_|_}
-  }
-
-  def trashCount(i: Int, node: Exp[Any]) = {
-    if (consumesMemFifo(node)) {
-      96 - i%96 // TODO: Pass info about word size.  Assume 32-bit for now
-    } else {
-      0
-    }
-  }
-
   var bbd = ""
 
   def newStream(fileName:String):PrintWriter = {
@@ -715,11 +699,7 @@ DFEVar global_rst = init.getCount() === 0;
         emitGlobalWire(s"""${quote(cchain)}_done""")
         doneDeclaredSet += cchain
         emit(s"""${quote(sym)}_sm.connectInput("ctr_done", ${quote(cchain)}_done);""")
-        if (consumesMemFifo(sym)) {
-          emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
-        } else {
-          emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
-        }
+        emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
 
       case ForkJoin => throw new Exception("Cannot have counter chain control logic for fork-join (parallel) controller!")
       case _ =>
