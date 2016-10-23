@@ -14,7 +14,7 @@ app_classes=("dense" "sparse" "unit" "characterization")
 dense_test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" "MatMult_outer"
 	"Kmeans"  "GEMM"      "GDA"    "SGD"   "LogReg" "OuterProduct")
 dense_args_list=("9600"       "8 192 192"     "1920"   "960"          "8 192 192"    
-	"96 8 96" "8 192 192" "96 96" "96 96" "96"     "192 192")
+	"96 8 96" "8 192 192" "96 96"  "96 96" "768 2"     "192 192")
 sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
 sparse_args_list=("960" "960"      "960"              "960"       "960"   )    
 
