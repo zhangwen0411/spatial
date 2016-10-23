@@ -61,12 +61,12 @@ trait MaxJPreCodegen extends Traversal  {
       maxJManagerGen.quote(x)
   }
 
-	val argInOuts  = Set.empty[Sym[Reg[_]]]
-  val memStreams = Set.empty[Sym[Any]]
+	var argInOuts  = List[Sym[Reg[_]]]()
+  val memStreams = List[Sym[Any]]()
 
   override def preprocess[A:Manifest](b: Block[A]): Block[A] = {
-		argInOuts.clear
-		memStreams.clear
+		argInOuts = List()
+		memStreams = List()
 		b
 	}
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
@@ -250,17 +250,17 @@ trait MaxJPreCodegen extends Traversal  {
         emitCtrSM(quote(sym), pars, 0, counters.length)
       }
 
-		case e:Argin_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
-    case e:Argout_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
+		case e:Argin_new[_] => argInOuts = argInOuts :+ sym.asInstanceOf[Sym[Reg[_]]]
+    case e:Argout_new[_] => argInOuts = argInOuts :+ sym.asInstanceOf[Sym[Reg[_]]]
 
     case e@BurstStore(_,fifo,_,_,_) =>
       memLdFifos += fifo
-      memStreams += sym
+      memStreams = memStreams :+ sym
     case e@BurstLoad(_,fifo,_,_,_) => 
       memLdFifos += fifo
-      memStreams += sym
-    case _:Scatter[_] => memStreams += sym
-    case _:Gather[_] => memStreams += sym
+      memStreams = memStreams :+ sym
+    case _:Scatter[_] => memStreams = memStreams :+ sym
+    case _:Gather[_] => memStreams = memStreams :+ sym
 
     case Sram_new(size, zero) =>
       val dups = duplicatesOf(sym)

@@ -294,7 +294,7 @@ s"""
     //}
   }
 
-  def emitConstructor(memStreams: Set[Sym[Any]]) = {
+  def emitConstructor(memStreams: List[Sym[Any]]) = {
     emit(mConstructorPreamble)
     emit("    // Setup LMEM -> DFE streams (input streams to DFE)")
     emit("    // Setup DFE -> LMEM (output streams from DFE)")
@@ -336,7 +336,7 @@ s"""
     emit(mWriteIntf)
   }
 
-  def emitDefaultInterface(argInOuts: Set[Sym[Reg[_]]]) = {
+  def emitDefaultInterface(argInOuts: List[Sym[Reg[_]]]) = {
     emit(mDefaultIntfPreamble)
     argInOuts.foreach { a =>
 			regType(a) match {
@@ -353,7 +353,7 @@ s"""
     emit(mDefaultIntfEpilogue)
   }
 
-  def emitManager(stream:PrintWriter, argInOuts:Set[Sym[Reg[_]]], memStreams:Set[Sym[Any]]) = {
+  def emitManager(stream:PrintWriter, argInOuts:List[Sym[Reg[_]]], memStreams:List[Sym[Any]]) = {
 		this.stream = stream
     initPass()
     //println(s"""tileTransfers: """)

@@ -644,8 +644,8 @@ DFEVar global_rst = init.getCount() === 0;
 
     }
 
-    val childrenSet = Set[String]()
-    val percentDSet = Set[String]()
+    var childrenSet = List[String]()
+    var percentDSet = List[String]()
     /* Control Signals to Children Controllers */
     if (!isInnerPipe(sym)) {
 		  childrenOf(sym).zipWithIndex.foreach { case (c, idx) =>
@@ -653,14 +653,14 @@ DFEVar global_rst = init.getCount() === 0;
 		  	emit(s"""${quote(sym)}_sm.connectInput("s${idx}_done", ${quote(c)}_done);""")
         emitGlobalWire(s"""${quote(c)}_en""")
         emit(s"""${quote(c)}_en <== ${quote(sym)}_sm.getOutput("s${quote(idx)}_en");""")
-        childrenSet += (s"${quote(c)}_en, ${quote(c)}_done")
-        percentDSet += (s"${idx}: %d %d")
+        childrenSet = childrenSet :+ (s"${quote(c)}_en, ${quote(c)}_done")
+        percentDSet = percentDSet :+ (s"${idx}: %d %d")
 		  	enDeclaredSet += c
 		  	doneDeclaredSet += c
 		  }
     }
 
-    emit(s"""// debug.simPrintf(${quote(sym)}_en, "pipe ${quote(sym)}: ${percentDSet.toList.mkString(",   ")}\\n", ${childrenSet.toList.mkString(",")});""")
+    emit(s"""// debug.simPrintf(${quote(sym)}_en, "pipe ${quote(sym)}: ${percentDSet.mkString(",   ")}\\n", ${childrenSet.mkString(",")});""")
 
 
     if (styleOf(sym)!=ForkJoin) {
