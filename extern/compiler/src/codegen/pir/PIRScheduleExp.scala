@@ -31,30 +31,72 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   // Intra-CU communication
   sealed abstract class LocalMem {
     val id = {LocalMem.id += 1; LocalMem.id}
+
+    override def equals(x: Any) = x match {
+      case that: LocalMem => this.id == that.id
+      case _ => false
+    }
   }
   object LocalMem { var id = 0 }
 
-  case class ConstReg(const: String) extends LocalMem
-  case class CounterReg(cchain: CUCounterChain, idx: Int) extends LocalMem
+  case class ConstReg(const: String) extends LocalMem {
+    override def equals(x: Any) = x match {
+      case that: ConstReg => this.const == that.const
+      case _ => false
+    }
+  }
+  case class CounterReg(cchain: CUCounterChain, idx: Int) extends LocalMem {
+    override def equals(x: Any) = x match {
+      case that: CounterReg => this.cchain == that.cchain && this.idx == that.idx
+      case _ => false
+    }
+  }
 
-  case class ControlReg(x: Exp[Any]) extends LocalMem
-  case class ValidReg(cchain: CUCounterChain, idx: Int) extends LocalMem
+  case class ControlReg() extends LocalMem { override def toString = s"cr$id" }
+  case class ValidReg(cchain: CUCounterChain, idx: Int) extends LocalMem {
+    override def equals(x: Any) = x match {
+      case that: CounterReg => this.cchain == that.cchain && this.idx == that.idx
+      case _ => false
+    }
+  }
 
-  case class ReadAddrWire(mem: CUMemory) extends LocalMem
-  case class WriteAddrWire(mem: CUMemory) extends LocalMem
-  case class LocalWriteReg(mem: CUMemory) extends LocalMem
+  abstract class LocalSRAMPort(val mem: CUMemory) extends LocalMem {
+    override def equals(x: Any) = x match {
+      case that: LocalSRAMPort => this.mem == that.mem && this.getClass == that.getClass
+      case _ => false
+    }
+  }
+  case class ReadAddrWire(override val mem: CUMemory) extends LocalSRAMPort(mem) {
+    override def toString = s"${mem.name}.readAddr"
+  }
+  case class WriteAddrWire(override val mem: CUMemory) extends LocalSRAMPort(mem) {
+    override def toString = s"${mem.name}.writeAddr"
+  }
+  case class LocalWriteReg(override val mem: CUMemory) extends LocalSRAMPort(mem) {
+    override def toString = s"wr${id}"
+  }
+  case class SRAMRead(override val mem: CUMemory) extends LocalSRAMPort(mem) {
+    override def toString = s"${mem.name}.read"
+  }
+  case class VectorLocal(override val mem: CUMemory) extends LocalSRAMPort(mem) {
+    override def toString = s"${mem.name}.feedbackWrite"
+  }
 
-  case class ReduceReg(x: Exp[Any]) extends LocalMem
-  case class AccumReg(x: Exp[Any], init: ConstReg) extends LocalMem
-  case class TempReg(x: Exp[Any]) extends LocalMem
-  case class SRAMRead(mem: CUMemory) extends LocalMem
+  case class ReduceReg() extends LocalMem { override def toString = s"rr$id"}
+  case class AccumReg(init: ConstReg) extends LocalMem { override def toString = s"ar$id" }
+  case class TempReg() extends LocalMem { override def toString = s"tr$id" }
 
-  case class ScalarIn(x: Exp[Any], mem: GlobalMem) extends LocalMem
-  case class ScalarOut(x: Exp[Any], mem: GlobalMem) extends LocalMem
+  abstract class GlobalPort(val glob: GlobalMem) extends LocalMem {
+    override def equals(x: Any) = x match {
+      case that: GlobalPort => this.glob == that.glob && this.getClass == that.getClass
+      case _ => false
+    }
+  }
+  case class ScalarIn (override val glob: GlobalMem) extends GlobalPort(glob)
+  case class ScalarOut(override val glob: GlobalMem) extends GlobalPort(glob)
+  case class VectorIn (override val glob: VectorMem) extends GlobalPort(glob)
+  case class VectorOut(override val glob: GlobalMem) extends GlobalPort(glob)
 
-  case class VectorIn(mem: VectorMem) extends LocalMem
-  case class VectorLocal(x: Exp[Any], mem: CUMemory) extends LocalMem
-  case class VectorOut(x: Exp[Any], mem: GlobalMem) extends LocalMem
 
   def isAccum(mem: LocalMem): Boolean = mem match {
     case _:AccumReg | _:ReduceReg => true
@@ -183,14 +225,20 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   sealed abstract class Stage {
     def outputMems: List[LocalMem]
     def inputMems: List[LocalMem]
+    def inputRefs: List[LocalRef]
+    def outputRefs: List[LocalRef]
   }
   case class MapStage(op: PIROp, var ins: List[LocalRef], var outs: List[LocalRef]) extends Stage {
     def outputMems = outs.map(_.reg)
     def inputMems = ins.map(_.reg)
+    def inputRefs = ins
+    def outputRefs = outs
   }
   case class ReduceStage(op: PIROp, init: LocalMem, in: LocalRef, acc: ReduceReg) extends Stage {
     def outputMems = List(acc)
     def inputMems = List(in.reg, acc)
+    def inputRefs = List(in)
+    def outputRefs = Nil
   }
 
   // --- Compute units

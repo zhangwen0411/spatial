@@ -24,6 +24,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
   lazy val cus = cuMapping.values.toSet
 
   override def run[A:Manifest](b: Block[A]) = {
+    msg(s"Starting traversal PIR Optimization")
     for (cu <- cus) removeRouteThruStages(cu)
     for (cu <- cus) removeDeadStages(cu)
     for (cu <- cus) removeUnusedCUComponents(cu)
@@ -58,11 +59,13 @@ trait PIROptimizer extends Traversal with PIRCommon {
     val unusedOuts = outs filterNot (out => ins.contains(out))
 
     def isUnusedReg(reg: LocalMem) = reg match {
-      case ScalarOut(_,out) => unusedOuts contains out
-      case VectorOut(_,out) => unusedOuts contains out
+      case ScalarOut(out) => unusedOuts contains out
+      case VectorOut(out) => unusedOuts contains out
       case _ => false
     }
     def isUnusedRef(ref: LocalRef) = isUnusedReg(ref.reg)
+
+    debug(s"Removing unused globals: " + unusedOuts.mkString(", "))
 
     for (cu <- cus){
       val stages = allMapStages(cu)
@@ -83,7 +86,7 @@ trait PIROptimizer extends Traversal with PIRCommon {
       // 1. The compute stage is a map stage which bypasses a vector in to a vector out
       // 2. The vector input's producer's parent is the same as this CU's parent
       val bypassStages = cu.stages.flatMap{
-        case bypass@MapStage(Bypass, List(LocalRef(_,VectorIn(in))), List(LocalRef(_,VectorOut(_,out)))) =>
+        case bypass@MapStage(Bypass, List(LocalRef(_,VectorIn(in))), List(LocalRef(_,VectorOut(out)))) =>
           cus.find{cu => vectorOuts(cu) contains in} match {
             case Some(producer) if producer.parent == cu.parent =>
               debug(s"Removing route-thru stage $bypass from cu $cu")
@@ -92,12 +95,12 @@ trait PIROptimizer extends Traversal with PIRCommon {
 
             case _ => None
           }
-        case bypass@MapStage(Bypass, List(LocalRef(_,ScalarIn(_,in) )), List(LocalRef(_,outReg@ScalarOut(x,out)))) =>
+        case bypass@MapStage(Bypass, List(LocalRef(_,ScalarIn(in) )), List(LocalRef(_,outReg@ScalarOut(out)))) =>
           cus.find{cu => scalarOuts(cu) contains in} match {
             case Some(producer) if producer.parent == cu.parent => // TODO: Is common parent necessary here?
               val ctx = ComputeContext(producer)
-              val origOut = producer.regs.find{case ScalarOut(_,`in`) => true; case _ => false}.get
-              ctx.addOutput(x, origOut, outReg, false)
+              val origOut = producer.regs.find{case ScalarOut(`in`) => true; case _ => false}.get
+              ctx.addOutput(origOut, outReg)
               debug(s"Adding register $outReg to $producer")
               debug(s"Removing route-thru stage $bypass from cu $cu")
               Some(bypass)
@@ -216,9 +219,9 @@ trait PIROptimizer extends Traversal with PIRCommon {
     }
     def swapGlobal_Reg(reg: LocalMem) = reg match {
       case VectorIn(`orig`) => VectorIn(swap.asInstanceOf[VectorMem])
-      case VectorOut(x, `orig`) => VectorOut(x, swap)
-      case ScalarIn(x, `orig`) => ScalarIn(x, swap)
-      case ScalarOut(x, `orig`) => ScalarOut(x, swap)
+      case VectorOut(`orig`) => VectorOut(swap)
+      case ScalarIn(`orig`) => ScalarIn(swap)
+      case ScalarOut(`orig`) => ScalarOut(swap)
       case _ => reg
     }
     def swapGlobal_SRAM(sram: CUMemory) {
