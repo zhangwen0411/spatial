@@ -18,8 +18,8 @@ trait PageRankApp extends SpatialApp {
     val NE = 9216
     val tileSize = 96 // For now
     val iters = ArgIn[SInt]
-    val damp  = ArgIn[SInt]
     val NP    = ArgIn[SInt]
+    val damp  = ArgIn[SInt]
     val OCpages    = DRAM[SInt](np)
     val OCedges    = DRAM[SInt](NE)    // srcs of edges
     val OCcounts   = DRAM[SInt](NE)    // counts for each edge
@@ -28,8 +28,8 @@ trait PageRankApp extends SpatialApp {
     val OCresult   = DRAM[SInt](np)
 
     setArg(iters, OCiters)
-    setArg(damp, OCdamp)
     setArg(NP, np)
+    setArg(damp, OCdamp)
     setMem(OCpages, INpages)
     setMem(OCedges, INedges)
     setMem(OCcounts, INcounts)
@@ -82,8 +82,8 @@ trait PageRankApp extends SpatialApp {
 
   def main() {
     val iters = args(0).to[SInt]
-    val damp = args(1).to[SInt]
-    val NP = 96
+    val NP = args(1).to[SInt]
+    val damp = args(2).to[SInt]
     val NE = 18432
 
     val OCpages = Array.tabulate[SInt](NP){i => 1}

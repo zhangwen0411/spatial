@@ -263,69 +263,15 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
  import IR._ //{__ifThenElse => _, Nosynth___ifThenElse => _, __whileDo => _,
              // Forloop => _, println => _ , _}
 
-  def consumesMemFifo(node: Exp[Any]) = {
-    childrenOf(parentOf(node).get).map{ n => n match {
-        case Deff(BurstLoad(mem, fifo, ofs, len, par)) => true
-        case _ => false
-      }
-    }.reduce{_|_}
+  var bbd = ""
+
+  def newStream(fileName:String):PrintWriter = {
+    val path = bbd + java.io.File.separator + fileName + ".maxj"
+    Console.println(s"[StreamWriter] Making newstream $path")
+    val pw = new PrintWriter(path)
+    pw
   }
 
-  def trashCount(i: Int, node: Exp[Any]) = {
-    if (consumesMemFifo(node)) {
-      96 - i%96 // TODO: Pass info about word size.  Assume 32-bit for now
-    } else {
-      0
-    }
-  }
-
-  def isConstOrArgOrBnd(x: Exp[Any]) = x match {
-    case s@Sym(n) => {
-      s match {
-        case Deff(ConstFixPt(_,_,_,_)) => true
-        case Deff(ConstFltPt(_,_,_)) => true
-        case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
-          xx match {
-            case Deff(Argin_new(_)) => true
-            case _ =>
-              if (isReduceStarter(s)) {false} else {true}
-          }
-        case Deff(_) => false // None
-        case _ => true // Is bound
-      }
-    }
-  }
-
-  def addConstOrArgOrBnd(x: Exp[Any], set: Set[Exp[Any]]) = {
-    var ret = Set[Exp[Any]]()
-    val Deff(dd) = x
-    dd match {
-      case FltPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Lsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Rsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Xor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
-      case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case _ =>
-    }
-    set ++ ret
-  }
   // HACK alert [TODO Raghu] : This code is duplicated in MaxJManagerGen so that argin and argout
   // have a consistent name. Code is duplicated because MaxJManagerGen is currently
   // a standalone thing that does not have a means to share things.
@@ -342,7 +288,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
         case Def(ConstFix(value)) =>
           s"const${value}_" + s.tp.erasure.getSimpleName() + n
         case Def(ConstFlt(value)) =>
-          val str = s"$value"
+          val str = s"${value}"
           s"const${str.replace('.', 'p').replace('-', 'n')}_" + s.tp.erasure.getSimpleName() + n
         case _ =>
     			val tstr = s.tp.erasure.getSimpleName().replace("Spatial","")
@@ -388,6 +334,8 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
   val doneDeclaredSet = Set.empty[Exp[Any]]
 
   override def initializeGenerator(buildDir:String): Unit = {
+    bbd = buildDir
+    // Console.println(s"[Initialize] Setting buildDir to $bd")
 		enDeclaredSet.clear
 		doneDeclaredSet.clear
 		super.initializeGenerator(buildDir)
@@ -464,6 +412,15 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
 
       print_stage_prefix(s"Hwblock",s"",s"${quote(sym)}")
 			inHwScope = true
+      emit(s"""
+// Dummy counter to initialize all registers on first cycle
+Count.Params initParams = control.count.makeParams(2)
+                          .withEnable(top_en)
+                          .withMax(2)
+                          .withWrapMode(WrapMode.STOP_AT_MAX);
+Counter init = control.count.makeCounter(initParams); 
+DFEVar global_rst = init.getCount() === 0;
+""")
 			emitComment("Emitting Hwblock dependencies {")
       val hwblockDeps = recursiveDeps(rhs)
       expToArg.keys.filterNot { hwblockDeps.contains(_) } foreach { argToExp -= expToArg(_) }
@@ -594,68 +551,11 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
       }
 
 
-      parentOf(sym).get match {
-        case e@Deff(UnrolledReduce(_,accum,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
-          val isKerneledRed = reduceType(accum) match {
-            case Some(fps: ReduceFunction) => fps match {
-              case FixPtSum => true
-              case FltPtSum => true
-              case _ => false
-            }
-          }
-          if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
-            styleOf(sym) match { // TODO: Do we even ever touch
-              case InnerPipe =>
-                // Putting reduction tree in its own kernel
-                var inputVecs = Set[Sym[Any]]()
-                var consts_args_bnds_list = Set[Exp[Any]]()
-                var treeResult = ""
-                var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
-                focusBlock(func){ // Send reduce tree to separate file
-                  focusExactScope(func){ stms =>
-                    stms.foreach { case TP(s,d) =>
-                      val Deff(dd) = s
-                      dd match {
-                        case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                          if (isReduceResult(s)) {
-                            val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                            emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
-                            treeResult = quote(s)
-                          }
-                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-                          inputVecs += s
-                        case input @ (_:Par_sram_load[_]) => 
-                          first_reg_read = first_reg_read :+ 0
-                          inputVecs += s
-                        case input @ ( _:ListVector[_]) => 
-                          if (first_reg_read.length > 1) { inputVecs += s }
-                        case input @ (_:Reg_read[_]) =>
-                          first_reg_read = first_reg_read :+ 0
-                        case _ =>
-                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                      }
-                    }
-                  }
-                }
-
-                emitBlock(func, s"${quote(sym)} Unitpipe", true /*do not close*/)
-                val inputVecsStr = inputVecs.map {a => quote(a)}.toList.sortWith(_ < _).mkString(",")
-                val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-                val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-                val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
-                emit(s"}")
-              case _ =>
-                emitBlock(func, s"${quote(sym)} Unitpipe")
-            }
-          } else {
-            emitBlock(func, s"${quote(sym)} Unitpipe")
-          }
-        case _ =>
-          emitBlock(func, s"${quote(sym)} Unitpipe")
-      }
+      emitBlock(func, s"${quote(sym)} Unitpipe")
+      // parentOf(sym).get match {
+      //   case e@Deff(UnrolledReduce(_,accum,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+      //     emitBlock(func, s"${quote(sym)} Unitpipe")
+      // }
 
       print_stage_suffix(quote(sym), hadThingsInside)
       controlNodeStack.pop
@@ -712,7 +612,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
             niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}))"
           }
           emit(s"""DFEVar ${quote(sym)}_niter = ${quote(niter_str)};""")
-          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", ${quote(sym)}_niter.cast(dfeUInt(32)));""")
+          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", stream.offset(${quote(sym)}_niter.cast(dfeUInt(32)),-5)/*makes BFS work*/);""")
         } else {
           emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", constant.var(dfeUInt(32), 1));""")
         }
@@ -732,7 +632,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
             niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}))"
           }
           emit(s"""DFEVar ${quote(sym)}_niter = ${quote(niter_str)};""")
-          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", stream.offset(${quote(sym)}_niter.cast(dfeUInt(32)),-1)/*makes BFS work*/);""")
+          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", stream.offset(${quote(sym)}_niter.cast(dfeUInt(32)),-5)/*makes BFS work*/);""")
         } else {
           emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", constant.var(dfeUInt(32), 1));""")
         }
@@ -744,8 +644,8 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
 
     }
 
-    val childrenSet = Set[String]()
-    val percentDSet = Set[String]()
+    var childrenSet = List[String]()
+    var percentDSet = List[String]()
     /* Control Signals to Children Controllers */
     if (!isInnerPipe(sym)) {
 		  childrenOf(sym).zipWithIndex.foreach { case (c, idx) =>
@@ -753,14 +653,14 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
 		  	emit(s"""${quote(sym)}_sm.connectInput("s${idx}_done", ${quote(c)}_done);""")
         emitGlobalWire(s"""${quote(c)}_en""")
         emit(s"""${quote(c)}_en <== ${quote(sym)}_sm.getOutput("s${quote(idx)}_en");""")
-        childrenSet += (s"${quote(c)}_en, ${quote(c)}_done")
-        percentDSet += (s"${idx}: %d %d")
+        childrenSet = childrenSet :+ (s"${quote(c)}_en, ${quote(c)}_done")
+        percentDSet = percentDSet :+ (s"${idx}: %d %d")
 		  	enDeclaredSet += c
 		  	doneDeclaredSet += c
 		  }
     }
 
-    emit(s"""// debug.simPrintf(${quote(sym)}_en, "pipe ${quote(sym)}: ${percentDSet.toList.mkString(",   ")}\\n", ${childrenSet.toList.mkString(",")});""")
+    emit(s"""// debug.simPrintf(${quote(sym)}_en, "pipe ${quote(sym)}: ${percentDSet.mkString(",   ")}\\n", ${childrenSet.mkString(",")});""")
 
 
     if (styleOf(sym)!=ForkJoin) {
@@ -799,11 +699,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
         emitGlobalWire(s"""${quote(cchain)}_done""")
         doneDeclaredSet += cchain
         emit(s"""${quote(sym)}_sm.connectInput("ctr_done", ${quote(cchain)}_done);""")
-        if (consumesMemFifo(sym)) {
-          emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
-        } else {
-          emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
-        }
+        emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
 
       case ForkJoin => throw new Exception("Cannot have counter chain control logic for fork-join (parallel) controller!")
       case _ =>
