@@ -394,7 +394,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DF
                       stms.zipWithIndex.map { case (TP(s,d), ii) =>
                         val Deff(dd) = s
                         consts_args_bnds_set = addConstOrArgOrBnd(s, consts_args_bnds_set)
-                        Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+                        // Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
                         isReduceResult(s) = false // No specialized accum for unrolledForeach
                       }
                     }
@@ -520,7 +520,7 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
                 stms.zipWithIndex.map { case (TP(s,d), ii) =>
                   val Deff(dd) = s
                   consts_args_bnds_set = addConstOrArgOrBnd(s, consts_args_bnds_set)
-                  Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+                  // Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
                   // emitNode(s, dd)
                 }
               }

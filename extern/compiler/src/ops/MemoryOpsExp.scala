@@ -749,11 +749,10 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       val dataString = offsetPre + dataStr + offsetPost
       val accString = offsetPre + accEn + offsetPost
       val globalEnString = globalEnComma + offsetPre + globalEn + offsetPost
-      if (isDummy(sram)) {
-        addrString = quote(addr)} // Dummy override for char test
+      if (isDummy(sram)) {addrString = quote(addr)} // Dummy override for char test
       emit(s"""${quote(sram)}_${ii}.${wrType}${addrString},
         $dataString, ${accString}${globalEnString}, new int[] {$p}); // tuple $match_tuple to ${nameOf(sram).getOrElse("")}""")
-      emit(s"""// debug.simPrintf(${accString}[0],"${nameOf(sram).getOrElse("")}-${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", ${dataString}[0], ${addrString}[0]);""")
+      emit(s"""// debug.simPrintf(${accString}[0],"${nameOf(sram).getOrElse("")}-${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", ${dataString}[0], ${addrString});""")
     }
     emitComment("} Sram_store")
   }
@@ -888,6 +887,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         case _ : Throwable => nbits(sym.tp.typeArguments(0).typeArguments(2)) + nbits(sym.tp.typeArguments(0).typeArguments(1))
         }
       }
+      val Deff(dd) = sym
+      val Deff(ii) = init
 
       // val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
 
@@ -902,7 +903,21 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
             case ConstFix(rv) => rv
             case ConstFlt(rv) => rv
-            case _ => 0
+            case Deff(Internal_pack2(a,b)) => 
+              val msb = a match {
+                case Deff(ConstFix(rv:Int)) => rv.toLong
+                case Deff(ConstFlt(rv:Float)) => java.lang.Float.floatToIntBits(rv).toLong
+                case _ => throw new Exception(s"First el in reg tuple unknown"); 0
+              }
+              val lsb = b match {
+                case Deff(ConstFix(rv:Int)) => rv.toLong
+                case Deff(ConstFlt(rv:Float)) => java.lang.Float.floatToIntBits(rv).toLong
+                case Deff(ConstFlt(rv:Double)) => java.lang.Float.floatToIntBits(rv.toFloat).toLong
+                case Deff(ConstFlt(rv:Int)) => java.lang.Float.floatToIntBits(rv.toFloat).toLong
+                case _ => throw new Exception(s"Second el in reg tuple unknown"); 0
+              }
+              Console.println(s"regdef $dd $ii $init rstval ${resetValue(sym.asInstanceOf[Sym[Reg[Any]]])}, type ${a} ${msb} ${b} ${lsb}")
+              (msb << 32) + lsb
           }
           duplicates.zipWithIndex.foreach { case (d, i) =>
             val skipKerneledReg = (reduceType(sym), i) match {
@@ -1070,7 +1085,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(stream.offset(${quote(value)}, /*found dlay empirically*/1-${quote(writeCtrl)}_offset), ${quote(reg)}_accParams);""")
                       emit(s"""debug.simPrintf(${quote(reg)}_en & stream.offset(${quote(reg)}_en, -1) /* uncommented because maxj sucks */, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
                     case FltPtSum =>
-                      emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
+                      emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, stream.offset(${rstStr}, -1), true);""")
                       emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
                     case _ =>
                       // TODO: This is very bad assumption!  Actually check which reg to write to!!!
