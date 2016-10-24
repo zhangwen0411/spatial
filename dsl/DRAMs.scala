@@ -207,7 +207,7 @@ trait DRAMs {
 
               Pipe(lenUpcast par p){i =>
                 val en = i >= startBound.value && i < endBound.value
-                __mem.st($local, addr(i), fifo.pop(), en)
+                __mem.st($local, addr(i-startBound.value), fifo.pop(), en)
               }
             }
           case _ =>
@@ -223,7 +223,7 @@ trait DRAMs {
 
             Pipe(lenUpcast par p){i =>
               val en = i >= startBound.value && i < endBound.value
-              __mem.st($local, addr(i), fifo.pop(), en)
+              __mem.st($local, addr(i-startBound.value), fifo.pop(), en)
             }
         }
         // Pipe {

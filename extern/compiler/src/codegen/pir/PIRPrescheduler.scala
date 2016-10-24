@@ -41,24 +41,6 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     case _ => Nil
   }
 
-  def copyIterators(destCU: ComputeUnit, srcCU: ComputeUnit) {
-    if (destCU != srcCU) {
-      val cchainCopies = srcCU.cchains.map{
-        case cc@CounterChainCopy(name, owner) => cc -> cc
-        case cc@CounterChainInstance(name, ctrs) => cc -> CounterChainCopy(name, srcCU)
-        case cc@UnitCounterChain(name) => cc -> CounterChainCopy(name, srcCU)
-      }
-      val cchainMapping = Map[CUCounterChain,CUCounterChain](cchainCopies.toList:_*)
-      destCU.cchains ++= cchainCopies.map(_._2)
-
-      srcCU.iterators.foreach{ case (iter,CounterReg(cchain,idx)) =>
-        destCU.addReg(iter, CounterReg(cchainMapping(cchain),idx))
-      }
-      srcCU.valids.foreach{case (iter, ValidReg(cchain,idx)) =>
-        destCU.addReg(iter, ValidReg(cchainMapping(cchain), idx))
-      }
-    }
-  }
   def addIterators(cu: ComputeUnit, cc: Exp[CounterChain], inds: List[List[Exp[Index]]]) {
     val cchain = cu.cchains.find(_.name == quote(cc)).get
     inds.zipWithIndex.foreach{case (indSet, i) =>
@@ -377,6 +359,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       debug(s"Traversing $lhs = $rhs")
       val cu = allocateCU(lhs).asInstanceOf[TileTransferUnit]
       val lenIn = cu.getOrAddReg(len){ allocateLocal(len, lhs) }
+      val ofsIn = cu.getOrAddReg(ofs){ allocateLocal(ofs, lhs) }
       val ctr = CUCounter(quote(lhs)+"_ctr",ConstReg("0l"),lenIn,ConstReg("1l"))
       val cc = CounterChainInstance(quote(lhs)+"_cc", List(ctr))
       val i = fresh[Index]
@@ -385,7 +368,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       //allocateWrittenSRAM(lhs, fifo, Some(i), cu, Nil)
 
       val memAddr = fresh[Index]
-      cu.addReg(memAddr, ScalarOut(memAddr, cu.ctrl))
+      cu.addReg(memAddr, ScalarOut(cu.ctrl))
       val ofsCalc = OpStage(FixAdd, List(ofs, i), memAddr)
       cu.computePseudoStages ++= List(ofsCalc)
 
@@ -393,6 +376,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       debug(s"Traversing $lhs = $rhs")
       val cu = allocateCU(lhs).asInstanceOf[TileTransferUnit]
       val lenIn = cu.getOrAddReg(len){ allocateLocal(len, lhs) }
+      val ofsIn = cu.getOrAddReg(ofs){ allocateLocal(ofs, lhs) }
       val ctr = CUCounter(quote(lhs)+"_ctr",ConstReg("0l"),lenIn,ConstReg("1l"))
       val cc = CounterChainInstance(quote(lhs)+"_cc", List(ctr))
       val i = fresh[Index]
@@ -402,7 +386,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       //allocateReadSRAM(lhs, fifo, Some(i), cu)
 
       val memAddr = fresh[Index]
-      cu.addReg(memAddr, ScalarOut(memAddr, cu.ctrl))
+      cu.addReg(memAddr, ScalarOut(cu.ctrl))
       val ofsCalc = OpStage(FixAdd, List(ofs, i), memAddr)
       cu.computePseudoStages ++= List(ofsCalc)
 

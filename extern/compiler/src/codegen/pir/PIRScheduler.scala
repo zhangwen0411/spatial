@@ -83,23 +83,23 @@ trait PIRScheduler extends Traversal with PIRCommon {
     case (_:ReduceReg | _:AccumReg, _:ReduceReg | _:AccumReg) => a
 
     // Propagating from read addr wire to another read addr wire is ok (but should usually never happen)
-    case (a:ReadAddrWire, b:ReadAddrWire) => ctx.addOutput(exp,a,b); b
+    case (a:ReadAddrWire, b:ReadAddrWire) => ctx.addOutputFor(exp)(a,b); b
     case (a,b) if !isReadable(a) => throw new Exception(s"Cannot propagate for $exp from output-only $a")
     case (a,b) if !isWritable(b) => throw new Exception(s"Cannot propagate for $exp to input-only $b")
 
     // TODO: Are these necessary? Do we ever see multiple writes to the same output?
-    case (a, ScalarOut(x,_)) => ctx.addOutput(x,a,b); b
-    case (a, VectorOut(x,_)) => ctx.addOutput(x,a,b); b
-    case (a, VectorLocal(x,_)) => ctx.addOutput(x,a,b); b
+    case (a, _:ScalarOut)   => ctx.addOutput(a,b); b
+    case (a, _:VectorOut)   => ctx.addOutput(a,b); b
+    case (a, _:VectorLocal) => ctx.addOutput(a,b); b
 
     case (a, b:TempReg) => a
 
     // Special cases: don't propagate to write/read wires from counters or constants
     case (_:CounterReg | _:ConstReg, _:WriteAddrWire | _:ReadAddrWire) => a
     // General case for outputs: Don't add mapping for exp to output
-    case (a,b) if !isReadable(b) => ctx.addOutput(exp,a,b,add=false); b
+    case (a,b) if !isReadable(b) => ctx.addOutput(a,b); b
 
-    case (a,b) => ctx.addOutput(exp,a,b); b
+    case (a,b) => ctx.addOutputFor(exp)(a,b); b
   }
 
   // If addr is a counter or const, just returns that register back. Otherwise returns address wire
@@ -128,12 +128,12 @@ trait PIRScheduler extends Traversal with PIRCommon {
 
       // TODO: Should we allow multiple versions of local accumulator?
       ctx.memories(mem).foreach{sram =>
-        propagateReg(value, ctx.reg(value), VectorLocal(fresh[Any], sram), ctx)
+        propagateReg(value, ctx.reg(value), VectorLocal(sram), ctx)
       }
     }
     if (isReadOutsidePipe(mem, ctx.pipe)) { // Should always be true?
       val vector = allocateGlobal(mem)
-      propagateReg(value, ctx.reg(value), VectorOut(fresh[Any], vector), ctx)
+      propagateReg(value, ctx.reg(value), VectorOut(vector), ctx)
     }
   }
 
@@ -215,7 +215,7 @@ trait PIRScheduler extends Traversal with PIRCommon {
       }
       if (isRemotelyRead) { // Case 4
         val scalar = allocateGlobal(reg)
-        val out = ScalarOut(fresh[Any], scalar)
+        val out = ScalarOut(scalar)
         if (isInnerAcc)
           propagateReg(reg, ctx.reg(value), out, ctx) // Bypass
         else
@@ -230,14 +230,14 @@ trait PIRScheduler extends Traversal with PIRCommon {
       case Def(FltPt_Neg(x)) =>
         val in = ctx.reg(x)
         val c = ConstReg("-1f")
-        val out = ctx.cu.getOrAddReg(lhs){ TempReg(lhs) }
+        val out = ctx.cu.getOrAddReg(lhs){ TempReg() }
         val stage = MapStage(FltMul, List(ctx.refIn(in), ctx.refIn(c)), List(ctx.refOut(out)))
         ctx.addStage(stage)
 
       case Def(FixPt_Neg(x)) =>
         val in = ctx.reg(x)
         val c = ConstReg("-1i")
-        val out = ctx.cu.getOrAddReg(lhs){ TempReg(lhs) }
+        val out = ctx.cu.getOrAddReg(lhs){ TempReg() }
         val stage = MapStage(FixMul, List(ctx.refIn(in), ctx.refIn(c)) , List(ctx.refOut(out)))
         ctx.addStage(stage)
 
@@ -266,12 +266,12 @@ trait PIRScheduler extends Traversal with PIRCommon {
       val input = ins.head
       val accum = ins.last
       val inputReg = ctx.reg(input)
-      val usedInput = propagateReg(input, inputReg, ReduceReg(fresh[Any]), ctx)
+      val usedInput = propagateReg(input, inputReg, ReduceReg(), ctx)
       val zero = accum match {
         case Deff(Reg_read(acc)) => allocateConst(resetValue(acc))
         case _ => ConstReg("0l")
       }
-      val acc = ReduceReg(out)
+      val acc = ReduceReg()
       val stage = ReduceStage(op, zero, ctx.refIn(usedInput), acc)
       ctx.addReg(out, acc)
       ctx.addStage(stage)
@@ -279,19 +279,27 @@ trait PIRScheduler extends Traversal with PIRCommon {
     else {
       val inputRegs = ins.map{in => ctx.reg(in) }
       val isControlStage = inputRegs.nonEmpty && !inputRegs.exists{reg => !isControl(reg)}
+      val hasControlLogic = inputRegs.nonEmpty && inputRegs.exists{reg => isControl(reg)}
 
       if (isControlStage) {
         val n = ctx.controlStageNum
         val inputs = inputRegs.map{reg => ctx.refIn(reg, n)}
-        val output = ctx.cu.getOrAddReg(out){ ControlReg(out) }
+        val output = ctx.cu.getOrAddReg(out){ ControlReg() }
         val stage = MapStage(op, inputs, List(ctx.refOut(output, n)))
         ctx.addControlStage(stage)
       }
       else {
         val inputs = inputRegs.map{reg => ctx.refIn(reg) }
-        val output = ctx.cu.getOrAddReg(out){ TempReg(out) }
+        val output = ctx.cu.getOrAddReg(out){ TempReg() }
         val stage = MapStage(op, inputs, List(ctx.refOut(output)))
-        ctx.addStage(stage)
+
+        // Don't generate control muxes if control logic is disabled
+        if (op == ALUMux) {
+          if (!hasControlLogic || GenControlLogic)
+            ctx.addStage(stage)
+        }
+        else
+          ctx.addStage(stage)
       }
     }
   }

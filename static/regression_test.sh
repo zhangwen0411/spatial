@@ -14,12 +14,13 @@ app_classes=("dense" "sparse" "unit" "characterization")
 dense_test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" "MatMult_outer"
 	"Kmeans"  "GEMM"      "GDA"    "SGD"   "LogReg" "OuterProduct")
 dense_args_list=("9600"       "8 192 192"     "1920"   "960"          "8 192 192"    
-	"96 8 96" "8 192 192" "96 96" "96 96" "96"     "192 192")
+	"96 8 96" "8 192 192" "96 96"  "96 96" "768 2"     "192 192")
 sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
-sparse_args_list=("960" "960"      "960"              "960"       "960"   )    
+sparse_args_list=("960" "2 384 1"      "960"              "960"       "960"   )    
 
 # Seconds to pause while waiting for apps to run
 delay=1200
+spacing=20
 
 # random=(`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 4`) # Random chars to add to directory to avoid new workers from wiping old
 random=(`date +"%H-%M"`) # Chars to add to directory to avoid new workers from wiping old
@@ -47,11 +48,11 @@ function write_comments {
 
 Comments
 --------
-* Expected FifoLoadStore to fail validation
-* Fix parallel ScatterGather to support interleaved banking rather than strided
+* ~~Expected FifoLoadStore to fail validation~~
+* ~~Fix parallel ScatterGather to support interleaved banking rather than strided~~
 * Expected GEMM to fail validation
 * Tighten validation margin on BlackScholes
-* Fix UnalignedLd bug with calculating burst address and cmd enable for unaligned lds
+* ~~Fix UnalignedLd bug with calculating burst address and cmd enable for unaligned lds~~
 * Make SGD work on more than 1 epoch
 " >> $1
 }
@@ -157,7 +158,7 @@ export LMS_HOME=${HYPER_HOME}/virtualization-lms-core
 export PIR_HOME=${HYPER_HOME}/spatial/published/Spatial
 export PATH=/opt/maxeler/maxcompiler-2014.1/bin:$PATH
 
-sleep \$((${3}*30)) # Backoff time to prevent those weird file IO errors
+sleep \$((${3}*${spacing})) # Backoff time to prevent those weird file IO errors
 
 cd ${PUB_HOME}
 ${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} 2>&1 | tee -a ${5}/log
@@ -193,7 +194,7 @@ cd ${5}/out
 # Patch makefile, Because ant won't run inside a makefile if I set the symlinks correctly
 sed -i \"s/JAVA_HOME = \/usr\/lib\/jvm\/java-7-openjdk-amd64/JAVA_HOME = \/usr/g\" Makefile
 sed -i \"s/ant/\/usr\/share\/ant\/bin\/ant/g\" Makefile
-sed -i '4i J_HOME=/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.36.x86_64' Makefile
+sed -i '4i J_HOME=/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.40.x86_64' Makefile
 sed -i \"s/-I\\\$(JAVA_HOME)\/include -I\\\$(JAVA_HOME)\/include\/linux/-I\\\$(J_HOME)\/include -I\\\$(J_HOME)\/include\/linux/g\" Makefile
 
 make clean sim 2>&1 | tee -a ${5}/log
@@ -509,7 +510,7 @@ echo -e "\n\n***\n\n" >> $result_file
 # Link to logs
 echo -e "\n## [History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${branch}_Regression_Test_History.csv) \n" >> $result_file
 echo -e "\n## [Prettier History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${branch}_Pretty_Regression_Test_History.csv) \n" >> $result_file
-echo -e "\n## [Performance Results](https://www.dropbox.com/ow/msft/edit/home/Research_Misc/Performance_Results.xlsx?hpt_click_ts=1476212646316) \n" >> $result_file
+echo -e "\n## [Performance Results](https://www.dropbox.com/s/a91ra3wvdyr3x5b/Performance_Results.xlsx?dl=0) \n" >> $result_file
 
 write_comments $result_file
 
@@ -656,6 +657,6 @@ git add *
 git commit -m "automated status update via cron"
 git push
 
-echo "rm -rf ${TESTS_HOME}" | tee /kunle/users/mattfel/why_didnt_delete
+echo "rm -rf ${TESTS_HOME}" > /kunle/users/mattfel/why_didnt_delete
 rm -rf ${TESTS_HOME} | tee /kunle/users/mattfel/why_didnt_delete
-
+killall screen

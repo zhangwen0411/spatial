@@ -37,7 +37,7 @@ WHERE
 
 object TPCHQ6 extends SpatialAppCompiler with TPCHQ6_App
 trait TPCHQ6_App extends SpatialApp {
-  type FT = Flt
+  type FT = SInt
   type Array[T] = ForgeArray[T]
 
   val MIN_DATE = 0
@@ -45,9 +45,9 @@ trait TPCHQ6_App extends SpatialApp {
   val MIN_DISC = 0
   val MAX_DISC = 9999
   val tileSize = 96
-  val outerPar = 1
+  val outerPar = 2
   val innerPar = 2
-  val margin = 0.5
+  val margin = 1
 
   def tpchq6(datesIn: Rep[Array[UInt]], quantsIn: Rep[Array[UInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
     val dataSize = ArgIn[SInt]

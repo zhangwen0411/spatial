@@ -52,7 +52,8 @@ trait MaxJPreCodegen extends Traversal  {
         case Def(ConstFix(value)) =>
           s"const${value}_" + s.tp.erasure.getSimpleName() + n
         case Def(ConstFlt(value)) =>
-          s"const${value}_" + s.tp.erasure.getSimpleName() + n
+          val str = s"${value}"
+          s"const${str.replace('.', 'p').replace('-', 'n')}_" + s.tp.erasure.getSimpleName() + n
         case _ =>
           maxJManagerGen.quote(x)
       }}
@@ -60,12 +61,12 @@ trait MaxJPreCodegen extends Traversal  {
       maxJManagerGen.quote(x)
   }
 
-	val argInOuts  = Set.empty[Sym[Reg[_]]]
-  val memStreams = Set.empty[Sym[Any]]
+	var argInOuts  = List[Sym[Reg[_]]]()
+  val memStreams = List[Sym[Any]]()
 
   override def preprocess[A:Manifest](b: Block[A]): Block[A] = {
-		argInOuts.clear
-		memStreams.clear
+		argInOuts = List()
+		memStreams = List()
 		b
 	}
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
@@ -151,13 +152,13 @@ trait MaxJPreCodegen extends Traversal  {
                 reduceType(accum) match {
                   case Some(fps: ReduceFunction) => fps match {
                     case FixPtSum =>
-                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-                        emitReduction(sym, rhs)
-                      }                
+                      // withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        // emitReduction(sym, rhs)
+                      // }                
                     case FltPtSum =>
-                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-                        emitReduction(sym, rhs)
-                      }                
+                      // withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        // emitReduction(sym, rhs)
+                      // }                
                     case _ => // Do not specialize, turn off all metadata for reduction
                       focusBlock(func){focusExactScope(func){stms =>stms.map { case TP(s,d) =>
                         isReduceStarter(s) = false
@@ -183,13 +184,13 @@ trait MaxJPreCodegen extends Traversal  {
                 reduceType(accum) match {
                   case Some(fps: ReduceFunction) => fps match {
                     case FixPtSum =>
-                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-                        emitReduction(sym, rhs)
-                      }                
+                      // withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        // emitReduction(sym, rhs)
+                      // }                
                     case FltPtSum =>
-                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-                        emitReduction(sym, rhs)
-                      }                
+                      // withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        // emitReduction(sym, rhs)
+                      // }                
                     case _ => // Do not specialize, turn off all metadata for reduction
                       focusBlock(func){focusExactScope(func){stms =>stms.map { case TP(s,d) =>
                         isReduceStarter(s) = false
@@ -214,13 +215,13 @@ trait MaxJPreCodegen extends Traversal  {
                 reduceType(accum) match {
                   case Some(fps: ReduceFunction) => fps match {
                     case FixPtSum =>
-                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-                        emitReduction(sym, rhs)
-                      }                
+                      // withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        // emitReduction(sym, rhs)
+                      // }                
                     case FltPtSum =>
-                      withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-                        emitReduction(sym, rhs)
-                      }                
+                      // withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
+                        // emitReduction(sym, rhs)
+                      // }                
                     case _ => // Do not specialize, turn off all metadata for reduction
                       focusBlock(func){focusExactScope(func){stms =>stms.map { case TP(s,d) =>
                         isReduceStarter(s) = false
@@ -249,17 +250,17 @@ trait MaxJPreCodegen extends Traversal  {
         emitCtrSM(quote(sym), pars, 0, counters.length)
       }
 
-		case e:Argin_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
-    case e:Argout_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
+		case e:Argin_new[_] => argInOuts = argInOuts :+ sym.asInstanceOf[Sym[Reg[_]]]
+    case e:Argout_new[_] => argInOuts = argInOuts :+ sym.asInstanceOf[Sym[Reg[_]]]
 
     case e@BurstStore(_,fifo,_,_,_) =>
       memLdFifos += fifo
-      memStreams += sym
+      memStreams = memStreams :+ sym
     case e@BurstLoad(_,fifo,_,_,_) => 
       memLdFifos += fifo
-      memStreams += sym
-    case _:Scatter[_] => memStreams += sym
-    case _:Gather[_] => memStreams += sym
+      memStreams = memStreams :+ sym
+    case _:Scatter[_] => memStreams = memStreams :+ sym
+    case _:Gather[_] => memStreams = memStreams :+ sym
 
     case Sram_new(size, zero) =>
       val dups = duplicatesOf(sym)
@@ -458,322 +459,322 @@ trait MaxJPreCodegen extends Traversal  {
       case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
       case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case ListVector(elems) => elems.map{ e => {if (isConstOrArgOrBnd(e)) {ret += e}}}
       case FieldApply(a,b) => {if (isConstOrArgOrBnd(a)) {ret +=a}}
       case Internal_pack2(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case _ =>
     }
     set ++ ret
   }
-  def emitReduction(sym: Sym[Any], rhs: Def[Any]) = {
-      emit(s"""package engine;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.CounterChain;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.WrapMode;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Params;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.memory.Memory;
-import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
-import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
-import com.maxeler.maxcompiler.v2.utils.MathUtils;
-import com.maxeler.maxcompiler.v2.utils.Bits;
-import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.KernelMath;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Stream.OffsetExpr;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Reductions;
-import com.maxeler.maxcompiler.v2.kernelcompiler.SMIO;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Accumulator;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVector;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
-import java.util.Arrays;
-class ${quote(sym)}_reduce_kernel extends KernelLib {""")
-    rhs match {
-      case _:UnrolledReduce[_,_] | _:UnrolledForeach | _:UnitPipe =>
-        var isVecResult = false
-        val func = rhs match {
-          case e:UnrolledReduce[_,_] => e.func
-          case e:UnrolledForeach     =>
-            isVecResult = true
-            e.func
-          case UnitPipe(func) => func
-        }
+//   def emitReduction(sym: Sym[Any], rhs: Def[Any]) = {
+//       emit(s"""package engine;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.CounterChain;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.WrapMode;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Params;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.memory.Memory;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
+// import com.maxeler.maxcompiler.v2.utils.MathUtils;
+// import com.maxeler.maxcompiler.v2.utils.Bits;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.KernelMath;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Stream.OffsetExpr;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Reductions;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.SMIO;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Accumulator;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVector;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
+// import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
+// import java.util.Arrays;
+// class ${quote(sym)}_reduce_kernel extends KernelLib {""")
+//     rhs match {
+//       case _:UnrolledReduce[_,_] | _:UnrolledForeach | _:UnitPipe =>
+//         var isVecResult = false
+//         val func = rhs match {
+//           case e:UnrolledReduce[_,_] => e.func
+//           case e:UnrolledForeach     =>
+//             isVecResult = true
+//             e.func
+//           case UnitPipe(func) => func
+//         }
 
-        // If there is no result to this kernel, then turn off isStarter and isResult metadata
-        val hasRegWrite = focusBlock(func){ focusExactScope(func){ stms => stms.zipWithIndex.map { case (TP(s,d), ii) =>
-          val Deff(dd) = s
-          dd match {
-            case Reg_write(_,_,_) => true
-            case _ => false
-          }
-        }}}.reduce{_|_}
+//         // If there is no result to this kernel, then turn off isStarter and isResult metadata
+//         val hasRegWrite = focusBlock(func){ focusExactScope(func){ stms => stms.zipWithIndex.map { case (TP(s,d), ii) =>
+//           val Deff(dd) = s
+//           dd match {
+//             case Reg_write(_,_,_) => true
+//             case _ => false
+//           }
+//         }}}.reduce{_|_}
 
-        var inputVecs = Set[Sym[Any]]()
-        var treeResultSyms = Set[Sym[Any]]()
-        var finalLineReg = ""
-        var knownRedType = false
-        var finalLineBram = ""
-        var vecs_from_lists = Set[Exp[Any]]()
-        var consts_args_bnds_list = Set[Exp[Any]]()
-        var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
-        val treeStringPre = focusBlock(func){ // Send reduce tree to separate file
-          focusExactScope(func){ stms =>
-            stms.zipWithIndex.map { case (TP(s,d), ii) =>
-              val Deff(dd) = s
-              consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-              // Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
-              dd match {
-                case Reg_read(_) =>
-                  first_reg_read = first_reg_read :+ ii
-                  s""
-                // case ListVector(_) => // seems to have replaced reg_read with davids merge
-                //   // TODO: ask david how to actually detect tree start and tree result because this is sooo hacky!!!
-                //   first_reg_read = first_reg_read :+ ii
-                //   vecs_from_lists += s
-                //   s""
-                case tag @ Vec_apply(vec,idx) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
-                case tag @ FixPt_Div(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  s"""${maxJPre(s)} ${quote(s)} = ${quote(a)} / ${quote(b)};"""
-                case tag @ FltPt_Div(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  s"""${maxJPre(s)} ${quote(s)} = ${quote(a)} / ${quote(b)};"""
-                case tag @ FltPt_Add(a,b) =>
-                  // TODO: Way of doing this args & consts check that isn't stupid
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  if (isReduceResult(s)) {
-                    treeResultSyms += s
-                    knownRedType = true
-                    if (hasRegWrite) {
-                      s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
-                    } else {
-                      s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
-                      // isReduceResult(s) = false
-                    }
-                  } else {
-                    s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
-                  }
-                case tag @ FixPt_Add(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  if (isReduceResult(s)) {
-                    knownRedType = true
-                    treeResultSyms += s
-                    if (hasRegWrite) {
-                      s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
-                    } else {
-                      s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
-                      // isReduceResult(s) = false
-                    }
-                  } else {
-                    s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
-                  }
-                case tag @ FltPt_Mul(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
-                case tag @ FixPt_Mul(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
-                case tag @ FltPt_Sub(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(a)} - ${quote(b)};"""
-                case tag @ FixPt_Sub(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(a)} - ${quote(b)};"""
-                case FixPt_Lt(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
-                case FixPt_Leq(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
-                case FixPt_Neq(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
-                case FixPt_Eql(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
-                case FixPt_And(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
-                case FixPt_Or(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
-                case FixPt_Lsh(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
-                case FixPt_Rsh(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
-                case FltPt_Lt(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
-                case FltPt_Leq(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
-                case FltPt_Neq(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
-                case FltPt_Eql(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
-                case Bit_Not(a) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ~${quote(a)};"""
-                case Bit_And(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
-                case Bit_Or(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(a)} | ${quote(b)};"""
-                case Bit_Xor(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(a)} ^ ${quote(b)};"""
-                case Bit_Xnor(a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ~(${quote(a)} ^ ${quote(b)});"""
-                case Mux2(sel,a,b) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  val pre = maxJPre(s)
-                  s"""$pre ${quote(s)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;"""
-                case input @ ( Par_sram_load(_,_) ) =>
-                  if (isVecResult) { // Assume there is no reg_write in UnrolledForeach stage, so use par_sram_load
-                    first_reg_read = first_reg_read :+ ii
-                  }
-                  inputVecs += s
-                  s"/* Par_sram_load */"
-                case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-                  inputVecs += s
-                  s"/* Par_pop_fifo */"
+//         var inputVecs = Set[Sym[Any]]()
+//         var treeResultSyms = Set[Sym[Any]]()
+//         var finalLineReg = ""
+//         var knownRedType = false
+//         var finalLineBram = ""
+//         var consts_args_bnds_list = Set[Exp[Any]]()
+//         var first_reg_read = List(999) // HACK TO SEPARATE ADDRESS CALC ARITHMETIC FROM REDUCE ARITHMETIC
+//         val treeStringPre = focusBlock(func){ // Send reduce tree to separate file
+//           focusExactScope(func){ stms =>
+//             stms.zipWithIndex.map { case (TP(s,d), ii) =>
+//               val Deff(dd) = s
+//               consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+//               Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+//               emitNode(s, dd)
+//               // dd match {
+//               //   case Reg_read(_) =>
+//               //     s""
+//               //   // case ListVector(_) => // seems to have replaced reg_read with davids merge
+//               //   //   // TODO: ask david how to actually detect tree start and tree result because this is sooo hacky!!!
+//               //   //   first_reg_read = first_reg_read :+ ii
+//               //   //   vecs_from_lists += s
+//               //   //   s""
+//               //   case tag @ Vec_apply(vec,idx) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
+//               //   case tag @ FixPt_Div(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     s"""${maxJPre(s)} ${quote(s)} = ${quote(a)} / ${quote(b)};"""
+//               //   case tag @ FltPt_Div(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     s"""${maxJPre(s)} ${quote(s)} = ${quote(a)} / ${quote(b)};"""
+//               //   case tag @ FltPt_Add(a,b) =>
+//               //     // TODO: Way of doing this args & consts check that isn't stupid
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     if (isReduceResult(s)) {
+//               //       treeResultSyms += s
+//               //       knownRedType = true
+//               //       if (hasRegWrite) {
+//               //         s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+//               //       } else {
+//               //         s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
+//               //         // isReduceResult(s) = false
+//               //       }
+//               //     } else {
+//               //       s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
+//               //     }
+//               //   case tag @ FixPt_Add(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     if (isReduceResult(s)) {
+//               //       knownRedType = true
+//               //       treeResultSyms += s
+//               //       if (hasRegWrite) {
+//               //         s"${quote(s)} <== ${quote(a)}; // is tree result, do not add $b"
+//               //       } else {
+//               //         s"${quote(s)} <== ${quote(a)} + ${quote(b)};"
+//               //         // isReduceResult(s) = false
+//               //       }
+//               //     } else {
+//               //       s"""$pre ${quote(s)} = ${quote(a)} + ${quote(b)};"""
+//               //     }
+//               //   case tag @ FltPt_Mul(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
+//               //   case tag @ FixPt_Mul(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(a)} * ${quote(b)};"""
+//               //   case tag @ FltPt_Sub(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(a)} - ${quote(b)};"""
+//               //   case tag @ FixPt_Sub(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(a)} - ${quote(b)};"""
+//               //   case FixPt_Lt(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
+//               //   case FixPt_Leq(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
+//               //   case FixPt_Neq(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
+//               //   case FixPt_Eql(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
+//               //   case FixPt_And(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+//               //   case FixPt_Or(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+//               //   case FixPt_Lsh(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+//               //   case FixPt_Rsh(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+//               //   case FltPt_Lt(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} < ${quote(b)};"""
+//               //   case FltPt_Leq(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} <= ${quote(b)};"""
+//               //   case FltPt_Neq(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} !== ${quote(b)};"""
+//               //   case FltPt_Eql(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);\n${quote(s)} = ${quote(a)} === ${quote(b)};"""
+//               //   case Bit_Not(a) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ~${quote(a)};"""
+//               //   case Bit_And(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(a)} & ${quote(b)};"""
+//               //   case Bit_Or(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(a)} | ${quote(b)};"""
+//               //   case Bit_Xor(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(a)} ^ ${quote(b)};"""
+//               //   case Bit_Xnor(a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ~(${quote(a)} ^ ${quote(b)});"""
+//               //   case Mux2(sel,a,b) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     val pre = maxJPre(s)
+//               //     s"""$pre ${quote(s)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;"""
+//               //   case input @ ( Par_sram_load(_,_) ) =>
+//               //     if (isVecResult) { // Assume there is no reg_write in UnrolledForeach stage, so use par_sram_load
+//               //       first_reg_read = first_reg_read :+ ii
+//               //     }
+//               //     inputVecs += s
+//               //     s"/* Par_sram_load */"
+//               //   case input @ ( _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
+//               //     inputVecs += s
+//               //     s"/* Par_pop_fifo */"
 
-                case FieldApply(a, b) => 
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  inputVecs += s
-                  val pre = maxJPre(s)
-                  b match { // TODO: Decide slice based on bit lengths
-                    case "_1" => s"""${pre} ${quote(s)} = ${quote(a)}.slice(0,32).cast(${quote(s)}.getType());"""
-                    case "_2" => s"""${pre} ${quote(s)} = ${quote(a)}.slice(32,32).cast(${quote(s)}.getType());"""
-                  }
-                case Internal_pack2(a,b) => 
-                  s"""DFEVar ${quote(s)} = ${quote(a)}.cast(dfeRawBits(32)).cast(dfeRawBits(64)).shiftLeft(32) ^ ${quote(b)}.cast(dfeRawBits(32)).cast(dfeRawBits(64));"""
-                case ListVector(elems) =>
-                  if (first_reg_read.length > 1) { rTreeMap(s) = sym; inputVecs += s }
-                  if (isVector(elems(0).tp)) {
-                    val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
-                    val allcxns = (0 until elems.size).map{ i => s"""${quote(s)}[$i] <== ${quote(elems(i))};"""}
-                    allcxns.mkString(" ")
-                  } else {
-                    val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])        
-                    val allcxns = (0 until elems.size).map{ i => s"""${quote(s)}[$i] <== ${quote(elems(i))};"""}
-                    allcxns.mkString(" ")
-                  }
+//               //   case FieldApply(a, b) => 
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym }
+//               //     inputVecs += s
+//               //     val pre = maxJPre(s)
+//               //     b match { // TODO: Decide slice based on bit lengths
+//               //       case "_1" => s"""${pre} ${quote(s)} = ${quote(a)}.slice(0,32).cast(${quote(s)}.getType());"""
+//               //       case "_2" => s"""${pre} ${quote(s)} = ${quote(a)}.slice(32,32).cast(${quote(s)}.getType());"""
+//               //     }
+//               //   case Internal_pack2(a,b) => 
+//               //     s"""DFEVar ${quote(s)} = ${quote(a)}.cast(dfeRawBits(32)).cast(dfeRawBits(64)).shiftLeft(32) ^ ${quote(b)}.cast(dfeRawBits(32)).cast(dfeRawBits(64));"""
+//               //   case ListVector(elems) =>
+//               //     if (first_reg_read.length > 1) { rTreeMap(s) = sym; inputVecs += s }
+//               //     if (isVector(elems(0).tp)) {
+//               //       val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
+//               //       val allcxns = (0 until elems.size).map{ i => s"""${quote(s)}[$i] <== ${quote(elems(i))}[$i];"""}
+//               //       allcxns.mkString(" ")
+//               //     } else {
+//               //       val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])        
+//               //       val allcxns = (0 until elems.size).map{ i => s"""${quote(s)}[$i] <== ${quote(elems(i))};"""}
+//               //       allcxns.mkString(" ")
+//               //     }
 
-                case _ =>
-                  s"/* Unknown Deff $s ${dd} inside of MaxJPreCodegen*/"
-              }
-            }
-          }
-        }
+//               //   case _ =>
+//               //     s"/* Unknown Deff $s ${dd} inside of MaxJPreCodegen*/"
+//               // }
+//             }
+//           }
+//         }
 
-        if (!knownRedType) { 
-          val syms = focusBlock(func){ focusExactScope(func){ stms => stms.map { case TP(s,d) => s }}}
-          // Console.println(s"Setting isStarter for ${syms(first_reg_read(1))} to false")
-          isReduceStarter(syms(first_reg_read(1))) = false
-        } // In Kmeans, need to disable this for LT reduction
+//         if (!knownRedType) { 
+//           val syms = focusBlock(func){ focusExactScope(func){ stms => stms.map { case TP(s,d) => s }}}
+//           // Console.println(s"Setting isStarter for ${syms(first_reg_read(1))} to false")
+//           isReduceStarter(syms(first_reg_read(1))) = false
+//         } // In Kmeans, need to disable this for LT reduction
 
-        // // TODO: Assume last Vector_from_list node is packing a single element (tree result) into a list
-        // val Deff(dd) = vecs_from_lists.toList.last
-        // isReduceResult(vecs_from_lists.toList.last) = true
-        // val treeResult = dd match {
-        //   case ListVector(node) => quote(node.head) // Assume list of one thing
-        //   case _ => throw new Exception(s"No tree result found on $sym $rhs reduction!")
-        // }
+//         // // TODO: Assume last Vector_from_list node is packing a single element (tree result) into a list
+//         // val Deff(dd) = vecs_from_lists.toList.last
+//         // isReduceResult(vecs_from_lists.toList.last) = true
+//         // val treeResult = dd match {
+//         //   case ListVector(node) => quote(node.head) // Assume list of one thing
+//         //   case _ => throw new Exception(s"No tree result found on $sym $rhs reduction!")
+//         // }
 
-        val treeString = if (first_reg_read.length > 1) {
-          treeStringPre.zipWithIndex.filter{
-            case (entry: String, ii: Int) => ii > first_reg_read.last
-          }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
-        } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
+//         val treeString = if (first_reg_read.length > 1) {
+//           treeStringPre.zipWithIndex.filter{
+//             case (entry: String, ii: Int) => ii > first_reg_read.last
+//           }.map{ case (entry: String, ii: Int) => entry}.mkString("\n")
+//         } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
 
-        val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
-        val res_input_arg = if (treeResult != "") {treeResultSyms.map { a => s"DFEVar ${quote(a)}"}.mkString(",")} else {""}
-        // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
-        //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
-        // } else { "" }
+//         val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
+//         val res_input_arg = if (treeResult != "") {treeResultSyms.map { a => s"DFEVar ${quote(a)}"}.mkString(",")} else {""}
+//         // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
+//         //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
+//         // } else { "" }
 
 
-        val cst_genStr = ""
-        // val cst_genStr = consts_args_bnds_list.map { exp =>
-        //   val ts = tpstr(1)(exp.tp, implicitly[SourceContext])
-        //   exp match {
-        //     case s@Sym(_) => { s match {
-        //       case Def(ConstFixPt(num,_,_,_)) =>
-        //         s"""DFEVar ${quote(s)} = constant.var($ts, $num);"""
-        //       case Def(ConstFltPt(num,_,_)) =>
-        //         s"""DFEVar ${quote(s)} = constant.var($ts, $num);"""
-        //       case _ =>
-        //         s"""Can't handle $s yet"""
-        //     }}
-        //   }
-        // }.mkString("\n")
+//         val cst_genStr = ""
+//         // val cst_genStr = consts_args_bnds_list.map { exp =>
+//         //   val ts = tpstr(1)(exp.tp, implicitly[SourceContext])
+//         //   exp match {
+//         //     case s@Sym(_) => { s match {
+//         //       case Def(ConstFixPt(num,_,_,_)) =>
+//         //         s"""DFEVar ${quote(s)} = constant.var($ts, $num);"""
+//         //       case Def(ConstFltPt(num,_,_)) =>
+//         //         s"""DFEVar ${quote(s)} = constant.var($ts, $num);"""
+//         //       case _ =>
+//         //         s"""Can't handle $s yet"""
+//         //     }}
+//         //   }
+//         // }.mkString("\n")
 
-        val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.toList.sortWith(_ < _).mkString(",")
-        val first_comma = if (vec_input_args != "") { "," } else {""}
-        val second_comma = if (treeResult != "") { "," } else {""}
-        val trailing_args = consts_args_bnds_list.toList
-        val owner_comma = if (trailing_args.length > 0 & (vec_input_args != "" | res_input_arg != "")) {","} else {""} // TODO: Super ugly hack
+//         val vec_input_args = inputVecs.map { exp => s"DFEVector<DFEVar> ${quote(exp)}"}.toList.sortWith(_ < _).mkString(",")
+//         val first_comma = if (vec_input_args != "") { "," } else {""}
+//         val second_comma = if (treeResult != "") { "," } else {""}
+//         val trailing_args = consts_args_bnds_list.toList
+//         val owner_comma = if (trailing_args.length > 0 & (vec_input_args != "" | res_input_arg != "")) {","} else {""} // TODO: Super ugly hack
 
-        val trailing_args_comma = if (
-          (trailing_args.length > 0) & (
-            (first_comma == "" & vec_input_args == "" & second_comma == "" & res_input_arg == "") |
-            (vec_input_args != "" & second_comma == "" & res_input_arg == "") |
-            (res_input_arg != ""))
-            ) "," else ""
-        val trailing_args_string = trailing_args.map { exp =>
-          s"""DFEVar ${quote(exp)}"""
-        }.sortWith(_ < _).mkString(",")
-        emit(s"""void common($vec_input_args /*1*/ ${if (vec_input_args != "" & treeResult != "") "," else ""}
-                $res_input_arg /*2*/ $owner_comma $trailing_args_string /*3*/) {
-// For now, I just regenerate constants because java is being annoying about class extensions
-$cst_genStr
+//         val trailing_args_comma = if (
+//           (trailing_args.length > 0) & (
+//             (first_comma == "" & vec_input_args == "" & second_comma == "" & res_input_arg == "") |
+//             (vec_input_args != "" & second_comma == "" & res_input_arg == "") |
+//             (res_input_arg != ""))
+//             ) "," else ""
+//         val trailing_args_string = trailing_args.map { exp =>
+//           s"""DFEVar ${quote(exp)}"""
+//         }.sortWith(_ < _).mkString(",")
+//         emit(s"""void common($vec_input_args /*1*/ ${if (vec_input_args != "" & treeResult != "") "," else ""}
+//                 $res_input_arg /*2*/ $owner_comma $trailing_args_string /*3*/) {
+// // For now, I just regenerate constants because java is being annoying about class extensions
+// $cst_genStr
 
-$treeString
-}
+// $treeString
+// }
 
-${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $second_comma /*2*/
-                $res_input_arg $trailing_args_comma /*3*/  $trailing_args_string) {
-  super(owner);
-  common(${inputVecs.map( exp => quote(exp)).toList.sortWith(_<_).mkString(", ")} ${if (vec_input_args != "" & treeResult != "") "," else ""} ${treeResult} ${if ((treeResult != "" | inputVecs.toList.length != 0) & trailing_args.length > 0) "," else ""} ${trailing_args.map { exp => quote(exp)}.sortWith(_ < _).mkString(",")});
-}
-}""")
+// ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $second_comma /*2*/
+//                 $res_input_arg $trailing_args_comma /*3*/  $trailing_args_string) {
+//   super(owner);
+//   common(${inputVecs.map( exp => quote(exp)).toList.sortWith(_<_).mkString(", ")} ${if (vec_input_args != "" & treeResult != "") "," else ""} ${treeResult} ${if ((treeResult != "" | inputVecs.toList.length != 0) & trailing_args.length > 0) "," else ""} ${trailing_args.map { exp => quote(exp)}.sortWith(_ < _).mkString(",")});
+// }
+// }""")
 
-    }
-  }
+//     }
+//   }
 
   def emitCtrSM(name: String, par: List[Int], gap: Int, numCtrs: Int) = {
     stream.println("""
@@ -1151,7 +1152,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
     if (state == max) {
       emit(s"""
       counterFF.next <== counterFF + 1;
-      IF (counterFF >= sizeFF-1) {
+      IF (counterFF >= sizeFF-1 | sizeFF === 0 /*hack for when reg inits to 0*/) {
         stateFF.next <== States.DONE;
       } ELSE {
         stateFF.next <== States.S0;
@@ -1292,6 +1293,7 @@ package engine;
 
           CASE (States.RSET) {
             rstCounterFF.next <== rstCounterFF + 1;
+            sizeFF.next <== sm_numIter;
             IF (rstCounterFF === rstCycles) {
               stateFF.next <== States.S0;
             } ELSE {
@@ -1338,7 +1340,7 @@ package engine;
 
   emit(s"""
      IF (sm_en) {
-//        IF (counterFF >= sizeFF-1) {
+//        IF (counterFF >= sizeFF-1  | sizeFF === 0 /*hack for when reg inits to 0*/) {
 //          sm_last <== 1;
 //        } ELSE {
 //          sm_last <== 0;
@@ -1545,7 +1547,7 @@ package engine;
     } else {
       if (state.contains(0)) {
         emit("  counterFF.next <== counterFF + 1;")
-        emit("  IF (counterFF >= sizeFF-1) {")
+        emit("  IF (counterFF >= sizeFF-1  | sizeFF === 0 /*hack for when reg inits to 0*/) {")
         stream.print("    stateFF.next <== States.")
         if (state.max == max) {
           if (state.size == 1) {  // Only state 0
@@ -1708,6 +1710,7 @@ emit("""
 
           CASE (States.RSET) {
             rstCounterFF.next <== rstCounterFF + 1;
+            sizeFF.next <== sm_numIter;
             IF (rstCounterFF === rstCycles) {
               stateFF.next <== States.S0;
             } ELSE {
@@ -1754,7 +1757,7 @@ emit("""
 
   emit(s"""
      IF (sm_en) {
-        IF (counterFF >= sizeFF-1) {
+        IF (counterFF >= sizeFF-1  | sizeFF === 0 /*hack for when reg inits to 0*/) {
           sm_last <== 1;
         } ELSE {
           sm_last <== 0;

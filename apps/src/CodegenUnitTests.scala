@@ -610,7 +610,7 @@ trait UnalignedLdApp extends SpatialApp {
     setMem(srcFPGA, src)
 
     Accel {
-      val mem = SRAM[T](numCols)
+      val mem = SRAM[T](96)
       val accum = Reg[T](0)
       Fold(iters by 1)(accum, 0.as[T]) { k =>
         Pipe { mem := srcFPGA(k*numCols::k*numCols+numCols) }

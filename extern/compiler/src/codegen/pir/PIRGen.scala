@@ -228,12 +228,9 @@ trait PIRGen extends Traversal with PIRCommon {
   }
 
   def preallocateRegisters(cu: ComputeUnit) = cu.regs.foreach{
-    case reg@TempReg(_)         => emit(s"val ${quote(reg)} = CU.temp")
-    case reg@AccumReg(_,init)   => emit(s"val ${quote(reg)} = CU.accum(init = ${quote(init)})")
-    case reg@ControlReg(_)      => emit(s"val ${quote(reg)} = CU.ctrl")
-    //case reg@ScalarIn(_,mem)    => emit(s"val ${quote(reg)} = CU.scalarIn(${quote(mem)})")
-    //case reg@ScalarOut(_,mem:OutputArg) => emit(s"val ${quote(reg)} = CU.scalarOut(${quote(mem)})")
-    //case reg@ScalarOut(_,mem:ScalarMem) => emit(s"val ${quote(reg)} = CU.scalarOut(${quote(mem)})")
+    case reg:TempReg        => emit(s"val ${quote(reg)} = CU.temp")
+    case reg@AccumReg(init) => emit(s"val ${quote(reg)} = CU.accum(init = ${quote(init)})")
+    case reg:ControlReg if GenControlLogic => emit(s"val ${quote(reg)} = CU.ctrl")
     case _ => // No preallocation
   }
 
@@ -244,13 +241,13 @@ trait PIRGen extends Traversal with PIRCommon {
 
   def quote(sram: CUMemory): String = sram.name
   def quote(mem: GlobalMem): String = mem match {
-    case Offchip(name)     => s"${name}_oc"
+    case Offchip(name)      => s"${name}_oc"
     case DRAMCtrl(name,_,_) => s"${name}_mc"
-    case InputArg(name)    => s"${name}_argin"
-    case OutputArg(name)   => s"${name}_argout"
-    case ScalarMem(name)   => s"${name}_scalar"
-    case VectorMem(name)   => s"${name}_vector"
-    case LocalVector       => "local"
+    case InputArg(name)     => s"${name}_argin"
+    case OutputArg(name)    => s"${name}_argout"
+    case ScalarMem(name)    => s"${name}_scalar"
+    case VectorMem(name)    => s"${name}_vector"
+    case LocalVector        => "local"
   }
 
   def quote(tpe: ControlType) = tpe match {
@@ -261,30 +258,29 @@ trait PIRGen extends Traversal with PIRCommon {
   }
 
   def quote(reg: LocalMem): String = reg match {
-    case ConstReg(c) => s"""Const("$c")"""                    // Constant
-    case CounterReg(cchain, idx) => s"${cchain.name}($idx)"   // Counter
+    case ConstReg(c)             => s"""Const("$c")"""      // Constant
+    case CounterReg(cchain, idx) => s"${cchain.name}($idx)" // Counter
     case ValidReg(cchain,idx)    => s"${cchain.name}.valids($idx)"
 
+    case WriteAddrWire(mem) => s"${quote(mem)}.writeAddr"   // Write address wire
+    case ReadAddrWire(mem)  => s"${quote(mem)}.readAddr"    // Read address wire
+    case LocalWriteReg(mem) => s"wr${reg.id}"               // Local write address register
+    case SRAMRead(mem)      => quote(mem)                   // Local vector read
 
-    case WriteAddrWire(mem) => s"${quote(mem)}.writeAddr"     // Write address wire
-    case ReadAddrWire(mem)  => s"${quote(mem)}.readAddr"      // Read address wire
-    case LocalWriteReg(mem) => s"wr${reg.id}"                 // Local write address register
+    case reg:ReduceReg      => s"rr${reg.id}"               // Reduction register
+    case reg:AccumReg       => s"ar${reg.id}"               // After preallocation
+    case reg:TempReg        => s"tr${reg.id}"               // Temporary register
+    case reg:ControlReg     => s"cr${reg.id}"               // Control register
 
-    case ReduceReg(_)       => s"rr${reg.id}"                 // Reduction register
-    case AccumReg(_,_)      => s"ar${reg.id}"                 // After preallocation
-    case TempReg(_)         => s"tr${reg.id}"                 // Temporary register
-    case ControlReg(_)      => s"cr${reg.id}"                 // Control register
+    case ScalarIn(glob:InputArg)   => quote(glob)           // Scalar inputs from input arg
+    case ScalarIn(glob:ScalarMem)  => quote(glob)           // Scalar inputs from CU
+    case ScalarOut(out:OutputArg)  => quote(out)            // Scalar output to output arg
+    case ScalarOut(glob:ScalarMem) => quote(glob)           // Output to another CU
+    case ScalarOut(mc:DRAMCtrl)    => s"${quote(mc)}.saddr" // Output to memory address
 
-    case ScalarIn(_, mem:InputArg)   => quote(mem)            // Scalar inputs from input arg
-    case ScalarIn(_, mem:ScalarMem)  => quote(mem)            // Scalar inputs from CU
-    case ScalarOut(_, out:OutputArg) => quote(out)            // Scalar output to output arg
-    case ScalarOut(_, mem:ScalarMem) => quote(mem)            // Output to another CU
-    case ScalarOut(_, mc:DRAMCtrl) => s"${quote(mc)}.saddr"    // Output to memory address
-
-    case VectorIn(mem)                => quote(mem)           // Global vector read
-    case SRAMRead(mem)                => quote(mem)           // Local vector read
-    case VectorLocal(_, mem)          => quote(mem)           // Local vector write
-    case VectorOut(_, vec: VectorMem) => quote(vec)           // Global vector write
+    case VectorIn(glob)            => quote(glob)           // Global vector read
+    case VectorLocal(mem)          => quote(mem)            // Local vector write
+    case VectorOut(vec: VectorMem) => quote(vec)            // Global vector write
 
     case _ => throw new Exception(s"Invalid local memory $reg")
   }
@@ -334,7 +330,7 @@ trait PIRGen extends Traversal with PIRCommon {
     if (cu.stages.nonEmpty || cu.writeStages.exists{case (mem,stages) => stages.nonEmpty}) {
       emit(s"var stage: List[Stage] = Nil")
     }
-    if (cu.controlStages.nonEmpty) {
+    if (cu.controlStages.nonEmpty && GenControlLogic) {
       i = 0
       val nCompute = cu.controlStages.length
       emit(s"stage = ControlStages(${nCompute})")

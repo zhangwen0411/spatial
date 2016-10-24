@@ -21,6 +21,10 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
   val IR: PIRScheduleAnalysisExp with SpatialExp
   import IR.{assert => _, _}
 
+  val GenControlLogic = false
+  val EnableSplitting = true
+
+
   var globals = Set[GlobalMem]()
 
   def allocateCU(pipe: Exp[Any]): ComputeUnit
@@ -89,40 +93,42 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
       // If the previous stage computed the read address for this load, use the registered output
       // of the memory directly. Otherwise, use the previous stage
       case SRAMRead(mem) =>
-        debug(s"Referencing SRAM $mem in stage $stage")
+        /*debug(s"Referencing SRAM $mem in stage $stage")
         debug(s"  Previous stage: $prevStage")
-        debug(s"  SRAM read addr: ${mem.readAddr.get}")
+        debug(s"  SRAM read addr: ${mem.readAddr.get}")*/
         if (!prevStage.isDefined || prevStage.get.outputMems.contains(mem.readAddr.get))
           LocalRef(-1, reg)
         else
           LocalRef(stage-1, reg)
 
       case reg: CounterReg if isWriteContext && !prevStage.isDefined =>
-        debug(s"Referencing counter $reg in first write stage")
+        //debug(s"Referencing counter $reg in first write stage")
         LocalRef(-1, reg)
 
       case reg: AccumReg if isUnreadAccum(reg) =>
-        debug(s"First reference to accumulator $reg in stage $stage")
+        //debug(s"First reference to accumulator $reg in stage $stage")
         readAccums += reg
         LocalRef(stage, reg)
       case _ if out =>
-        debug(s"Referencing output register $reg in stage $stage")
+        //debug(s"Referencing output register $reg in stage $stage")
         LocalRef(stage, reg)
       case _ =>
-        debug(s"Referencing input register $reg in stage $stage")
+        //debug(s"Referencing input register $reg in stage $stage")
         LocalRef(stage-1, reg)
     }
     def refIn(reg: LocalMem, stage: Int = stageNum) = ref(reg, false, stage)
     def refOut(reg: LocalMem, stage: Int = stageNum) = ref(reg, true, stage)
 
-    def addOutput(e: Exp[Any], prev: LocalMem, out: LocalMem, add: Boolean = true) {
+    def addOutputFor(e: Exp[Any])(prev: LocalMem, out: LocalMem) { addOutput(prev, out, Some(e)) }
+    def addOutput(prev: LocalMem, out: LocalMem) { addOutput(prev, out, None) }
+    def addOutput(prev: LocalMem, out: LocalMem, e: Option[Exp[Any]]) {
       mapStages.find{stage => stage.outputMems.contains(prev) } match {
         case Some(stage) =>
           stage.outs ::= refOut(out, mapStages.indexOf(stage) + 1)
         case None =>
           bypass(prev, out)
       }
-      if (add) addReg(e, out)
+      if (e.isDefined) addReg(e.get, out)
       else cu.regs += out // No mapping, only list
     }
     def isUnitCompute = cu match {
@@ -154,21 +160,25 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
   }
 
   def scalarIns(cu: ComputeUnit): Set[GlobalMem] = {
-    cu.stages.flatMap(_.inputMems).flatMap{case ScalarIn(_, in) => Some(in); case _ => None}.toSet ++
-    cu.srams.flatMap{sram => sram.readAddr.flatMap{case ScalarIn(_, in) => Some(in); case _ => None}}.toSet ++
-    cu.srams.flatMap{sram => sram.writeAddr.flatMap{case ScalarIn(_, in) => Some(in); case _ => None}}.toSet
+    cu.stages.flatMap(_.inputMems).flatMap{case ScalarIn(in) => Some(in); case _ => None}.toSet ++
+    cu.srams.flatMap{sram => sram.readAddr.flatMap{case ScalarIn(in) => Some(in); case _ => None}}.toSet ++
+    cu.srams.flatMap{sram => sram.writeAddr.flatMap{case ScalarIn(in) => Some(in); case _ => None}}.toSet ++
+    cu.cchains.flatMap{
+      case CounterChainInstance(_,ctrs) => ctrs.flatMap{case CUCounter(_,start,end,stride) => List(start,end,stride).flatMap{case ScalarIn(in) => Some(in); case _ => None}}
+      case _ => Nil
+    }.toSet
   }
   def scalarOuts(cu: ComputeUnit): Set[GlobalMem] = cu match {
     case tu: TileTransferUnit => Set.empty
     case cu: BasicComputeUnit =>
-      cu.stages.flatMap(_.outputMems).flatMap{case ScalarOut(_, out) => Some(out); case _ => None }.toSet
+      cu.stages.flatMap(_.outputMems).flatMap{case ScalarOut(out) => Some(out); case _ => None }.toSet
     case _ => Set.empty
   }
 
   def vectorOuts(cu: ComputeUnit): Set[VectorMem] = cu match {
     case tu: TileTransferUnit if tu.mode == MemLoad => Set(tu.vec)
     case cu: BasicComputeUnit =>
-      cu.stages.flatMap(_.outputMems).flatMap{case VectorOut(_, vec: VectorMem) => Some(vec); case _ => None}.toSet
+      cu.stages.flatMap(_.outputMems).flatMap{case VectorOut(vec: VectorMem) => Some(vec); case _ => None}.toSet
     case _ => Set.empty
   }
 
@@ -176,10 +186,37 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     case tu: TileTransferUnit if tu.mode == MemStore => Set(tu.vec)
     case cu: BasicComputeUnit =>
       cu.stages.flatMap(_.inputMems).flatMap{case VectorIn(vec) => Some(vec); case _ => None}.toSet ++
-      cu.srams.flatMap{sram => sram.vector.flatMap{case vec: VectorMem => Some(vec); case _ => None }}.toSet
+      cu.srams.flatMap{sram => sram.vector.flatMap{case vec: VectorMem => Some(vec); case _ => None }}.toSet ++
+      cu.cchains.flatMap{
+        case CounterChainInstance(_,ctrs) => ctrs.flatMap{case CUCounter(_,start,end,stride) => List(start,end,stride).flatMap{case VectorIn(in) => Some(in); case _ => None}}
+        case _ => Nil
+      }.toSet // TODO: Is it allowed for counterchains to have vector input dimensions?
+
     case _ => Set.empty
   }
 
+
+  // Copy iterators from source CPU to dest CPU
+  def copyIterators(destCU: ComputeUnit, srcCU: ComputeUnit) = {
+    if (destCU != srcCU) {
+      val cchainCopies = srcCU.cchains.map{
+        case cc@CounterChainCopy(name, owner) => cc -> cc
+        case cc@CounterChainInstance(name, ctrs) => cc -> CounterChainCopy(name, srcCU)
+        case cc@UnitCounterChain(name) => cc -> CounterChainCopy(name, srcCU)
+      }
+      val cchainMapping = Map[CUCounterChain,CUCounterChain](cchainCopies.toList:_*)
+      destCU.cchains ++= cchainCopies.map(_._2)
+
+      srcCU.iterators.foreach{ case (iter,CounterReg(cchain,idx)) =>
+        destCU.addReg(iter, CounterReg(cchainMapping(cchain),idx))
+      }
+      srcCU.valids.foreach{case (iter, ValidReg(cchain,idx)) =>
+        destCU.addReg(iter, ValidReg(cchainMapping(cchain), idx))
+      }
+      cchainMapping
+    }
+    else Map.empty[CUCounterChain,CUCounterChain]
+  }
 
 
 
@@ -187,7 +224,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
   def allocateGlobal(mem: Exp[Any]) = {
     val name = quote(mem)
     val global = mem match {
-      case Deff(Dram_new(_)) => Offchip(name)
+      case Deff(Dram_new(_))    => Offchip(name)
       case Deff(Argin_new(_))   => InputArg(name)
       case Deff(Argout_new(_))  => OutputArg(name)
       case Deff(Reg_new(_))     => ScalarMem(name)
@@ -206,22 +243,22 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     val isLocallyWritten = isWrittenInPipe(reg, pipe, write)
     debug(s"### Allocating register $reg in $pipe (localRead: $isLocallyRead, localWrite: $isLocallyWritten, accum: ${isAccum(reg)}")
     if (isLocallyRead && isLocallyWritten && isInnerAccum(reg)) {
-      ReduceReg(reg)
+      ReduceReg()
     }
     else if (isLocallyRead && isLocallyWritten && isAccum(reg)) {
       val rst = allocateConst(resetValue(reg.asInstanceOf[Exp[Reg[Any]]]))
-      AccumReg(reg, rst)
+      AccumReg(rst)
     }
     else if (!isLocallyRead) { // Always prefer the local register over ScalarOut, if applicable
       val global = allocateGlobal(reg)
-      ScalarOut(reg, global)
+      ScalarOut(global)
     }
     else if (!isLocallyWritten) {
       val global = allocateGlobal(reg)
-      ScalarIn(reg, global)
+      ScalarIn(global)
     }
     else {
-      TempReg(reg)
+      TempReg()
     }
   }
 
@@ -230,7 +267,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     case Def(ConstBit(c)) => allocateConst(mem)
     case reg@Deff(Argin_new(init)) =>
       val global = allocateGlobal(reg)
-      ScalarIn(reg, global)
+      ScalarIn(global)
     case reg@Deff(Argout_new(init)) => allocateReg(reg, pipe, read, write) // argOuts can be accumulators
     case reg@Deff(Reg_new(init))    => allocateReg(reg, pipe, read, write)
 
@@ -238,7 +275,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
       debug(s"### Allocating reader $reader of $reg in $pipe")
       allocateLocal(reg, pipe, Some(reader), write)
 
-    case _ => TempReg(mem)
+    case _ => TempReg()
   }
 
   def isBuffer(mem: Exp[Any]) = isSRAM(mem.tp) // || isFIFO(mem.tp)
