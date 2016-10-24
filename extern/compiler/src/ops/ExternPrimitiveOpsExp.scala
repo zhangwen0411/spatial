@@ -84,6 +84,7 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
 
   def isStaticSize[T:Manifest](x: Rep[T]): Boolean = x match {
     case ConstFix(_) => true
+    case ConstFlt(_) => true
     case ParamFix(_) => true
     case _ => false
   }

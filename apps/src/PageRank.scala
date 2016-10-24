@@ -12,20 +12,20 @@ trait PageRankApp extends SpatialApp {
 
 
 
-  def pagerank(INpages: Rep[Array[SInt]], INedges: Rep[Array[SInt]], INcounts: Rep[Array[SInt]], INedgeId: Rep[Array[SInt]], INedgeLen: Rep[Array[SInt]], OCiters: Rep[SInt], OCdamp: Rep[SInt]) = {
+  def pagerank(INpages: Rep[Array[T]], INedges: Rep[Array[SInt]], INcounts: Rep[Array[SInt]], INedgeId: Rep[Array[SInt]], INedgeLen: Rep[Array[SInt]], OCiters: Rep[SInt], OCdamp: Rep[T]) = {
 
     val np = 96
     val NE = 9216
     val tileSize = 96 // For now
     val iters = ArgIn[SInt]
     val NP    = ArgIn[SInt]
-    val damp  = ArgIn[SInt]
-    val OCpages    = DRAM[SInt](np)
+    val damp  = ArgIn[T]
+    val OCpages    = DRAM[T](np)
     val OCedges    = DRAM[SInt](NE)    // srcs of edges
     val OCcounts   = DRAM[SInt](NE)    // counts for each edge
     val OCedgeId = DRAM[SInt](np) // Start index of edges
     val OCedgeLen = DRAM[SInt](np) // Number of edges for each page
-    val OCresult   = DRAM[SInt](np)
+    val OCresult   = DRAM[T](np)
 
     setArg(iters, OCiters)
     setArg(NP, np)
@@ -41,7 +41,7 @@ trait PageRankApp extends SpatialApp {
         // val oldPrIdx = iter % 2.as[SInt]
         // val newPrIdx = mux(oldPrIdx == 1, 0.as[SInt], 1.as[SInt])
         Sequential(NP by tileSize) { tid =>
-          val currentPR = SRAM[SInt](tileSize)
+          val currentPR = SRAM[T](tileSize)
           val edgesId = SRAM[SInt](tileSize)
           val edgesLen = SRAM[SInt](tileSize)
           Pipe {currentPR := OCpages(tid::tid+tileSize) }
@@ -58,14 +58,14 @@ trait PageRankApp extends SpatialApp {
             Pipe {counts := OCcounts(startId::startId+numEdges) }
 
             // Gather pages based on edges
-            val gatheredPR = SRAM[SInt](tileSize)
+            val gatheredPR = SRAM[T](tileSize)
             Pipe {gatheredPR := OCpages(edges, edges_per_page)}
 
             // Compute new PR
-            val pr = Reduce(edges_per_page by 1)(0.as[SInt]){ i => gatheredPR(i) / counts(i) }{_+_}
+            val pr = Reduce(edges_per_page by 1)(0.as[T]){ i => gatheredPR(i) / counts(i).to[T] }{_+_}
 
             // Update PR
-            currentPR(pid) = pr.value * damp + (1.as[SInt] - damp)
+            currentPR(pid) = pr.value * damp + (1.as[T] - damp)
           }
           OCresult(tid::tid+tileSize) := currentPR
         }
@@ -74,7 +74,7 @@ trait PageRankApp extends SpatialApp {
     getMem(OCresult)
   }
 
-  def printArr(a: Rep[Array[SInt]], str: String = "") {
+  def printArr(a: Rep[Array[T]], str: String = "") {
     println(str)
     (0 until a.length) foreach { i => print(a(i) + " ") }
     println("")
@@ -83,10 +83,10 @@ trait PageRankApp extends SpatialApp {
   def main() {
     val iters = args(0).to[SInt]
     val NP = args(1).to[SInt]
-    val damp = args(2).to[SInt]
+    val damp = args(2).to[T]
     val NE = 18432
 
-    val OCpages = Array.tabulate[SInt](NP){i => 1}
+    val OCpages = Array.tabulate[T](NP){i => 1.as[T]}
     val OCedges = Array.tabulate(NP){i => Array.tabulate(edges_per_page) {j => j*7}}.flatten
     val OCcounts = Array.tabulate(NP){i => Array.tabulate(edges_per_page) { j => edges_per_page }}.flatten
     val OCedgeId = Array.tabulate(NP) {i => i*edges_per_page } 

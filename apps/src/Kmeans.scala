@@ -89,6 +89,12 @@ trait KmeansApp extends SpatialApp {
     getMem(centroids)
   }
 
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
   def main() {
     val N = args(0).to[SInt];
     val K = args(1).to[SInt];
@@ -129,6 +135,7 @@ trait KmeansApp extends SpatialApp {
     // val actual = gold.zip(counts){(ct,n) => ct.map{p => p / n.to[T] }}.flatten
     // println("gold:   " + actual.map(a => a).reduce{_+_})
     // println("result: " + result.map(a => a).reduce{_+_})
+    printArr(result, "result: ")
 
     //assert( actual == result )
   }
