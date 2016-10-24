@@ -22,7 +22,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
   import IR.{assert => _, _}
 
   val GenControlLogic = false
-  val EnableSplitting = true
+  val EnableSplitting = false
 
 
   var globals = Set[GlobalMem]()
@@ -55,7 +55,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
       case _ => false
     }
 
-    def pipe = cu.pipe
+    def pipe: Exp[Any]
 
     def controlStages: ArrayBuffer[Stage] = cu.controlStages
 
@@ -142,14 +142,16 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     def stages = cu.stages
     def addStage(stage: Stage) { cu.stages += stage }
     def isWriteContext = false
+    def pipe = cu.pipe
   }
   case class WriteContext(override val cu: ComputeUnit, srams: List[CUMemory]) extends CUContext(cu) {
     cu.writeStages += srams -> ArrayBuffer.empty
 
-    def pseudoStages = cu.writePseudoStages(srams)
+    def pseudoStages = cu.writePseudoStages(srams)._2
     def stages = cu.writeStages(srams)
     def addStage(stage: Stage) { cu.writeStages(srams) += stage }
     def isWriteContext = true
+    def pipe = cu.writePseudoStages(srams)._1
   }
 
 

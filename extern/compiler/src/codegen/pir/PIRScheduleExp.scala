@@ -217,7 +217,13 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
 
   // --- Stages prior to scheduling
   sealed abstract class PseudoStage { def output: Option[Exp[Any]] }
-  case class DefStage(op: Exp[Any], isReduce: Boolean = false) extends PseudoStage { def output = Some(op) }
+  case class DefStage(op: Exp[Any], isReduce: Boolean = false) extends PseudoStage {
+    def output = Some(op)
+    override def toString = {
+      val Deff(d) = op
+      s"""DefStage($op = $d ${if (isReduce) " [REDUCE]" else ""})"""
+    }
+  }
   case class OpStage(op: PIROp, inputs: List[Exp[Any]], out: Exp[Any], isReduce: Boolean = false) extends PseudoStage { def output = Some(out) }
   case class WriteAddrStage(mem: Exp[Any], addr: Exp[Any]) extends PseudoStage { def output = None }
 
@@ -303,7 +309,7 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
         reg
     }
 
-    var writePseudoStages = HashMap[List[CUMemory], List[PseudoStage]]()
+    var writePseudoStages = HashMap[List[CUMemory], (Exp[Any], List[PseudoStage])]()
     var computePseudoStages: List[PseudoStage] = Nil
     var writeStages = HashMap[List[CUMemory], ArrayBuffer[Stage]]()
     var stages: ArrayBuffer[Stage] = ArrayBuffer.empty
@@ -326,7 +332,7 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
     override def dumpString = s"""BasicComputeUnit($name, $parent, $tpe){
 ${super.dumpString}
 }"""
-    override def toString() = s"BasicComputeUnit($name, ${parent.map(_.name)})"
+    override def toString() = s"CU$name"
 
     var isUnitCompute = false
   }
@@ -342,7 +348,7 @@ ${super.dumpString}
     override def dumpString = s"""TileTransferUnit($name, $parent, $ctrl, $mode){
 ${super.dumpString}
 }"""
-    override def toString() = s"TileTransferUnit($name, ${parent.map(_.name)}, $ctrl, $mode)"
+    override def toString() = s"TU$name"
   }
 
   // TODO: Parallelism?
@@ -374,6 +380,8 @@ ${super.dumpString}
     var writeCtrl: Option[CUCounterChain] = None
     var banking: Option[SRAMBanking] = None
     var bufferDepth:Int = 1
+
+    override def toString = s"SRAM$name"
 
     def dumpString = s"""CUMemory($name, $size) {
   vector = $vector

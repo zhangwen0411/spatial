@@ -532,10 +532,12 @@ trait PIRSplitter extends Traversal with PIRCommon {
     def globalOut(reg: LocalMem, scalar: Boolean): LocalMem = global(reg,scalar) match {
       case m: VectorMem => VectorOut(m)
       case m: ScalarMem => ScalarOut(m)
+      case m: OutputArg => ScalarOut(m)
     }
     def globalIn(reg: LocalMem, scalar: Boolean): LocalMem = global(reg,scalar) match {
       case m: VectorMem => VectorIn(m)
       case m: ScalarMem => ScalarIn(m)
+      case m: InputArg  => ScalarIn(m)
     }
     def rerefIn(reg: LocalMem, scalar: Boolean = cu.isUnitCompute): LocalRef = {
       val in = reg match {
