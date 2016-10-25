@@ -1091,7 +1091,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       // TODO: This is very bad assumption!  Actually check which reg to write to!!!
                       emit(s"""DFEVar ${quote(reg)} = ${quote(value)}; // redtype ${fps} unknown, just assign wire""")
                       val port = portsOf(writer, reg, 0).head
-                      emit(s"""${quote(reg)}_0_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_0_lib.bits)), $enable, global_rst, $port); // ${nameOf(reg).getOrElse("")}""")
+                      emit(s"""${quote(reg)}_0_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_0_lib.bits)), ${quote(reg)}_en & $enable, stream.offset(${rstStr}, -1) | global_rst, $port); // ${nameOf(reg).getOrElse("")}""")
                       emit(s"""${quote(reg)}_0_delayed <== stream.offset(${quote(reg)}_0, -${quote(writeCtrl)}_offset);""")
                       // throw new Exception(s"Reduction $fps codegen unknown!")
                   }
