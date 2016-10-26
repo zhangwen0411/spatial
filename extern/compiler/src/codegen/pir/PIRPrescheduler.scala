@@ -167,23 +167,22 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val vector = if (isLocallyRead) LocalVector else allocateGlobal(mem)
       sram.vector = Some(vector)
 
-      debug(s"Allocating written SRAM $mem")
-      debug(s"  writer   = $writer")
-      debug(s"  writerCU = $writerCU")
-      debug(s"  readerCU = $readerCU")
-      debug(sram.dumpString)
+      debug(s"  Allocating written SRAM $mem")
+      debug(s"    writer   = $writer")
+      debug(s"    writerCU = $writerCU")
+      debug(s"    readerCU = $readerCU")
 
       (readerCU, sram)
     }
 
     if (stages.nonEmpty) {
-      debug(s"  write stages: ")
-      stages.foreach{stage => debug(s"    $stage")}
+      debug(s"    write stages: ")
+      stages.foreach{stage => debug(s"      $stage")}
 
       val groups = srams.groupBy(_._1).mapValues(_.map(_._2))
       for ((readerCU,srams) <- groups if readerCU != writerCU) {
-        debug(s"""Adding write stages to $readerCU for SRAMs: ${srams.mkString(", ")}""")
-        readerCU.writePseudoStages += srams -> stages
+        debug(s"""    Adding write stages to $readerCU for SRAMs: ${srams.mkString(", ")}""")
+        readerCU.writePseudoStages(srams) = (writerCU.pipe,stages)
       }
     }
   }
@@ -200,7 +199,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
   }
 
   def prescheduleRegisterRead(reg: Exp[Any], reader: Exp[Any], pipe: Option[Exp[Any]]) = {
-    debug(s"  Register read: $reader")
+    debug(s"    Found register read: $reader")
     // Register reads may be used by more than one pipe
     readersOf(reg).filter(_.node == reader).map(_.controlNode).foreach{readCtrl =>
       val isCurrentPipe = pipe.map(_ == readCtrl).getOrElse(false)
@@ -208,7 +207,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
 
       if (!isCurrentPipe || !isLocallyWritten) {
         val readerCU = allocateCU(readCtrl)
-        debug(s"  Adding read stage $reader of $reg to remote reader $readerCU")
+        debug(s"      Adding read stage $reader of $reg to remote reader $readerCU")
         readerCU.computePseudoStages ++= List(DefStage(reader))
       }
     }
@@ -275,9 +274,9 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       // NOTE: Writers always appear to occur in the associated writer controller
       // However, register reads may appear outside their corresponding controller
       case writer@LocalWriter(writes) if !isControlNode(writer) =>
-        val rhs = writer match {case Def(d) => d; case _ => null }
+        val rhs = writer match {case Deff(d) => d; case _ => null }
+        debug(s"  \n$writer = $rhs [WRITER]")
 
-        debug(s"  $writer = $rhs [WRITER]")
         writes.foreach{case (EatAlias(mem), value, indices) =>
           if (isBuffer(mem)) {
             val indexComputation = indices.map{is => getRemoteWriteSchedule(is) }.getOrElse(Nil)
@@ -300,9 +299,9 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
         }
 
       case reader@LocalReader(reads) if !isControlNode(reader) =>
-        val rhs = reader match {case Def(d) => d; case _ => null }
+        val rhs = reader match {case Deff(d) => d; case _ => null }
 
-        debug(s"  $reader = $rhs [READER]")
+        debug(s"  \n$reader = $rhs [READER]")
         reads.foreach{case (EatAlias(mem),indices) =>
           if (isReg(mem.tp)) {
             prescheduleRegisterRead(mem, reader, Some(pipe))
