@@ -63,6 +63,11 @@ trait SpatialAffineAnalyzer extends AffineAnalyzer {
     case EatReflect(e:Gather[_]) =>
       accessPatternOf(lhs) = List(LinearAccess(e.i))
 
+    case EatReflect(e:Convolve[_]) =>
+      accessPatternOf(lhs) = e.inds.map(LinearAccess(_))
+    case EatReflect(e:ConvLayer[_]) =>
+      accessPatternOf(lhs) = e.inds.map(LinearAccess(_))
+
     case _ => super.traverse(lhs,rhs)
   }
 }

@@ -326,7 +326,7 @@ trait SpatialDSL extends ForgeApplication
 
     // --- Final analysis
     schedule(BufferAnalyzer)        // Top controllers for n-buffers
-    // schedule(DotPrinter)            // Graph after unrolling
+    // schedule(DotPrinter)         // Graph after unrolling
     schedule(PrinterLast)
     schedule(StructurePrint)
     schedule(PIRGen)
@@ -334,6 +334,7 @@ trait SpatialDSL extends ForgeApplication
     // External groups
     extern(grp("Memory"), targets = List($cala, cpp, maxj), withTypes = true)
     extern(grp("Controller"), targets = List($cala, maxj))
+    extern(grp("Convolution"), targets = List($cala, maxj))
     extern(grp("Unrolled"), targets = List($cala, maxj))
 
     extern(grp("ExternCounter"), targets = List($cala, cpp, maxj), withTypes = true)

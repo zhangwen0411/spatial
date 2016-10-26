@@ -476,21 +476,8 @@ trait PIRSplitter extends Traversal with PIRCommon {
     debug(s"VecIns   / CU: ${vecIns.toFloat / cus.length}")
     debug(s"VecOuts  / CU: ${vecOuts.toFloat / cus.length}")
 
-    //val cus = partitions.zipWithIndex{case (p,i) => schedulePartitioned(ctx, p, i) }
     cus.toList
   }
-
-  /*def connectPartitions(partitions: ArrayBuffer[ArrayBuffer[Stage]])(implicit ctx: ComputeContext) = {
-    val cus = partitions.zipWithIndex.map{case (p,i) =>
-      val cu =
-      cu.isUnitCompute = ctx.cu.isUnitCompute
-    }
-  }*/
-
-  /*case class RegRemapping(subst: HashMap[LocalMem,LocalMem]) {
-    def apply(x: LocalMem) = subst.getOrElse(x, x)
-    def add(sub: (LocalMem,LocalMem)) { subst += sub }
-  }*/
 
   def schedulePartitioned(orig: BasicComputeUnit, part: Partition, i: Int, first: Option[BasicComputeUnit]): BasicComputeUnit = {
     val cu = BasicComputeUnit(orig.name+"_"+i, orig.pipe, orig.parent, orig.tpe)
@@ -501,21 +488,12 @@ trait PIRSplitter extends Traversal with PIRCommon {
 
     val local  = part.cstages
     val remote = orig.allStages diff part.stageGroups.flatten
-    // val localInRefs: Set[LocalRef]   = local.flatMap(_.inputRefs).toSet     // All inputs to stages in this partition
-    // val localOutRefs: Set[LocalRef]  = local.flatMap(_.outputRefs).toSet    // All outputs from stages in this partition
-    // val remoteInRefs: Set[LocalRef]  = remote.flatMap(_.inputRefs).toSet
-    // val remoteOutRefs: Set[LocalRef] = remote.flatMap(_.outputRefs).toSet
-    // val localSRAMVectors  = part.memories.flatMap(_.vector)
-    // val remoteSRAMVectors = (orig.srams diff part.memories).flatMap(_.vector)
 
     val localOutputs = local.flatMap(_.outputMems).toSet
     val remoteInputs = remote.flatMap(_.inputMems).toSet
 
     val localInputs   = local.flatMap(_.inputMems).toSet
     val remoteOutputs = remote.flatMap(_.outputMems).toSet
-
-    // val dataVectorIns  = localInputs intersect remoteOutputs
-    // val dataVectorOuts = localOutputs intersect remoteInputs
 
     val ctx = ComputeContext(cu)
 
@@ -612,6 +590,7 @@ trait PIRSplitter extends Traversal with PIRCommon {
       case _ =>
     }}
 
+    // --- counter chains
     if (i == 0) {
       cu.cchains ++= orig.cchains
     }
@@ -638,6 +617,10 @@ trait PIRSplitter extends Traversal with PIRCommon {
         sram.writeCtrl = sram.writeCtrl.map{f(_)}
       }
     }
+
+    // --- control logic
+    // TODO
+
 
 
 

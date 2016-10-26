@@ -18,10 +18,8 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
 
   type Idx = FixPt[Signed,B32,B0]
 
-  // --- Nodes
   case class ParallelPipe(func: Block[Unit])(implicit val ctx: SourceContext) extends Def[Pipeline]
   case class UnitPipe(func: Block[Unit])(implicit val ctx: SourceContext) extends Def[Pipeline]
-
 
   case class OpForeach(
     cchain: Exp[CounterChain],  // Loop counter chain
@@ -260,8 +258,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
           with SpatialCodegenOps with NosynthOpsExp with MemoryAnalysisExp
           with DeliteTransform with VectorOpsExp with SpatialExp with UnrollingTransformExp
 
- import IR._ //{__ifThenElse => _, Nosynth___ifThenElse => _, __whileDo => _,
-             // Forloop => _, println => _ , _}
+  import IR._
 
   var bbd = ""
 
@@ -418,7 +415,7 @@ Count.Params initParams = control.count.makeParams(2)
                           .withEnable(top_en)
                           .withMax(2)
                           .withWrapMode(WrapMode.STOP_AT_MAX);
-Counter init = control.count.makeCounter(initParams); 
+Counter init = control.count.makeCounter(initParams);
 DFEVar global_rst = init.getCount() === 0;
 """)
 			emitComment("Emitting Hwblock dependencies {")
@@ -900,19 +897,19 @@ for (int i = 0; i < ${parOf(ctr)-1}; i++) {
     }
 
     parent match {
-      case Deff(UnrolledForeach(_,_,counts,vs)) => 
-        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) => 
-          layer.zip(count).map { case (v, c) => 
+      case Deff(UnrolledForeach(_,_,counts,vs)) =>
+        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) =>
+          layer.zip(count).map { case (v, c) =>
             emit(s"DFEVar ${quote(v)} = ${quote(c)} < ${quote(sym)}_max[${i}];")
           }
         }
-      case Deff(UnrolledReduce(_,_,_,_,counts,vs,_,_)) => 
-        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) => 
-          layer.zip(count).map { case (v, c) => 
+      case Deff(UnrolledReduce(_,_,_,_,counts,vs,_,_)) =>
+        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) =>
+          layer.zip(count).map { case (v, c) =>
             emit(s"DFEVar ${quote(v)} = ${quote(c)} < ${quote(sym)}_max[${i}];")
           }
         }
-      case _ => 
+      case _ =>
     }
 
     emitComment("} CustomCounterChain")

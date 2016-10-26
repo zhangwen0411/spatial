@@ -110,6 +110,8 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(Par_push_fifo(fifo,value,_,_))     => Some(LocalWrite(fifo,value))
     case EatReflect(BurstLoad(mem,fifo,_,_,_))         => Some(LocalWrite(fifo))
     case EatReflect(Gather(mem,local,addrs,_,_,_))     => Some(LocalWrite(local))
+    case EatReflect(e: Convolve[_])                    => Some(LocalWrite(e.output))
+    case EatReflect(e: ConvLayer[_])                   => Some(LocalWrite(e.output))
     case _ => None
   }
 
@@ -124,7 +126,17 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(BurstStore(mem,fifo,_,_,_))     => Some(LocalRead(fifo))
     case EatReflect(Gather(mem,local,addrs,_,_,_))  => Some(LocalRead(addrs))
     case EatReflect(Scatter(mem,local,addrs,_,_,_)) => Some(LocalRead(local) ++ LocalRead(addrs))
+    case EatReflect(e: ConvLayer[_])                => Some(LocalRead(e.image))
     case _ => None
+  }
+
+  def parize(par: Rep[Int]) = par match {
+    case Const(c) =>
+      val p = param(c)
+      domainOf(p) = (c,c,1)
+      p
+    case p: Param[_] => p.asInstanceOf[Param[Int]]
+    case _ => throw InvalidParFactorException(par)
   }
 
   private def indicesOf(addr: Exp[Any]): List[Exp[Index]] = addr match {
@@ -198,6 +210,8 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:BurstStore[_]) => true
     case EatReflect(_:Gather[_]) => true
     case EatReflect(_:Scatter[_]) => true
+    case EatReflect(_:Convolve[_]) => true
+    case EatReflect(_:ConvLayer[_]) => true
     case _ => false
   }
   def isOffChipTransfer(e: Exp[Any]): Boolean = e match {
