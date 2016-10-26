@@ -563,7 +563,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       curBlock = t.run(curBlock)
       printlog("  Block after transformation: " + curBlock)
     }
-    println("ChiselGodegen: done transforming")
+    println("ChiselCodegen: done transforming")
     (curBlock)
   }
 
@@ -574,9 +574,9 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Min2(a, b) =>
-      emit(s"""DFEVar ${quote(sym)} = KernelMath.min(${quote(a)}, ${quote(b)});""")
+      emit(s"""var ${quote(sym)} = KernelMath.min(${quote(a)}, ${quote(b)});""")
     case Max2(a, b) =>
-      emit(s"""DFEVar ${quote(sym)} = KernelMath.max(${quote(a)}, ${quote(b)});""")
+      emit(s"""var ${quote(sym)} = KernelMath.max(${quote(a)}, ${quote(b)});""")
     case ConstFixPt(x,_,_,_) =>
       if (!emitted_consts.contains((sym, rhs))) {
         emitted_consts += ((sym, rhs))
@@ -824,11 +824,11 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       x match {
         case _:Const[_] | _:Param[_] =>
           withStream(baseStream) {
-            emit(s"""DFEVar ${quote(sym)} = constant.var($ts, ${quote(x)});""")
+            emit(s"""var ${quote(sym)} = constant.var($ts, ${quote(x)});""")
           }
         case _ =>
           withStream(baseStream) {
-            emit(s"""// DFEVar $sym = ${quote(x)}.cast($ts)""")
+            emit(s"""// var $sym = ${quote(x)}.cast($ts)""")
           }
         }
 
@@ -844,12 +844,12 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
           case ConstFixPt(x,_,_,_) =>
             val ts = tpstr(parOf(s)) (s.tp, implicitly[SourceContext])
             withStream(baseStream) {
-              emit(s"""DFEVar ${quote(s)} = constant.var( $ts, $x ); """)
+              emit(s"""var ${quote(s)} = constant.var( $ts, $x ); """)
             }
           case ConstFltPt(x,_,_) =>
             val ts = tpstr(parOf(s)) (s.tp, implicitly[SourceContext])
             withStream(baseStream) {
-              emit(s"""DFEVar ${quote(s)} = constant.var( $ts, $x ); """)
+              emit(s"""var ${quote(s)} = constant.var( $ts, $x ); """)
             }
           case _ =>
             withStream(baseStream) {

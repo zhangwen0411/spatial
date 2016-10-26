@@ -256,36 +256,26 @@ trait PrimitiveTypes {
 		}))
 
 
-    // --- Chisel Backend
-    impl (boolean_to_bit) (codegen(chisel, ${
-            DFEVar $sym = constant.var( $0 );
-        }))
-  //   impl (const_to_fixpt) (codegen(maxj, ${
-        //      @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
-        //      DFEVar $sym = constant.var( $ts, $0 );
-        // }))
-    impl (const_to_fltpt) (codegen(chisel, ${
-                @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
-        DFEVar $sym = constant.var( $ts, $0 );
-        }))
 
-    impl (fixpt_to_fltpt) (codegen(chisel, ${
-            @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
-      DFEVar $sym = $0.cast( $ts );
-        }))
-    impl (convert_fixpt)  (codegen(chisel, ${
-            //TODO: right way to do this?
-            @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
-      DFEVar $sym = $0.cast( $ts );
-        }))
-    impl (fltpt_to_fixpt) (codegen(chisel, ${
-            @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
-      DFEVar $sym = $0.cast( $ts );
-        }))
-    impl (convert_fltpt)  (codegen(chisel, ${
-            //TODO: right way to do this?
-            @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
-      DFEVar $sym = $0.cast( $ts );
-        }))
+    
+    // --- Chisel Backend
+    impl (boolean_to_bit) (codegen(chisel, ${ $0 }))
+    impl (bit_to_string)  (codegen(chisel, ${ $0.toString }))
+    impl (bit_to_bool)    (codegen(chisel, ${ $0 }))
+
+    impl (string_to_fixpt) (codegen(chisel, ${ FixedPoint[$t[S],$t[I],$t[F]]($0) }))
+    impl (const_to_fixpt) (codegen(chisel, ${ FixedPoint[$t[S],$t[I],$t[F]]($0.toString) }))
+    impl (fixpt_to_string) (codegen(chisel, ${ $0.toString }))
+    impl (fixpt_to_fltpt) (codegen(chisel, ${ $0.toFloatPoint[$t[G],$t[E]] }))
+    impl (convert_fixpt) (codegen(chisel, ${ $0.changeFormat[$t[S2],$t[I2],$t[F2]] }))
+    impl (fix_to_rep_int) (codegen(chisel, ${ $0.toInt }))
+    impl (rep_int_to_fix) (codegen(chisel, ${ FixedPoint[$t[S],$t[I],B0]($0) }))
+
+    impl (string_to_fltpt) (codegen(chisel, ${ FloatPoint[$t[G],$t[E]]($0) }))
+    impl (const_to_fltpt) (codegen(chisel, ${ FloatPoint[$t[G],$t[E]]($0.toString) }))
+    impl (fltpt_to_string) (codegen(chisel, ${ $0.toString }))
+    impl (fltpt_to_fixpt) (codegen(chisel, ${ $0.toFixedPoint[$t[S],$t[I],$t[F]] }))
+    impl (convert_fltpt) (codegen(chisel, ${ $0.changeFormat[$t[G2],$t[E2]] }))
+    
 	}
 }

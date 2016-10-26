@@ -1219,6 +1219,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
   }
 
   def emitBlock(y: Block[Any], blockName:String, doNotClose:Boolean = false): Unit = {
+    emitComment("\n--------------- Emitting COMPUTATION BLOCK ----------------\n")
     emitComment(s"Block ${blockName} {")
     emit("{")
     emitBlock(y)
@@ -1238,7 +1239,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         inds.foreach { idx =>
           emit(s"""DblBufReg[] ${quote(idx)}_chain = spatialUtils.getRegChain(
               "${quote(controller)}_${quote(idx)}", ${stages.size}, ${quote(idx)},
-              new DFEVar[]{${stages.map{s => quote(s)+"_done"}.mkString(",")}});""")
+              new var[]{${stages.map{s => quote(s)+"_done"}.mkString(",")}});""")
         }
       case _ =>
     }
@@ -1263,6 +1264,8 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
   }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
+    
+    
     case Hwblock(func) =>
       controlNodeStack.push(sym)
       controller_tree.write("""<!DOCTYPE html>
@@ -1281,6 +1284,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
       print_stage_prefix(s"Hwblock",s"",s"${quote(sym)}")
 			inHwScope = true
+      /*
 			emitComment("Emitting Hwblock dependencies {")
       val hwblockDeps = recursiveDeps(rhs)
       expToArg.keys.filterNot { hwblockDeps.contains(_) } foreach { argToExp -= expToArg(_) }
@@ -1289,7 +1293,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       def emitIfUndeclared(e: Exp[Any]) = {
         if (!emitted.contains(e)) {
           val ts = tpstr(parOf(e))(e.tp, implicitly[SourceContext])
-          emit(s"""DFEVar ${quote(e)} = $ts.newInstance(this);""")
+          emit(s"""var ${quote(e)} = $ts.newInstance(this);""")
           emitted += e
         }
       }
@@ -1315,11 +1319,12 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       }
 			emitComment(" End Hwblock dependencies }")
       emitComment(s"quoteSuffix = $quoteSuffix")
-      emit(s"""DFEVar ${quote(sym)}_en = top_en;""")
+      emit(s"""var ${quote(sym)}_en = top_en;""")
       emitGlobalWire(s"""${quote(sym)}_done""")
       emit(s"""top_done <== ${quote(sym)}_done;""")
-      emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")
-      emitController(sym, None)
+      emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")*/
+      //emitController(sym, None)
+      emitComment("\n--------------- HW BLOCK ----------------\n")      
       emitBlock(func)
 			inHwScope = false
       print_stage_suffix(quote(sym))
@@ -1329,6 +1334,8 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       controller_tree.close
 
       controlNodeStack.pop
+
+      
 
     case e@Counterchain_new(counters) =>
 
@@ -1358,7 +1365,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       print_stage_suffix(quote(sym))
       controlNodeStack.pop
 
-
+    
 		case e@ParallelPipe(func: Block[Unit]) =>
       controlNodeStack.push(sym)
       print_stage_prefix(s"ParallelPipe",s"",s"${quote(sym)}")
@@ -1400,14 +1407,14 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
       if (writesToAccumReg) {
 
-        emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
+        emit(s"""var ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
         emit(s"""Count.Params ${quote(sym)}_redLoopParams = control.count.makeParams(9)
                               .withEnable(${quote(sym)}_datapath_en)
                               .withReset(${quote(sym)}_done)
                               .withMax(${quote(sym)}_loopLengthVal)
                               .withWrapMode(WrapMode.STOP_AT_MAX);
     Counter ${quote(sym)}_redLoopCounter = control.count.makeCounter(${quote(sym)}_redLoopParams);
-    DFEVar ${quote(sym)}_redLoop_done = ${quote(sym)}_redLoopCounter.getCount() === ${quote(sym)}_loopLengthVal-1;""")
+    var ${quote(sym)}_redLoop_done = ${quote(sym)}_redLoopCounter.getCount() === ${quote(sym)}_loopLengthVal-1;""")
       }
 
 
@@ -1428,7 +1435,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
                         case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
                           if (isReduceResult(s)) {
                             val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                            emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
+                            emit(s"var ${quote(s)} = ${ts}.newInstance(this);")
                             treeResult = quote(s)
                           }
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
@@ -1490,7 +1497,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
         emit(s"""    ${quote(sym)}_done <== stream.offset(${quote(sym)}_sm.getOutput("sm_done"),-1-${quote(sym)}_offset);""")
 
-        emit(s"""DFEVar ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
+        emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
         emitGlobalWire(s"""${quote(sym)}_rst_done""")
         emit(s"""${quote(sym)}_sm.connectInput("rst_done", ${quote(sym)}_rst_done);""")
         emit(s"""${quote(sym)}_rst_done <== stream.offset(${quote(sym)}_rst_en, -${quote(sym)}_offset-1);""")
@@ -1513,12 +1520,12 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
             }
             niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}))"
           }
-          emit(s"""DFEVar ${quote(sym)}_niter = ${quote(niter_str)};""")
+          emit(s"""var ${quote(sym)}_niter = ${quote(niter_str)};""")
           emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", ${quote(sym)}_niter.cast(dfeUInt(32)));""")
         } else {
           emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", constant.var(dfeUInt(32), 1));""")
         }
-        emit(s"""DFEVar ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
+        emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
       case SequentialPipe =>
         emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this));""")
         emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
@@ -1533,12 +1540,12 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
             }
             niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}))"
           }
-          emit(s"""DFEVar ${quote(sym)}_niter = ${quote(niter_str)};""")
+          emit(s"""var ${quote(sym)}_niter = ${quote(niter_str)};""")
           emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", ${quote(sym)}_niter.cast(dfeUInt(32)));""")
         } else {
           emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", constant.var(dfeUInt(32), 1));""")
         }
-        emit(s"""DFEVar ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
+        emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
       case ForkJoin =>
         emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this));""")
         emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
@@ -1569,8 +1576,8 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       if (cchain.isDefined) {
         emitCChainCtrl(sym, cchain.get)
       } else {
-        emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_en & ~${quote(sym)}_rst_en;""")
-        emit(s"""DFEVar ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en;""")
+        emit(s"""var ${quote(sym)}_datapath_en = ${quote(sym)}_en & ~${quote(sym)}_rst_en;""")
+        emit(s"""var ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en;""")
       }
     }
 
@@ -1589,10 +1596,10 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
           emit(s"""${quote(sym)}_sm.connectInput("sm_maxIn_$i", ${quote(end)});""")
           // emit(s"""${quote(sym)}_sm.connectInput("sm_trashCnt", constant.var(dfeUInt(32), ${trashCount(bound(end).get.toInt, sym)}));""")
           // emit(s"""DFEVar ${quote(sym)}_trash_en = ${quote(sym)}_sm.getOutput("trashEn");""")
-          emit(s"""DFEVar ${quote(ctr)}_max_$i = ${quote(sym)}_sm.getOutput("ctr_maxOut_$i");""")
+          emit(s"""var ${quote(ctr)}_max_$i = ${quote(sym)}_sm.getOutput("ctr_maxOut_$i");""")
         case ForkJoin => throw new Exception("Cannot have counter chain control logic for fork-join (parallel) controller!")
         case _ =>
-          emit(s"""DFEVar ${quote(ctr)}_max_$i = ${quote(end)};""")
+          emit(s"""var ${quote(ctr)}_max_$i = ${quote(end)};""")
       }
     }
 
@@ -1602,14 +1609,14 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         doneDeclaredSet += cchain
         emit(s"""${quote(sym)}_sm.connectInput("ctr_done", ${quote(cchain)}_done);""")
         if (consumesMemFifo(sym)) {
-          emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
+          emit(s"""var ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
         } else {
-          emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
+          emit(s"""var ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
         }
 
       case ForkJoin => throw new Exception("Cannot have counter chain control logic for fork-join (parallel) controller!")
       case _ =>
-        emit(s"""DFEVar ${quote(sym)}_datapath_en = ${quote(sym)}_en;""")
+        emit(s"""var ${quote(sym)}_datapath_en = ${quote(sym)}_en;""")
     }
 
 
@@ -1626,13 +1633,13 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
             if (writesToAccumRam) {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
-              emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym,
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
-              emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
@@ -1646,25 +1653,25 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
             }
             if (writesToAccumRam) {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
-              emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym,
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
-              emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
 
           case n@UnrolledReduce(cchain, accum, func, rFunc, inds, ens, acc, rV) =>
-            emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
+            emit(s"""var ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
             emit(s"""CounterChain ${quote(sym)}_redLoopChain = control.count.makeCounterChain(${quote(sym)}_datapath_en);""")
             // emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${stream_offset_guess+1}, 1);""")
-            emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
-            emit(s"""DFEVar ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
+            emit(s"""var ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
+            emit(s"""var ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
             val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
-            emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
+            emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
             val rstStr = s"${quote(sym)}_done"
             emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
 
@@ -1683,30 +1690,30 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 			      val specializeReduce = true;
             if (specializeReduce) {
               val ctrEn = s"${quote(sym)}_datapath_en"
-              emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             } else {
-              emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
+              emit(s"""var ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
               emit(s"""CounterChain ${quote(sym)}_redLoopChain =
 		        		control.count.makeCounterChain(${quote(sym)}_datapath_en);""")
               // emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${stream_offset_guess+1}, 1);""")
-              emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
-              emit(s"""DFEVar ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
+              emit(s"""var ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
+              emit(s"""var ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
               val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
-              emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
         }
       case CoarsePipe =>
         val ctrEn = s"${quote(childrenOf(sym).head)}_done"
-        emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
+        emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
         val rstStr = s"${quote(sym)}_done"
         emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
       case SequentialPipe =>
         val ctrEn = s"${quote(childrenOf(sym).last)}_done"
-        emit(s"""DFEVar ${quote(sym)}_ctr_en = $ctrEn;""")
+        emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
         val rstStr = s"${quote(sym)}_done"
 		    emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
     }
@@ -1717,7 +1724,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     val sym = cchain
     emitComment("CustomCounterChain {")
     if (!enDeclaredSet.contains(sym)) {
-      emit(s"""DFEVar ${quote(sym)}_en = ${en.get};""")
+      emit(s"""var ${quote(sym)}_en = ${en.get};""")
       enDeclaredSet += sym
     }
 
@@ -1747,7 +1754,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     //   val c = trashCount(bound(end).get.toInt, sym)
     //   s" + ${c}"
     // } else {""}
-    emit(s"""DFEVar[] ${quote(sym)}_max = {${maxes.map(m=>s"${quote(m)}").mkString(",")}};""")
+    emit(s"""var[] ${quote(sym)}_max = {${maxes.map(m=>s"${quote(m)}").mkString(",")}};""")
 
     // Connect strides
     val strides = counters.zipWithIndex.map { case (ctr, i) =>
@@ -1771,7 +1778,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     emit(s"""SMIO ${quote(sym)} = addStateMachine("${quote(sym)}_sm", new ${quote(sym)}_CtrSM(owner, ${quote(sym)}_strides)); // gap = ${gap}""")
     emit(s"""${quote(sym)}.connectInput("en", ${quote(sym)}_en);
 ${quote(sym)}.connectInput("reset", ${rstStr.get});
-DFEVar ${quote(sym)}_maxed = ${quote(sym)}.getOutput("saturated");""")
+var ${quote(sym)}_maxed = ${quote(sym)}.getOutput("saturated");""")
 
     val doneStr = if (!done.isDefined) {
       s"""stream.offset(${quote(sym)}.getOutput("done"), -1)"""
@@ -1780,7 +1787,7 @@ DFEVar ${quote(sym)}_maxed = ${quote(sym)}.getOutput("saturated");""")
     }
 
     if (!doneDeclaredSet.contains(sym)) {
-      emit(s"""DFEVar ${quote(sym)}_done = $doneStr;""")
+      emit(s"""var ${quote(sym)}_done = $doneStr;""")
       doneDeclaredSet += sym
     } else {
       emit(s"""${quote(sym)}_done <== $doneStr;""")
@@ -1790,7 +1797,7 @@ DFEVar ${quote(sym)}_maxed = ${quote(sym)}.getOutput("saturated");""")
     counters.zipWithIndex.map { case (ctr, i) =>
       emit(s"""${quote(sym)}.connectInput("max${i}", ${quote(sym)}_max[${i}]);""")
       if (parOf(ctr) == 1) {
-        emit(s"""DFEVar ${quote(ctr)} = ${quote(sym)}.getOutput("counter${i}");""")
+        emit(s"""var ${quote(ctr)} = ${quote(sym)}.getOutput("counter${i}");""")
         // cast(n.ctrs(i)) // Cast if necessary
       } else {
         emit(s"""DFEVector<DFEVar> ${quote(ctr)} = new DFEVectorType<DFEVar>(dfeInt(32), ${parOf(ctr)}).newInstance(this);
@@ -1814,7 +1821,7 @@ for (int i = 0; i < ${parOf(ctr)-1}; i++) {
     // Both signals are defined here.
     emitComment("ChiselCounterChain {")
     if (!enDeclaredSet.contains(sym)) {
-      emit(s"""DFEVar ${quote(sym)}_en = ${en.get};""")
+      emit(s"""var ${quote(sym)}_en = ${en.get};""")
       enDeclaredSet += sym
     }
     emit(s"""CounterChain ${quote(sym)} = control.count.makeCounterChain(${quote(sym)}_en);""")

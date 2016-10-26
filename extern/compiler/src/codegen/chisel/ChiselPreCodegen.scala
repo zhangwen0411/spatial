@@ -417,30 +417,7 @@ trait ChiselPreCodegen extends Traversal  {
     set ++ ret
   }
   def emitReduction(sym: Sym[Any], rhs: Def[Any]) = {
-      emit(s"""package engine;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Counter;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.CounterChain;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.WrapMode;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Count.Params;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.memory.Memory;
-import com.maxeler.maxcompiler.v2.kernelcompiler.Kernel;
-import com.maxeler.maxcompiler.v2.kernelcompiler.KernelParameters;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEVar;
-import com.maxeler.maxcompiler.v2.utils.MathUtils;
-import com.maxeler.maxcompiler.v2.utils.Bits;
-import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.KernelMath;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.core.Stream.OffsetExpr;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Reductions;
-import com.maxeler.maxcompiler.v2.kernelcompiler.SMIO;
-import com.maxeler.maxcompiler.v2.kernelcompiler.stdlib.Accumulator;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEType;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVector;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.composite.DFEVectorType;
-import com.maxeler.maxcompiler.v2.kernelcompiler.types.base.DFEFix.SignMode;
-import java.util.Arrays;
+      emit(s"""import Chisel._
 class ${quote(sym)}_reduce_kernel extends KernelLib {""")
     rhs match {
       case _:UnrolledReduce[_,_] | _:UnrolledForeach | _:UnitPipe =>
@@ -486,7 +463,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
                 //   s""
                 case tag @ Vec_apply(vec,idx) =>
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
-                  s"DFEVar ${quote(s)} = ${quote(vec)}[$idx];"
+                  s"var ${quote(s)} = ${quote(vec)}[$idx];"
                 case tag @ FixPt_Div(a,b) =>
                   if (first_reg_read.length > 1) { rTreeMap(s) = sym }
                   s"""${maxJPre(s)} ${quote(s)} = ${quote(a)} / ${quote(b)};"""
@@ -633,7 +610,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
         } else { s"// Couldn't figure out what to move to separate kernel for $sym" }
 
         val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
-        val res_input_arg = if (treeResult != "") {treeResultSyms.map { a => s"DFEVar ${quote(a)}"}.mkString(",")} else {""}
+        val res_input_arg = if (treeResult != "") {treeResultSyms.map { a => s"var ${quote(a)}"}.mkString(",")} else {""}
         // val cst_arg_input_args = if (args_and_consts.toList.length > 0) {
         //   ", DFEVar " + args_and_consts.map(quote(_)).mkString(", DFEVar ")
         // } else { "" }
@@ -667,7 +644,7 @@ class ${quote(sym)}_reduce_kernel extends KernelLib {""")
             (res_input_arg != ""))
             ) "," else ""
         val trailing_args_string = trailing_args.map { exp =>
-          s"""DFEVar ${quote(exp)}"""
+          s"""var ${quote(exp)}"""
         }.sortWith(_ < _).mkString(",")
         emit(s"""void common($vec_input_args /*1*/ ${if (vec_input_args != "" & treeResult != "") "," else ""}
                 $res_input_arg /*2*/ $owner_comma $trailing_args_string /*3*/) {
@@ -1081,14 +1058,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
 			return
 		}
     emit("""
-package engine;
-  import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
-  import com.maxeler.maxcompiler.v2.statemachine.DFEsmInput;
-  import com.maxeler.maxcompiler.v2.statemachine.DFEsmOutput;
-  import com.maxeler.maxcompiler.v2.statemachine.DFEsmStateEnum;
-  import com.maxeler.maxcompiler.v2.statemachine.DFEsmStateValue;
-  import com.maxeler.maxcompiler.v2.statemachine.kernel.KernelStateMachine;
-  import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;
+import Chisel._
 """)
 
   val smName = name

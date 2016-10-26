@@ -77,28 +77,11 @@ trait ChiselManagerGen {
 
 
 
-  val mImportPrefix = "com.maxeler.maxcompiler.v2"
+  // val mImportPrefix = "com.maxeler.maxcompiler.v2"
   val streamClock = 150
   val memClock = 400
   val mImports = List(
-    "build.EngineParameters",
-    "kernelcompiler.Kernel",
-    "managers.standard.Manager",
-    "managers.standard.Manager.MemAccessPattern",
-    "managers.standard.Manager.IOType",
-    "managers.engine_interfaces.EngineInterface",
-    "managers.engine_interfaces.EngineInterface.Direction",
-    "managers.engine_interfaces.InterfaceParam",
-    "managers.engine_interfaces.CPUTypes",
-    "managers.custom.CustomManager",
-    "managers.custom.DFELink",
-    "managers.custom.blocks.KernelBlock",
-    "managers.custom.stdlib.DebugLevel",
-    "managers.BuildConfig",
-    "managers.custom.stdlib.MemoryControllerConfig",
-    "kernelcompiler.KernelConfiguration",
-    "kernelcompiler.KernelConfiguration.OptimizationOptions",
-    "kernelcompiler.KernelConfiguration.OptimizationOptions.OptimizationTechnique"
+    "Chisel._"
   )
 
   val oldMemImports = List(
@@ -286,54 +269,54 @@ s"""
 """
 
   def emitImports() = {
-    mImports.foreach(i => emit(s"import $mImportPrefix.$i;"))
+    mImports.foreach(i => emit(s"import $i"))
     //if (Config.newMemAPI) {
-      oldMemImports.foreach { i => emit(s"import $mImportPrefix.$i;") }
+      // oldMemImports.foreach { i => emit(s"import $mImportPrefix.$i;") }
     //} else {
       //oldMemImports.map { i => emit(s"import $mImportPrefix.$i;") }
     //}
   }
 
   def emitConstructor(memStreams: Set[Sym[Any]]) = {
-    emit(mConstructorPreamble)
-    emit("    // Setup LMEM -> DFE streams (input streams to DFE)")
-    emit("    // Setup DFE -> LMEM (output streams from DFE)")
+    // emit(mConstructorPreamble)
+    // emit("    // Setup LMEM -> DFE streams (input streams to DFE)")
+    // emit("    // Setup DFE -> LMEM (output streams from DFE)")
     memStreams.foreach{
       case tt@Def(EatReflect(BurstStore(mem,stream,ofs,len,p))) =>
         val streamName = s"${quote(mem)}_${quote(tt)}"
-        emit(s"""// BurstStore $streamName""")
-        emit(s"""    DFELink ${streamName}_out = addStreamToOnCardMemory("${streamName}_out", k.getOutput("${streamName}_out_cmd"));""")
-        emit(s"""    ${streamName}_out <== k.getOutput("${streamName}_out");""")
+        // emit(s"""// BurstStore $streamName""")
+        // emit(s"""    DFELink ${streamName}_out = addStreamToOnCardMemory("${streamName}_out", k.getOutput("${streamName}_out_cmd"));""")
+        // emit(s"""    ${streamName}_out <== k.getOutput("${streamName}_out");""")
 
       case tt@Def(EatReflect(BurstLoad(mem,stream,ofs,len,p))) =>
      	  val streamName = s"${quote(mem)}_${quote(tt)}"
-        emit(s"""// BurstLoad $streamName""")
-        emit(s"""    DFELink ${streamName}_in = addStreamFromOnCardMemory("${streamName}_in", k.getOutput("${streamName}_in_cmd"));""")
-        emit(s"""    k.getInput("${streamName}_in") <== ${streamName}_in;""")
+        // emit(s"""// BurstLoad $streamName""")
+        // emit(s"""    DFELink ${streamName}_in = addStreamFromOnCardMemory("${streamName}_in", k.getOutput("${streamName}_in_cmd"));""")
+        // emit(s"""    k.getInput("${streamName}_in") <== ${streamName}_in;""")
       case tt@Def(EatReflect(Scatter(mem,local,addrs,len,par,_))) =>
         val streamName = s"${quote(mem)}_${quote(tt)}"
-        emit(s"""// Scatter $streamName""")
+        // emit(s"""// Scatter $streamName""")
 	    val p = childrenOf(parentOf(tt).get).length
 	    val i = childrenOf(parentOf(tt).get).indexOf(tt)
-        emit(s"""    DFELink ${streamName}_out_rd_${i} = addStreamFromOnCardMemory("${streamName}_out_rd_${i}", k.getOutput("${streamName}_out_rd_cmd_${i}"));""")
-        emit(s"""    k.getInput("${streamName}_out_rd_${i}") <== ${streamName}_out_rd_${i};""")
-        emit(s"""    DFELink ${streamName}_out_$i = addStreamToOnCardMemory("${streamName}_out_$i", k.getOutput("${streamName}_out_cmd_$i"));""")
-        emit(s"""    ${streamName}_out_$i <== k.getOutput("${streamName}_out_$i");""")
+        // emit(s"""    DFELink ${streamName}_out_rd_${i} = addStreamFromOnCardMemory("${streamName}_out_rd_${i}", k.getOutput("${streamName}_out_rd_cmd_${i}"));""")
+        // emit(s"""    k.getInput("${streamName}_out_rd_${i}") <== ${streamName}_out_rd_${i};""")
+        // emit(s"""    DFELink ${streamName}_out_$i = addStreamToOnCardMemory("${streamName}_out_$i", k.getOutput("${streamName}_out_cmd_$i"));""")
+        // emit(s"""    ${streamName}_out_$i <== k.getOutput("${streamName}_out_$i");""")
       case tt@Def(EatReflect(Gather(mem,local,addrs,len,_,i))) =>
      	val streamName = s"${quote(mem)}_${quote(tt)}"
 	    val p = childrenOf(parentOf(tt).get).length
 	    val i = childrenOf(parentOf(tt).get).indexOf(tt)
-        emit(s"""// Gather $streamName""")
-        emit(s"""    DFELink ${streamName}_in_$i = addStreamFromOnCardMemory("${streamName}_in_$i", k.getOutput("${streamName}_in_cmd_$i"));""")
-        emit(s"""    k.getInput("${streamName}_in_$i") <== ${streamName}_in_$i;""")
+        // emit(s"""// Gather $streamName""")
+        // emit(s"""    DFELink ${streamName}_in_$i = addStreamFromOnCardMemory("${streamName}_in_$i", k.getOutput("${streamName}_in_cmd_$i"));""")
+        // emit(s"""    k.getInput("${streamName}_in_$i") <== ${streamName}_in_$i;""")
 
     }
-    emit(mConstructorEpilogue)
+    // emit(mConstructorEpilogue)
   }
 
   def emitRWInterface() = {
-    emit(mReadIntf)
-    emit(mWriteIntf)
+    // emit(mReadIntf)
+    // emit(mWriteIntf)
   }
 
   def emitDefaultInterface(argInOuts: Set[Sym[Reg[_]]]) = {
@@ -368,7 +351,7 @@ s"""
   }
 
   def initPass() = {
-    emit("package engine;")
+    // emit("package engine;")
     emitImports()
     emit(mPreamble)
   }
