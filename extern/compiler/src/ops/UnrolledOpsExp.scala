@@ -222,6 +222,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
       case FltPt_Sub(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Sub(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Div(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Div(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
@@ -265,6 +266,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
         if (isConstOrArgOrBnd(value)) {ret += value}
         if (isConstOrArgOrBnd(en)) {ret += en}        
       }
+      case Fixpt_to_fltpt(a) => if (isConstOrArgOrBnd(a)) {ret += a}
       case Reify(_,_,_) => 
       case ConstBit(a) => // Never add a bool constant
       // case FixPt(a) => ret += x // Always add constant

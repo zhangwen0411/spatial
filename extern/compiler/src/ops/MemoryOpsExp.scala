@@ -752,7 +752,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       if (isDummy(sram)) {addrString = quote(addr)} // Dummy override for char test
       emit(s"""${quote(sram)}_${ii}.${wrType}${addrString},
         $dataString, ${accString}${globalEnString}, new int[] {$p}); // tuple $match_tuple to ${nameOf(sram).getOrElse("")}""")
-      emit(s"""// debug.simPrintf(${accString}[0],"${nameOf(sram).getOrElse("")}-${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", ${dataString}[0], ${addrString});""")
+      emit(s"""// debug.simPrintf(${accString},"${nameOf(sram).getOrElse("")}-${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", ${dataString}, ${addrString});""")
     }
     emitComment("} Sram_store")
   }
@@ -1047,6 +1047,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       }
       val allDups = duplicatesOf(reg).zipWithIndex
       val dups = allDups.filter{case (dup, i) => instanceIndicesOf(writer, reg).contains(i) }
+      var moreEnable = ""
       val enable = en match {
         case Deff(ConstBit(true)) => s"${quote(writeCtrl)}_done"
         case _ => quote(en)
@@ -1091,7 +1092,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       // TODO: This is very bad assumption!  Actually check which reg to write to!!!
                       emit(s"""DFEVar ${quote(reg)} = ${quote(value)}; // redtype ${fps} unknown, just assign wire""")
                       val port = portsOf(writer, reg, 0).head
-                      emit(s"""${quote(reg)}_0_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_0_lib.bits)), ${quote(reg)}_en & $enable, stream.offset(${rstStr}, -1) | global_rst, $port); // ${nameOf(reg).getOrElse("")}""")
+                      moreEnable = s"${quote(reg)}_en &"
+                      emit(s"""${quote(reg)}_0_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_0_lib.bits)), $moreEnable $enable, stream.offset(${rstStr}, -1) | global_rst, $port); // ${nameOf(reg).getOrElse("")}""")
                       emit(s"""${quote(reg)}_0_delayed <== stream.offset(${quote(reg)}_0, -${quote(writeCtrl)}_offset);""")
                       // throw new Exception(s"Reduction $fps codegen unknown!")
                   }
@@ -1104,10 +1106,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     writeCtrl match { // Match is necessary for DotProduct because damn thing hangs at compile time if I offset enable and data together
                       case pp@Deff(_:UnitPipe) =>
                         if (ii > 0 | specialCase0Acc) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
-     $enable /*makes simplefold work*/, $realRst, $port); // 1 ${nameOf(reg).getOrElse("")}""")
+     $moreEnable $enable /*makes simplefold work*/, $realRst, $port); // 1 ${nameOf(reg).getOrElse("")}""")
                       case _ =>
                         if (ii > 0 | specialCase0Acc) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits))/*offset makes BFS work*/,
-     $enable /*makes simplefold work*/, $realRst, $port); // 2 ${nameOf(reg).getOrElse("")}""")
+     $moreEnable $enable /*makes simplefold work*/, $realRst, $port); // 2 ${nameOf(reg).getOrElse("")}""")
                     }
                   }
                   case None =>
