@@ -22,7 +22,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
   import IR.{assert => _, _}
 
   val GenControlLogic = false
-  val EnableSplitting = true
+  val EnableSplitting = false 
 
 
   var globals = Set[GlobalMem]()
