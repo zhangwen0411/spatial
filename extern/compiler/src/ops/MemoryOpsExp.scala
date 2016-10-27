@@ -784,7 +784,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
 DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0.type, 1).newInstance(this);
 DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
-      emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
+      emit(s"""DFEVar ${quote(sym)}_forceLdSt = ${quote(len)} > 0;""")
       emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
       emit(s"""GatherLib ${quote(sym)} = new GatherLib(
         this,
@@ -817,7 +817,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         s"${quote(par)},"
       }
       emit("{")
-      emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
+      emit(s"""DFEVar ${quote(sym)}_forceLdSt = ${quote(len)} > 0;""")
       emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
       emit(s"""ScatterLib ${quote(sym)} = new ScatterLib(
         this,
@@ -1117,6 +1117,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       val port = portsOf(writer, reg, ii).head
                       emit(s"""${quote(reg)}_${ii}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)) /*offset makes BFS work*/,
  $enable /*makes BFS work*/, global_rst, $port); // 3 ${nameOf(reg).getOrElse("")}""")
+                      if (dup.depth == 1 & ii > 0 /*totally unsure about this logic*/) {
+                        emit(s"""${quote(reg)}_${ii}_delayed <== stream.offset(${quote(reg)}_${ii}, -${quote(writeCtrl)}_offset);""")
+                      }
                     }
                     // throw new Exception(s"No reduce function found for $reg ${reduceType(reg)}")
                 }

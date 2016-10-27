@@ -15,7 +15,7 @@ trait LogRegApp extends SpatialApp {
 
   val A = 1
 
-  def sigmoid(t:Rep[Elem]) = 1.as[Elem]/(exp(-t)+1)
+  def sigmoid(t:Rep[Elem]) = t//1.as[Elem]/(exp(-t)+1)
 
   def logreg(x_in: Rep[Array[Elem]], y_in: Rep[Array[Elem]], tt: Rep[Array[Elem]], n: Rep[SInt], it: Rep[SInt]) = {
 
@@ -47,15 +47,14 @@ trait LogRegApp extends SpatialApp {
 
       Sequential(iters by 1) { epoch => 
         val gradAcc = SRAM[Elem](D)
-        Fold(N by BN par P0, P1)(gradAcc, 0.as[T]){ i =>
+        Pipe(N by BN){ i =>
           val xB = SRAM[Elem](BN, D)
           val yB = SRAM[Elem](BN)
           Parallel {
             xB := x(i::i+BN, 0::D par P2)
             yB := y(i::i+BN par P2)
           }
-          val gradient = SRAM[Elem](D)
-          Fold(BN par P3, P2)(gradient, 0.as[T]){ ii =>
+          Fold(BN par P3, P2)(gradAcc, 0.as[T]){ ii =>
             val pipe2Res = Reg[Elem]
             val subRam   = SRAM[Elem](D)
 
@@ -64,7 +63,7 @@ trait LogRegApp extends SpatialApp {
             Pipe(D par P2) {j => subRam(j) = xB(ii,j) - pipe2Res.value }
             subRam
           }{_+_}
-        }{_+_}
+        }
 
         Fold (1 by 1 par param(1),P2) (btheta, 0.as[Elem]){ j =>
           gradAcc
@@ -87,24 +86,25 @@ trait LogRegApp extends SpatialApp {
     val D = 384
 
     val sX = Array.fill(N){ Array.fill(D){ random[Elem](10.0)} }
-    val sY = Array.fill(N)( random[Elem](10.0) )
+    val sY = Array.tabulate(N){ i => i.to[Elem]}//fill(N)( random[Elem](10.0) )
     val theta = Array.fill(D) {random[Elem](1.0) }
 
     val result = logreg(sX.flatten,sY, theta, N, iters)
 
     // val gold = Array.empty[Elem](D)
     val ids = Array.tabulate(D){i => i}
-    val all_accums = sX.zip(sY) {case (row, y) => 
+    val gold = sX.zip(sY) {case (row, y) => 
       val sub = y - sigmoid(row.zip(theta){_*_}.reduce{_+_})
-      row.map{a => a - sub}
-    }
-    val gold = all_accums.reduce{(a,b) => a.zip(b){_+_}}
+      row.map{a => 
+        println("subtraction for " + y + " is " + (a - sub))
+        a - sub}
+    }.reduce{(a,b) => a.zip(b){_+_}}
 
-    // printArr(gold, "gold: ")
+    printArr(gold, "gold: ")
     printArr(result, "result: ")
 
-    val cksum = result.map{ a => a != 0 && a != 1}.reduce{_&&_}
-    println("PASS: " + cksum  + " (LogReg) // Just make sure result is something randomish")
+    val cksum = result.zip(gold){ (a,b) => a > b-margin && a < b+margin}.reduce{_&&_}
+    println("PASS: " + cksum  + " (LogReg)")
 
 
 

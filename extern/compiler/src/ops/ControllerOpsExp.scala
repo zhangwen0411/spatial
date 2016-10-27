@@ -764,7 +764,7 @@ DFEVar global_rst = init.getCount() === 0;
 
 
           case n:OpReduce[_,_] =>
-			      //TODO : what is this? seems like all reduce supported are specialized
+			      //TODO : what is tihs? seems like all reduce supported are specialized
             //  def specializeReduce(r: ReduceTree) = {
             //  val lastGraph = r.graph.takeRight(1)(0)
             //  (lastGraph.nodes.size == 1) & (r.accum.input match {
