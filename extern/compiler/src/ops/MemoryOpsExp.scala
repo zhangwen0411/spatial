@@ -988,12 +988,15 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           val port = portsOf(reader, reg, inst).head
           val nbuf = if (duplicatesOf(reg)(inst).depth > 1) {s"_lib.read($port)"} else ""
 
+          val read_and_write = { // TODO: Hack to reject address calculation regs...
+            if (writersOf(reg).map{_.controlNode}.contains(reader.controlNode) & nameOf(reg).getOrElse("") != "") true else false}
+
           val regStr = regType(reg) match {
             case Regular =>
               val suffix = {
                 if (!controlNodeStack.isEmpty) controlNodeStack.top match {
                   case Deff(n: UnrolledReduce[_,_]) => if (n.acc == reg) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
-                  case top@Deff(UnitPipe(_)) => if (isAccum(reg) && writtenIn(top).contains(reg)) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
+                  case top@Deff(UnitPipe(_)) => if ((isAccum(reg) | read_and_write) && writtenIn(top).contains(reg)) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
                   case _ => ""
                 }
                 else ""
@@ -1065,7 +1068,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
         case _ =>
           // Figure out if this writer also has a reader
-          val read_and_write = if (readersOf(reg).map{_.controlNode}.contains(writeCtrl)) true else false
+          val read_and_write = { // TODO: Hack to reject address calculation regs... It made PageRank work
+            if (readersOf(reg).map{_.controlNode}.contains(writer.controlNode) & nameOf(reg).getOrElse("") != "") true else false }
           if (isAccum(reg) | read_and_write) {
             var delayWrenToo = false // Hack to fix specialized accumulators where inputs to accum are delayed (since it makes BFS work)
             // Not sure how to decide this now...
