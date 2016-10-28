@@ -761,7 +761,7 @@ DFEVar global_rst = init.getCount() === 0;
 
 
           case n:OpReduce[_,_] =>
-			      //TODO : what is this? seems like all reduce supported are specialized
+			      //TODO : what is tihs? seems like all reduce supported are specialized
             //  def specializeReduce(r: ReduceTree) = {
             //  val lastGraph = r.graph.takeRight(1)(0)
             //  (lastGraph.nodes.size == 1) & (r.accum.input match {
@@ -879,10 +879,16 @@ DFEVar ${quote(sym)}_maxed = ${quote(sym)}.getOutput("saturated");""")
     }
 
     emit(s"""OffsetExpr ${quote(sym)}_additionalOffset = new OffsetExpr();""")
+    var percentD = List()
+    var maxs = List()
+    var currents = List()
     counters.zipWithIndex.map { case (ctr, i) =>
       emit(s"""${quote(sym)}.connectInput("max${i}", ${quote(sym)}_max[${i}]);""")
       if (parOf(ctr) == 1) {
         emit(s"""DFEVar ${quote(ctr)} = ${quote(sym)}.getOutput("counter${i}");""")
+        percentD = percentD :+ "%d"
+        currents = currents :+ s"${quote(ctr)}"
+        maxs = maxs :+ s"${quote(sym)}_max[${i}]"
         // cast(n.ctrs(i)) // Cast if necessary
       } else {
         emit(s"""DFEVector<DFEVar> ${quote(ctr)} = new DFEVectorType<DFEVar>(dfeInt(32), ${parOf(ctr)}).newInstance(this);
@@ -890,11 +896,17 @@ ${quote(ctr)}[0] <== ${quote(sym)}.getOutput("counter${i}");
 for (int i = 0; i < ${parOf(ctr)-1}; i++) {
   ${quote(ctr)}[i+1] <== ${quote(sym)}.getOutput("counter${i}_extension" + i);
 }""")
+        percentD = percentD :+ " %d"
+        currents = currents :+ s"${quote(ctr)}[0]"
+        maxs = maxs :+ s"${quote(sym)}_max[${i}]"
         // (0 until n.par(i)) map {k =>
         //     cast(n.ctrs(i)) // Cast if necessary
         // }
       }
     }
+
+    emit(s"""// debug.simPrintf(${quote(sym)}_en, "counter ${quote(sym)}: ${percentD.mkString(" ")} / ${percentD.mkString(" ")}\\n", ${currents.mkString(",")}, ${maxs.mkString(",")});""")
+
 
     parent match {
       case Deff(UnrolledForeach(_,_,counts,vs)) =>

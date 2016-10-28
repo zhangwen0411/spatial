@@ -713,7 +713,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           wrType = s"connectBankWport($bank_num, "
           addrString = offsetPre + quote(addr) + offsetPost
         case (_,_,1,1) => // distinctParents > 1, so writers_length must be > 1
-          wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
+          wrType = "connectWport(" // if portsOf(write,sram,ii).length > 1, broadcast
           addrString = offsetPre + quote(addr) + offsetPost
         case (_,1,_,1) =>
           offsetPre = "";offsetPost = "" // Turn off offset b/c it makes BramTest work....
@@ -730,10 +730,10 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
         case (1,1,_,2) =>
           addrString = row_col_indices(inds, offsetPre, offsetPost)
         case (_,_,_,1) =>
-          wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
+          wrType = "connectWport(" // if portsOf(write,sram,ii).length > 1, broadcast
           addrString = offsetPre + quote(addr) + offsetPost
         case (_,_,1,2) =>
-          wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
+          wrType = "connectWport(" // if portsOf(write,sram,ii).length > 1, broadcast
           addrString = offsetPre + quote(inds(0)(0)) + offsetPost + ", " + offsetPre + quote(inds(0)(1)) + offsetPost
         case (_,1,_,2) =>
           offsetPre = "";offsetPost = "" // Turn off offset b/c it makes BramTest work....
@@ -742,18 +742,17 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           addrString = row_col_indices(inds, offsetPre, offsetPost)
         case (_,_,_,2) =>
           addrString = row_col_indices(inds, offsetPre, offsetPost)
-          wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
+          wrType = "connectWport(" // if portsOf(write,sram,ii).length > 1, broadcast
         case (_,_,_,_) =>
           throw new Exception("MaxJ generation of more than 2D sRAMs is currently unsupported.")
       }
       val dataString = offsetPre + dataStr + offsetPost
       val accString = offsetPre + accEn + offsetPost
       val globalEnString = globalEnComma + offsetPre + globalEn + offsetPost
-      if (isDummy(sram)) {
-        addrString = quote(addr)} // Dummy override for char test
+      if (isDummy(sram)) {addrString = quote(addr)} // Dummy override for char test
       emit(s"""${quote(sram)}_${ii}.${wrType}${addrString},
         $dataString, ${accString}${globalEnString}, new int[] {$p}); // tuple $match_tuple to ${nameOf(sram).getOrElse("")}""")
-      emit(s"""// debug.simPrintf(${accString}[0],"${nameOf(sram).getOrElse("")}-${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", ${dataString}[0], ${addrString}[0]);""")
+      emit(s"""// debug.simPrintf(${accString},"${nameOf(sram).getOrElse("")}-${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", ${dataString}, ${addrString});""")
     }
     emitComment("} Sram_store")
   }
@@ -785,7 +784,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
 DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0.type, 1).newInstance(this);
 DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
-      emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
+      emit(s"""DFEVar ${quote(sym)}_forceLdSt = ${quote(len)} > 0;""")
       emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
       emit(s"""GatherLib ${quote(sym)} = new GatherLib(
         this,
@@ -818,7 +817,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         s"${quote(par)},"
       }
       emit("{")
-      emit(s"""DFEVar ${quote(sym)}_forceLdSt = constant.var(true);""")
+      emit(s"""DFEVar ${quote(sym)}_forceLdSt = ${quote(len)} > 0;""")
       emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
       emit(s"""ScatterLib ${quote(sym)} = new ScatterLib(
         this,
@@ -888,6 +887,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         case _ : Throwable => nbits(sym.tp.typeArguments(0).typeArguments(2)) + nbits(sym.tp.typeArguments(0).typeArguments(1))
         }
       }
+      val Deff(dd) = sym
+      val Deff(ii) = init
+
+      val distinctParents = writersOf(sym).map{writer => parentOf(writer.controlNode)}.distinct
 
       // val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
 
@@ -902,7 +905,21 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
             case ConstFix(rv) => rv
             case ConstFlt(rv) => rv
-            case _ => 0
+            case Deff(Internal_pack2(a,b)) => 
+              val msb = a match {
+                case Deff(ConstFix(rv:Int)) => rv.toLong
+                case Deff(ConstFlt(rv:Float)) => java.lang.Float.floatToIntBits(rv).toLong
+                case _ => throw new Exception(s"First el in reg tuple unknown"); 0
+              }
+              val lsb = b match {
+                case Deff(ConstFix(rv:Int)) => rv.toLong
+                case Deff(ConstFlt(rv:Float)) => java.lang.Float.floatToIntBits(rv).toLong
+                case Deff(ConstFlt(rv:Double)) => java.lang.Float.floatToIntBits(rv.toFloat).toLong
+                case Deff(ConstFlt(rv:Int)) => java.lang.Float.floatToIntBits(rv.toFloat).toLong
+                case _ => throw new Exception(s"Second el in reg tuple unknown"); 0
+              }
+              Console.println(s"regdef $dd $ii $init rstval ${resetValue(sym.asInstanceOf[Sym[Reg[Any]]])}, type ${a} ${msb} ${b} ${lsb}")
+              (msb << 32) + lsb
           }
           duplicates.zipWithIndex.foreach { case (d, i) =>
             val skipKerneledReg = (reduceType(sym), i) match {
@@ -919,9 +936,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 if (!skipKerneledReg | (skipKerneledReg & d.depth>1)) {
                   val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
                   if (d.depth > 1) {
-                    emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $bits, "${quote(sym)}_${i}", ${parOf(sym)}, $rstVal, ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
+                    emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $bits, "${quote(sym)}_${i}", ${parOf(sym)}, $rstVal, ${d.depth}); // TODO: Broadcast properly ${nameOf(sym).getOrElse("")}""")
                   } else {
-                    emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, $bits, $rstVal); // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}""")
+                    emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, $bits, $rstVal, ${distinctParents.length} /*muxsize*/); // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}""")
                     val readstr = if (parOf(sym) > 1) "readv" else "read"
                     emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
                     emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = dfeRawBits(${bits}).newInstance(this); // ${nameOf(sym).getOrElse("")}""")
@@ -971,12 +988,15 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           val port = portsOf(reader, reg, inst).head
           val nbuf = if (duplicatesOf(reg)(inst).depth > 1) {s"_lib.read($port)"} else ""
 
+          val read_and_write = { // TODO: Hack to reject address calculation regs...
+            if (writersOf(reg).map{_.controlNode}.contains(reader.controlNode) & nameOf(reg).getOrElse("") != "") true else false}
+
           val regStr = regType(reg) match {
             case Regular =>
               val suffix = {
                 if (!controlNodeStack.isEmpty) controlNodeStack.top match {
                   case Deff(n: UnrolledReduce[_,_]) => if (n.acc == reg) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
-                  case top@Deff(UnitPipe(_)) => if (isAccum(reg) && writtenIn(top).contains(reg)) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
+                  case top@Deff(UnitPipe(_)) => if ((isAccum(reg) | read_and_write) && writtenIn(top).contains(reg)) "_delayed" else "" // Use the delayed (stream-offset) version inside reduce
                   case _ => ""
                 }
                 else ""
@@ -1019,7 +1039,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
       val writer = writersOf(reg).find(_.node == sym).get
 
-      val writeCtrl = writersOf(reg).head.controlNode  // Regs have unique writer which also drives reset
+      val writeCtrl = writer.controlNode  // Regs have unique writer which also drives reset
       val isTup =  try { // TODO: Spent way too much time trying to figure out how to get bit info from tuples (╯°□°)╯︵ ┻━┻
         val dummy = nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(1))
         true
@@ -1032,6 +1052,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       }
       val allDups = duplicatesOf(reg).zipWithIndex
       val dups = allDups.filter{case (dup, i) => instanceIndicesOf(writer, reg).contains(i) }
+      var moreEnable = ""
       val enable = en match {
         case Deff(ConstBit(true)) => s"${quote(writeCtrl)}_done"
         case _ => quote(en)
@@ -1046,7 +1067,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           emit(s"""io.scalarOutput("${quote(reg)}", ${quote(value)}, $ts, $controlStr);""")
 
         case _ =>
-          if (isAccum(reg)) {
+          // Figure out if this writer also has a reader
+          val read_and_write = { // TODO: Hack to reject address calculation regs... It made PageRank work
+            if (readersOf(reg).map{_.controlNode}.contains(writer.controlNode) & nameOf(reg).getOrElse("") != "") true else false }
+          if (isAccum(reg) | read_and_write) {
             var delayWrenToo = false // Hack to fix specialized accumulators where inputs to accum are delayed (since it makes BFS work)
             // Not sure how to decide this now...
             val accEn = writeCtrl match {
@@ -1070,13 +1094,14 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(stream.offset(${quote(value)}, /*found dlay empirically*/1-${quote(writeCtrl)}_offset), ${quote(reg)}_accParams);""")
                       emit(s"""debug.simPrintf(${quote(reg)}_en & stream.offset(${quote(reg)}_en, -1) /* uncommented because maxj sucks */, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
                     case FltPtSum =>
-                      emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
+                      emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, stream.offset(${rstStr}, -1), true);""")
                       emit(s"""// debug.simPrintf(${quote(reg)}_en, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
                     case _ =>
                       // TODO: This is very bad assumption!  Actually check which reg to write to!!!
                       emit(s"""DFEVar ${quote(reg)} = ${quote(value)}; // redtype ${fps} unknown, just assign wire""")
                       val port = portsOf(writer, reg, 0).head
-                      emit(s"""${quote(reg)}_0_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_0_lib.bits)), $enable, global_rst, $port); // ${nameOf(reg).getOrElse("")}""")
+                      moreEnable = s"${quote(reg)}_en &"
+                      emit(s"""${quote(reg)}_0_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_0_lib.bits)), $moreEnable $enable, stream.offset(${rstStr}, -1) | global_rst, $port); // ${nameOf(reg).getOrElse("")}""")
                       emit(s"""${quote(reg)}_0_delayed <== stream.offset(${quote(reg)}_0, -${quote(writeCtrl)}_offset);""")
                       // throw new Exception(s"Reduction $fps codegen unknown!")
                   }
@@ -1089,10 +1114,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     writeCtrl match { // Match is necessary for DotProduct because damn thing hangs at compile time if I offset enable and data together
                       case pp@Deff(_:UnitPipe) =>
                         if (ii > 0 | specialCase0Acc) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)),
-     $enable /*makes simplefold work*/, $realRst, $port); // 1 ${nameOf(reg).getOrElse("")}""")
+     $moreEnable $enable /*makes simplefold work*/, $realRst, $port); // 1 ${nameOf(reg).getOrElse("")}""")
                       case _ =>
                         if (ii > 0 | specialCase0Acc) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits))/*offset makes BFS work*/,
-     $enable /*makes simplefold work*/, $realRst, $port); // 2 ${nameOf(reg).getOrElse("")}""")
+     $moreEnable $enable /*makes simplefold work*/, $realRst, $port); // 2 ${nameOf(reg).getOrElse("")}""")
                     }
                   }
                   case None =>
@@ -1100,6 +1125,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                       val port = portsOf(writer, reg, ii).head
                       emit(s"""${quote(reg)}_${ii}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)) /*offset makes BFS work*/,
  $enable /*makes BFS work*/, global_rst, $port); // 3 ${nameOf(reg).getOrElse("")}""")
+                      if (dup.depth == 1 & ii > 0 /*totally unsure about this logic*/) {
+                        emit(s"""${quote(reg)}_${ii}_delayed <== stream.offset(${quote(reg)}_${ii}, -${quote(writeCtrl)}_offset);""")
+                      }
                     }
                     // throw new Exception(s"No reduce function found for $reg ${reduceType(reg)}")
                 }

@@ -15,6 +15,7 @@ trait SpatialAffineAnalysisExp extends AffineAnalysisExp {
   // Pair of symbols for nodes used in address calculation addition nodes
   override def indexPlusUnapply(x: Exp[Index]): Option[(Exp[Index], Exp[Index])] = x match {
     case Deff(FixPt_Add(a,b)) => Some((a.asInstanceOf[Exp[Index]],b.asInstanceOf[Exp[Index]])) // annoying erasure here
+    case Deff(FixPt_Sub(a,b)) => Some((a.asInstanceOf[Exp[Index]],b.asInstanceOf[Exp[Index]])) //
     case _ => None
   }
   // Pair of symbols for nodes used in address calculation multiplication nodes

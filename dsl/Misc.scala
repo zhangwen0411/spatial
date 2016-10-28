@@ -141,7 +141,7 @@ trait SpatialMisc {
      **/
     infix (API) ("update", T, (MArray(T), Idx, T) :: MUnit, effect = write(0)) implements composite ${ array_update($0, fix_to_int($1), $2) }
 
-    infix (API) ("foreach", T, (MArray(T), T ==> MUnit) :: MUnit, effect = simple) implements composite ${ array_foreach($0, $1) }
+    // infix (API) ("foreach", T, (MArray(T), T ==> MUnit) :: MUnit, effect = simple) implements composite ${ array_foreach($0, $1) }
     infix (API) ("map", (T,R), (MArray(T), T ==> R) :: MArray(R)) implements composite ${ array_map($0, $1) }
     infix (API) ("zip", (T,S,R), CurriedMethodSignature(List(List(MArray(T),MArray(S)), List( (T,S) ==> R)), MArray(R))) implements composite ${
       array_zip($0, $1, $2)

@@ -330,7 +330,7 @@ trait Controllers {
     // Reduce(N by B)(0){i => f(i)}{_+_}
 
     direct (Pipe) ("Reduce", T, CurriedMethodSignature(List(List(CounterChain), List(T), List(Indices ==> T), List((T,T) ==> T)), Reg(T)), TNum(T)) implements composite ${
-      val accumulator = Reg[T]
+      val accumulator = Reg[T]($1)
       val pipe = reduce_op($0, accumulator, Some($1), $2, $3)
       styleOf(pipe) = InnerPipe
       accumulator
