@@ -227,6 +227,11 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case Def(d) => isParallel(d)
     case _ => false
   }
+  def isUnitPipe(s: Exp[Any]): Boolean = s match {
+    case Deff(_:UnitPipe) => true
+    case _ => false
+  }
+
 
   def isPipeline(d: Def[Any]): Boolean = d match {
     case EatReflect(_:OpForeach)    => true

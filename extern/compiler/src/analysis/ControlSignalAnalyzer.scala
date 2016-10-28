@@ -288,8 +288,10 @@ trait ControlSignalAnalyzer extends Traversal {
 
 
     // Scatter and gather are very high level nodes right now
-    case e:Scatter[_] => parFactorOf(e.i) = e.par
-    case e:Gather[_]  => parFactorOf(e.i) = e.par
+    case e:Scatter[_]   => parFactorOf(e.i) = e.par
+    case e:Gather[_]    => parFactorOf(e.i) = e.par
+    case e:Convolve[_]  => e.inds.zip(e.pars).foreach{case (i,p) => parFactorOf(i) = p }
+    case e:ConvLayer[_] => e.inds.zip(e.pars).foreach{case (i,p) => parFactorOf(i) = p }
 
     case _ => blocks(rhs).foreach{blk => traverseBlock(blk)}
   }

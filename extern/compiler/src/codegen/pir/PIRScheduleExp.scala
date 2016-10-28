@@ -329,9 +329,7 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
     override val parent: Option[ComputeUnit],
     val tpe: ControlType
   ) extends ComputeUnit(name,pipe,parent) {
-    override def dumpString = s"""BasicComputeUnit($name, $parent, $tpe){
-${super.dumpString}
-}"""
+    override def dumpString = s"BasicComputeUnit($name, $parent, $tpe){\n${super.dumpString}\n}"
     override def toString() = s"CU$name"
 
     var isUnitCompute = false
@@ -345,13 +343,10 @@ ${super.dumpString}
     var vec: VectorMem,
     val mode: MemoryMode
   ) extends ComputeUnit(name,pipe,parent) {
-    override def dumpString = s"""TileTransferUnit($name, $parent, $ctrl, $mode){
-${super.dumpString}
-}"""
+    override def dumpString = s"TileTransferUnit($name, $parent, $ctrl, $mode){\n${super.dumpString}\n}"
     override def toString() = s"TU$name"
   }
 
-  // TODO: Parallelism?
   case class CUCounter(name: String, start: LocalMem, end: LocalMem, stride: LocalMem)
 
   sealed abstract class CUCounterChain(val name: String) {
@@ -380,14 +375,11 @@ ${super.dumpString}
     var writeCtrl: Option[CUCounterChain] = None
     var banking: Option[SRAMBanking] = None
     var bufferDepth:Int = 1
+    var isFIFO: Boolean = false
 
-    override def toString = s"SRAM$name"
+    override def toString = if (isFIFO) s"FIFO$name" else s"SRAM$name"
 
-    def dumpString = s"""CUMemory($name, $size) {
-  vector = $vector
-  readAddr = $readAddr
-  writeAddr = $writeAddr
-}"""
+    def dumpString = s"CUMemory($name, $size)(vector = $vector, readAddr = $readAddr, writeAddr = $writeAddr, isFIFO=$isFIFO)"
   }
 
 }

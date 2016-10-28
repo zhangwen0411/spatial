@@ -30,6 +30,10 @@ trait PIRGen extends Traversal with PIRCommon {
   lazy val scheduler = new PIRScheduler{val IR: PIRGen.this.IR.type = PIRGen.this.IR}
   lazy val optimizer = new PIROptimizer{val IR: PIRGen.this.IR.type = PIRGen.this.IR}
   lazy val splitter  = new PIRSplitter{val IR: PIRGen.this.IR.type = PIRGen.this.IR}
+  lazy val retimer   = new PIRRetiming{val IR: PIRGen.this.IR.type = PIRGen.this.IR}
+
+  lazy val dse       = new PIRDSE{val IR: PIRGen.this.IR.type = PIRGen.this.IR}
+
   lazy val top       = prescheduler.top
   val cus = HashMap[Exp[Any],List[ComputeUnit]]()
 
@@ -70,13 +74,21 @@ trait PIRGen extends Traversal with PIRCommon {
     optimizer.globals = (prescheduler.globals ++ scheduler.globals)
     optimizer.cuMapping ++= cuMapping.toList
     optimizer.run(b)
-
+    // dse
+    dse.globals = optimizer.globals
+    dse.cuMapping ++= optimizer.cuMapping.toList
+    dse.run(b)
+    // splitting
     splitter.globals = optimizer.globals
     splitter.cuMapping ++= optimizer.cuMapping.toList
     splitter.run(b)
-
-    globals = splitter.globals
-    cus ++= splitter.cus.toList
+    // retiming
+    retimer.globals = splitter.globals
+    retimer.cus ++= splitter.cus
+    retimer.run(b)
+    // gen
+    globals = retimer.globals
+    cus ++= retimer.cus
 
     debug("Scheduling complete. Generating...")
     generateHeader()
@@ -124,11 +136,12 @@ trait PIRGen extends Traversal with PIRCommon {
   def cuDeclaration(cu: ComputeUnit) = {
     val parent = cu.parent.map(_.name).getOrElse("top")
     val deps = cu.deps.map{dep => dep.name }.mkString("List(", ", ", ")")
+    val isCtrl = cu.allStages.isEmpty
     cu match {
       case cu: BasicComputeUnit if cu.isUnitCompute =>
         s"""UnitPipeline(name ="${cu.name}", parent=$parent, deps=$deps)"""
       case cu: BasicComputeUnit =>
-        s"""${quote(cu.tpe)}(name="${cu.name}", parent=$parent, deps=$deps)"""
+        s"""${quote(cu.tpe, isCtrl)}(name="${cu.name}", parent=$parent, deps=$deps)"""
       case cu: TileTransferUnit =>
         s"""TileTransfer(name="${cu.name}", parent=$parent, memctrl=${quote(cu.ctrl)}, mctpe=${cu.mode}, deps=$deps, vec=${quote(cu.vec)})"""
     }
@@ -178,16 +191,19 @@ trait PIRGen extends Traversal with PIRCommon {
 
     case sram@CUMemory(sym, size) =>
       debug(s"Generating ${sram.dumpString}")
-      var decl = s"""val ${quote(sym)} = SRAM(size = $size"""
+      val prefix = if (sram.isFIFO) "FIFO" else "SRAM"
+
+      var decl = s"""val ${quote(sym)} = $prefix(size = $size"""
       sram.writeCtrl match {
         case Some(cchain) => decl += s""", writeCtr = ${cchain.name}(0)"""
+        case None if sram.isFIFO => // Ok
         case None => throw new Exception(s"No write controller defined for $sram")
       }
       sram.banking match {
         case Some(banking) => decl += s""", banking = $banking"""
         case None => throw new Exception(s"No banking defined for $sram")
       }
-      if (sram.bufferDepth > 1) {
+      if (sram.bufferDepth > 1 && !sram.isFIFO) {
         val swapRead = sram.swapRead match {
           case Some(cchain) => s"swapRead = ${cchain.name}(0)"
           case None => throw new Exception(s"No swap read controller defined for $sram")
@@ -197,7 +213,8 @@ trait PIRGen extends Traversal with PIRCommon {
           case None => throw new Exception(s"No swap write controller defined for $sram")
         }
         decl += s""", buffering = MultiBuffer(${sram.bufferDepth}, ${swapRead}, ${swapWrite}))"""
-      } else {
+      }
+      else if (!sram.isFIFO) {
         decl += s""", buffering = SingleBuffer())"""
       }
 
@@ -209,11 +226,13 @@ trait PIRGen extends Traversal with PIRCommon {
       sram.readAddr match {
         case Some(_:CounterReg | _:ConstReg) => decl += s""".rdAddr(${quote(sram.readAddr.get)})"""
         case Some(_:ReadAddrWire) =>
+        case addr if sram.isFIFO => // ok
         case addr => throw new Exception(s"Disallowed memory read address in $sram: $addr")
       }
       sram.writeAddr match {
         case Some(_:CounterReg | _:ConstReg) => decl += s""".wtAddr(${quote(sram.writeAddr.get)})"""
         case Some(_:WriteAddrWire | _:LocalWriteReg) =>
+        case addr if sram.isFIFO => // ok
         case addr => throw new Exception(s"Disallowed memory write address in $sram: $addr")
       }
       emit(decl)
@@ -250,11 +269,12 @@ trait PIRGen extends Traversal with PIRCommon {
     case LocalVector        => "local"
   }
 
-  def quote(tpe: ControlType) = tpe match {
-    case InnerPipe => "Pipeline"
-    case CoarsePipe => "MetaPipeline"
-    case SequentialPipe => "Sequential"
-    case StreamPipe => throw new Exception("Stream pipe not yet supported in PIR")
+  def quote(tpe: ControlType, isCtrl: Boolean) = tpe match {
+    case InnerPipe            => "Pipeline"
+    case CoarsePipe           => "MetaPipeline"
+    case SequentialPipe       => "Sequential"
+    case StreamPipe if isCtrl => "StreamController"
+    case StreamPipe           => "StreamPipeline"
   }
 
   def quote(reg: LocalMem): String = reg match {
