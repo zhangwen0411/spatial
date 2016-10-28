@@ -204,6 +204,12 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:ListVector[_])    => true
     case _ => false
   }
+  // Allocations which can be directly used in primitive computation
+  def isPrimitiveAllocation(d: Def[Any]): Boolean = d match {
+    case EatReflect(_:DeliteStruct[_]) => true
+    case EatReflect(_:ListVector[_]) => true
+    case _ => false
+  }
 
   def isOffChipTransfer(d: Def[Any]): Boolean = d match {
     case EatReflect(_:BurstLoad[_])  => true
@@ -381,6 +387,11 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case Def(d) => isDynamicAllocation(d)
     case _ => false
   }
+  def isPrimitiveAllocation(s: Exp[Any]): Boolean = s match {
+    case Def(d) => isPrimitiveAllocation(d)
+    case _ => false
+  }
+
   def isLocalMemory(s: Exp[Any]) = isReg(s.tp) || isSRAM(s.tp) || isFIFO(s.tp) || isCache(s.tp)
 
   // Checks to see if lhs is dependent on rhs (used for checking for accum. cycles)

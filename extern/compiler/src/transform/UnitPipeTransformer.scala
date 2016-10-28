@@ -101,7 +101,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
               curStage.regReads += stm
             }
             else if (isAllocation(s) || isConstant(s) || isGlobal(s)) {
-              if (isDynamicAllocation(s) && !curStage.isControl) curStage.nodes += stm
+              if (isPrimitiveAllocation(s) && !curStage.isControl) curStage.nodes += stm
               else curStage.allocs += stm
             }
             else {
