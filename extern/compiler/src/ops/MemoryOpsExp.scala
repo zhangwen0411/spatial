@@ -713,7 +713,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           wrType = s"connectBankWport($bank_num, "
           addrString = offsetPre + quote(addr) + offsetPost
         case (_,_,1,1) => // distinctParents > 1, so writers_length must be > 1
-          wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
+          wrType = "connectWport(" // if portsOf(write,sram,ii).length > 1, broadcast
           addrString = offsetPre + quote(addr) + offsetPost
         case (_,1,_,1) =>
           offsetPre = "";offsetPost = "" // Turn off offset b/c it makes BramTest work....
@@ -730,10 +730,10 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
         case (1,1,_,2) =>
           addrString = row_col_indices(inds, offsetPre, offsetPost)
         case (_,_,_,1) =>
-          wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
+          wrType = "connectWport(" // if portsOf(write,sram,ii).length > 1, broadcast
           addrString = offsetPre + quote(addr) + offsetPost
         case (_,_,1,2) =>
-          wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
+          wrType = "connectWport(" // if portsOf(write,sram,ii).length > 1, broadcast
           addrString = offsetPre + quote(inds(0)(0)) + offsetPost + ", " + offsetPre + quote(inds(0)(1)) + offsetPost
         case (_,1,_,2) =>
           offsetPre = "";offsetPost = "" // Turn off offset b/c it makes BramTest work....
@@ -742,7 +742,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           addrString = row_col_indices(inds, offsetPre, offsetPost)
         case (_,_,_,2) =>
           addrString = row_col_indices(inds, offsetPre, offsetPost)
-          wrType = if (portsOf(write,sram,ii).toList.length > 1) {"connectBroadcastWport("} else {"connectWport("}
+          wrType = "connectWport(" // if portsOf(write,sram,ii).length > 1, broadcast
         case (_,_,_,_) =>
           throw new Exception("MaxJ generation of more than 2D sRAMs is currently unsupported.")
       }
@@ -890,6 +890,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val Deff(dd) = sym
       val Deff(ii) = init
 
+      val distinctParents = writersOf(sym).map{writer => parentOf(writer.controlNode)}.distinct
+
       // val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
 
       if (!regs.contains(alias.asInstanceOf[Sym[Reg[Any]]])) {
@@ -934,9 +936,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 if (!skipKerneledReg | (skipKerneledReg & d.depth>1)) {
                   val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
                   if (d.depth > 1) {
-                    emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $bits, "${quote(sym)}_${i}", ${parOf(sym)}, $rstVal, ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
+                    emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $bits, "${quote(sym)}_${i}", ${parOf(sym)}, $rstVal, ${d.depth}); // TODO: Broadcast properly ${nameOf(sym).getOrElse("")}""")
                   } else {
-                    emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, $bits, $rstVal); // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}""")
+                    emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, $bits, $rstVal, ${distinctParents.length} /*muxsize*/); // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}""")
                     val readstr = if (parOf(sym) > 1) "readv" else "read"
                     emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
                     emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = dfeRawBits(${bits}).newInstance(this); // ${nameOf(sym).getOrElse("")}""")
@@ -1034,7 +1036,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
       val writer = writersOf(reg).find(_.node == sym).get
 
-      val writeCtrl = writersOf(reg).head.controlNode  // Regs have unique writer which also drives reset
+      val writeCtrl = writer.controlNode  // Regs have unique writer which also drives reset
       val isTup =  try { // TODO: Spent way too much time trying to figure out how to get bit info from tuples (╯°□°)╯︵ ┻━┻
         val dummy = nbits(reg.tp.typeArguments(0).typeArguments(0).typeArguments(1))
         true
@@ -1062,7 +1064,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           emit(s"""io.scalarOutput("${quote(reg)}", ${quote(value)}, $ts, $controlStr);""")
 
         case _ =>
-          if (isAccum(reg)) {
+          // Figure out if this writer also has a reader
+          val read_and_write = if (readersOf(reg).map{_.controlNode}.contains(writeCtrl)) true else false
+          if (isAccum(reg) | read_and_write) {
             var delayWrenToo = false // Hack to fix specialized accumulators where inputs to accum are delayed (since it makes BFS work)
             // Not sure how to decide this now...
             val accEn = writeCtrl match {

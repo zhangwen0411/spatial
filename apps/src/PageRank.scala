@@ -31,24 +31,24 @@ trait PageRankApp extends SpatialApp {
   val margin = 1
 
 
-  def pagerank(INpages: Rep[Array[T]], INedges: Rep[Array[SInt]], INcounts: Rep[Array[SInt]], INedgeId: Rep[Array[SInt]], INedgeLen: Rep[Array[SInt]], OCiters: Rep[SInt], OCdamp: Rep[T]) = {
+  def pagerank(INpages: Rep[Array[T]], INedges: Rep[Array[SInt]], INcounts: Rep[Array[SInt]], INedgeId: Rep[Array[SInt]], INedgeLen: Rep[Array[SInt]], OCiters: Rep[SInt], OCdamp: Rep[T], np: Rep[SInt]) = {
 
-    val np = 96
     val NE = 9216
     val tileSize = 96 // For now
     val iters = ArgIn[SInt]
     val NP    = ArgIn[SInt]
     val damp  = ArgIn[T]
-    val OCpages    = DRAM[T](np)
-    val OCedges    = DRAM[SInt](NE)    // srcs of edges
-    val OCcounts   = DRAM[SInt](NE)    // counts for each edge
-    val OCedgeId = DRAM[SInt](np) // Start index of edges
-    val OCedgeLen = DRAM[SInt](np) // Number of edges for each page
-    // val OCresult   = DRAM[T](np)
-
     setArg(iters, OCiters)
     setArg(NP, np)
     setArg(damp, OCdamp)
+
+    val OCpages    = DRAM[T](NP)
+    val OCedges    = DRAM[SInt](NE)    // srcs of edges
+    val OCcounts   = DRAM[SInt](NE)    // counts for each edge
+    val OCedgeId = DRAM[SInt](NP) // Start index of edges
+    val OCedgeLen = DRAM[SInt](NP) // Number of edges for each page
+    // val OCresult   = DRAM[T](np)
+
     setMem(OCpages, INpages)
     setMem(OCedges, INedges)
     setMem(OCcounts, INcounts)
@@ -82,12 +82,14 @@ trait PageRankApp extends SpatialApp {
             val onAddr = Reg[SInt](0)
             val frontierOff = SRAM[SInt](tileSize)
             val frontierOn = SRAM[T](tileSize)
-            Pipe(numEdges.value by 1){ i =>
+            Sequential(numEdges.value by 1){ i =>
               val addr = edges(i) // Write addr to both tiles, but only inc one addr
               Pipe{frontierOff(offAddr.value) = addr }
               Pipe{frontierOn(onAddr.value) = currentPR(addr)}
-              Pipe{onAddr := mux(i == 0, 0, onAddr.value) + mux(addr >= tid && addr < tid+tileSize, 1, 0)}
-              Pipe{offAddr := mux(i == 0, 0, offAddr.value) + mux(addr >= tid && addr < tid+tileSize, 0, 1)}
+              Parallel{
+                Pipe{onAddr := onAddr.value + mux(addr >= tid && addr < tid+tileSize, 1, 0)}
+                Pipe{offAddr := offAddr.value + mux(addr >= tid && addr < tid+tileSize, 0, 1)}
+              }
             }
             // Gather offchip ranks
             val gatheredPR = SRAM[T](tileSize)
@@ -104,6 +106,13 @@ trait PageRankApp extends SpatialApp {
 
             // Update PR
             currentPR(pid) = pr.value * damp + (1.as[T] - damp)
+
+            // Reset counts
+            Parallel{
+              Pipe{onAddr := 0}
+              Pipe{offAddr := 0}
+            }
+
           }
           OCpages(tid::tid+tileSize) := currentPR
         }
@@ -125,12 +134,12 @@ trait PageRankApp extends SpatialApp {
     val NE = 18432
 
     val OCpages = Array.tabulate[T](NP){i => random[T](3)}
-    val OCedges = Array.tabulate(NP){i => Array.tabulate(edges_per_page) {j => j*7}}.flatten
+    val OCedges = Array.tabulate(NP){i => Array.tabulate(edges_per_page) {j => j}}.flatten
     val OCcounts = Array.tabulate(NP){i => Array.tabulate(edges_per_page) { j => edges_per_page }}.flatten
     val OCedgeId = Array.tabulate(NP) {i => i*edges_per_page } 
     val OCedgeLen = Array.tabulate(NP) { i => edges_per_page }
 
-    val result = pagerank(OCpages, OCedges, OCcounts, OCedgeId, OCedgeLen, iters, damp)
+    val result = pagerank(OCpages, OCedges, OCcounts, OCedgeId, OCedgeLen, iters, damp, NP)
 
 
     val gold = Array.empty[T](NP)
@@ -148,10 +157,10 @@ trait PageRankApp extends SpatialApp {
       val these_pages = these_edges.map{j => gold(j)}
       val these_counts = these_edges.map{j => OCcounts(j)}
       val pr = these_pages.zip(these_counts){ (p,c) => 
-        println("page " + i + " doing " + p + " / " + c)
+        // println("page " + i + " doing " + p + " / " + c)
         p/c.to[T]
       }.reduce{_+_}
-      println("new pr for " + i + " is " + pr)
+      // println("new pr for " + i + " is " + pr)
       gold(i) = pr*damp + (1.as[T]-damp)
     }
 
