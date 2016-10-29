@@ -321,7 +321,7 @@ trait SpatialMetadata {
      **/
     val MBound = metadata("MBound", "bound" -> SDouble, "exact" -> SBoolean, "locked" -> SBoolean)
     onMeet (MBound, metaAlias) (${
-      MBound(Math.max(this.bound,that.bound), this.exact && that.exact, this.locked && that.locked)
+      MBound(Math.max(this.bound,that.bound), this.exact && that.exact && this.bound == that.bound, this.locked && that.locked && this.bound == that.bound)
     })
     isExistential(MBound, false)
 
