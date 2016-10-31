@@ -36,7 +36,7 @@ trait PIRSplitter extends Traversal with SplittingOps {
   }
 
   val ComputeMax = SplitCost(aIn=16, vIn=4, vOut=2, vLoc=1, comp=6, write=4, read=4, mems=4)
-  val UnitMax    = SplitCost(aIn=2,  vIn=1, vOut=1, vLoc=1, comp=6, write=4, read=1, mems=1)
+  val UnitMax    = SplitCost(aIn=2,  vIn=4, vOut=1, vLoc=1, comp=6, write=4, read=4, mems=4)
 
   def splitCU(cu: ComputeUnit): List[ComputeUnit] = cu match {
     case tu: TileTransferUnit => List(tu)
@@ -104,9 +104,17 @@ trait SplittingOps extends PIRCommon {
     val lanes = if (cu.isUnitCompute) 1 else LANES
 
     cu.allStages.map{
-      case MapStage(op,_,_) if op != Bypass => LANES
-      case _:ReduceStage => LANES // ALUs used by reduction tree
+      case MapStage(op,_,_) if op != Bypass => lanes
+      case _:ReduceStage => lanes // ALUs used by reduction tree
+      case _ => 0
     }.fold(0){_+_}
+  }
+
+  def reportStats(stats: SplitStats) {
+    val SplitStats(cus,ccus,tus,ucus,maxALUs,maxMems,alus,mems,vecIn,vecOut) = stats
+    debug(s"  cus = $cus, ccus = $ccus, tus = $tus, ucus = $ucus")
+    debug(s"  maxALUs = $maxALUs, maxMems = $maxMems")
+    debug(s"  alus = $alus, mems = $mems, vecIn = $vecIn, vecOut = $vecOut")
   }
 
 
@@ -434,25 +442,32 @@ trait SplittingOps extends PIRCommon {
           remote addCompute current.popSRAM(splitMem.get, sramOwners)
         }
         else {
-          debug(s"Failed splitting with remaining stages: ")
-          debug(s"  Write stages: ")
-          for ((i,grp) <- remote.wstages) {
-            debug(s"    Write Group #$i (local = ${grp.mems}):")
-            grp.stages.foreach{stage => debug(s"      $stage")}
-          }
-          debug(s"  Compute stages: ")
-          remote.cstages.foreach{stage => debug(s"    $stage") }
+          if (debugMode) {
+            debug(s"Failed splitting with remaining stages: ")
+            debug(s"  Write stages: ")
+            for ((i,grp) <- remote.wstages) {
+              debug(s"    Write Group #$i (local = ${grp.mems}):")
+              grp.stages.foreach{stage => debug(s"      $stage")}
+            }
+            debug(s"  Compute stages: ")
+            remote.cstages.foreach{stage => debug(s"    $stage") }
 
-          val cost = partitionCost(remote, sramOwners)
-          report(cost)
-
-          /*debug("")
-          debug("Cost for each split option: ")
-          while(remote.nonEmpty) {
-            remote.popCompute(sramOwners)
-            cost = partitionCost(remote, sramOwners,dbg=true)
+            val cost = partitionCost(remote, sramOwners)
             report(cost)
-          }*/
+
+            current.cstages ++= remote.cstages
+            current.wstages ++= remote.wstages
+
+            debug("")
+            debug("Cost for each split option: ")
+            while(remote.nonEmpty) {
+              remote.popCompute(sramOwners)
+              cost = partitionCost(remote, sramOwners,dbg=true)
+              report(cost)
+            }
+          }
+
+
           var errReport = "Write stages:"
           for ((i,grp) <- remote.wstages) {
             errReport += s"\n  Write Group #$i (local = ${grp.mems}):"
@@ -515,7 +530,10 @@ trait SplittingOps extends PIRCommon {
       cus.reverse.zip(partitions).zipWithIndex.foreach{case ((cu,p),i) =>
         debug(s"Partition #$i: $cu")
         val cost = partitionCost(p, sramOwners)
+        debug(s"Cost:")
         report(cost)
+        debug(s"Stats:")
+        reportStats(getStats(cu))
 
         if (cost.mems > maxMems) maxMems = cost.mems
         if (cost.comp > maxComp) maxComp = cost.comp
@@ -663,7 +681,13 @@ trait SplittingOps extends PIRCommon {
     val f = copyIterators(cu, parent)
 
     def swap_cchain_Reg(x: LocalMem) = x match {
-      case CounterReg(cc,idx) => CounterReg(f(cc),idx)
+      case CounterReg(cc,idx) =>
+        if (f.contains(cc)) CounterReg(f(cc),idx)
+        else if (f.values.toList.contains(cc)) CounterReg(cc,idx) // HACK: DSE
+        else {
+          val mapping = f.map{case (k,v) => s"$k -> $v"}.mkString("\n")
+          throw new Exception(s"Attempted to copy counter $cc in CU $parent, but no such counter exists.\nMapping:\n$mapping")
+        }
       case _ => x
     }
     def swap_cchains_Ref(x: LocalRef) = x match {

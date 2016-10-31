@@ -7,7 +7,7 @@ trait OuterProductApp extends SpatialApp {
   type T = SInt
   val tileSize1 = 96
   val tileSize2 = 96
-  val op = 1
+  val op = 8
   val ip = 1
 
   def outerproduct(a: Rep[ForgeArray[T]], b: Rep[ForgeArray[T]]) = {

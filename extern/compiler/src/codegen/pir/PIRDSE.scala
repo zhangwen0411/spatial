@@ -17,6 +17,10 @@ trait PIRDSE extends SplittingOps with RetimingOps {
   val IR: SpatialExp with PIRScheduleAnalysisExp
   import IR.{infix_until => _, _}
 
+  override val name = "Plasticine DSE"
+  debugMode = SpatialConfig.debugging || SpatialConfig.pirdebug
+  verboseMode = SpatialConfig.verbose || SpatialConfig.pirdebug
+
   override def allocateCU(pipe: Exp[Any]) = cus(pipe).head
 
   override def run[A:Manifest](b: Block[A]) = {
@@ -52,8 +56,10 @@ trait PIRDSE extends SplittingOps with RetimingOps {
         for (readWrite <- 1 to 10) {
           for (comps <- 0 to (10-readWrite)) {
             for (mmems <- 1 to vIns) {
+              System.out.print(s"vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems: ")
+
               val pipe = SplitCost(aIn=16, vIn=vIns, vOut=vOuts, vLoc=1, comp=comps, write=readWrite, read=readWrite, mems=mmems)
-              val unit = SplitCost(aIn=2, vIn=1, vOut=1, vLoc=1, comp=comps, write=readWrite, read=1, mems=1)
+              val unit = SplitCost(aIn=2,  vIn=vIns, vOut=1, vLoc=1, comp=comps, write=readWrite, read=1, mems=1)
 
               try {
                 val cuGrps = computeCUs.map{cu =>
@@ -65,6 +71,9 @@ trait PIRDSE extends SplittingOps with RetimingOps {
                 var nUnits = 0
                 var stats = baseStats
 
+                //var maxCU: Option[BasicComputeUnit] = None
+                //var maxCU_alus = 0
+
                 for (grp <- cuGrps) {
                   retime(grp)
 
@@ -72,28 +81,54 @@ trait PIRDSE extends SplittingOps with RetimingOps {
 
                   for (cu <- splitCompute) {
                     val cost = getStats(cu)
+
+                    val max = if (cu.isUnitCompute) unit else pipe
+                    if (cost.mems > max.mems) {
+                      throw new SplitException(s"$cu requires > ${max.mems} SRAMs (after retiming)")
+                    }
+
                     stats += cost
+
+                    /*if (cu.isUnitCompute && cost.alus > maxCU_alus) {
+                      maxCU_alus = cost.alus
+                      maxCU = Some(cu)
+                    }*/
 
                     if (cu.isUnitCompute) nUnits += 1 else nPipes += 1
                   }
                 }
 
-                val nALUs = (LANES * nPipes + nUnits) * (comps + readWrite)
-                val nMems = mmems * nPipes + nUnits
-                val nVIns = vIns * nPipes + nUnits
-                val nVOut = vOuts * nPipes + nUnits
+                // Conservative estimate: unit CUs also use the resources of a full CU
+                // (in that the resources become otherwise unavailable)
+                val nALUs = LANES * (nPipes + nUnits) * (comps + readWrite)
+                val nMems = mmems * (nPipes + nUnits)
+                val nVIns = vIns  * (nPipes + nUnits)
+                val nVOut = vOuts * (nPipes + nUnits)
 
                 val aluUtil = stats.alus.toFloat / nALUs
                 val memUtil = stats.mems.toFloat / nMems
                 val vInUtil = stats.vecIn.toFloat / nVIns
                 val vOutUtil = stats.vecOut.toFloat / nVOut
 
-                System.out.println(s"OK Design: vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems")
+                val aluCap = (comps + readWrite)
+
+                System.out.println(s"OK")
+                /*if (maxCU.isDefined) {
+                  val cu = maxCU.get
+                  System.out.println(s"$cu")
+                  System.out.println(s"  Write stages:")
+                  for ((mems,stages) <- cu.writeStages) {
+                    stages.foreach{stage => System.out.println(s"      $stage")}
+                  }
+                  System.out.println(s"  Compute stages: ")
+                  cu.stages.foreach{stage => System.out.println(s"    $stage") }
+                }*/
+
                 valid.println(s"$vIns, $vOuts, $comps, $readWrite, $mmems, " + stats.toString + s",$nALUs,$nMems,$nVIns,$nVOut, $aluUtil, $memUtil, $vInUtil, $vOutUtil")
               }
 
               catch {case e: SplitException =>
-                System.out.println(s"Invalid Design: vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems")
+                System.out.println(s"FAIL")
                 System.out.println(s"Failing stages:")
                 System.out.println(e.msg)
                 invalid.println(s"$vIns, $vOuts, $comps, $readWrite, $mmems")

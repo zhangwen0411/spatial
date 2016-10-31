@@ -8,7 +8,7 @@ trait DotProductApp extends SpatialApp {
 
   val tileSize = 96
   val innerPar = 2
-  val outerPar = 1
+  val outerPar = 8
   type Array[T] = ForgeArray[T]
 
   def dotproduct(a: Rep[Array[T]], b: Rep[Array[T]]) = {
