@@ -7,9 +7,9 @@ trait BlackScholesApp extends SpatialApp {
   type Array[B] = ForgeArray[B]
 
   val margin = 0.5f // Validates true if within +/- margin
-  val tileSize = 96
+  val tileSize = 9600
   val outerPar = 1
-  val innerPar = 2
+  val innerPar = 8
 
   final val inv_sqrt_2xPI = 0.39894228040143270286f
 
@@ -96,12 +96,12 @@ trait BlackScholesApp extends SpatialApp {
 
     Accel {
       Pipe(N by B par OP) { i =>
-        val typeBlk   = FIFO[UInt](B)
-        val priceBlk  = FIFO[Flt](B)
-        val strikeBlk = FIFO[Flt](B)
-        val rateBlk   = FIFO[Flt](B)
-        val volBlk    = FIFO[Flt](B)
-        val timeBlk   = FIFO[Flt](B)
+        val typeBlk   = SRAM[UInt](B)
+        val priceBlk  = SRAM[Flt](B)
+        val strikeBlk = SRAM[Flt](B)
+        val rateBlk   = SRAM[Flt](B)
+        val volBlk    = SRAM[Flt](B)
+        val timeBlk   = SRAM[Flt](B)
         val optpriceBlk = SRAM[Flt](B)
 
         Parallel {
@@ -114,7 +114,7 @@ trait BlackScholesApp extends SpatialApp {
         }
 
         Pipe(B par IP){ j =>
-          val price = BlkSchlsEqEuroNoDiv(priceBlk.pop, strikeBlk.pop, rateBlk.pop, volBlk.pop, timeBlk.pop, typeBlk.pop)
+          val price = BlkSchlsEqEuroNoDiv(priceBlk(j), strikeBlk(j), rateBlk(j), volBlk(j), timeBlk(j), typeBlk(j))
           optpriceBlk(j) = price
         }
         optprice(i::i+B par IP) := optpriceBlk

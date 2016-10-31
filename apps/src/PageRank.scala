@@ -85,7 +85,7 @@ trait PageRankApp extends SpatialApp {
             Sequential(numEdges.value by 1){ i =>
               val addr = edges(i) // Write addr to both tiles, but only inc one addr
               Pipe{frontierOff(offAddr.value) = addr }
-              Pipe{frontierOn(onAddr.value) = currentPR(addr)}
+              Pipe{frontierOn(onAddr.value) = currentPR(addr - tid)}
               Parallel{
                 Pipe{onAddr := onAddr.value + mux(addr >= tid && addr < tid+tileSize, 1, 0)}
                 Pipe{offAddr := offAddr.value + mux(addr >= tid && addr < tid+tileSize, 0, 1)}
@@ -134,7 +134,8 @@ trait PageRankApp extends SpatialApp {
     val NE = 18432
 
     val OCpages = Array.tabulate[T](NP){i => random[T](3)}
-    val OCedges = Array.tabulate(NP){i => Array.tabulate(edges_per_page) {j => j}}.flatten
+    val OCedges = Array.tabulate(NP){i => Array.tabulate(edges_per_page) {j => 
+      if (i < edges_per_page) j else i - j}}.flatten
     val OCcounts = Array.tabulate(NP){i => Array.tabulate(edges_per_page) { j => edges_per_page }}.flatten
     val OCedgeId = Array.tabulate(NP) {i => i*edges_per_page } 
     val OCedgeLen = Array.tabulate(NP) { i => edges_per_page }
@@ -149,25 +150,27 @@ trait PageRankApp extends SpatialApp {
     }
 
     // Really bad imperative version
-    for (i <- 0 until NP) {
-      val numEdges = OCedgeLen(i)
-      val startId = OCedgeId(i)
-      val iterator = Array.tabulate(numEdges){kk => startId + kk}
-      val these_edges = iterator.map{j => OCedges(j)}
-      val these_pages = these_edges.map{j => gold(j)}
-      val these_counts = these_edges.map{j => OCcounts(j)}
-      val pr = these_pages.zip(these_counts){ (p,c) => 
-        // println("page " + i + " doing " + p + " / " + c)
-        p/c.to[T]
-      }.reduce{_+_}
-      // println("new pr for " + i + " is " + pr)
-      gold(i) = pr*damp + (1.as[T]-damp)
+    for (ep <- 0 until iters) {
+      for (i <- 0 until NP) {
+        val numEdges = OCedgeLen(i)
+        val startId = OCedgeId(i)
+        val iterator = Array.tabulate(numEdges){kk => startId + kk}
+        val these_edges = iterator.map{j => OCedges(j)}
+        val these_pages = these_edges.map{j => gold(j)}
+        val these_counts = these_edges.map{j => OCcounts(j)}
+        val pr = these_pages.zip(these_counts){ (p,c) => 
+          // println("page " + i + " doing " + p + " / " + c)
+          p/c.to[T]
+        }.reduce{_+_}
+        // println("new pr for " + i + " is " + pr)
+        gold(i) = pr*damp + (1.as[T]-damp)
+      }
     }
 
     printArr(gold, "gold: ")    
     printArr(result, "result: ")
-    // val cksum = result.zip(gold.flatten){ case (o, g) => (g < (o + margin)) && g > (o - margin)}.reduce{_&&_}
-    // println("PASS: " + cksum + " (PageRank)")
+    val cksum = result.zip(gold){ case (o, g) => (g < (o + margin)) && g > (o - margin)}.reduce{_&&_}
+    println("PASS: " + cksum + " (PageRank)")
 
   }
 }

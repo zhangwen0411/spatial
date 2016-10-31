@@ -8,12 +8,13 @@
 ##########
 # CONFIG #
 ##########
-test_name="DotProduct2" # Label for data to be scraped
+test_name="MatMult_outer" # Label for data to be scraped
 testname_as_prefix="false" # Flag indicating if test_name is a prefix (for printing to csv with multiple tests)
-blank_file="maxj8/Summary_DotProduct_Manual.csv" # Location on remote of blank csv with all runs included (highest # channel)
+blank_file="maxj6/Summary_MatMult_outer_Manual.csv" # Location on remote of blank csv with all runs included (highest # channel)
 base_dir="./${test_name}" # Move whatever maxj/ you want to scrape to this dir
 insertion_file="/home/mattfel/characterization/${test_name}.csv" # Specify file that holds current unpopulated table
-server="maxeler" # Specify server
+buildserver="londonvm" # Tag to look for inside file [max / londonvm]
+server="maxeler" # Specify server to grab data from
 # start_channel=1 # Used if mv via script
 # stop_channel=30 # Used if mv via script
 
@@ -160,14 +161,14 @@ for d in "${directories[@]}"; do
 			done
 
 			# Get tag
-			if [ "${server}" = "maxeler" ]; then
+			if [ "${buildserver}" = "maxeler" ]; then
 				sserver="max"
 			else
-				sserver=$server
+				sserver=$buildserver
 			fi
 			num=(`echo "$d" | sed 's/maxj//g'`)
 			if [ "$testname_as_prefix" = "true" ]; then
-				if [[ "$server" = "maxeler" ]]; then
+				if [[ "$buildserver" = "maxeler" ]]; then
 					tag="${test_name}\/max.${num}"
 				fi
 			else

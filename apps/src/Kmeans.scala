@@ -7,10 +7,10 @@ trait KmeansApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt
 
-  val num_cents = 96
-  val dim = 12
-  val tileSize = 96
-  val innerPar = 1
+  val num_cents = 192
+  val dim = 384
+  val tileSize = 192
+  val innerPar = 4
   val outerPar = 1
   val margin = 1
   val K = num_cents

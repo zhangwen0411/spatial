@@ -8,9 +8,10 @@ trait GDA_App extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   val margin = 1
-  val innerPar = 2
+  val innerPar = 4
   val outerPar = 1
   val MAXC = 96
+  val C = MAXC
   val tileSize = 96
   val pLoopPar = 2
 
@@ -26,9 +27,9 @@ trait GDA_App extends SpatialApp {
     val cols = mu0CPU.length; bound(cols) = MAXC
 
     val R = ArgIn[SInt]
-    val C = ArgIn[SInt]
+    // val C = ArgIn[SInt]
+    // setArg(C, cols)
     setArg(R, rows)
-    setArg(C, cols)
 
     val x     = DRAM[T](R, C)
     val y     = DRAM[SInt](R)
@@ -62,20 +63,20 @@ trait GDA_App extends SpatialApp {
         }
 
         val sigmaBlk = SRAM[T](MAXC,MAXC)
-        Fold(blk par ip)(sigmaBlk, 0.as[Flt]){rr =>
+        Fold(blk par param(1),ip)(sigmaBlk, 0.as[Flt]){rr =>
           val subTile = SRAM[T](MAXC)
           val sigmaTile = SRAM[T](MAXC, MAXC)
           Pipe(C par subLoopPar){ cc =>
             subTile(cc) = xTile(rr,cc) - mux(yTile(rr) == 1, mu1Tile(cc), mu0Tile(cc))
           }
-          Pipe(C by 1, C par prodLoopPar){ (ii,jj) =>
+          Pipe(C by 1, C par ip){ (ii,jj) =>
             sigmaTile(ii,jj) = subTile(ii) * subTile(jj);
           }
           sigmaTile
         }{_+_}
       }{_+_}
 
-      sigma(0::C, 0::C par prodLoopPar) := sigmaOut
+      sigma(0::C, 0::C par outerAccumPar) := sigmaOut
     }
 
     getMem(sigma)
@@ -90,7 +91,7 @@ trait GDA_App extends SpatialApp {
 
   def main() {
     val R = args(0).to[SInt]
-    val C = args(1).to[SInt] // TODO: Should be selectable up to maximum
+    // val C = args(0).to[SInt] // TODO: Should be selectable up to maximum
 
     val x  = Array.fill(R){ Array.fill(C){ random[T](10) }}
     val ys = Array.fill(R){ random[SInt](1) }
