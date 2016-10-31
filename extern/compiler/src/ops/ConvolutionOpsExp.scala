@@ -51,6 +51,26 @@ trait ConvolutionOpsExp extends ControllerOpsExp with NodeMetadataOpsExp {
     case _ => super.mirror(e,f)
   }
 
+  override def syms(e: Any) = e match {
+    case e: Convolve[_]  => syms(List(e.image,e.kernel,e.output)) ++ syms(e.pars)
+    case e: ConvLayer[_] => syms(List(e.image,e.kernel,e.output)) ++ syms(e.pars)
+    case _ => super.syms(e)
+  }
+  override def readSyms(e: Any): List[Sym[Any]] = e match {
+    case e: Convolve[_]  => readSyms(List(e.image,e.kernel,e.output)) ++ readSyms(e.pars)
+    case e: ConvLayer[_] => readSyms(List(e.image,e.kernel,e.output)) ++ readSyms(e.pars)
+    case _ => super.readSyms(e)
+  }
+  override def symsFreq(e: Any): List[(Sym[Any], Double)] = e match {
+    case e: Convolve[_]  => freqNormal(e.image) ++ freqNormal(e.kernel) ++ freqNormal(e.output) ++ freqNormal(e.pars)
+    case e: ConvLayer[_] => freqNormal(e.image) ++ freqNormal(e.kernel) ++ freqNormal(e.output) ++ freqNormal(e.pars)
+    case _ => super.symsFreq(e)
+  }
+  override def boundSyms(e: Any): List[Sym[Any]] = e match {
+    case e: Convolve[_]  => e.inds
+    case e: ConvLayer[_] => e.inds
+    case _ => super.boundSyms(e)
+  }
   override def aliasSyms(e: Any): List[Sym[Any]] = e match {
     case e:Convolve[_]  => Nil
     case e:ConvLayer[_] => Nil

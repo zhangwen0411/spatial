@@ -26,8 +26,8 @@ trait ConvApp extends SpatialApp {
 
   def main() {
     val sImg = Array.tabulate(10){i =>
-               Array.tabulate(10){j =>
-                 if (i < 10 && j > 5) 9 else 0
+               Array.tabulate(15){j =>
+                 if (j > 5) 9 else 0
                }}
     val sKernel = Array.tabulate(3){i =>
                   Array.tabulate(3){j =>

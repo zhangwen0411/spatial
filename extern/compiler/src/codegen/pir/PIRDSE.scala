@@ -48,10 +48,10 @@ trait PIRDSE extends SplittingOps with RetimingOps {
     invalid.println("VIns, Vouts, Compute, Read/Write, Mems")
 
     for (vIns <- 2 to 6) { //2 to 6) {
-      for (vOuts <- 1 to 5) {
+      for (vOuts <- 1 to 3) {
         for (readWrite <- 1 to 10) {
           for (comps <- 0 to (10-readWrite)) {
-            for (mmems <- vIns to 8) {
+            for (mmems <- 1 to vIns) {
               val pipe = SplitCost(aIn=16, vIn=vIns, vOut=vOuts, vLoc=1, comp=comps, write=readWrite, read=readWrite, mems=mmems)
               val unit = SplitCost(aIn=2, vIn=1, vOut=1, vLoc=1, comp=comps, write=readWrite, read=1, mems=1)
 
