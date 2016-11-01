@@ -27,7 +27,7 @@ import spatial.shared._
         |    |     |       |
       N |    |   N |       |                                 
         |____|     |_______|                               
-  aligned_N  .     .       .                                                                     
+  full_N     .     .       .                                                                     
         .    .     .       .                                  
         .    .     .       .                                        
         ......     .........                   
@@ -53,11 +53,11 @@ import spatial.shared._
                                                                    
                                                    LDC          
                 ____________          _____________________________________
-               |            |        |                                     |
-      LDA      |            |        |                                     |
-               |            |        |                                     |
-               |            |        |                                     |     
-               |____________|        |                                     |     
+               |            |        |       |                             |
+      LDA      |            |        |       |                             |
+               |            |        |       |                             |
+               |            |        |       |                             |     
+               |____________|        |_______|                             |     
                |            |        |                                     |     
                |            |        |                                     |     
                |            |        |                                     |     
@@ -74,26 +74,31 @@ import spatial.shared._
 
 
 
-                        LDC          
-                _____________________________________
-               |                                     |
-               |  C                                  |
-               |                                     |
-               |                            N        |        
-               |               idb↴__________________|        
-               |                  | B                |        
-               |                K |                  |        
-               |          ida     |                  |        
-               |           ↳ _____|__________________|        
-               |            | A   | C                |        
-               |            |     |                  |        
-               |            |     |                  |
-               |            |     |                  |
-               |          M |     |                  |
-               |            |     |                  |
-               |            |     |                  |
-               |            |     |                  |
-               |____________|_____|__________________|
+                                 
+
+                                                                       
+                                                                       
+                                                                       
+                                                                       
+                _______________     _________LDB___________                                                                     
+               |               |   |                       |                                                                                                        
+               |               |   |                       |                                                                                                        
+               |               |   |                       |                                                                                                        
+               |  id0,1        |   |_______________________|                                       
+               |    ↳|_\       |  K|_______________________|                                       
+               |     | |       |   |                       |                                       
+               |   LDA |       |   |                       |                                                                   
+               |_____|_|_______|   |_______________________|                                              
+                                                                                 
+                                                 
+                                                 
+                                            
+                                            
+                                            
+                                            
+                                            
+                                            
+             
 
 
 
@@ -107,20 +112,30 @@ trait TRSMApp extends SpatialApp {
   type T = Flt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
 
-  val N = 4   // N < k usually
-  val K = 8
-  val aligned_N = 96
-  val margin = 1
 
 
-
-  def rank1update(L: Rep[SRAM[T]], diag_index: Rep[SInt], len: Rep[Reg[SInt]], B: Rep[SRAM[T]], K:Rep[SInt]) = {
+  def rank1update(L: Rep[SRAM[T]], diag_index: Rep[SInt], len: Rep[Reg[SInt]], 
+    B: Rep[SRAM[T]], K:Rep[SInt]) = {
     Sequential(len.value by 1) { i => 
       Sequential(K by 1) { j => 
         val update_row = diag_index + 1 + i
         val data = B(update_row,j) - L(update_row, diag_index)*B(diag_index, j)
         sram_store_nd(B, List(update_row,j), data, Some(len.value != 0))
         // B(update_row,j) = B(update_row,j) - L(update_row, diag_index)*B(diag_index, j)
+      }
+    }
+  }
+
+  def blockedGEMM(id0: Rep[SInt], id1: Rep[SInt],
+    L: Rep[SRAM[T]], B: Rep[SRAM[T]], LDA: Rep[SInt], LDB: Rep[SInt],
+    K: Rep[SInt]) = {
+
+    Sequential(K by 1) { k => 
+      Pipe(LDA by 1, LDB by 1) { (i,j) =>
+        val Laddr0 = id0 + i
+        val Baddr0 = id0 - K + k
+        val Laddr1 = id1 + k
+        B(Laddr0, j) = B(Laddr0,j) - L(Laddr0,Laddr1)*B(Baddr0,j)
       }
     }
   }
@@ -152,42 +167,53 @@ trait TRSMApp extends SpatialApp {
     // ALTERNATIVE 3: By inner products, direct access
     Sequential(LDA by 1, LDB by 1) { (i,j) => 
       val update = Reduce(K by 1)(0.as[T]) { k => A(i,k)*B(k,j) }{_+_}
-      C(i,j) = beta*C(i,j) + update*alpha
+      C(i,j) = beta*C(i,j) + alpha*update
     }
 
   }
 
+
+  val inner_N = 4   // inner_N < k usually
+  val full_N = 16
+  val full_K = 16
+  val aligned_N = 96
+  val margin = 1
+
   def trsm(B: Rep[Array[T]], L: Rep[Array[T]]) = {
 
-    val OCB    = DRAM[T](aligned_N,K)
-    val OCL    = DRAM[T](aligned_N,N)
-    val OCX    = DRAM[T](aligned_N*K)
+    val OCB    = DRAM[T](aligned_N,full_K)
+    val OCL    = DRAM[T](aligned_N,inner_N)
+    val OCX    = DRAM[T](aligned_N*full_K)
     setMem(OCB, B)
     setMem(OCL, L)
 
 
-    Accel {
-      Sequential{
-        val B = SRAM[T](N,K)
-        val L = SRAM[T](N,N)
-        val X = SRAM[T](aligned_N*K)
-        Parallel{
-          B := OCB(0::N, 0::K)
-          L := OCL(0::N, 0::N)
-        }
-        Sequential(N by 1) { diag_index => 
-          val lambda = L(diag_index,diag_index)
-          Sequential(K by 1) { k => B(diag_index,k) = B(diag_index,k) / lambda }
+    Accel { Sequential{
+      val B = SRAM[T](full_N,full_K)
+      val L = SRAM[T](full_N,full_N)
+      val X = SRAM[T](full_N*full_K)
+      Parallel{
+        B := OCB(0::full_N, 0::full_K)
+        L := OCL(0::full_N, 0::full_N)
+      }
+      Sequential(full_N by inner_N) { diag_tile =>
+        Sequential(inner_N by 1) { diag_index => 
+          val diag_addr = diag_index + diag_tile
+          val lambda = L(diag_addr, diag_addr)
+          Sequential(full_K by 1) { k => B(diag_addr,k) = B(diag_addr,k) / lambda }
           // Rank 1 update (outer product, subtraction accumulator)
           val len = Reg[SInt]
-          Pipe{len := N.as[SInt] - diag_index - 1}
-          rank1update(L, diag_index, len, B, K)
+          Pipe{len := inner_N.as[SInt] - diag_index - 1}
+          rank1update(L, diag_addr, len, B, full_K)
         }
-        // Pack result to 1D, to avoid burst alignment issues
-        Pipe(N by 1) { i => Pipe(K by 1) { j => X(i*K + j) = B(i,j)}}
-        Pipe{OCX(0::aligned_N*K) := X}        
+        val id0 = diag_tile + inner_N
+        val LDA = full_N.as[SInt] - diag_tile - inner_N.as[SInt]
+        blockedGEMM(id0, diag_tile, L,B, LDA, full_K, inner_N) // TODO: Can be rewritten messily to outerprod B rows as they finish
       }
-    }
+      // Pack result to 1D, to avoid burst alignment issues
+      Pipe(full_N by 1) { i => Pipe(full_K by 1) { j => X(i*full_K + j) = B(i,j)}}
+      Pipe{OCX(0::full_N*full_K) := X}        
+    }}
     getMem(OCX)
   }
 
@@ -199,27 +225,27 @@ trait TRSMApp extends SpatialApp {
 
   def main() = {
 
-    val B = Array.fill(aligned_N){ Array.fill(K){ random[T](1)} }
-    val L = Array.tabulate(aligned_N){ i => Array.tabulate(N){ j =>
+    val B = Array.fill(aligned_N){ Array.fill(full_K){ random[T](1)} }
+    val L = Array.tabulate(aligned_N){ i => Array.tabulate(full_N){ j =>
       if (j > i) 0.as[T] else random[T](1)
     }}
 
     val result = trsm(B.flatten, L.flatten)
 
-    printArr(B.flatten, N*K, "B: ")
-    printArr(L.flatten, N*N, "L: ")
-    printArr(result, N*K, "X: ")
+    printArr(B.flatten, full_N*full_K, "B: ")
+    printArr(L.flatten, full_N*full_N, "L: ")
+    printArr(result, full_N*full_K, "X: ")
 
-    val X_check = Array.tabulate(N){ i => Array.tabulate(K) { j => result(i*K + j) }}
-    val L_check = Array.tabulate(N){ i => Array.tabulate(N) { j => 
+    val X_check = Array.tabulate(full_N){ i => Array.tabulate(full_K) { j => result(i*full_K + j) }}
+    val L_check = Array.tabulate(full_N){ i => Array.tabulate(full_N) { j => 
       val row = L(i)
       row(j)}}
-    val B_check = Array.tabulate(N){ i => Array.tabulate(K) { j =>
+    val B_check = Array.tabulate(full_N){ i => Array.tabulate(full_K) { j =>
       val row = B(i)
       row(j) }}.flatten
-    val B_computed = Array.tabulate(N){i =>
+    val B_computed = Array.tabulate(full_N){i =>
       val aRow = L_check(i)
-      Array.tabulate(K){j =>
+      Array.tabulate(full_K){j =>
         val bCol = X_check.map{row => row(j)}
         aRow.zip(bCol){_*_}.reduce{_+_}
       }
