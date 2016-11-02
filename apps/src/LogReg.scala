@@ -43,9 +43,9 @@ trait LogRegApp extends SpatialApp {
 
     Accel {
       val btheta = SRAM[Elem](D)
-      btheta := theta(0::D par P2)
+      btheta := theta(0::D par P2)    // init
 
-      Sequential(iters by 1) { epoch => 
+      Sequential(iters by 1) { epoch =>
         val gradAcc = SRAM[Elem](D)
         Pipe(N by BN){ i =>
           val xB = SRAM[Elem](BN, D)
@@ -58,7 +58,7 @@ trait LogRegApp extends SpatialApp {
             val pipe2Res = Reg[Elem]
             val subRam   = SRAM[Elem](D)
 
-            val dotAccum = Reduce(D par P2)(0.as[T]){ j => xB(ii,j) * btheta(j) }{_+_}
+            val dotAccum = Reduce(D par P2)(0.as[T]){ j => xB(ii,j) * btheta(j) }{_+_}  // read
             Pipe { pipe2Res := (yB(ii) - sigmoid(dotAccum.value)) }
             Pipe(D par P2) {j => subRam(j) = xB(ii,j) - pipe2Res.value }
             subRam
@@ -67,9 +67,9 @@ trait LogRegApp extends SpatialApp {
 
         Fold (1 by 1 par param(1),P2) (btheta, 0.as[Elem]){ j =>
           gradAcc
-        }{case (b,g) => b+g*A}
+        }{case (b,g) => b+g*A} // update
       }
-      theta(0::D par P2) := btheta
+      theta(0::D par P2) := btheta // read
     }
     getMem(theta)
   }
@@ -93,9 +93,9 @@ trait LogRegApp extends SpatialApp {
 
     // val gold = Array.empty[Elem](D)
     val ids = Array.tabulate(D){i => i}
-    val gold = sX.zip(sY) {case (row, y) => 
+    val gold = sX.zip(sY) {case (row, y) =>
       val sub = y - sigmoid(row.zip(theta){_*_}.reduce{_+_})
-      row.map{a => 
+      row.map{a =>
         println("subtraction for " + y + " is " + (a - sub))
         a - sub}
     }.reduce{(a,b) => a.zip(b){_+_}}

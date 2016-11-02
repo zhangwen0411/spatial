@@ -59,7 +59,7 @@ trait PIRDSE extends SplittingOps with RetimingOps {
               System.out.print(s"vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems: ")
 
               val pipe = SplitCost(aIn=16, vIn=vIns, vOut=vOuts, vLoc=1, comp=comps, write=readWrite, read=readWrite, mems=mmems)
-              val unit = SplitCost(aIn=2,  vIn=vIns, vOut=1, vLoc=1, comp=comps, write=readWrite, read=1, mems=1)
+              val unit = SplitCost(aIn=2,  vIn=vIns, vOut=1, vLoc=1, comp=comps, write=readWrite, read=1, mems=mmems)
 
               try {
                 val cuGrps = computeCUs.map{cu =>

@@ -9,7 +9,7 @@ trait GDA_App extends SpatialApp {
 
   val margin = 1
   val innerPar = 2
-  val outerPar = 1
+  val outerPar = 4
   val MAXC = 96
   val tileSize = 96
   val pLoopPar = 2

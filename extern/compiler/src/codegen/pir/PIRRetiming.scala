@@ -91,8 +91,9 @@ trait RetimingOps extends PIRCommon {
             }
           }
         }
-
       }
+
+      cu.deps ++= deps(cu).flatMap{dep => producer.get(dep) }
     }
   }
 
