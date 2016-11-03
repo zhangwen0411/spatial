@@ -42,42 +42,22 @@ import spatial.shared._
     ##################
     # MatMult Kernel #
     ##################
-                                       LDB                               
-                                      _____________________________________                             
-                                     |       |                             |                              
-                                     |       |                             |                              
-                                     |       |                             |                              
-                                     |       |                             |                              
-                                     |_______|_____________________________|                              
-                                                                   
-                                                                   
-                                                   LDC          
-                ____________          _____________________________________
-               |            |        |       |                             |
-      LDA      |            |        |       |                             |
-               |            |        |       |                             |
-               |            |        |       |                             |     
-               |____________|        |_______|                             |     
-               |            |        |                                     |     
-               |            |        |                                     |     
-               |            |        |                                     |     
-               |            |        |                                     |     
-               |            |        |                                     |     
-               |            |        |                                     |     
-               |            |        |                                     |
-               |            |        |                                     |
-               |            |        |                                     |
-               |            |        |                                     |
-               |            |        |                                     |
-               |            |        |                                     |
-               |____________|        |_____________________________________|
 
 
+                Horizontal Blocking
+                _______________     _________LDB___________     
+               |               |   |                       |    
+               |               |   |                       |    
+               |      id0      |   |                       |    
+               |__LDA__↓       |   |_______________________|    
+               |_______|_\     |  inner_N__________________|    
+               |               |   |                       |    
+               |               |   |                       |    
+               |_______________|   |_______________________|    
 
-                                 
 
                                                                        
-                                                                       
+                Vertical Blocking                                                       
                                                                        
                                                                        
                 _______________     _________LDB___________                                                                     
@@ -90,16 +70,6 @@ import spatial.shared._
                |   LDA |       |   |                       |                                                                   
                |_____|_|_______|   |_______________________|                                              
                                                                                  
-                                                 
-                                                 
-                                            
-                                            
-                                            
-                                            
-                                            
-                                            
-             
-
 
 
 */
@@ -112,7 +82,20 @@ trait TRSMApp extends SpatialApp {
   type T = Flt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
 
+  def blockedGEMMH(id0: Rep[SInt], L: Rep[SRAM[T]],
+    B: Rep[SRAM[T]], LDB: Rep[SInt],
+    K: Rep[SInt]) = {
 
+    Sequential(id0 by 1) { k => 
+      Sequential(K by 1, LDB by 1) { (i,j) => 
+        val Laddr0 = id0 + i
+        val data = B(Laddr0,j) - L(Laddr0,k)*B(k,j)
+        sram_store_nd(B, List(Laddr0,j), data, Some(id0 !=0))
+        // B(Laddr0, j) = B(Laddr0,j) - L(Laddr0,k)*B(k,j)
+      }
+    }
+
+  }
 
   def rank1update(L: Rep[SRAM[T]], diag_index: Rep[SInt], len: Rep[Reg[SInt]], 
     B: Rep[SRAM[T]], K:Rep[SInt]) = {
@@ -126,7 +109,7 @@ trait TRSMApp extends SpatialApp {
     }
   }
 
-  def blockedGEMM(id0: Rep[SInt], id1: Rep[SInt],
+  def blockedGEMMV(id0: Rep[SInt], id1: Rep[SInt],
     L: Rep[SRAM[T]], B: Rep[SRAM[T]], LDA: Rep[SInt], LDB: Rep[SInt],
     K: Rep[SInt]) = {
 
@@ -173,16 +156,16 @@ trait TRSMApp extends SpatialApp {
   }
 
 
-  val inner_N = 4   // inner_N < k usually
-  val full_N = 16
-  val full_K = 16
-  val aligned_N = 96
+  val inner_N = 8   // inner_N < k usually
+  val full_N = 136
+  val full_K = 96
+  val aligned_N = 192
   val margin = 1
 
   def trsm(B: Rep[Array[T]], L: Rep[Array[T]]) = {
 
     val OCB    = DRAM[T](aligned_N,full_K)
-    val OCL    = DRAM[T](aligned_N,inner_N)
+    val OCL    = DRAM[T](aligned_N,full_N)
     val OCX    = DRAM[T](aligned_N*full_K)
     setMem(OCB, B)
     setMem(OCL, L)
@@ -191,12 +174,17 @@ trait TRSMApp extends SpatialApp {
     Accel { Sequential{
       val B = SRAM[T](full_N,full_K)
       val L = SRAM[T](full_N,full_N)
-      val X = SRAM[T](full_N*full_K)
+      val X = SRAM[T](aligned_N*full_K)
       Parallel{
         B := OCB(0::full_N, 0::full_K)
         L := OCL(0::full_N, 0::full_N)
       }
       Sequential(full_N by inner_N) { diag_tile =>
+        // Horizontal Blocking
+        val id0 = diag_tile
+        val LDA = diag_tile
+        blockedGEMMH(id0, L, B, full_K, inner_N)
+
         Sequential(inner_N by 1) { diag_index => 
           val diag_addr = diag_index + diag_tile
           val lambda = L(diag_addr, diag_addr)
@@ -206,13 +194,16 @@ trait TRSMApp extends SpatialApp {
           Pipe{len := inner_N.as[SInt] - diag_index - 1}
           rank1update(L, diag_addr, len, B, full_K)
         }
-        val id0 = diag_tile + inner_N
-        val LDA = full_N.as[SInt] - diag_tile - inner_N.as[SInt]
-        blockedGEMM(id0, diag_tile, L,B, LDA, full_K, inner_N) // TODO: Can be rewritten messily to outerprod B rows as they finish
+
+        // // Vertical Blocking
+        // val id0 = diag_tile + inner_N
+        // val LDA = full_N.as[SInt] - diag_tile - inner_N.as[SInt]
+        // blockedGEMMV(id0, diag_tile, L,B, LDA, full_K, inner_N) // TODO: Can be rewritten messily to outerprod B rows as they finish
+
       }
       // Pack result to 1D, to avoid burst alignment issues
       Pipe(full_N by 1) { i => Pipe(full_K by 1) { j => X(i*full_K + j) = B(i,j)}}
-      Pipe{OCX(0::full_N*full_K) := X}        
+      Pipe{OCX(0::aligned_N*full_K) := X}        
     }}
     getMem(OCX)
   }
@@ -227,7 +218,9 @@ trait TRSMApp extends SpatialApp {
 
     val B = Array.fill(aligned_N){ Array.fill(full_K){ random[T](1)} }
     val L = Array.tabulate(aligned_N){ i => Array.tabulate(full_N){ j =>
-      if (j > i) 0.as[T] else random[T](1)
+      if (j > i) 0.as[T] 
+      else if (j == i) random[T](10)
+      else random[T](0.5)
     }}
 
     val result = trsm(B.flatten, L.flatten)

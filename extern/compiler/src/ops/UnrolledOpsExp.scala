@@ -406,7 +406,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DF
                     a match {
                       case Deff(Sram_new(_,_)) => 
                         val dups = duplicatesOf(a)
-                        dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
+                        dups.zipWithIndex.map { case (r, i) => List.tabulate(r.duplicates) { ii => quote(a) + "_" + i + "_" + ii}}.flatten.toList
                       case Deff(Reg_new(_)) => 
                         val dups = duplicatesOf(a)
                         dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
@@ -417,11 +417,11 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DF
                     a match {
                       case Deff(Sram_new(_,_)) => 
                         val dups = duplicatesOf(a)
-                        dups.zipWithIndex.map { case (r, i) => 
+                        dups.zipWithIndex.map { case (r, i) => List.tabulate(r.duplicates){ ii => 
                           if (isDummy(a)) "DummyMemLib" else {
                             if (r.depth == 1) "BramLib" else "NBufKernelLib"
                           }
-                        }.toList
+                        }}.flatten.toList
                       case Deff(Reg_new(_)) => 
                         val dups = duplicatesOf(a)
                         dups.zipWithIndex.map { case (r, i) => 
@@ -532,7 +532,7 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
               a match {
                 case Deff(Sram_new(_,_)) => 
                   val dups = duplicatesOf(a)
-                  dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
+                  dups.zipWithIndex.map { case (r, i) => List.tabulate(r.duplicates) { ii => quote(a) + "_" + i + "_" + ii}}.flatten.toList
                 case Deff(Reg_new(_)) => 
                   val dups = duplicatesOf(a)
                   dups.zipWithIndex.map { case (r, i) => (reduceType(a.asInstanceOf[Exp[Any]]), i) match {
@@ -551,11 +551,11 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
               a match {
                 case Deff(Sram_new(_,_)) => 
                   val dups = duplicatesOf(a)
-                  dups.zipWithIndex.map { case (r, i) => 
+                  dups.zipWithIndex.map { case (r, i) => List.tabulate(r.duplicates){ ii => 
                     if (isDummy(a)) "DummyMemLib" else {
                       if (r.depth == 1) "BramLib" else "NBufKernelLib"
                     }
-                  }.toList
+                  }}.flatten.toList
                 case Deff(Reg_new(_)) => 
                   val dups = duplicatesOf(a)
                   dups.zipWithIndex.map { case (r, i) => (reduceType(a.asInstanceOf[Exp[Any]]), i) match {
