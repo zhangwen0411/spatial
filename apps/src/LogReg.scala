@@ -7,30 +7,30 @@ trait LogRegApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt
 
-  val tileSizeH = 192
-  val innerParH = 4
-  val outerParH = 2
+  val tileSize = 96
+  val innerPar = 2
+  val outerPar = 2
   val margin = 5
+  val dim = 192
+  val D = dim
 
   val A = 1
 
-  def sigmoid(t:Rep[T]) = t//1.as[T]/(exp(-t)+1)
+  def sigmoid(t:Rep[T]) = 1.as[T]/(exp(-t)+1)
 
   def logreg(x_in: Rep[Array[T]], y_in: Rep[Array[T]], tt: Rep[Array[T]], n: Rep[SInt], it: Rep[SInt]) = {
 
-    val D = 384
 
     val iters = ArgIn[SInt]
     val N = ArgIn[SInt]
     setArg(iters, it)
     setArg(N, n)
 
-    val BN = tileSizeH (96 -> 96 -> 9600)
+    val BN = tileSize (96 -> 96 -> 9600)
     val PX = 1 (1 -> 1)
-    val P0 = outerParH (1 -> 3)
-    val P1 = innerParH (1 -> 2)
-    val P2 = innerParH (1 -> 96)
-    val P3 = 1 (1 -> 96)
+    val P1 = innerPar (1 -> 2)
+    val P2 = innerPar (1 -> 96)
+    val P3 = outerPar (1 -> 96)
 
     val x = DRAM[T](N, D)
     val y = DRAM[T](N)
@@ -67,6 +67,9 @@ trait LogRegApp extends SpatialApp {
         Fold (1 by 1 par param(1),P2) (btheta, 0.as[T]){ j =>
           gradAcc
         }{case (b,g) => b+g*A}
+
+        // Flush gradAcc
+        Pipe(D by 1 par P2) { i => gradAcc(i) = 0.as[T]}
       }
       theta(0::D par P2) := btheta
     }
@@ -82,7 +85,6 @@ trait LogRegApp extends SpatialApp {
   def main() {
     val iters = args(0).to[SInt]
     val N = args(1).to[SInt]
-    val D = 384
 
     val sX = Array.fill(N){ Array.fill(D){ random[T](10.0)} }
     val sY = Array.tabulate(N){ i => i.to[T]}//fill(N)( random[T](10.0) )
@@ -95,16 +97,20 @@ trait LogRegApp extends SpatialApp {
     for (i <- 0 until D) {
       gold(i) = theta(i)
     }
-    for (i <- 0 until N) {
+    for (i <- 0 until iters) {
       val next = sX.zip(sY) {case (row, y) => 
-        val sub = y - sigmoid(row.zip(gold){_*_}.reduce{_+_})
+        // println("sigmoid for " + y + " is " + sigmoid(row.zip(gold){_*_}.reduce{_+_}))
+        val sub = y - sigmoid(row.zip(gold){(a,b) => 
+          // println("doing " + a + " * " + b + " on row " + y)
+          a*b}.reduce{_+_})
         row.map{a => 
           // println("subtraction for " + y + " is " + (a - sub))
           a - sub}
       }.reduce{(a,b) => a.zip(b){_+_}}  
       for (i <- 0 until D) {
-        gold(i) = next(i)
+        gold(i) = gold(i) + next(i)
       }
+      // printArr(gold, "gold now")
     }
     
 

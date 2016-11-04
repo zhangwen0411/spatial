@@ -563,7 +563,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     val readCtrl = reader.controlNode
     val sub_i = read_port_dup_map.count{ case a => a == s"${quote(sram)}_${b_i} port $p"}
     read_port_dup_map = read_port_dup_map :+ s"${quote(sram)}_${b_i} port $p"
-    Console.println(s"current port map for read $read sram $sram list ${read_port_dup_map}")
+    // Console.println(s"current port map for read $read sram $sram list ${read_port_dup_map}")
 
     val sram_name = s"${quote(sram)}_${b_i}_${sub_i}"
     val pre = if (!par) maxJPre(sram) else "DFEVector<DFEVar>"
@@ -784,6 +784,9 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       print_stage_prefix(s"Gather par${quote(par)}",s"",s"${quote(sym)}", false)
       val access = writersOf(local).find(_.node == sym).get
       val i = instanceIndicesOf(access, addrs).head
+      val sub_i = read_port_dup_map.count{ case a => a == s"${quote(local)}_${i} port gather"}
+      read_port_dup_map = read_port_dup_map :+ s"${quote(local)}_${i} port gather"
+
       val parStr = if (par == 1) {
 //         emit(s"""DFEVar ${quote(sym)}_waddr = ${quote(addrs)}_$i.type.newInstance(this);
 // DFEVar ${quote(sym)}_wdata = ${quote(local)}_0.type.newInstance(this); // Assume duplicate _0 exists
@@ -794,8 +797,8 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       }
 
       emit("{")
-      emit(s"""DFEVector<DFEVar> ${quote(sym)}_waddr = new DFEVectorType<DFEVar>(${quote(addrs)}_$i.type, 1).newInstance(this);
-DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0.type, 1).newInstance(this);
+      emit(s"""DFEVector<DFEVar> ${quote(sym)}_waddr = new DFEVectorType<DFEVar>(${quote(addrs)}_${i}_${sub_i}.type, 1).newInstance(this);
+DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0_0.type, 1).newInstance(this); /* TODO: Why is this hardcoded to 0_0???? */
 DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
       emit(s"""DFEVar ${quote(sym)}_forceLdSt = ${quote(len)} > 0;""")
@@ -804,13 +807,13 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         this,
         ${quote(sym)}_en, ${quote(sym)}_done, ${bound(worker).get.toInt}, $parStr
         ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
-        ${quote(addrs)}_$i, ${quote(len)},
+        ${quote(addrs)}_${i}_${sub_i}, ${quote(len)},
         ${quote(mem)},  "${quote(mem)}_${quote(sym)}_in",
         ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
       val wType = if ((par == 1)) {"connectWport("} else {s"connectDirectWport($worker,"}
-      duplicatesOf(local).zipWithIndex.foreach { case (m,i) =>
-        emit(s"""${quote(local)}_$i.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
-      }
+      duplicatesOf(local).zipWithIndex.foreach { case (m,i) => (0 until m.duplicates).foreach { ii =>
+        emit(s"""${quote(local)}_${i}_$ii.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
+      }}
       emit("}")
       print_stage_suffix(quote(sym),false)
 
@@ -822,6 +825,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val addrsReader = readersOf(addrs).find(_.node == sym).get
       val i = instanceIndicesOf(addrsReader, addrs).head
       val j = instanceIndicesOf(localReader, local).head
+      val sub_i_addrs = read_port_dup_map.count{ case a => a == s"${quote(addrs)}_${i} port scatter"}
+      read_port_dup_map = read_port_dup_map :+ s"${quote(addrs)}_${i} port scatter"
+      val sub_i_local = read_port_dup_map.count{ case a => a == s"${quote(local)}_${i} port scatter"}
+      read_port_dup_map = read_port_dup_map :+ s"${quote(local)}_${i} port scatter"
       val parStr = if (par == 1) {
 //         emit(s"""DFEVar ${quote(sym)}_waddr = ${quote(addrs)}_$i.type.newInstance(this);
 // DFEVar ${quote(sym)}_wdata = ${quote(local)}_0.type.newInstance(this); // Assume duplicate _0 exists
@@ -837,7 +844,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         this,
         ${quote(sym)}_en, ${quote(sym)}_done, ${bound(worker).get.toInt}, ${parStr}
         ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
-        ${quote(addrs)}_$i, ${quote(local)}_$j, ${quote(len)},
+        ${quote(addrs)}_${i}_${sub_i_addrs}, ${quote(local)}_${j}_${sub_i_local}, ${quote(len)},
         ${quote(mem)}, "${quote(mem)}_${quote(sym)}_out");""")
       emit("}")
       print_stage_suffix(quote(sym),false)

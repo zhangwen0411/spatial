@@ -5,6 +5,7 @@ import scala.reflect.{Manifest,SourceContext}
 import ppl.delite.framework.transform.{DeliteTransform}
 import java.io.{File, PrintWriter}
 import scala.collection.mutable.HashMap
+import ppl.delite.framework.{Config}
 
 import spatial.compiler._
 import spatial.compiler.ops._
@@ -14,7 +15,8 @@ trait UnrolledOpsExp extends ExternPrimitiveTypesExp with MemoryOpsExp {
 
   var insideReduceKernel = false
 
-  val controller_tree = new PrintWriter(new File("controller_tree.html" ))
+  val appname = Config.degFilename.dropRight(4)
+  val controller_tree = new PrintWriter(new File(s"controller_tree_${appname}.html" ))
   val table_init = """<TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">"""
 
   def print_stage_prefix(title: String, ctr: String, node: String, hasThingsInside: Boolean = true) {
