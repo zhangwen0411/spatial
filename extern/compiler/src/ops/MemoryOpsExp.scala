@@ -6,6 +6,7 @@ import scala.virtualization.lms.internal.{Traversal}
 import scala.reflect.{Manifest,SourceContext}
 import ppl.delite.framework.transform.{DeliteTransform}
 import scala.collection.mutable.Set
+import ppl.delite.framework.{Config}
 
 import spatial.shared._
 import spatial.shared.ops._
@@ -430,7 +431,11 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           // Note: Grouping by sets of integers here. Accesses to a buffer should either have one port or all ports, so this is ok
           val readsByPort = readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
           val writesByPort = writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
-          val numDupDups = if (isSRAM(mem.tp)) {d.duplicates} else {1}
+          val numDupDups = if (isSRAM(mem.tp)) {
+            if (nameOf(mem).getOrElse("") == "mu0Tile" | nameOf(mem).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+              d.duplicates
+            } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
+            } else {1}
 
           if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
           // Get all siblings of read/write ports and match to ports of buf
@@ -561,11 +566,24 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     val b_i = instanceIndicesOf(reader, sram).head    // Instance indices should have exactly one index for reads
     val p = portsOf(read, sram, b_i).head
     val readCtrl = reader.controlNode
-    val sub_i = read_port_dup_map.count{ case a => a == s"${quote(sram)}_${b_i} port $p"}
-    read_port_dup_map = read_port_dup_map :+ s"${quote(sram)}_${b_i} port $p"
+    var subsubdup = 0
+    // Check if there are multiplie readers on this port of this instance, so we can hardcode banks
+    val connectString = if (nameOf(sram).getOrElse("") == "mu0Tile" | nameOf(sram).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+      subsubdup = read_port_dup_map.count{ case a => a == s"${quote(sram)}_${b_i} port $p"}
+      read_port_dup_map = read_port_dup_map :+ s"${quote(sram)}_${b_i} port $p"
+      s"connectRport("
+      } else { if (readers.map{r => 
+        val this_b_i = instanceIndicesOf(r,sram).head
+        val this_p = portsOf(r, sram, this_b_i).head
+        if (s"${b_i} $p" == s"${this_b_i} ${this_p}") 1 else 0
+      }.reduce{_+_} > 1) {
+        val this_hardcoded_bank = read_port_dup_map.count{ case a => a == s"${quote(sram)}_${b_i} port $p"}
+        read_port_dup_map = read_port_dup_map :+ s"${quote(sram)}_${b_i} port $p"
+        s"connectDirectRport(${this_hardcoded_bank},"}
+      else {"connectRport("}} // issue #46 TODO FIX THIS ASAP!!
     // Console.println(s"current port map for read $read sram $sram list ${read_port_dup_map}")
 
-    val sram_name = s"${quote(sram)}_${b_i}_${sub_i}"
+    val sram_name = s"${quote(sram)}_${b_i}_$subsubdup"
     val pre = if (!par) maxJPre(sram) else "DFEVector<DFEVar>"
     val num_dims = dimsOf(sram).length
     val inds = parIndicesOf(read)
@@ -579,35 +597,35 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     match_tuple match { //(inds_length, num_dims, par)
       case (1,1,false) =>
         emit(s"// This could be part of indirect addressing, so delay it for BFS")
-        rdPre = s"stream.offset(${quote(sram_name)}.connectRport("
+        rdPre = s"stream.offset(${quote(sram_name)}.${connectString}"
         rdPost = s"),-${quote(readCtrl)}_offset)"
         addrString = quote(inds(0)(0))
         addEmittedConsts(inds(0)(0))
       case (1,1,true) =>
-        rdPre = s"new DFEVectorType<DFEVar>(${sram_name}.type, ${inds.length}).newInstance(this, Arrays.asList(${quote(sram_name)}.connectRport("
+        rdPre = s"new DFEVectorType<DFEVar>(${sram_name}.type, ${inds.length}).newInstance(this, Arrays.asList(${quote(sram_name)}.${connectString}"
         rdPost = ")))"
         addrString = quote(inds(0)(0))
         addEmittedConsts(inds(0)(0))
       case (_,1,false) => // Is this one even possible?
-        rdPre = s"${quote(sram_name)}.connectRport("
+        rdPre = s"${quote(sram_name)}.${connectString}"
         rdPost = ")"
         addrString = quote(addr)
       case (_,1,true) =>
-        rdPre = s"${quote(sram_name)}.connectRport("
+        rdPre = s"${quote(sram_name)}.${connectString}"
         rdPost = ")"
         addrString = quote(addr)
       case (1,2,false) =>
-        rdPre = s"${quote(sram_name)}.connectRport("
+        rdPre = s"${quote(sram_name)}.${connectString}"
         rdPost = ")"
         addrString = quote(inds(0)(0)) + ", " + quote(inds(0)(1))
         addEmittedConsts(inds(0)(0), inds(0)(1))
       case (1,2,true) =>
-        rdPre = s"new DFEVectorType<DFEVar>(${sram_name}.type, ${inds.length}).newInstance(this, Arrays.asList(${quote(sram_name)}.connectRport("
+        rdPre = s"new DFEVectorType<DFEVar>(${sram_name}.type, ${inds.length}).newInstance(this, Arrays.asList(${quote(sram_name)}.${connectString}"
         rdPost = ")))"
         addrString = quote(inds(0)(0)) + ", " + quote(inds(0)(1))
         addEmittedConsts(inds(0)(0), inds(0)(1))
       case (_,2,_) =>
-        rdPre = s"${quote(sram_name)}.connectRport("
+        rdPre = s"${quote(sram_name)}.${connectString}"
         rdPost = ")"
         addrString = row_col_indices(inds,"","")
       case (_,_,_) =>
@@ -616,12 +634,12 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
 
     val dummyOverride = if (isDummy(sram)) {bankOverride(read) match {
         case -1 =>
-          rdPre = s"${quote(sram_name)}.connectRport("
+          rdPre = s"${quote(sram_name)}.${connectString}"
           rdPost = ")"
           addrString = quote(addr)
           ""
         case b =>
-          rdPre = s"${quote(sram_name)}.connectRport("
+          rdPre = s"${quote(sram_name)}.${connectString}"
           rdPost = ")"
           addrString = quote(addr)
           s", $b"
@@ -762,7 +780,10 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       val accString = offsetPre + accEn + offsetPost
       val globalEnString = globalEnComma + offsetPre + globalEn + offsetPost
       if (isDummy(sram)) {addrString = quote(addr)} // Dummy override for char test
-      (0 until dd.duplicates).foreach { sub_i => 
+      val numdups = if (nameOf(sram).getOrElse("") == "mu0Tile" | nameOf(sram).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+        dd.duplicates
+      } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
+      (0 until numdups).foreach { sub_i => 
         emit(s"""${quote(sram)}_${ii}_${sub_i}.${wrType}${addrString},
           $dataString, ${accString}${globalEnString}, new int[] {$p}); // tuple $match_tuple to ${nameOf(sram).getOrElse("")}""")
         emit(s"""// debug.simPrintf(${accString},"${nameOf(sram).getOrElse("")}-${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", ${dataString}, ${addrString});""")
@@ -784,8 +805,6 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       print_stage_prefix(s"Gather par${quote(par)}",s"",s"${quote(sym)}", false)
       val access = writersOf(local).find(_.node == sym).get
       val i = instanceIndicesOf(access, addrs).head
-      val sub_i = read_port_dup_map.count{ case a => a == s"${quote(local)}_${i} port gather"}
-      read_port_dup_map = read_port_dup_map :+ s"${quote(local)}_${i} port gather"
 
       val parStr = if (par == 1) {
 //         emit(s"""DFEVar ${quote(sym)}_waddr = ${quote(addrs)}_$i.type.newInstance(this);
@@ -797,7 +816,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       }
 
       emit("{")
-      emit(s"""DFEVector<DFEVar> ${quote(sym)}_waddr = new DFEVectorType<DFEVar>(${quote(addrs)}_${i}_${sub_i}.type, 1).newInstance(this);
+      emit(s"""DFEVector<DFEVar> ${quote(sym)}_waddr = new DFEVectorType<DFEVar>(${quote(addrs)}_${i}_0.type, 1).newInstance(this);
 DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0_0.type, 1).newInstance(this); /* TODO: Why is this hardcoded to 0_0???? */
 DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
@@ -807,13 +826,13 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         this,
         ${quote(sym)}_en, ${quote(sym)}_done, ${bound(worker).get.toInt}, $parStr
         ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
-        ${quote(addrs)}_${i}_${sub_i}, ${quote(len)},
+        ${quote(addrs)}_${i}_0, ${quote(len)},
         ${quote(mem)},  "${quote(mem)}_${quote(sym)}_in",
         ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
       val wType = if ((par == 1)) {"connectWport("} else {s"connectDirectWport($worker,"}
-      duplicatesOf(local).zipWithIndex.foreach { case (m,i) => (0 until m.duplicates).foreach { ii =>
-        emit(s"""${quote(local)}_${i}_$ii.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
-      }}
+      duplicatesOf(local).zipWithIndex.foreach { case (m,i) => 
+        emit(s"""${quote(local)}_0_0.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen); // TODO: Why is this hardcoded to 0?""") 
+      }
       emit("}")
       print_stage_suffix(quote(sym),false)
 
@@ -825,10 +844,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val addrsReader = readersOf(addrs).find(_.node == sym).get
       val i = instanceIndicesOf(addrsReader, addrs).head
       val j = instanceIndicesOf(localReader, local).head
-      val sub_i_addrs = read_port_dup_map.count{ case a => a == s"${quote(addrs)}_${i} port scatter"}
-      read_port_dup_map = read_port_dup_map :+ s"${quote(addrs)}_${i} port scatter"
-      val sub_i_local = read_port_dup_map.count{ case a => a == s"${quote(local)}_${i} port scatter"}
-      read_port_dup_map = read_port_dup_map :+ s"${quote(local)}_${i} port scatter"
       val parStr = if (par == 1) {
 //         emit(s"""DFEVar ${quote(sym)}_waddr = ${quote(addrs)}_$i.type.newInstance(this);
 // DFEVar ${quote(sym)}_wdata = ${quote(local)}_0.type.newInstance(this); // Assume duplicate _0 exists
@@ -844,7 +859,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         this,
         ${quote(sym)}_en, ${quote(sym)}_done, ${bound(worker).get.toInt}, ${parStr}
         ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
-        ${quote(addrs)}_${i}_${sub_i_addrs}, ${quote(local)}_${j}_${sub_i_local}, ${quote(len)},
+        ${quote(addrs)}_${i}_0, ${quote(local)}_${j}_0, ${quote(len)},
         ${quote(mem)}, "${quote(mem)}_${quote(sym)}_out");""")
       emit("}")
       print_stage_suffix(quote(sym),false)
@@ -1200,7 +1215,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           dups.zipWithIndex.foreach { case (r, i) =>
             val banks = getBanking(r)
             val strides = getStride(r)
-            (0 until r.duplicates).foreach { case sub_i =>
+            val numdups = if (nameOf(sym).getOrElse("") == "mu0Tile" | nameOf(sym).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+              r.duplicates
+            } else {
+              1
+            } //SUPER TODO: issue #46, FIX ASAP ASAP ASAP
+            (0 until numdups).foreach { case sub_i =>
               if (isDummy(sym)) {
                 emit(s"""DummyMemLib ${quote(sym)}_${i}_${sub_i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""")
               } else {
@@ -1232,13 +1252,19 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   if (!(write_pars.map{a => a == write_head}.reduce{_&_})) {
                     throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")
                   }
+                  val numDirectPorts = if (nameOf(sym).getOrElse("") == "logregX") { // Issue #46 FIX ASAP!!!
+                    r.duplicates
+                  } else {
+                    1
+                  }
                   emit(s"""NBufKernelLib ${quote(sym)}_${i}_${sub_i} = new NBufKernelLib(this, "${quote(sym)}_${i}_${sub_i}",
                     ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
                     $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
                     ${all_same}, /*all_same access (row_major or col_major)*/
                     new boolean[] {${row_majors.map{a => a | size1==1}.mkString(",")}}, /*rowmajor read?*/
                     ${write_head}, ${read_head} /*writepar, readpar*/,
-                    ${varying_rd_sizes}, new int[] {${read_pars.map{a => a}.mkString(",")}} /*varying rd sizes, rdpars*/); // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}""")
+                    ${varying_rd_sizes}, new int[] {${read_pars.map{a => a}.mkString(",")}}); /*varying rd sizes, rdpars*/
+                    //${numDirectPorts} /*num Direct Ports (for DirectR in logreg/kmeans outerpar*/)); // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}""")
                 }
               }
             }
