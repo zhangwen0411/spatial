@@ -15,7 +15,7 @@ import scala.collection.mutable.Set
 import ppl.delite.framework.DeliteApplication
 
 trait MaxJPreCodegen extends Traversal  {
-	val IR:SpatialExp with MemoryAnalysisExp with UnrollingTransformExp with ExternPrimitiveOpsExp with ReductionAnalysisExp
+	val IR:SpatialExp with MemoryAnalysisExp with UnrollingTransformExp with ExternPrimitiveOpsExp with ReductionAnalysisExp with DRAMAddrAnalysisExp
 
 	import IR.{infix_until => _, looprange_until => _, println => _, _}
 
@@ -259,6 +259,9 @@ trait MaxJPreCodegen extends Traversal  {
     case e@BurstLoad(_,fifo,_,_,_) => 
       memLdFifos += fifo
       memStreams = memStreams :+ sym
+    case e@Convolve(img,kernel,output,_,_,_,_,_) => 
+      memStreams = memStreams :+ sym
+      // argInOuts = argInOuts :+ sym.asInstanceOf[Sym[Reg[_]]]
     case _:Scatter[_] => memStreams = memStreams :+ sym
     case _:Gather[_] => memStreams = memStreams :+ sym
 

@@ -231,21 +231,9 @@ trait ScalaGenMemoryOps extends ScalaGenEffect {
 }
 
 trait CGenMemoryOps extends CGenEffect {
-  val IR: ControllerOpsExp with SpatialIdentifiers with DRAMOpsExp
+  val IR: ControllerOpsExp with SpatialIdentifiers with DRAMOpsExp with DRAMAddrAnalysisExp
   with NosynthOpsExp
   import IR._
-
-  // Current TileLd/St templates expect that LMem addresses are
-  // statically known during graph build time in MaxJ. That can be
-  // changed, but until then we have to assign LMem addresses
-  // statically. Assigning each DRAM memory a 384MB chunk now
-  val burstSize = 384
-  var nextLMemAddr: Long = burstSize * 1024 * 1024
-  def getNextLMemAddr() = {
-    val addr = nextLMemAddr
-    nextLMemAddr += burstSize * 1024 * 1024;
-    addr
-  }
 
 //  private def bitsToStringInt(bits: Int): String = {
 //    if (bits <= 8) "8"
@@ -321,7 +309,7 @@ public:
       Top_readLMem_run(engine, &${quote(fpgamem)}_rdAct);
       fprintf(stderr, "FPGA -> CPU copy done\\n");""")
     case Dram_new(size) =>
-      emitValDef(sym, s"""new maxjLmem(${getNextLMemAddr()}, ${quote(size)})""")
+      emitValDef(sym, s"""new maxjLmem(${dramAddr(sym)}, ${quote(size)})""")
 
     case Forloop(start, end, step, body, idx) =>
       val itp = remap(start.tp)
@@ -337,10 +325,11 @@ public:
 
 
 trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with MaxJGenControllerOps {
-  val IR: UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DeliteTransform
+  val IR: UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DRAMAddrAnalysisExp with DeliteTransform
           with UnrolledOpsExp with ControllerOpsExp with ExternPrimitiveOpsExp with ReductionAnalysisExp
 
   import IR.{println => _, assert => _, infix_until => _, _}
+  import FPGAParameters._
 
   override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
     case "SpatialVector" => "DFEVector<DFEVar>"
@@ -382,22 +371,9 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     }
   }
 
-  // Current TileLd/St templates expect that LMem addresses are
-  // statically known during graph build time in MaxJ. That can be
-  // changed, but until then we have to assign LMem addresses
-  // statically. Assigning each DRAM memory a 384MB chunk now
-  val burstSize = 384
-  var nextLMemAddr: Long = burstSize * 1024 * 1024
-  def getNextLMemAddr() = {
-    val addr = nextLMemAddr
-    nextLMemAddr += burstSize * 1024 * 1024;
-    addr/burstSize
-  }
-
   var emittedSize = Set.empty[Exp[Any]]
   override def initializeGenerator(buildDir:String): Unit = {
     emittedSize = Set.empty[Exp[Any]]
-    nextLMemAddr = burstSize * 1024 * 1024
     super.initializeGenerator(buildDir)
   }
 
@@ -761,7 +737,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Dram_new(size) =>
         emitComment(s""" Dram_new(${quote(size)}) {""")
-        alwaysGen { emit(s"""int ${quote(sym)} = ${getNextLMemAddr()};""") }
+        alwaysGen { emit(s"""int ${quote(sym)} = ${dramAddr(sym)}/${burstSize};""") }
         emitComment(s""" Dram_new(${quote(size)}) }""")
 
     case Gather(mem,local,addrs,len,_,i) =>
