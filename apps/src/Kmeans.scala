@@ -19,7 +19,7 @@ trait KmeansApp extends SpatialApp {
   lazy val MAXK = num_cents
   lazy val MAXD = dim
 
-  def kmeans(points_in: Rep[Array[T]], numPoints: Rep[SInt], 
+  def kmeans(points_in: Rep[Array[T]], numPoints: Rep[SInt],
     numCents: Rep[SInt], numDims: Rep[SInt], it: Rep[SInt]) = {
     bound(numPoints) = 960000
     bound(numCents) = MAXK
@@ -54,7 +54,7 @@ trait KmeansApp extends SpatialApp {
 
       val DM1 = D - 1
 
-      Sequential(iters by 1){epoch => 
+      Sequential(iters by 1){epoch =>
 
         val newCents = SRAM[T](MAXK,MAXD)
         // For each set of points
@@ -63,7 +63,7 @@ trait KmeansApp extends SpatialApp {
           pts := points(i::i+BN, 0::BD par P0)
 
           // For each point in this set
-          Fold(BN par P1, PR)(newCents, 0.as[T]){pt =>
+          Fold(BN par PX, PR)(newCents, 0.as[T]){pt =>
             // Find the index of the closest centroid
             val minCent = Reduce(K par PX)(pack((0.as[SInt],100000.as[T]))){ct =>
               val dist = Reduce(D par P2)(0.as[T]){d => (pts(pt,d) - cts(ct,d)) ** 2 }{_+_}
@@ -133,8 +133,8 @@ trait KmeansApp extends SpatialApp {
 
     // // val cts = Array.tabulate(K){i => Array.tabulate(D){d => pts(i,d) }}
 
-    val gold = Array.tabulate(K){i => Array.empty[T](D)}
-    val acc = Array.tabulate(K){i => Array.empty[T](D)}
+    val gold = Array.tabulate(K){i => Array.empty[T](D)}.unsafeMutable
+    val acc = Array.tabulate(K){i => Array.empty[T](D)}.unsafeMutable
     val ii = Array.tabulate(K) {i=>i}
     val counts = Array.empty[UInt](K)
     for (i <- 0 until K) { for (d <- 0 until D) {

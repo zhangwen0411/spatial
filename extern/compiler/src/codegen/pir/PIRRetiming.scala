@@ -69,7 +69,7 @@ trait RetimingOps extends PIRCommon {
     }
 
     def getDelay(input: GlobalMem, cur: Int): Int = producer.get(input) match {
-      case Some(cu) => deps(cu).map{dep => getDelay(dep,cur+1)}.max
+      case Some(cu) => (1 +: deps(cu).map{dep => getDelay(dep,cur+1)}).max
       case None => cur
     }
 
@@ -91,8 +91,9 @@ trait RetimingOps extends PIRCommon {
             }
           }
         }
-
       }
+
+      cu.deps ++= deps(cu).flatMap{dep => producer.get(dep) }
     }
   }
 
@@ -101,6 +102,7 @@ trait RetimingOps extends PIRCommon {
   }
 
   def insertFIFO(cu: ComputeUnit, global: GlobalMem, depth: Int) {
+    debug(s"Inserting FIFO in $cu for input $global")
     val sram = allocateFIFO(global, depth)
     cu.srams += sram
     cu.allStages.foreach{

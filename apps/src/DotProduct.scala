@@ -8,7 +8,7 @@ trait DotProductApp extends SpatialApp {
 
   val tileSize = 96
   val innerPar = 2
-  val outerPar = 1
+  val outerPar = 8
   type Array[T] = ForgeArray[T]
 
   def dotproduct(a: Rep[Array[T]], b: Rep[Array[T]]) = {
@@ -35,10 +35,10 @@ trait DotProductApp extends SpatialApp {
         val b1 = FIFO[T](B)
         val b2 = FIFO[T](B)
         val bn = Reg[SInt](999)
-        Parallel {
+        Parallel { // ISSUE #2
           b1 := v1(i::i+B par P3)
           b2 := v2(i::i+B par P3)
-          Pipe{ bn := min(N.value - i, B) } // ISSUE #2
+          Pipe{ bn := min(N.value - i, B) }
         }
         Reduce(bn par P2)(0.as[T]){ii =>
           b1.pop * b2.pop

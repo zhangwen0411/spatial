@@ -74,13 +74,9 @@ trait PIRGen extends Traversal with PIRCommon {
     optimizer.globals = (prescheduler.globals ++ scheduler.globals)
     optimizer.cuMapping ++= cuMapping.toList
     optimizer.run(b)
-    // dse
-    dse.globals = optimizer.globals
-    dse.cuMapping ++= optimizer.cuMapping.toList
-    dse.run(b)
     // splitting
-    splitter.globals = optimizer.globals
-    splitter.cuMapping ++= optimizer.cuMapping.toList
+    splitter.globals ++= optimizer.globals
+    splitter.cuMapping ++= optimizer.cuMapping
     splitter.run(b)
     // retiming
     retimer.globals = splitter.globals
@@ -89,6 +85,11 @@ trait PIRGen extends Traversal with PIRCommon {
     // gen
     globals = retimer.globals
     cus ++= retimer.cus
+
+    // dse
+    dse.globals ++= optimizer.globals
+    dse.cuMapping ++= optimizer.cuMapping
+    dse.run(b)
 
     debug("Scheduling complete. Generating...")
     generateHeader()

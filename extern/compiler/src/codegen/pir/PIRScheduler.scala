@@ -294,13 +294,14 @@ trait PIRScheduler extends Traversal with PIRCommon {
         val output = ctx.cu.getOrAddReg(out){ TempReg() }
         val stage = MapStage(op, inputs, List(ctx.refOut(output)))
 
+        ctx.addStage(stage)
         // Don't generate control muxes if control logic is disabled
-        if (op == ALUMux) {
-          if (!hasControlLogic || GenControlLogic)
-            ctx.addStage(stage)
+        /*if (op == ALUMux) {
+          //if (!hasControlLogic || GenControlLogic)
+          ctx.addStage(stage)
         }
         else
-          ctx.addStage(stage)
+          ctx.addStage(stage)*/
       }
     }
   }

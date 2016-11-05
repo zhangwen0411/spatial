@@ -16,7 +16,7 @@ trait ConvApp extends SpatialApp {
 
     Accel {
       val out = SRAM[SInt](10,10)
-      convolve(img, kernel, out, List(1,1), List(unit(1),unit(1)))
+      //convolve(img, kernel, out, List(1,1), List(unit(1),unit(1)))
 
       outImg(0::10,0::10) := out
     }
@@ -26,7 +26,7 @@ trait ConvApp extends SpatialApp {
 
   def main() {
     val sImg = Array.tabulate(10){i =>
-               Array.tabulate(10){j =>
+               Array.tabulate(15){j =>
                  if (j > 5) 9 else 0
                }}
     val sKernel = Array.tabulate(3){i =>

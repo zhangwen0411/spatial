@@ -287,6 +287,8 @@ trait SpatialMisc {
     val println  = direct (Tst) ("println", Nil, MAny :: MUnit, effect = simple)
     val println2 = direct (Tst) ("println", Nil, Nil :: MUnit, effect = simple)
     val assert   = direct (Tst) ("assert", Nil, Bit :: MUnit, effect = simple)
+    val mut      = infix (Tst) ("unsafeMutable", List(T), List(T) :: T, effect = mutable, aliasHint = copies(0))
+
     /** Set content of SRAM to an array (debugging purpose only)
      * @param sram
      * @param array
@@ -347,6 +349,7 @@ trait SpatialMisc {
     impl (println)  (codegen($cala, ${ println($0) }))
     impl (println2) (codegen($cala, ${ println() }))
     impl (assert)   (codegen($cala, ${ assert($0) }))
+    impl (mut)      (codegen($cala, ${ $0 /* unsafe mutable */ }))
     impl (ifThenElse) (codegen($cala, ${
       if ($0) {
         $b[1]
@@ -390,6 +393,7 @@ trait SpatialMisc {
     impl (println)  (codegen(cpp, ${ std::cout << $0 << std::endl }))
     impl (println2) (codegen(cpp, ${ std::cout << std::endl }))
     impl (assert)   (codegen(cpp, ${ assert($0) }))
+    impl (mut)      (codegen(cpp, ${ $0 /* unsafe mutable */ }))
     impl (ifThenElse) (codegen(cpp, ${
       if ($0) {
         $b[1]

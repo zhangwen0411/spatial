@@ -43,11 +43,6 @@ trait SpatialAffineAnalysisExp extends AffineAnalysisExp {
     case Deff(Sram_store(sram,addr,y,en)) => Some((sram, accessIndicesOf(x)))
     case _ => None
   }
-  // Usually None, but allows other exceptions for symbols being loop invariant
-  override def invariantUnapply(x: Exp[Index]): Option[Exp[Index]] = x match {
-    case Exact(_) => Some(x)  // May not be constant yet but will be in future
-    case _ => super.invariantUnapply(x)
-  }
 }
 
 trait SpatialAffineAnalyzer extends AffineAnalyzer {
@@ -57,6 +52,28 @@ trait SpatialAffineAnalyzer extends AffineAnalyzer {
   override val name = "Affine Analysis"
   debugMode = SpatialConfig.debugging
   verboseMode = SpatialConfig.verbose
+
+
+  override def invariantUnapply(x: Exp[Index]): Option[Exp[Index]] = x match {
+    case Exact(_) => Some(x)  // May not be constant yet but will be in future
+    case LocalReader(reads) =>
+      debug(s"  Checking if index $x is loop invariant: ")
+      debug(s"    reads: $reads")
+      debug(s"  writes in scope:")
+      loopScope.foreach{case TP(writer@LocalWriter(writes), _) => debug(s"  $writer: $writes"); case _ =>  }
+      // A local read is loop invariant if none of the read memories
+      // are written within this loop scope (outside is ok)
+      val readMems = reads.map(_._1)
+      val writerInScope = loopScope.exists{
+        case TP(LocalWriter(writes), _) => writes.exists{write => readMems.contains(write._1) }
+        case _ => false
+      }
+      debug(s"  writer-in-scope: $writerInScope")
+
+      if (!writerInScope) Some(x) else None
+
+    case _ => super.invariantUnapply(x)
+  }
 
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
     case EatReflect(e:Scatter[_]) =>

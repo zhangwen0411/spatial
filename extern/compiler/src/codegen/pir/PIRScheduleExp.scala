@@ -327,7 +327,7 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
     override val name: String,
     override val pipe: Exp[Any],
     override val parent: Option[ComputeUnit],
-    val tpe: ControlType
+    var tpe: ControlType
   ) extends ComputeUnit(name,pipe,parent) {
     override def dumpString = s"BasicComputeUnit($name, $parent, $tpe){\n${super.dumpString}\n}"
     override def toString() = s"CU$name"
@@ -352,9 +352,15 @@ trait PIRScheduleAnalysisExp extends NodeMetadataOpsExp with ReductionAnalysisEx
   sealed abstract class CUCounterChain(val name: String) {
     var isStreaming = false
   }
-  case class CounterChainCopy(override val name: String, owner: ComputeUnit) extends CUCounterChain(name)
-  case class CounterChainInstance(override val name: String, ctrs: List[CUCounter]) extends CUCounterChain(name)
-  case class UnitCounterChain(override val name: String) extends CUCounterChain(name)
+  case class CounterChainCopy(override val name: String, owner: ComputeUnit) extends CUCounterChain(name) {
+    override def toString = s"$owner.copy($name)"
+  }
+  case class CounterChainInstance(override val name: String, ctrs: List[CUCounter]) extends CUCounterChain(name) {
+    override def toString = name
+  }
+  case class UnitCounterChain(override val name: String) extends CUCounterChain(name) {
+    override def toString = name
+  }
 
   def memSize(mem: Exp[Any]) = dimsOf(mem).map(dim => bound(dim).get.toInt).fold(1){_*_}
 

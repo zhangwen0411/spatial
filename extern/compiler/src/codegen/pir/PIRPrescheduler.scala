@@ -147,12 +147,16 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
    * Get or create a CU which corresponds to the given pipe
    **/
   def allocateCU(pipe: Exp[Any]) = pipe match {
-    case Deff(_:Hwblock)              => allocateBasicCU(pipe)
-    case Deff(_:UnrolledForeach)       => allocateBasicCU(pipe)
-    case Deff(_:UnrolledReduce[_,_])   => allocateBasicCU(pipe)
+    case Deff(_:Hwblock)             => allocateBasicCU(pipe)
+    case Deff(_:UnrolledForeach)     => allocateBasicCU(pipe)
+    case Deff(_:UnrolledReduce[_,_]) => allocateBasicCU(pipe)
     case Deff(_:UnitPipe)            => allocateBasicCU(pipe)
     case Deff(e:BurstLoad[_])  => allocateMemoryCU(pipe, e.mem, e.fifo, MemLoad)
     case Deff(e:BurstStore[_]) => allocateMemoryCU(pipe, e.mem, e.fifo, MemStore)
+
+    //case Deff(e:Gather[_])  =>
+    //case Deff(e:Scatter[_]) =>
+
     case Def(d) => throw new Exception(s"Don't know how to generate CU for: \n  $pipe = $d")
   }
 

@@ -47,19 +47,19 @@ trait LogRegApp extends SpatialApp {
       Sequential(iters by 1) { epoch => 
         val gradAcc = SRAM[T](D)
         Pipe(N by BN){ i =>
-          val xB = SRAM[T](BN, D)
-          val yB = SRAM[T](BN)
+          val logregX = SRAM[T](BN, D)
+          val logregY = SRAM[T](BN)
           Parallel {
-            xB := x(i::i+BN, 0::D par P2)
-            yB := y(i::i+BN par P2)
+            logregX := x(i::i+BN, 0::D par P2)
+            logregY := y(i::i+BN par P2)
           }
           Fold(BN par P3, P2)(gradAcc, 0.as[T]){ ii =>
             val pipe2Res = Reg[T]
             val subRam   = SRAM[T](D)
 
-            val dotAccum = Reduce(D par P2)(0.as[T]){ j => xB(ii,j) * btheta(j) }{_+_}
-            Pipe { pipe2Res := (yB(ii) - sigmoid(dotAccum.value)) }
-            Pipe(D par P2) {j => subRam(j) = xB(ii,j) - pipe2Res.value }
+            val dotAccum = Reduce(D par P2)(0.as[T]){ j => logregX(ii,j) * btheta(j) }{_+_}  // read
+            Pipe { pipe2Res := (logregY(ii) - sigmoid(dotAccum.value)) }
+            Pipe(D par P2) {j => subRam(j) = logregX(ii,j) - pipe2Res.value }
             subRam
           }{_+_}
         }
@@ -71,7 +71,7 @@ trait LogRegApp extends SpatialApp {
         // Flush gradAcc
         Pipe(D by 1 par P2) { i => gradAcc(i) = 0.as[T]}
       }
-      theta(0::D par P2) := btheta
+      theta(0::D par P2) := btheta // read
     }
     getMem(theta)
   }

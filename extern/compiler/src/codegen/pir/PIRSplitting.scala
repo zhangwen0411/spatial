@@ -36,7 +36,7 @@ trait PIRSplitter extends Traversal with SplittingOps {
   }
 
   val ComputeMax = SplitCost(aIn=16, vIn=4, vOut=2, vLoc=1, comp=6, write=4, read=4, mems=4)
-  val UnitMax    = SplitCost(aIn=2,  vIn=1, vOut=1, vLoc=1, comp=6, write=4, read=1, mems=1)
+  val UnitMax    = SplitCost(aIn=2,  vIn=4, vOut=1, vLoc=1, comp=6, write=4, read=4, mems=4)
 
   def splitCU(cu: ComputeUnit): List[ComputeUnit] = cu match {
     case tu: TileTransferUnit => List(tu)
@@ -104,9 +104,17 @@ trait SplittingOps extends PIRCommon {
     val lanes = if (cu.isUnitCompute) 1 else LANES
 
     cu.allStages.map{
-      case MapStage(op,_,_) if op != Bypass => LANES
-      case _:ReduceStage => LANES // ALUs used by reduction tree
+      case MapStage(op,_,_) if op != Bypass => lanes
+      case _:ReduceStage => lanes // ALUs used by reduction tree
+      case _ => 0
     }.fold(0){_+_}
+  }
+
+  def reportStats(stats: SplitStats) {
+    val SplitStats(cus,ccus,tus,ucus,maxALUs,maxMems,alus,mems,vecIn,vecOut) = stats
+    debug(s"  cus = $cus, ccus = $ccus, tus = $tus, ucus = $ucus")
+    debug(s"  maxALUs = $maxALUs, maxMems = $maxMems")
+    debug(s"  alus = $alus, mems = $mems, vecIn = $vecIn, vecOut = $vecOut")
   }
 
 
@@ -401,13 +409,22 @@ trait SplittingOps extends PIRCommon {
     orig.stages.foreach{stage => debug(s"  $stage")}
     implicit val ctx = ComputeContext(orig)
 
+    val writeGroups = Map[Int,WriteGroup]() ++ orig.writeStages.zipWithIndex.map{case ((mems,stages),i) => i -> WriteGroup(mems,stages.toList) }
+    debug(s"SRAM write groups: ")
+    writeGroups.foreach{case (i,grp) =>
+      debug(s"  Group #$i: ${grp.mems}")
+      grp.stages.foreach{stage => debug(s"    $stage") }
+    }
+
     val sramOwners = getSRAMOwners(orig.stages.toList +: orig.writeStages.values.map(_.toList).toList)
     debug(s"SRAM owners:")
     sramOwners.foreach{s => debug(s"  $s") }
-
-    val writeGroups = Map[Int,WriteGroup]() ++ orig.writeStages.zipWithIndex.map{case ((mems,stages),i) => i -> WriteGroup(mems,stages.toList) }
-    debug(s"SRAM write groups: ")
-    writeGroups.foreach{case (i,grp) => debug(s"  Group #$i: $grp") }
+    orig.srams.foreach{mem =>
+      val owner = sramOwners.find{case SRAMRef(`mem`) => true; case _ => false}
+      if (!owner.isDefined) {
+        throw new Exception(s"CU $orig does not have an owner stage for memory $mem")
+      }
+    }
 
     val partitions: ArrayBuffer[Partition] = ArrayBuffer.empty
     var current: Partition = new Partition(writeGroups, orig.stages)
@@ -424,7 +441,13 @@ trait SplittingOps extends PIRCommon {
       }
       if (current.cstages.isEmpty) {
         val splitMem = remote.memories.find{sram =>
-          val owner = sramOwners.find{case SRAMRef(mem) => mem == sram; case _ => false}.get
+          val ownerOpt = sramOwners.find{case SRAMRef(mem) => mem == sram; case _ => false}
+
+          if (!ownerOpt.isDefined) {
+            throw new Exception(s"No SRAM owner found for memory $sram in CU $orig")
+          }
+          val owner = ownerOpt.get
+
           !remote.cstages.exists{case MapStage(Bypass,List(`owner`),List(LocalRef(_,SRAMRead(`sram`)))) => true; case _ => false}
         }
         if (splitMem.isDefined) {
@@ -434,25 +457,32 @@ trait SplittingOps extends PIRCommon {
           remote addCompute current.popSRAM(splitMem.get, sramOwners)
         }
         else {
-          debug(s"Failed splitting with remaining stages: ")
-          debug(s"  Write stages: ")
-          for ((i,grp) <- remote.wstages) {
-            debug(s"    Write Group #$i (local = ${grp.mems}):")
-            grp.stages.foreach{stage => debug(s"      $stage")}
-          }
-          debug(s"  Compute stages: ")
-          remote.cstages.foreach{stage => debug(s"    $stage") }
+          if (debugMode) {
+            debug(s"Failed splitting with remaining stages: ")
+            debug(s"  Write stages: ")
+            for ((i,grp) <- remote.wstages) {
+              debug(s"    Write Group #$i (local = ${grp.mems}):")
+              grp.stages.foreach{stage => debug(s"      $stage")}
+            }
+            debug(s"  Compute stages: ")
+            remote.cstages.foreach{stage => debug(s"    $stage") }
 
-          val cost = partitionCost(remote, sramOwners)
-          report(cost)
-
-          /*debug("")
-          debug("Cost for each split option: ")
-          while(remote.nonEmpty) {
-            remote.popCompute(sramOwners)
-            cost = partitionCost(remote, sramOwners,dbg=true)
+            val cost = partitionCost(remote, sramOwners)
             report(cost)
-          }*/
+
+            current.cstages ++= remote.cstages
+            current.wstages ++= remote.wstages
+
+            debug("")
+            debug("Cost for each split option: ")
+            while(remote.nonEmpty) {
+              remote.popCompute(sramOwners)
+              cost = partitionCost(remote, sramOwners,dbg=true)
+              report(cost)
+            }
+          }
+
+
           var errReport = "Write stages:"
           for ((i,grp) <- remote.wstages) {
             errReport += s"\n  Write Group #$i (local = ${grp.mems}):"
@@ -494,9 +524,13 @@ trait SplittingOps extends PIRCommon {
 
     }*/
     //val remap = RegRemapping(new HashMap[LocalMem,LocalMem]())
-    val parent = BasicComputeUnit(orig.name, orig.pipe, orig.parent, StreamPipe)
-    parent.cchains ++= orig.cchains
-    parent.deps = orig.deps
+    val parent = if (partitions.length > 1) {
+      val parent = BasicComputeUnit(orig.name, orig.pipe, orig.parent, StreamPipe)
+      parent.cchains ++= orig.cchains
+      parent.deps = orig.deps
+      Some(parent)
+    }
+    else None
 
     val cus = partitions.reverse.zipWithIndex.map{case (p,i) =>
       schedulePartitioned(orig, p, i, parent)
@@ -515,7 +549,10 @@ trait SplittingOps extends PIRCommon {
       cus.reverse.zip(partitions).zipWithIndex.foreach{case ((cu,p),i) =>
         debug(s"Partition #$i: $cu")
         val cost = partitionCost(p, sramOwners)
+        debug(s"Cost:")
         report(cost)
+        debug(s"Stats:")
+        reportStats(getStats(cu))
 
         if (cost.mems > maxMems) maxMems = cost.mems
         if (cost.comp > maxComp) maxComp = cost.comp
@@ -545,11 +582,11 @@ trait SplittingOps extends PIRCommon {
       debug(s"VecOuts  / CU: ${stats.avgVecOutPerCU}")*/
     }
 
-    parent +: cus.toList
+    parent.toList ++ cus.toList
   }
 
-  def schedulePartitioned(orig: BasicComputeUnit, part: Partition, i: Int, parent: BasicComputeUnit): BasicComputeUnit = {
-    val cu = BasicComputeUnit(orig.name+"_"+i, orig.pipe, Some(parent), StreamPipe)
+  def schedulePartitioned(orig: BasicComputeUnit, part: Partition, i: Int, parent: Option[BasicComputeUnit]): BasicComputeUnit = {
+    val cu = BasicComputeUnit(orig.name+"_"+i, orig.pipe, parent, StreamPipe)
     cu.isUnitCompute = orig.isUnitCompute
     cu.writeStages ++= part.wstages.map{case (i,WriteGroup(mems,stages)) => mems -> ArrayBuffer(stages:_*) }
 
@@ -621,9 +658,11 @@ trait SplittingOps extends PIRCommon {
       case ReduceStage(op, init, in, acc) =>
         var input = rerefIn(in.reg)
         if (!isAccum(input.reg)) {
-          val reduce = rerefOut(in.reg)
-          ctx.addStage(MapStage(Bypass, List(input), reduce))
-          input = reduce
+          val redReg = ReduceReg()
+          val reduce = ctx.refOut(redReg)
+          cu.regs += redReg
+          ctx.addStage(MapStage(Bypass, List(input), List(reduce)))
+          input = ctx.refIn(redReg)
         }
         cu.regs += acc
         ctx.addStage(ReduceStage(op, init, input, acc))
@@ -660,26 +699,43 @@ trait SplittingOps extends PIRCommon {
     }}
 
     // --- counter chains
-    val f = copyIterators(cu, parent)
+    if (parent.isDefined) {
+      val ctrl = parent.get
 
-    def swap_cchain_Reg(x: LocalMem) = x match {
-      case CounterReg(cc,idx) => CounterReg(f(cc),idx)
-      case _ => x
-    }
-    def swap_cchains_Ref(x: LocalRef) = x match {
-      case LocalRef(i, reg) => LocalRef(i, swap_cchain_Reg(reg))
-    }
+      val f = copyIterators(cu, ctrl)
+      def tx(cc: CUCounterChain): CUCounterChain = {
+        if (f.contains(cc)) f(cc)
+        else if (f.values.toList.contains(cc)) cc  // HACK: DSE
+        else {
+          val mapping = f.map{case (k,v) => s"$k -> $v"}.mkString("\n")
+          throw new Exception(s"Attempted to copy counter $cc in CU $ctrl, but no such counter exists.\nMapping:\n$mapping")
+        }
+      }
 
-    cu.allStages.foreach{
-      case stage@MapStage(_,ins,_) => stage.ins = ins.map{swap_cchains_Ref(_)}
-      case _ =>
+      def swap_cchain_Reg(x: LocalMem) = x match {
+        case CounterReg(cc,idx) => CounterReg(tx(cc),idx)
+        case _ => x
+      }
+      def swap_cchains_Ref(x: LocalRef) = x match {
+        case LocalRef(i, reg) => LocalRef(i, swap_cchain_Reg(reg))
+      }
+
+      cu.allStages.foreach{
+        case stage@MapStage(_,ins,_) => stage.ins = ins.map{swap_cchains_Ref(_)}
+        case _ =>
+      }
+      cu.srams.foreach{sram =>
+        sram.readAddr = sram.readAddr.map{swap_cchain_Reg(_)}
+        sram.writeAddr = sram.writeAddr.map{swap_cchain_Reg(_)}
+        sram.swapWrite = sram.swapWrite.map{tx(_)}
+        sram.swapRead = sram.swapRead.map{tx(_)}
+        sram.writeCtrl = sram.writeCtrl.map{tx(_)}
+      }
     }
-    cu.srams.foreach{sram =>
-      sram.readAddr = sram.readAddr.map{swap_cchain_Reg(_)}
-      sram.writeAddr = sram.writeAddr.map{swap_cchain_Reg(_)}
-      sram.swapWrite = sram.swapWrite.map{f(_)}
-      sram.swapRead = sram.swapRead.map{f(_)}
-      sram.writeCtrl = sram.writeCtrl.map{f(_)}
+    else {
+      cu.tpe = InnerPipe
+      cu.cchains ++= orig.cchains
+      cu.deps = orig.deps
     }
 
     // --- control logic
