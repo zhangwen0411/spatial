@@ -20,7 +20,7 @@ trait GDA_App extends SpatialApp {
     val op            = outerPar (1 -> 8)
     val ip            = innerPar (1 -> 12)
     val subLoopPar    = innerPar (1 -> 16)
-    val prodLoopPar   = pLoopPar (1 -> 96)
+    val prodLoopPar   = innerPar (1 -> 96)
     val outerAccumPar = innerPar (1 -> 1)
 
     val rows = yCPU.length;   bound(rows) = 360000
@@ -53,12 +53,12 @@ trait GDA_App extends SpatialApp {
       val sigmaOut = SRAM[T](MAXC, MAXC)
 
       Fold(R by rTileSize par op, outerAccumPar)(sigmaOut, 0.as[T]){ r =>
-        val yTile = SRAM[SInt](rTileSize)
-        val xTile = SRAM[T](rTileSize, MAXC)
+        val gdaYtile = SRAM[SInt](rTileSize)
+        val gdaXtile = SRAM[T](rTileSize, MAXC)
         val blk = Reg[SInt]
         Parallel {
-          yTile := y(r::r+rTileSize par subLoopPar)
-          xTile := x(r::r+rTileSize, 0::C par subLoopPar)  // Load tile of x
+          gdaYtile := y(r::r+rTileSize par subLoopPar)
+          gdaXtile := x(r::r+rTileSize, 0::C par subLoopPar)  // Load tile of x
           Pipe { blk := min(R.value - r, rTileSize) }
         }
 
@@ -67,7 +67,7 @@ trait GDA_App extends SpatialApp {
           val subTile = SRAM[T](MAXC)
           val sigmaTile = SRAM[T](MAXC, MAXC)
           Pipe(C par subLoopPar){ cc =>
-            subTile(cc) = xTile(rr,cc) - mux(yTile(rr) == 1, mu1Tile(cc), mu0Tile(cc))
+            subTile(cc) = gdaXtile(rr,cc) - mux(gdaYtile(rr) == 1, mu1Tile(cc), mu0Tile(cc))
           }
           Pipe(C by 1, C par ip){ (ii,jj) =>
             sigmaTile(ii,jj) = subTile(ii) * subTile(jj);
@@ -100,19 +100,19 @@ trait GDA_App extends SpatialApp {
 
     val result = gda(x.flatten, ys, mu0, mu1)
 
-    val gold = x.zip(ys){ (row, y) =>
-      val sub = if (y == 1) row.zip(mu1){_-_} else row.zip(mu0){_-_}
-      Array.tabulate(C){i => Array.tabulate(C){j => sub(i) * sub(j) }}.flatten
-    }.reduce{(a,b) => a.zip(b){_+_}}
+    // val gold = x.zip(ys){ (row, y) =>
+    //   val sub = if (y == 1) row.zip(mu1){_-_} else row.zip(mu0){_-_}
+    //   Array.tabulate(C){i => Array.tabulate(C){j => sub(i) * sub(j) }}.flatten
+    // }.reduce{(a,b) => a.zip(b){_+_}}
 
-    // println("actual: " + gold.mkString(", "))
-    //println("result: " + result.mkString(", "))
-    // println("Sum of differences: " + gold.zip(result){_-_}.reduce{_+_})
-    printArr(gold, "gold: ")
-    printArr(result, "result: ")
+    // // println("actual: " + gold.mkString(", "))
+    // //println("result: " + result.mkString(", "))
+    // // println("Sum of differences: " + gold.zip(result){_-_}.reduce{_+_})
+    // printArr(gold, "gold: ")
+    // printArr(result, "result: ")
 
-    val cksum = gold.zip(result){ case (a,b) => a < b + margin && a > b - margin }.reduce{_&&_}
-    println("PASS: " + cksum  + " (GDA)")
+    // val cksum = gold.zip(result){ case (a,b) => a < b + margin && a > b - margin }.reduce{_&&_}
+    // println("PASS: " + cksum  + " (GDA)")
 
     // assert( result == gold )
   }

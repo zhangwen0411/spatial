@@ -7,10 +7,10 @@ trait KmeansApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt
 
-  val num_cents = 192
-  val dim = 384
-  val tileSize = 192
-  val innerPar = 4
+  val num_cents = 96
+  val dim = 96
+  val tileSize = 384
+  val innerPar = 8
   val outerPar = 1
   val margin = 1
   val K = num_cents
@@ -28,7 +28,7 @@ trait KmeansApp extends SpatialApp {
     val BN = tileSize (96 -> 96 -> 9600)
     val BD = MAXD
     val PX = 1 (1 -> 1)
-    val P0 = outerPar (32 -> 96 -> 192) // Dimensions loaded in parallel
+    val P0 = innerPar (32 -> 96 -> 192) // Dimensions loaded in parallel
     val P1 = outerPar (1 -> 12)         // Sets of points calculated in parallel
     val P2 = innerPar (1 -> 4 -> 96)    // Dimensions accumulated in parallel (outer)
     val P3 = innerPar (1 -> 4 -> 16)    // Points calculated in parallel
@@ -46,11 +46,11 @@ trait KmeansApp extends SpatialApp {
     val centroids = DRAM[T](num_cents*dim) // Output centroids
     setMem(points, points_in)
 
-    Accel {
+    Accel { Sequential {
       val cts = SRAM[T](MAXK, MAXD)
 
       // Load initial centroids (from points)
-      cts := points(0::K,0::D par P0)
+      cts := points(0::K,0::D par P0) 
 
       val DM1 = D - 1
 
@@ -58,14 +58,14 @@ trait KmeansApp extends SpatialApp {
 
         val newCents = SRAM[T](MAXK,MAXD)
         // For each set of points
-        Pipe(N by BN par param(1)){i =>
+        Pipe(N by BN par PX){i =>
           val pts = SRAM[T](BN, BD)
           pts := points(i::i+BN, 0::BD par P0)
 
           // For each point in this set
-          Fold(BN par P3, PR)(newCents, 0.as[T]){pt =>
+          Fold(BN par P1, PR)(newCents, 0.as[T]){pt =>
             // Find the index of the closest centroid
-            val minCent = Reduce(K par P4)(pack((0.as[SInt],100000.as[T]))){ct =>
+            val minCent = Reduce(K par PX)(pack((0.as[SInt],100000.as[T]))){ct =>
               val dist = Reduce(D par P2)(0.as[T]){d => (pts(pt,d) - cts(ct,d)) ** 2 }{_+_}
               pack((ct, dist.value))
             }{(a,b) =>
@@ -83,15 +83,15 @@ trait KmeansApp extends SpatialApp {
         }
 
         val centCount = SRAM[T](MAXK)
-        Pipe(K by 1){ct => centCount(ct) = newCents(ct,DM1) }
+        Pipe(K by 1 par PX){ct => centCount(ct) = newCents(ct,DM1) } // Until diagonal banking is allowed
 
         // Average each new centroid
         // val centsOut = SRAM[T](MAXK, MAXD)
-        Pipe(K by 1, D par PX){(ct,d) =>
+        Pipe(K by 1, D par P0){(ct,d) =>
           cts(ct, d) = newCents(ct,d) / centCount(ct)
         }
         // Flush centroid accumulator
-        Pipe(K by 1, D par P2){(ct,d) =>
+        Pipe(K by 1, D par P0){(ct,d) =>
           newCents(ct,d) = 0.as[T]
         }
       }
@@ -102,7 +102,7 @@ trait KmeansApp extends SpatialApp {
       }
       // Store the centroids out
       centroids(0::K*D par P2) := flatCts
-    }
+    }}
 
     getMem(centroids)
   }
@@ -131,7 +131,7 @@ trait KmeansApp extends SpatialApp {
 
     val result = kmeans(pts.flatten, N, K, D, iters)
 
-    // val cts = Array.tabulate(K){i => Array.tabulate(D){d => pts(i,d) }}
+    // // val cts = Array.tabulate(K){i => Array.tabulate(D){d => pts(i,d) }}
 
     val gold = Array.tabulate(K){i => Array.empty[T](D)}
     val acc = Array.tabulate(K){i => Array.empty[T](D)}
@@ -181,77 +181,5 @@ trait KmeansApp extends SpatialApp {
     println("PASS: " + cksum + " (Kmeans)")
   }
 
-  /*def kmeans_SLOW(points_in: Rep[Array[SInt]], numPoints: Rep[SInt], numCents: Rep[SInt], numDims: Rep[SInt]) = {
-    bound(numPoints) = 960000
-    bound(numCents) = MAXK
-    bound(numDims) = MAXD
-
-    val BN = param(320);  domainOf(BN) = (96, 9600, 96)
-    val BD = param(384);  domainOf(BD) = (MAXD, MAXD, MAXD)
-    val PX = param(1);    domainOf(PX) = (1,1,1)
-    val P0 = param(1);    domainOf(P0) = (1,96,1)     // Dimensions loaded in parallel
-    val P1 = param(1);    domainOf(P1) = (1,96,1)     // Points calculated in parallel
-    val P2 = param(1);    domainOf(P2) = (1,MAXD,1)   // Dimensions subtracted in parallel
-    val P3 = param(1);    domainOf(P3) = (1,MAXD,1)   // Dimensions updated in parallel
-    val P4 = param(1);    domainOf(P4) = (1,MAXD,1)   // Dimensions averaged in parallel
-    val P5 = param(1);    domainOf(P5) = (1,MAXD,1)   // Dimensions stored in parallel
-
-    val N = ArgIn[SInt]
-    val K = ArgIn[SInt]
-    val D = ArgIn[SInt]
-    setArg(N, numPoints)
-    setArg(K, numCents)
-    setArg(D, numDims)
-
-    val points = DRAM[SInt](N, D)    // Input points
-    val centroids = DRAM[SInt](K, D) // Output centroids
-    setMem(points, points_in)
-
-    Accel {
-      val cts = SRAM[SInt](MAXK, dTileSize)
-      val newCents = SRAM[SInt](MAXK, dTileSize)
-      val centCount = SRAM[UInt](MAXK)
-      val centsOut = SRAM[SInt](MAXK, dTileSize)
-
-      // Load initial centroids (from points)
-      cts := points(0::K,0::dTileSize, P0)
-
-      // For each set of points
-      Pipe(N by BN par PX){i =>
-        val pts = SRAM[SInt](BN, BD)
-        pts := points(i::i+BN, 0::BD, P0)
-
-        // For each point in this set
-        Pipe(BN par PX){pt =>
-          val minCent = Reg[SInt](0)  // Index of closest centroid
-          val minDist = Reg[SInt](-1)  // Distance to closest centroid
-
-          // Find the index of the closest centroid
-          Pipe(K by 1 par PX){ct =>
-            val dist = Reduce(D par P2)(0.as[SInt]){d => (pts(pt,d) - cts(ct,d)) ** 2 }{_+_}
-
-            Pipe {
-              minDist := min(dist.value, minDist.value)
-              minCent := mux(minDist.value == dist.value, ct, minCent.value)
-            }
-          }
-
-          // Add the current point to the accumulators for this centroid
-          Parallel {
-            Pipe(D par P3){d => newCents(minCent.value,d) = newCents(minCent.value,d) + pts(pt,d) }
-            Pipe { centCount(minCent.value) = centCount(minCent.value) + 1 }
-          }
-        }
-      }
-      // Average each new centroid
-      Pipe(K by 1, D par P4){(ct,d) =>
-        centsOut(ct, d) = newCents(ct,d) / centCount(ct).to[SInt]
-      }
-      // Store the centroids out
-      centroids(0::K,0::D,P5) := centsOut
-    }
-
-    getMem(centroids)
-  }*/
 
 }
