@@ -540,7 +540,9 @@ trait SRAMBanking extends BankingBase {
       case RandomAccess               => NoBanking // Single "bank" in this dimension
     }}
 
-    val duplicates = factors.filter{factor => !used(factor)}.map{case Exact(p) => p.toInt}.fold(1){_*_}
+    // HACK: Changed for Matt -- fix this later!!
+    val duplicates = factors.dropRight(1).map{case Exact(p) => p.toInt}.fold(1){_*_}
+    //factors.filter{factor => !used(factor)}.map{case Exact(p) => p.toInt}.fold(1){_*_}
 
     debug(s"  Inferred: " + banking.mkString(", ") + s" (duplicates = $duplicates)")
     (banking, duplicates)
