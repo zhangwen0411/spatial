@@ -772,7 +772,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Dram_new(size) =>
         emitComment(s""" Dram_new(${quote(size)}) {""")
-        alwaysGen { emit(s"""int ${quote(sym)} = ${dramAddr(sym)}/${burstSize};""") }
+        alwaysGen { emit(s"""int ${quote(sym)} = (int) ${dramAddr(sym)}L/${burstSize};""") }
         emitComment(s""" Dram_new(${quote(size)}) }""")
 
     case Gather(mem,local,addrs,len,_,i) =>

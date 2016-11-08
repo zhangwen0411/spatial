@@ -11,7 +11,7 @@ trait KmeansApp extends SpatialApp {
   val dim = 96
   val tileSize = 384
   val innerPar = 8
-  val outerPar = 1
+  val outerPar = 2
   val margin = 1
   val K = num_cents
   val D = dim

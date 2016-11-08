@@ -15,8 +15,8 @@ dense_test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" "MatMult_o
 	"Kmeans"  "GEMM"      "GDA"    "SGD"   "LogReg" "OuterProduct" "TRSM")
 dense_args_list=("9600"       "8 192 192"     "1920"   "960"          "8 192 192"    
 	"1 96" "8 192 192" "96 96"  "96 96" "768 2"     "192 192"      "")
-sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
-sparse_args_list=("960" "2 384 1"  "960"              "960"       "960"   )    
+sparse_test_list=("BFS" "PageRank" "SMV" "TriangleCounting" "SparseSGD" "TPCHQ1")
+sparse_args_list=("960" "2 384 1"  "192" "960"              "960"       "960"   )    
 
 # Seconds to pause while waiting for apps to run
 delay=1320

@@ -8,10 +8,10 @@ trait LogRegApp extends SpatialApp {
   type T = Flt
 
   val tileSize = 384
-  val innerPar = 4
-  val outerPar = 2
+  val innerPar = 8
+  val outerPar = 1
   val margin = 5
-  val dim = 192
+  val dim = 288
   val D = dim
 
   val A = 1
