@@ -1032,22 +1032,23 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
   }
 
   private def stateTextSeq(state: Int, N: Int) = {
-    val condStr = s"bitVector[ $state ]"
+    val condStr = s"(bitVector(state))"
     val max = N-1
 
-    emit(s"""IF($condStr) {
-      resetBitVector();""")
+    emit(s"""when($condStr) {
+      bitVector := 0""")
     if (state == max) {
       emit(s"""
-      counterFF.next <== counterFF + 1;
-      IF (counterFF >= sizeFF-1) {
-        stateFF.next <== States.DONE;
-      } ELSE {
-        stateFF.next <== States.S0;
+      counterFF := counterFF + 1;
+      when (counterFF >= sizeFF-1) {
+        stateFF := pipeDone;
+      }
+      .otherwise {
+        stateFF := S0;
       }""")
       emit("}")
     } else {
-      emit(s"stateFF.next <== States.S${state+1};")
+      emit(s"stateFF := S${state+1}")
       emit("}")
     }
   }
@@ -1063,121 +1064,105 @@ import Chisel._
 
   val smName = name
   val states = (0 until numStates).map(List(_)).toList
-  emit(s"""class ${smName}_SeqSM extends KernelStateMachine {""")
+  emit(s"""class ${smName}_SeqSM extends Module {""")
 
   val stateNames = states.map(stateStr(_))
   emit(s"""
     // States
-    enum States {
-      INIT,
-      RSET,
-      ${stateNames.reduce(_ + ",\n" + _) + ",\nDONE"}
-    }
+    val pipeInit :: pipeReset :: ${stateNames.reduce(_ + " :: " + _)} :: pipeDone :: pipeSpinWait :: Nil = Enum(UInt(), ${stateNames.length + 4})
   """)
 
   emit("""
-    // State IO
-    private final DFEsmOutput sm_done;
-//    private final DFEsmOutput sm_last;
-    private final DFEsmInput sm_en;
-    private final DFEsmInput sm_numIter;
-    private final DFEsmOutput rst_en;
-  """)
 
-  for(i <- 0 until numStates) {
-    emit(s"""
-    private final DFEsmInput s${i}_done;
-    private final DFEsmOutput s${i}_en;
-    """)
-  }
+  	 // Module IO
+    val io = new Bundle {
+      
+      // State machine IO
+      val sm_done = Bool(OUTPUT)
+      val sm_en = Bool(INPUT)
 
-  emit(s"""
-    // State storage
-    private final DFEsmStateValue sizeFF;
-//    private final DFEsmStateValue lastFF;
-    private final DFEsmStateEnum<States> stateFF;
-    private final DFEsmStateValue counterFF;
-    private final DFEsmStateValue rstCounterFF;
-    private final DFEsmStateValue[] bitVector;
+      // Reset IO
+      val rst_en = Bool(OUTPUT)
 
-    private final int numStates = ${numStates};
-    private final int rstCycles = 10; // <-- hardcoded
-    // Initialize state machine in constructor
-    public ${smName}_SeqSM(KernelLib owner) {
-      super(owner);
+      // Number of iterations
+      val sm_numIter = Bool(INPUT)
 
-      // Declare all types required to wire the state machine together
-      DFEsmValueType counterType = dfeUInt(32);
-      DFEsmValueType wireType = dfeBool();
-
-      // Define state machine IO
-      sm_done = io.output("sm_done", wireType);
-//      sm_last = io.output("sm_last", wireType);
-      sm_en = io.input("sm_en", wireType);
-      sm_numIter = io.input("sm_numIter", counterType);
-      rst_en = io.output("rst_en", wireType);
-  """)
-
-  for(i <- 0 until numStates) {
-    emit(s"""
-      s${i}_done = io.input("s${i}_done", wireType);
-      s${i}_en = io.output("s${i}_en", wireType);
-    """)
-  }
-
-  emit("""
-    // Define state storage elements and initial state
-      stateFF = state.enumerated(States.class, States.INIT);
-      counterFF = state.value(counterType, 0);
-      rstCounterFF = state.value(counterType, 0);
-      sizeFF = state.value(counterType, 0);
-//      lastFF = state.value(wireType, 0);
-
-      // Bitvector keeps track of which kernels have finished execution
-      // This is a useful hardware synchronization structure to keep
-      // track of which kernels have executed/finished execution
-      bitVector = new DFEsmStateValue[numStates];
-      for (int i=0; i<numStates; i++) {
-        bitVector[i] = state.value(wireType, 0);
-      }
-    }
-
-    private void resetBitVector() {
-      for (int i=0; i<numStates; i++) {
-        bitVector[i].next <== 0;
-      }
-    }
+      // Generated state IO
       """)
+  
+  for(i <- 0 until numStates) {
+    emit(s"""
+    val s${i}_done = Bool(INPUT)
+    val s${i}_en = Bool(OUTPUT)
+    """)
+  }
+
+  emit("""}
+
+    // Defaults
+    io.sm_done := Bool(false)
+    io.rst_en := Bool(false)
+    """)
+
+  for (i <- 0 until numStates) {
+    emit(s"""
+      s${i}_en := Bool(false)""")
+  }
+
 
   emit(s"""
-    @Override
-    protected void nextState() {
-      IF(sm_en) {
+
+    val numStates = ${numStates};
+    val rstCycles = 10; // <-- hardcoded
+  """)
+
+  emit("""
+	// Initialize registers
+    val stateFF = Reg(init = pipeInit)
+    val sizeFF = Reg(init = 0)
+    val counterFF = Reg(init = 0)
+    val rstCounterFF = Reg(init = 0)
+
+	// Bitvector keeps track of which kernels have finished execution
+	// This is a useful hardware synchronization structure to keep
+	// track of which kernels have executed/finished execution
+	val bitVector = Bits(0, ${numStates})
+
+    def resetBitVector() = {
+    	bitVector := 0
+    }
+    """)
+
+  emit(s"""
+      when(sm_en) {
+
         // State-agnostic update logic for bitVector
     """)
   for(i <- 0 until numStates) {
     emit(s"""
-        IF (s${i}_done) {
-          bitVector[$i].next <== 1;
+        if (s${i}_done) {
+          bitVector := bitVector | ${1 << i}
         }""")
   }
 
   emit(s"""
-        SWITCH(stateFF) {
-          CASE (States.INIT) {
-            sizeFF.next <== sm_numIter;
-            stateFF.next <== States.RSET;
-            counterFF.next <== 0;
-            rstCounterFF.next <== 0;
-//            lastFF.next <== 0;
+        switch(stateFF) {
+
+          is (pipeInit) {
+            sizeFF := sm_numIter
+            stateFF := pipeReset
+            counterFF := 0
+            rstCounterFF := 0
           }
 
-          CASE (States.RSET) {
-            rstCounterFF.next <== rstCounterFF + 1;
-            IF (rstCounterFF === rstCycles) {
-              stateFF.next <== States.S0;
-            } ELSE {
-              stateFF.next <== States.RSET;
+          is (pipeReset) {
+          	rst_en := 1;
+            rstCounterFF := rstCounterFF + 1
+            when (rstCounterFF === rstCycles) {
+              stateFF := S0
+            }
+            .otherwise {
+              stateFF := pipeReset
             }
           }
           """)
@@ -1186,65 +1171,26 @@ import Chisel._
     val state = states(i)
     val name = stateNames(i)
     emit(s"""
-          CASE (States.${name}) {""")
-      stateTextSeq(state(0), numStates)
+          is (${name}) {""")
+    		for (s <- state) {
+               emit(s"""s${s}_en <== ~(  bitVector(s) | s${s}_done);""")
+            }
+
+      		stateTextSeq(state(0), numStates)
     emit(s"""
           }""")
   }
 
   emit(s"""
-         CASE (States.DONE) {
-           resetBitVector();
-           stateFF.next <== States.INIT;
+         is (pipeDone) {
+           bitVector := 0
+           sm_done := 1;
+           stateFF := pipeInit
          }
 
-         OTHERWISE {
-           stateFF.next <== stateFF;
-         }
         }
       }
     }""")
-
-  emit(s"""
-  @Override
-    protected void outputFunction() {
-      sm_done <== 0;
-      rst_en <== 0;
-//      sm_last <== 0;
-      """)
-
-  for (i <- 0 until numStates) {
-    emit(s"""
-      s${i}_en <== 0;""")
-  }
-
-  emit(s"""
-     IF (sm_en) {
-//        IF (counterFF >= sizeFF-1) {
-//          sm_last <== 1;
-//        } ELSE {
-//          sm_last <== 0;
-//        }
-       SWITCH(stateFF) {
-            CASE (States.RSET) {
-              rst_en <== 1;
-            }""")
-        for(i <- 0 until states.size) {
-          val state = states(i)
-          val name = stateNames(i)
-          emit(s"""
-            CASE (States.$name) {""")
-             for (s <- state) {
-               emit(s"""s${s}_en <== ~(bitVector[$s] | s${s}_done);""")
-             }
-          emit(s"""
-                }""")
-        }
-
-        emit(s"""
-          CASE (States.DONE) {
-            sm_done <== 1;
-          }""")
 
   emit("""
       }
@@ -1265,141 +1211,80 @@ import Chisel._
 			return
 		}
 		emit(s"""
-			package engine;
-			import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
-			import com.maxeler.maxcompiler.v2.statemachine.DFEsmInput;
-			import com.maxeler.maxcompiler.v2.statemachine.DFEsmOutput;
-			import com.maxeler.maxcompiler.v2.statemachine.DFEsmStateEnum;
-			import com.maxeler.maxcompiler.v2.statemachine.DFEsmStateValue;
-			import com.maxeler.maxcompiler.v2.statemachine.kernel.KernelStateMachine;
-			import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;
+			import Chisel._ 
 
-			class ${name}_ParSM extends KernelStateMachine {
+		    // States
+    		val pipeInit :: pipeRun :: pipeDone :: Nil = Enum(UInt(), 3)
+  		""")
 
-				// States
-				enum States {
-					INIT,
-					RUN,
-					DONE
-				}
 
-				// State IO
-				private final DFEsmOutput sm_done;
-				private final DFEsmInput sm_en;""");
+		emit(s"""
+			// Module IO
+    		val io = new Bundle {
+      
+     		// State machine IO
+      		val sm_done = Bool(OUTPUT)
+      		val sm_en = Bool(INPUT)
+			""");
 
 		for(i <- 0 until numParallel) {
 			emit(s"""
-				private final DFEsmInput s${i}_done;
-				private final DFEsmOutput s${i}_en;
+				val s${i}_done = Bool(INPUT)
+				val s${i}_en = Bool(OUTPUT)
 				""")
 		}
 
 		emit(s"""
 			// State storage
-			private final DFEsmStateEnum<States> stateFF;
-			private final DFEsmStateValue[] bitVector;
+			val stateFF = Reg(init = pipeInit)
+			val bitVector = Bits(0, ${numParallel})
 
-			private final int numParallel = $numParallel;
-			// Initialize state machine in constructor
-			public ${name}_ParSM(KernelLib owner) {
-				super(owner);
-
-				// Declare all types required to wire the state machine together
-				DFEsmValueType counterType = dfeUInt(32);
-				DFEsmValueType wireType = dfeBool();
-				// Define state machine IO
-				sm_done = io.output("sm_done", wireType);
-				sm_en = io.input("sm_en", wireType);
-				""")
-		for(i <- 0 until numParallel) {
-			emit(s"""
-				s${i}_done = io.input("s${i}_done", wireType);
-				s${i}_en = io.output("s${i}_en", wireType);
-				""")
-		}
+			val numParallel = ${numParallel}
+			""")
 
 		emit(s"""
-			// Define state storage elements and initial state
-			stateFF = state.enumerated(States.class, States.INIT);
-
-			bitVector = new DFEsmStateValue[numParallel];
-			for (int i=0; i<numParallel; i++) {
-				bitVector[i] = state.value(wireType, 0);
-			}
-			}
-
-			private void resetBitVector() {
-				for (int i=0; i<numParallel; i++) {
-					bitVector[i].next <== 0;
-				}
-			}
-
-			@Override
-			protected void nextState() {
-				IF(sm_en) {
+			when (sm_en) {
 					""")
 
 		for(i <- 0 until numParallel) {
 			emit(s"""
-				IF (s${i}_done) {
-					bitVector[$i].next <== 1;
-				}""")
+				when (s${i}_done) {
+					bitVector($i) := 1
+				""")
+			for (i <- 0 until numParallel) {
+				emit(s"""s${i}_en := ~(bitVector(${i}) | s${i}_done)""")
+			}
+			emit(s"""}""")
+								
 		}
 
 		emit(s"""
-			SWITCH(stateFF) {
-				CASE (States.INIT) {
-					stateFF.next <== States.RUN;
+			switch (stateFF) {
+				is (pipeInit) {
+					stateFF := pipeRun
 				}
 				""")
 
 		emit(s"""
-			CASE (States.RUN) {""")
-				val condStr = (0 until numParallel).map("bitVector[" + _ + "]").reduce(_ + " & " + _)
+			is (pipeRun) {""")
+				val condStr = (0 until numParallel).map("bitVector(" + _ + ")").reduce(_ + " & " + _)
 				emit(s"""
 					IF($condStr) {
-						resetBitVector();
-						stateFF.next <== States.DONE;
+						bitVector := 0
+						stateFF := pipeDone
 					}
 			}
 
-			CASE (States.DONE) {
-				resetBitVector();
-				stateFF.next <== States.INIT;
+			is (pipeDone) {
+				bitVector := 0
+				sm_done := 1
+				stateFF := pipeDone;
 			}
-			OTHERWISE {
-				stateFF.next <== stateFF;
-			}
+			
 			}
 				}
 			}
 			""")
-
-				emit("""
-					@Override
-					protected void outputFunction() {
-						sm_done <== 0;""")
-				for (i <- 0 until numParallel) {
-					emit(s"""
-						s${i}_en <== 0;""")
-				}
-
-				emit("""
-					IF (sm_en) {
-						SWITCH(stateFF) {
-							CASE(States.RUN) {""")
-								for (i <- 0 until numParallel) {
-									emit(s"""s${i}_en <== ~(bitVector[${i}] | s${i}_done);""")
-								}
-								emit(s"""
-							}
-							CASE(States.DONE) {
-								sm_done <== 1;
-							}
-						}
-					}
-					}
-			}""")
 	}
 
   private def getStates(N: Int) = {
@@ -1417,35 +1302,33 @@ import Chisel._
   }
 
   private def stateText(state: List[Int], N: Int) = {
-    val condStr = state.map("bitVector[" + _ + "]").reduce(_ + " & " + _)
+    val condStr = state.map("bitVector(" + _ + ")").reduce(_ + " & " + _)
     val max = N-1
 
-    emit(s"""IF($condStr) {
-      resetBitVector();""")
+    emit(s"""when($condStr) {
+      bitVector := 0""")
     if (state.size == 1 && state.max == max && !state.contains(0)) {
-      emit("  stateFF.next <== States.DONE;")
+      emit("  stateFF := pipeDone")
     } else {
       if (state.contains(0)) {
-        emit("  counterFF.next <== counterFF + 1;")
-        emit("  IF (counterFF >= sizeFF-1) {")
-        stream.print("    stateFF.next <== States.")
+        emit("  counterFF := counterFF + 1")
+        emit("  when (counterFF >= sizeFF-1) {")
+        stream.print("    stateFF := ")
         if (state.max == max) {
           if (state.size == 1) {  // Only state 0
-            stream.print("DONE")
+            stream.print("pipeDone")
           } else {
             stream.print(stateStr(state.drop(1)))
           }
         } else {
           stream.print(stateStr(state.drop(1) ++ List(state.max+1)))
         }
-          emit(";")
-          emit("  } ELSE {")
-        stream.print("    stateFF.next <== States.")
+          emit("  } .otherwise {")
+        stream.print("    stateFF := ")
         if (state.max == max) stream.print(stateStr(state)) else stream.print(stateStr(state ++ List(state.max+1)))
-          emit(";")
           emit("  }")
       } else {
-        stream.print("stateFF.next <== States.")
+        stream.print("stateFF := ")
         if (state.max == max) stream.print(stateStr(state.drop(1))) else stream.print(stateStr(state.drop(1) ++ List(state.max+1)))
         emit(";")
       }
