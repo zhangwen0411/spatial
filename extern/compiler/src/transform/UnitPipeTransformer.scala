@@ -27,10 +27,10 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
   debugMode = SpatialConfig.debugging
   verboseMode = SpatialConfig.verbose
 
-  class Stage(val isControl: Boolean) {
-    val allocs: ArrayBuffer[Stm] = ArrayBuffer.empty
-    val nodes: ArrayBuffer[Stm] = ArrayBuffer.empty
-    val regReads: ArrayBuffer[Stm] = ArrayBuffer.empty
+  private class PipeStage(val isControl: Boolean) {
+    val allocs = ArrayBuffer[Stm]()
+    val nodes  = ArrayBuffer[Stm]()
+    val regReads = ArrayBuffer[Stm]()
 
     def dynamicAllocs: ArrayBuffer[Stm] = allocs.filter{
       case TP(s,d) => isDynamicAllocation(d)
@@ -87,13 +87,13 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
         focusExactScope(blk){ stms =>
 
           // Imperative version (functional version caused ugly scalac crash :( )
-          val stages: ArrayBuffer[Stage] = ArrayBuffer.empty
+          val stages = ArrayBuffer[PipeStage]()
           def curStage = stages.last
-          stages += new Stage(true)
+          stages += new PipeStage(true)
 
           stms foreach { case stm@TP(s,d) =>
             if (isPrimitiveNode(s)) {
-              if (curStage.isControl) stages += new Stage(false)
+              if (curStage.isControl) stages += new PipeStage(false)
               curStage.nodes += stm
             }
             else if (isRegisterRead(s)) {
@@ -105,7 +105,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
               else curStage.allocs += stm
             }
             else {
-              stages += new Stage(true)
+              stages += new PipeStage(true)
               curStage.nodes += stm
             }
           }

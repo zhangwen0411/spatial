@@ -1,80 +1,36 @@
 package spatial.compiler.ops
+import spatial.compiler._
 
-import scala.reflect.{Manifest,SourceContext}
-
-import scala.virtualization.lms.internal.{Traversal, QuotingExp}
-import scala.collection.mutable.{HashMap,HashSet,Queue,ArrayBuffer}
+import scala.collection.mutable
 import scala.virtualization.lms.util.GraphUtil
 
-import spatial.shared._
-import spatial.shared.ops._
-import spatial.compiler._
-import spatial.compiler.ops._
-
-import ppl.delite.framework.Config
-
-trait PIRRetiming extends RetimingOps {
-  val IR: SpatialExp with PIRScheduleAnalysisExp
+trait PIRRetiming extends PIRTraversal {
+  val IR: SpatialExp with PIRCommonExp
   import IR.{infix_until => _, _}
 
-  override val name = "PIR Retiming"
-  debugMode = SpatialConfig.debugging || SpatialConfig.pirdebug
-  verboseMode = SpatialConfig.verbose || SpatialConfig.pirdebug
-
-
-  override def run[A:Manifest](b: Block[A]) = {
-    msg(s"Starting traversal CU Retiming")
-    for ((pipe,cuGrp) <- cus) {
-      retime(cuGrp)
-    }
-    (b)
-  }
-}
-
-
-trait RetimingOps extends PIRCommon {
-  val IR: SpatialExp with PIRScheduleAnalysisExp
-  import IR.{infix_until => _, _}
-
-  val cus = HashMap[Exp[Any], List[ComputeUnit]]()
-  def allocateCU(pipe: Exp[Any]) = cus(pipe).head
-
-  def allCUs = cus.values.flatten
   /**
    * For all vector inputs for each CU, if inputs have mismatched delays or come
-   * from other stages, put them through a retiming FIFO
+   * from other stages (and LCA is not a stream controller), put them through a retiming FIFO
    **/
-  def retime(cus: List[ComputeUnit]) = if (cus.length > 1) {
-    // Global inputs and outputs potentially needing retiming
-    var producer = Map[GlobalMem, ComputeUnit]()
-    var deps     = Map[ComputeUnit, List[GlobalMem]]()
+  def retime(cus: List[CU], others: Iterable[CU]): Unit = if (cus.length > 1) {
+    var producer = Map[GlobalBus, CU]()
+    var deps     = Map[CU, List[GlobalBus]]()
 
-    val compute = cus.filter{cu => cu.allStages.nonEmpty && !cu.isInstanceOf[TileTransferUnit]}
+    val compute = cus.filter(_.allStages.nonEmpty)
 
-    // Create mapping for producers of all global memories
-    compute.foreach{cu => cu.allStages.foreach{stage =>
-      stage.outputMems.foreach{
-        case VectorOut(mem) => producer += mem -> cu
-        case ScalarOut(mem) => producer += mem -> cu
-        case _ =>
-      }
-    }}
-    // Create mapping for dependencies of all CUs
     compute.foreach{cu =>
-      val inputs = cu.allStages.flatMap(_.inputMems).collect{
-        case VectorIn(mem) => mem
-        case ScalarIn(mem) => mem
-      }
-      deps += cu -> inputs
+      globalOutputs(cu).foreach{bus => producer += bus -> cu}
+      deps += cu -> globalInputs(cu).toList
     }
 
-    def getDelay(input: GlobalMem, cur: Int): Int = producer.get(input) match {
-      case Some(cu) => (1 +: deps(cu).map{dep => getDelay(dep,cur+1)}).max
+    def getDelay(input: GlobalBus, cur: Int): Int = producer.get(input) match {
+      case Some(cu) if deps(cu).isEmpty => 1
+      case Some(cu) =>  (1 +: deps(cu).map{dep => getDelay(dep,cur+1)}).max // max or 1 if empty
       case None => cur
     }
 
-    compute.foreach{cu =>
-      val delays = 1 +: deps(cu).map{dep => getDelay(dep, 0) }
+    compute.foreach{cu => if (deps(cu).nonEmpty) {
+      val delays = deps(cu).map{dep => getDelay(dep, 0) }
       val criticalPath = delays.max
 
       deps(cu).zip(delays).foreach{case (dep,dly) =>
@@ -82,51 +38,50 @@ trait RetimingOps extends PIRCommon {
           insertFIFO(cu, dep, (criticalPath - dly)*10)
         }
         else if (dly == 0) {
-          val produce = allCUs.find(cu => (scalarOuts(cu) ++ vectorOuts(cu)) contains dep)
+          val produce = others.find{cu => globalOutputs(cu) contains dep}
           if (produce.isDefined) {
             lca(cu, produce.get) match {
-              case Some(parent:BasicComputeUnit) if parent.tpe == StreamPipe => // Do nothing
-              case None => // Do nothing
-              case _ => insertFIFO(cu, dep, 1000) // TODO: Calculate this
+              case Some(parent) if parent.style == StreamCU => // No action
+              case None => // ???
+              case _ => insertFIFO(cu, dep, 1000) // TODO: Calculate this!
             }
           }
         }
       }
 
       cu.deps ++= deps(cu).flatMap{dep => producer.get(dep) }
-    }
+    }}
   }
 
-  def lca(a: ComputeUnit, b: ComputeUnit) = {
-    GraphUtil.leastCommonAncestor[ComputeUnit](a, b, {node => node.parent })
+  def lca(a: CU, b: CU) = {
+    GraphUtil.leastCommonAncestor[CU](a, b, {node => node.parentCU })
   }
 
-  def insertFIFO(cu: ComputeUnit, global: GlobalMem, depth: Int) {
-    debug(s"Inserting FIFO in $cu for input $global")
-    val sram = allocateFIFO(global, depth)
+  def insertFIFO(cu: CU, bus: GlobalBus, depth: Int) {
+    debug(s"Inserting FIFO in $cu for input $bus")
+    val sram = allocateFIFO(bus, depth)
     cu.srams += sram
     cu.allStages.foreach{
       case stage@MapStage(op, ins, outs) =>
         stage.ins = ins.map{
-          case LocalRef(_,ScalarIn(`global`)) => LocalRef(-1, SRAMRead(sram))
-          case LocalRef(_,VectorIn(`global`)) => LocalRef(-1, SRAMRead(sram))
+          case LocalRef(_,ScalarIn(`bus`)) => LocalRef(-1, SRAMReadReg(sram))
+          case LocalRef(_,VectorIn(`bus`)) => LocalRef(-1, SRAMReadReg(sram))
           case ref => ref
         }
       case _ =>
     }
   }
 
-  // TODO: Is it ok to create a FIFO with scalar input?
-  def allocateFIFO(global: GlobalMem, depth: Int) = {
-    val name = global match {
-      case g:VectorMem => g.name + "_fifo"
-      case g:ScalarMem => g.name + "_fifo"
-      case _ => throw new Exception(s"Cannot create FIFO with input $global")
+  def allocateFIFO(bus: GlobalBus, depth: Int) = {
+    val name = bus match {
+      case bus:ScalarBus => bus.name+"_fifo"
+      case bus:VectorBus => bus.name+"_fifo"
     }
-    val sram = CUMemory(name, depth)
-    sram.isFIFO = true
-    sram.vector = Some(global)
+    val sram = CUMemory(name, depth, fresh[Any], fresh[Any])
+    sram.mode = FIFOMode
+    sram.vector = Some(bus)
     sram.banking = Some(Strided(1))
     sram
   }
+
 }

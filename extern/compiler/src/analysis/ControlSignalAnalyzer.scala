@@ -101,8 +101,14 @@ trait ControlSignalAnalyzer extends Traversal {
     val factors = parFactorsOf(cc)
     inds.zip(factors).foreach{case (i,p) => parFactorOf(i) = p }
 
+
+//    inds.take(inds.length - 1).foreach{i => unrollFactorsOf(i) = unrollFactors }
+
     // ASSUMPTION: Only parallelize by innermost loop currently
     unrollFactors ++= List(parFactors(cc).last) //unrollFactors ++= factors
+
+//    unrollFactorsOf(inds.last) = unrollFactors
+
 
     traverseWith(ctrl)(b)
     unrollFactors = prevUnrollFactors

@@ -75,21 +75,21 @@ cp "$SPATIAL_HOME/static/parse-log.py" "$BIN/parse-log.py"
 
 ## Fun hack for checking if program exists
 ## http://stackoverflow.com/questions/592620/check-if-a-program-exists-from-a-bash-script
-if hash sphinx-build 2>/dev/null; then
-	pushd .
-	echo "cd sphinx"
-	cd "sphinx"
-	echo "sphinx-build -b latex source build"
-	sphinx-build -b latex source build
-	pushd .
-	cd build
-	make clean all > /dev/null
-	popd
-	popd
-	cp "sphinx/build/$dsl.pdf" $SPATIAL_HOME/Manual.pdf
-	pushd .
-	cd "sphinx"
-	sphinx-build -b html source build
-	popd
-fi
+#if hash sphinx-build 2>/dev/null; then
+#	pushd .
+#	echo "cd sphinx"
+#	cd "sphinx"
+#	echo "sphinx-build -b latex source build"
+#	sphinx-build -b latex source build
+#	pushd .
+#	cd build
+#	make clean all > /dev/null
+#	popd
+#	popd
+#	cp "sphinx/build/$dsl.pdf" $SPATIAL_HOME/Manual.pdf
+#	pushd .
+#	cd "sphinx"
+#	sphinx-build -b html source build
+#	popd
+#fi
 

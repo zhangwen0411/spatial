@@ -317,8 +317,10 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case _ => false
   }
 
-  def isConstant(s: Exp[Any]): Boolean = s match {
-    case Fixed(_) => true
+  def isConstant(x: Exp[Any]): Boolean = x match {
+    case Const(c) => true
+    case Exact(c) => true
+    case Def(ConstBit(c)) => true
     case _ => false
   }
 
