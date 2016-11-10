@@ -11,7 +11,7 @@ import spatial.library.classes._
 trait ConvolutionWrapper {
   this: SpatialBase with SpatialClasses =>
 
-  def convolve[T:Manifest](image: Rep[DRAM[T]], kernel: Rep[DRAM[T]], output: Rep[SRAM[T]], strides: List[Int], pars: List[Rep[Int]])(implicit ctx: SourceContext): Rep[Unit] = {
+  def convolve[T:Manifest](image: Rep[DRAM[T]], kernel: Rep[DRAM[T]], output: Rep[DRAM[T]], img_dims: List[Int], k_dims: List[Int], strides: List[Int], pars: List[Rep[Int]])(implicit ctx: SourceContext): Rep[Unit] = {
     throw new Exception("convolution not supported in library")
   }
 

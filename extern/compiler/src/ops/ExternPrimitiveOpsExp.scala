@@ -194,7 +194,7 @@ trait CGenExternPrimitiveOps extends CGenEffect {
 }
 
 trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
-  val IR:UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DeliteTransform
+  val IR:UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DRAMAddrAnalysisExp with  DeliteTransform
 
   import IR.{infix_until => _, looprange_until => _, println => _, _}
 
