@@ -72,6 +72,7 @@ sbt compile
 ## TODO: Why aren't these being copied with fsync?
 cp "$SPATIAL_HOME/static/spatial" "$BIN/spatial"
 cp "$SPATIAL_HOME/static/parse-log.py" "$BIN/parse-log.py"
+exit
 
 ## Fun hack for checking if program exists
 ## http://stackoverflow.com/questions/592620/check-if-a-program-exists-from-a-bash-script

@@ -22,7 +22,7 @@ trait PIRGen extends Traversal with PIRCommon {
   debugMode = SpatialConfig.debugging || SpatialConfig.pirdebug
   verboseMode = SpatialConfig.verbose || SpatialConfig.pirdebug
 
-  lazy val dir = sys.env("PIR_HOME") + "/apps/"
+  lazy val dir = sys.env("PIR_HOME") + "/apps/src/"
   val app = Config.degFilename.take(Config.degFilename.length - 4)
   val filename = app + ".scala"
 
@@ -96,7 +96,7 @@ trait PIRGen extends Traversal with PIRCommon {
     emit("import pir.PIRApp")
     emit("")
     open(s"""object ${app}Design extends PIRApp {""")
-    emit(s"""override val arch = P2P_4CU_4TT""")
+    emit(s"""override val arch = SN_4x4""")
     open(s"""def main(args: String*)(top:Top) = {""")
     //emit(s"""top = Top()""")
   }
@@ -219,11 +219,11 @@ trait PIRGen extends Traversal with PIRCommon {
       emit(decl)
 
     case mem@DRAMCtrl(_,region,mode) => emit(s"val ${quote(mem)} = MemoryController($mode, ${quote(region)})")
-    case mem: Offchip   => emit(s"val ${quote(mem)} = OffChip()")
-    case mem: InputArg  => emit(s"val ${quote(mem)} = ArgIn()")
-    case mem: OutputArg => emit(s"val ${quote(mem)} = ArgOut()")
-    case mem: ScalarMem => emit(s"val ${quote(mem)} = Scalar()")
-    case mem: VectorMem => emit(s"val ${quote(mem)} = Vector()")
+    case mem: Offchip   => emit(s"""val ${quote(mem)} = OffChip("${mem.name}")""")
+    case mem: InputArg  => emit(s"""val ${quote(mem)} = ArgIn("${mem.name}")""")
+    case mem: OutputArg => emit(s"""val ${quote(mem)} = ArgOut("${mem.name}")""")
+    case mem: ScalarMem => emit(s"""val ${quote(mem)} = Scalar("${mem.name}")""")
+    case mem: VectorMem => emit(s"""val ${quote(mem)} = Vector("${mem.name}")""")
     case _ => throw new Exception(s"Don't know how to generate CGRA component: $x")
   }
 
