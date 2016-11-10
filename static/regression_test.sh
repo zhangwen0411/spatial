@@ -14,13 +14,13 @@ app_classes=("dense" "sparse" "unit" "characterization")
 dense_test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" "MatMult_outer"
 	"Kmeans"  "GEMM"      "GDA"    "SGD"   "LogReg" "OuterProduct")
 dense_args_list=("9600"       "8 192 192"     "1920"   "960"          "8 192 192"    
-	"96 8 96" "8 192 192" "96 96"  "96 96" "768 2"     "192 192")
+	"1 96" "8 192 192" "96 96"  "96 96" "768 2"     "192 192")
 sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
-sparse_args_list=("960" "2 384 1"      "960"              "960"       "960"   )    
+sparse_args_list=("960" "2 384 1"  "960"              "960"       "960"   )    
 
 # Seconds to pause while waiting for apps to run
-delay=1200
-spacing=20
+delay=1320
+spacing=25
 
 # random=(`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 4`) # Random chars to add to directory to avoid new workers from wiping old
 random=(`date +"%H-%M"`) # Chars to add to directory to avoid new workers from wiping old
@@ -85,14 +85,17 @@ function update_log {
 		elif [[ $p == *"failed_did_not_finish"* ]]; then
 			echo "<------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
 			t=0
+		elif [[ $p == *"failed_compile_stuck"* ]]; then
+			echo "<----------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+			t=0
 		elif [[ $p == *"failed_app_not_written"* ]]; then
-			echo "<------------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+			echo "<----------------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
 			t=0
 		elif [[ $p == *"failed_build_in_spatial"* ]]; then
-			echo "<--------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+			echo "<------------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
 			t=0
 		elif [[ $p == *"failed_compile_maxj"* ]]; then
-			echo "<----------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+			echo "<--------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
 			t=0
 		elif [[ $p == *"failed_no_validation_check"* ]]; then
 			echo "<--------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
@@ -170,8 +173,8 @@ sed -i \"s/error: illegal sharing of mutable object/Ignoring scattergather mutab
 wc=\$(cat ${5}/log | grep \"couldn't find DEG file\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -1 (${4} Spatial Error)\"
-	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
    		echo \"[STATUS] Declaring failure app_not_written\"
     	touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_not_written.${3}_${4}
     fi
@@ -181,8 +184,8 @@ fi
 wc=\$(cat ${5}/log | grep \"error\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -2 (${4} Spatial Error)\"
-	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
 	    cat ${5}/log
 	    echo \"[STATUS] Declaring failure build_in_spatial\"
     	touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
@@ -201,14 +204,16 @@ make clean sim 2>&1 | tee -a ${5}/log
 wc=\$(cat ${5}/log | sed \"s/Error 1 (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -3 (${4} Spatial Error)\"
-	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
 	    echo \"[STATUS] Declaring failure compile_maxj\"
 	    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_maxj.${3}_${4}
 	fi
 	exit 1
 fi
 
+rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
 cd out
 bash ${5}/out/run.sh ${args_list[i]} 2>&1 | tee -a ${5}/log
 if grep -q \"PASS: 1\" ${5}/log; then
@@ -441,7 +446,7 @@ for ac in ${app_classes[@]}; do
 	# Initialize results
 	for i in `seq 0 $((${#test_list[@]}-1))`
 	do
-		touch ${SPATIAL_HOME}/regression_tests/${ac}/results/failed_did_not_finish.${i}_${test_list[i]}
+		touch ${SPATIAL_HOME}/regression_tests/${ac}/results/failed_compile_stuck.${i}_${test_list[i]}
 
 		# Make dir for this vulture job
 		vulture_dir="${SPATIAL_HOME}/regression_tests/${ac}/${i}_${test_list[i]}"
@@ -561,7 +566,7 @@ for aa in ${all_apps[@]}; do
 		a=(`echo $aa | sed "s/ //g" | sed "s/\[.*//g"`)
 		dashes=(`cat ${result_file} | grep "[0-9]\+\_$a\(\ \|\*\|\[\)" | sed "s/\[🗠.*//g" | grep -oh "\-" | wc -l`)
 		num=$(($dashes/4))
-		if [ $num = 0 ]; then bar=▇; elif [ $num = 1 ]; then bar=▆; elif [ $num = 2 ]; then bar=▅; elif [ $num = 3 ]; then bar=▄; elif [ $num = 4 ]; then bar=▃; elif [ $num = 5 ]; then bar=▂; elif [ $num = 6 ]; then bar=▁; else bar=□; fi
+		if [ $num = 0 ]; then bar=█; elif [ $num = 1 ]; then bar=▇; elif [ $num = 2 ]; then bar=▆; elif [ $num = 3 ]; then bar=▅; elif [ $num = 4 ]; then bar=▄; elif [ $num = 5 ]; then bar=▃; elif [ $num = 6 ]; then bar=▂; elif [ $num = 7 ]; then bar=▁; else bar=□; fi
 
 		# Print what the seds are for debug
 		# cmd="sed \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"

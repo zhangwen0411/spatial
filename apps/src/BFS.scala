@@ -216,7 +216,6 @@ trait BFSApp extends SpatialApp {
     OCids(210) = 40
     OCids(310) = 41
     OCids(311) = 43
-    printArr(OCids, "idlist: ")
 
     val OCcounts = Array.empty[SInt](tileSize)
     OCcounts(0) = 6
@@ -243,7 +242,6 @@ trait BFSApp extends SpatialApp {
     OCcounts(210) = 1
     OCcounts(310) = 2
     OCcounts(311) = 1
-    printArr(OCcounts, "countslist: ")
 
     val result = bfs(OCnodes, OCedges, OCcounts, OCids, nodes, nodes*edges_per_node)
     val gold = (6*1) + (16*2) + (22*3) + (5*4)

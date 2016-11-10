@@ -73,6 +73,10 @@ trait Regs {
       /** Creates an unnamed register with type T and given reset value **/
       static (Reg) ("apply", T, ("reset", ST) :: Reg(T), TNum(T)) implements composite ${ reg_create[T]($reset.as[T]) }
     }
+
+    /** Allow regs to be initialized to tuples **/
+    static (Reg) ("apply", T, ("reset", T) :: Reg(T), TNum(T)) implements composite ${ reg_create[T]($reset) }
+
     /** Creates an unnamed input argument from the host CPU **/
     direct (Reg) ("ArgIn", T, Nil :: Reg(T), TNum(T)) implements composite ${
       val rst = zero[T]

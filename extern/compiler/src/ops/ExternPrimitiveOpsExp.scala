@@ -84,6 +84,7 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
 
   def isStaticSize[T:Manifest](x: Rep[T]): Boolean = x match {
     case ConstFix(_) => true
+    case ConstFlt(_) => true
     case ParamFix(_) => true
     case _ => false
   }
@@ -193,7 +194,7 @@ trait CGenExternPrimitiveOps extends CGenEffect {
 }
 
 trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
-  val IR:UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DeliteTransform
+  val IR:UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DRAMAddrAnalysisExp with  DeliteTransform
 
   import IR.{infix_until => _, looprange_until => _, println => _, _}
 
@@ -310,8 +311,8 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
       rTreeMap(sym) match {
         case Nil =>
           b match { // TODO: Decide slice based on bit lengths
-            case "_1" => emit(s"""$pre ${quote(sym)} = ${quote(a)}.slice(0,32).cast($tp);""")
-            case "_2" => emit(s"""$pre ${quote(sym)} = ${quote(a)}.slice(32,32).cast($tp);""")
+            case "_1" => emit(s"""$pre ${quote(sym)} = ${quote(a)}.slice(32,32).cast($tp);""")
+            case "_2" => emit(s"""$pre ${quote(sym)} = ${quote(a)}.slice(0,32).cast($tp);""")
           }
         case m =>
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")

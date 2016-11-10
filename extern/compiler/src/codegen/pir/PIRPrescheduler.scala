@@ -133,8 +133,8 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     if (cuMapping.contains(pipe)) cuMapping(pipe).asInstanceOf[TileTransferUnit]
     else {
       debug(s"Allocating CU for $pipe")
-      val region = allocateGlobal(mem).asInstanceOf[Offchip]
-      val vector = allocateGlobal(vec).asInstanceOf[VectorMem]
+      val region = allocateGlobal(mem,false).asInstanceOf[Offchip]
+      val vector = allocateGlobal(vec,false).asInstanceOf[VectorMem]
       val mc = DRAMCtrl(quote(pipe)+"_mc", region, mode)
       globals += mc
       val parent = parentOfHack(pipe).map(allocateCU(_))
@@ -147,12 +147,16 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
    * Get or create a CU which corresponds to the given pipe
    **/
   def allocateCU(pipe: Exp[Any]) = pipe match {
-    case Deff(_:Hwblock)              => allocateBasicCU(pipe)
-    case Deff(_:UnrolledForeach)       => allocateBasicCU(pipe)
-    case Deff(_:UnrolledReduce[_,_])   => allocateBasicCU(pipe)
+    case Deff(_:Hwblock)             => allocateBasicCU(pipe)
+    case Deff(_:UnrolledForeach)     => allocateBasicCU(pipe)
+    case Deff(_:UnrolledReduce[_,_]) => allocateBasicCU(pipe)
     case Deff(_:UnitPipe)            => allocateBasicCU(pipe)
     case Deff(e:BurstLoad[_])  => allocateMemoryCU(pipe, e.mem, e.fifo, MemLoad)
     case Deff(e:BurstStore[_]) => allocateMemoryCU(pipe, e.mem, e.fifo, MemStore)
+
+    //case Deff(e:Gather[_])  =>
+    //case Deff(e:Scatter[_]) =>
+
     case Def(d) => throw new Exception(s"Don't know how to generate CU for: \n  $pipe = $d")
   }
 
@@ -164,7 +168,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
       val isLocallyRead = readerCU == writerCU
 
       val sram = allocateMem(mem, reader.node, readerCU, true)
-      val vector = if (isLocallyRead) LocalVector else allocateGlobal(mem)
+      val vector = if (isLocallyRead) LocalVector else allocateGlobal(mem,false)
       sram.vector = Some(vector)
 
       debug(s"  Allocating written SRAM $mem")
@@ -187,7 +191,11 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     }
   }
   def allocateReadSRAM(reader: Exp[Any], mem: Exp[Any], readerCU: ComputeUnit) {
-    allocateMem(mem, reader, readerCU, true)
+    val sram = allocateMem(mem, reader, readerCU, true)
+
+    debug(s"  Allocating read SRAM $mem")
+    debug(s"    reader = $reader")
+    debug(s"    readerCU = $readerCU")
   }
 
   def foreachSymInBlock(b: Block[Any])(func: Sym[Any] => Unit) {
@@ -250,7 +258,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
     }
 
     // HACK: Ignore simple dependencies in remote writes
-    def getRemoteWriteSchedule(addr: Exp[Any]) = {
+    def getScheduleForAddress(addr: Exp[Any]) = {
       def mysyms(rhs: Any) = rhs match {
         case d@Reflect(x, u, es) if u.maySimple =>
           val dataDeps = syms(x)
@@ -279,7 +287,7 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
 
         writes.foreach{case (EatAlias(mem), value, indices) =>
           if (isBuffer(mem)) {
-            val indexComputation = indices.map{is => getRemoteWriteSchedule(is) }.getOrElse(Nil)
+            val indexComputation = indices.map{is => getScheduleForAddress(is) }.getOrElse(Nil)
             val indexSyms = indexComputation.map{case TP(s,d) => s }
             val indexStages = indexSyms.map{s => DefStage(s) }
             val flatOpt = indices.map{is => flattenNDAddress(is, dimsOf(mem)) }
@@ -311,7 +319,6 @@ trait PIRScheduleAnalyzer extends Traversal with SpatialTraversalTools with PIRC
             if (!isLocallyWritten || !isLocallyRead || isInnerAccum(mem)) remoteStages += reader
           }
           else if (isBuffer(mem)) {
-            //debug(s"  Local buffer read: $reader")
             allocateReadSRAM(reader, mem, cu)
           }
         }

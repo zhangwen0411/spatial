@@ -198,8 +198,8 @@ trait SpatialExceptionsCompilerOps extends SpatialExceptionsOps with NodeMetadat
     stageError("Invalid memory dimension. Only constants and DSE parameters are allowed as dimensions of on-chip memories")(ctx)
   })
   case class InvalidParFactorException(p: Rep[Int])(implicit ctx: SourceContext) extends
-  UserException(19, s"Invalid parallelization factor $p. Counter parallelization must be a DSE parameter or a constant", {
-    stageError(s"Invalid parallelization factor $p. Counter parallelization must be a DSE parameter or a constant")(ctx)
+  UserException(19, s"Invalid parallelization factor $p. Parallelization must be a DSE parameter or a constant", {
+    stageError(s"Invalid parallelization factor $p. Parallelization must be a DSE parameter or a constant")(ctx)
   })
   case class InvalidOffChipDimensionException(mem: Rep[Any], i: Int)(implicit ctx: SourceContext) extends
   UserException(20, s"Invalid dimension $i for ${name(mem)}. Dimensions for off-chip memories must be constants or input arguments.", {

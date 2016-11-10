@@ -36,15 +36,7 @@ trait ExternCounterOpsExp extends ExternCounterTypesExp with CounterOpsExp with 
 
   // --- Internal API
   def counter_new(start: Rep[Idx],end: Rep[Idx],step: Rep[Idx], par: Rep[Int])(implicit ctx: SourceContext) = {
-    val truePar: Param[Int] = par match {
-      case Const(c) =>
-        val p = param(c)
-        domainOf(p) = (c,c,1)
-        p
-      case p: Param[_] => p.asInstanceOf[Param[Int]]
-
-      case _ => throw InvalidParFactorException(par)
-    }
+    val truePar: Param[Int] = parize(par)
     reflectEffect[Counter](Counter_new(start,end,step,truePar)(ctx))
   }
 

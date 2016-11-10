@@ -219,7 +219,10 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
       case FixPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FltPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Sub(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FixPt_Sub(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Div(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
+      case FltPt_Div(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
       case FixPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
@@ -263,6 +266,7 @@ trait MaxJGenUnrolledOps extends MaxJGenControllerOps {
         if (isConstOrArgOrBnd(value)) {ret += value}
         if (isConstOrArgOrBnd(en)) {ret += en}        
       }
+      case Fixpt_to_fltpt(a) => if (isConstOrArgOrBnd(a)) {ret += a}
       case Reify(_,_,_) => 
       case ConstBit(a) => // Never add a bool constant
       // case FixPt(a) => ret += x // Always add constant
@@ -392,7 +396,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DF
                       stms.zipWithIndex.map { case (TP(s,d), ii) =>
                         val Deff(dd) = s
                         consts_args_bnds_set = addConstOrArgOrBnd(s, consts_args_bnds_set)
-                        Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+                        // Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
                         isReduceResult(s) = false // No specialized accum for unrolledForeach
                       }
                     }
@@ -518,7 +522,7 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
                 stms.zipWithIndex.map { case (TP(s,d), ii) =>
                   val Deff(dd) = s
                   consts_args_bnds_set = addConstOrArgOrBnd(s, consts_args_bnds_set)
-                  Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
+                  // Console.println(s" Reduction ${quote(sym)} unroll ${s} ${dd}")
                   // emitNode(s, dd)
                 }
               }

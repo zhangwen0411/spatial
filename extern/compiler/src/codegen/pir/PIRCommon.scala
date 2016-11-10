@@ -162,7 +162,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
   }
 
   def scalarIns(cu: ComputeUnit): Set[GlobalMem] = {
-    cu.stages.flatMap(_.inputMems).flatMap{case ScalarIn(in) => Some(in); case _ => None}.toSet ++
+    allMapStages(cu).flatMap(_.inputMems).flatMap{case ScalarIn(in) => Some(in); case _ => None}.toSet ++
     cu.srams.flatMap{sram => sram.readAddr.flatMap{case ScalarIn(in) => Some(in); case _ => None}}.toSet ++
     cu.srams.flatMap{sram => sram.writeAddr.flatMap{case ScalarIn(in) => Some(in); case _ => None}}.toSet ++
     cu.cchains.flatMap{
@@ -173,21 +173,21 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
   def scalarOuts(cu: ComputeUnit): Set[GlobalMem] = cu match {
     case tu: TileTransferUnit => Set.empty
     case cu: BasicComputeUnit =>
-      cu.stages.flatMap(_.outputMems).flatMap{case ScalarOut(out) => Some(out); case _ => None }.toSet
+      allMapStages(cu).flatMap(_.outputMems).flatMap{case ScalarOut(out) => Some(out); case _ => None }.toSet
     case _ => Set.empty
   }
 
   def vectorOuts(cu: ComputeUnit): Set[VectorMem] = cu match {
     case tu: TileTransferUnit if tu.mode == MemLoad => Set(tu.vec)
     case cu: BasicComputeUnit =>
-      cu.stages.flatMap(_.outputMems).flatMap{case VectorOut(vec: VectorMem) => Some(vec); case _ => None}.toSet
+      allMapStages(cu).flatMap(_.outputMems).flatMap{case VectorOut(vec: VectorMem) => Some(vec); case _ => None}.toSet
     case _ => Set.empty
   }
 
   def vectorIns(cu: ComputeUnit): Set[VectorMem] = cu match {
     case tu: TileTransferUnit if tu.mode == MemStore => Set(tu.vec)
     case cu: BasicComputeUnit =>
-      cu.stages.flatMap(_.inputMems).flatMap{case VectorIn(vec) => Some(vec); case _ => None}.toSet ++
+      allMapStages(cu).flatMap(_.inputMems).flatMap{case VectorIn(vec) => Some(vec); case _ => None}.toSet ++
       cu.srams.flatMap{sram => sram.vector.flatMap{case vec: VectorMem => Some(vec); case _ => None }}.toSet ++
       cu.cchains.flatMap{
         case CounterChainInstance(_,ctrs) => ctrs.flatMap{case CUCounter(_,start,end,stride) => List(start,end,stride).flatMap{case VectorIn(in) => Some(in); case _ => None}}
@@ -223,16 +223,16 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
 
 
   // Create a vector for communication to/from a given memory
-  def allocateGlobal(mem: Exp[Any]) = {
+  def allocateGlobal(mem: Exp[Any], isUnit: Boolean) = {
     val name = quote(mem)
     val global = mem match {
       case Deff(Dram_new(_))    => Offchip(name)
       case Deff(Argin_new(_))   => InputArg(name)
       case Deff(Argout_new(_))  => OutputArg(name)
-      case Deff(Reg_new(_))     => ScalarMem(name)
+      case Deff(Reg_new(_)) if isUnit => ScalarMem(name)
       case mem if isArgIn(mem)  => InputArg(name)
       case mem if isArgOut(mem) => OutputArg(name)
-      case mem if isReg(mem.tp) => ScalarMem(name)
+      case mem if isReg(mem.tp) && isUnit => ScalarMem(name)
       case _                    => VectorMem(name)
     }
     debug(s"### Adding global for $mem: $global")
@@ -252,12 +252,19 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
       AccumReg(rst)
     }
     else if (!isLocallyRead) { // Always prefer the local register over ScalarOut, if applicable
-      val global = allocateGlobal(reg)
-      ScalarOut(global)
+      val isUnit = isUnitPipe(pipe)
+      val global = allocateGlobal(reg, isUnit)
+      if (isUnit) ScalarOut(global)
+      else        VectorOut(global)
     }
     else if (!isLocallyWritten) {
-      val global = allocateGlobal(reg)
-      ScalarIn(global)
+      debug(s"Allocating register $reg in $pipe with writer " + writersOf(reg).headOption)
+
+      val isUnit = writersOf(reg).headOption.map{writer => isUnitPipe(writer.controlNode)}.getOrElse(true)
+
+      val global = allocateGlobal(reg, isUnit)
+      if (isUnit) ScalarIn(global)
+      else        VectorIn(global.asInstanceOf[VectorMem])
     }
     else {
       TempReg()
@@ -268,7 +275,7 @@ trait PIRCommon extends SubstQuotingExp with ControllerTools {
     case Exact(c) => allocateConst(mem)
     case Def(ConstBit(c)) => allocateConst(mem)
     case reg@Deff(Argin_new(init)) =>
-      val global = allocateGlobal(reg)
+      val global = allocateGlobal(reg, isUnitPipe(pipe))
       ScalarIn(global)
     case reg@Deff(Argout_new(init)) => allocateReg(reg, pipe, read, write) // argOuts can be accumulators
     case reg@Deff(Reg_new(init))    => allocateReg(reg, pipe, read, write)

@@ -18,10 +18,8 @@ trait ControllerOpsExp extends ControllerCompilerOps with MemoryOpsExp with Exte
 
   type Idx = FixPt[Signed,B32,B0]
 
-  // --- Nodes
   case class ParallelPipe(func: Block[Unit])(implicit val ctx: SourceContext) extends Def[Pipeline]
   case class UnitPipe(func: Block[Unit])(implicit val ctx: SourceContext) extends Def[Pipeline]
-
 
   case class OpForeach(
     cchain: Exp[CounterChain],  // Loop counter chain
@@ -260,8 +258,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
           with SpatialCodegenOps with NosynthOpsExp with MemoryAnalysisExp
           with DeliteTransform with VectorOpsExp with SpatialExp with UnrollingTransformExp
 
- import IR._ //{__ifThenElse => _, Nosynth___ifThenElse => _, __whileDo => _,
-             // Forloop => _, println => _ , _}
+  import IR._
 
   var bbd = ""
 
@@ -418,7 +415,7 @@ Count.Params initParams = control.count.makeParams(2)
                           .withEnable(top_en)
                           .withMax(2)
                           .withWrapMode(WrapMode.STOP_AT_MAX);
-Counter init = control.count.makeCounter(initParams); 
+Counter init = control.count.makeCounter(initParams);
 DFEVar global_rst = init.getCount() === 0;
 """)
 			emitComment("Emitting Hwblock dependencies {")
@@ -764,7 +761,7 @@ DFEVar global_rst = init.getCount() === 0;
 
 
           case n:OpReduce[_,_] =>
-			      //TODO : what is this? seems like all reduce supported are specialized
+			      //TODO : what is tihs? seems like all reduce supported are specialized
             //  def specializeReduce(r: ReduceTree) = {
             //  val lastGraph = r.graph.takeRight(1)(0)
             //  (lastGraph.nodes.size == 1) & (r.accum.input match {
@@ -882,10 +879,16 @@ DFEVar ${quote(sym)}_maxed = ${quote(sym)}.getOutput("saturated");""")
     }
 
     emit(s"""OffsetExpr ${quote(sym)}_additionalOffset = new OffsetExpr();""")
+    var percentD = List()
+    var maxs = List()
+    var currents = List()
     counters.zipWithIndex.map { case (ctr, i) =>
       emit(s"""${quote(sym)}.connectInput("max${i}", ${quote(sym)}_max[${i}]);""")
       if (parOf(ctr) == 1) {
         emit(s"""DFEVar ${quote(ctr)} = ${quote(sym)}.getOutput("counter${i}");""")
+        percentD = percentD :+ "%d"
+        currents = currents :+ s"${quote(ctr)}"
+        maxs = maxs :+ s"${quote(sym)}_max[${i}]"
         // cast(n.ctrs(i)) // Cast if necessary
       } else {
         emit(s"""DFEVector<DFEVar> ${quote(ctr)} = new DFEVectorType<DFEVar>(dfeInt(32), ${parOf(ctr)}).newInstance(this);
@@ -893,26 +896,32 @@ ${quote(ctr)}[0] <== ${quote(sym)}.getOutput("counter${i}");
 for (int i = 0; i < ${parOf(ctr)-1}; i++) {
   ${quote(ctr)}[i+1] <== ${quote(sym)}.getOutput("counter${i}_extension" + i);
 }""")
+        percentD = percentD :+ " %d"
+        currents = currents :+ s"${quote(ctr)}[0]"
+        maxs = maxs :+ s"${quote(sym)}_max[${i}]"
         // (0 until n.par(i)) map {k =>
         //     cast(n.ctrs(i)) // Cast if necessary
         // }
       }
     }
 
+    emit(s"""// debug.simPrintf(${quote(sym)}_en, "counter ${quote(sym)}: ${percentD.mkString(" ")} / ${percentD.mkString(" ")}\\n", ${currents.mkString(",")}, ${maxs.mkString(",")});""")
+
+
     parent match {
-      case Deff(UnrolledForeach(_,_,counts,vs)) => 
-        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) => 
-          layer.zip(count).map { case (v, c) => 
+      case Deff(UnrolledForeach(_,_,counts,vs)) =>
+        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) =>
+          layer.zip(count).map { case (v, c) =>
             emit(s"DFEVar ${quote(v)} = ${quote(c)} < ${quote(sym)}_max[${i}];")
           }
         }
-      case Deff(UnrolledReduce(_,_,_,_,counts,vs,_,_)) => 
-        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) => 
-          layer.zip(count).map { case (v, c) => 
+      case Deff(UnrolledReduce(_,_,_,_,counts,vs,_,_)) =>
+        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) =>
+          layer.zip(count).map { case (v, c) =>
             emit(s"DFEVar ${quote(v)} = ${quote(c)} < ${quote(sym)}_max[${i}];")
           }
         }
-      case _ => 
+      case _ =>
     }
 
     emitComment("} CustomCounterChain")

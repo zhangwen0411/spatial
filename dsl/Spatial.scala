@@ -238,6 +238,7 @@ trait SpatialDSL extends ForgeApplication
     val SpatialAffineAnalysis = analyzer("SpatialAffine", isExtern=true)
     val BoundAnalyzer         = analyzer("Bound", isIterative=false)
     val MemoryAnalyzer        = analyzer("Memory", isExtern=true)
+    val DRAMAddrAnalyzer      = analyzer("DRAMAddr", isExtern=true)
     val BufferAnalyzer        = analyzer("Buffer", isExtern=true)
     val AreaAnalyzer          = analyzer("Area", isExtern=true)
     val LatencyAnalyzer       = analyzer("Latency", isExtern=true)
@@ -326,14 +327,16 @@ trait SpatialDSL extends ForgeApplication
 
     // --- Final analysis
     schedule(BufferAnalyzer)        // Top controllers for n-buffers
-    // schedule(DotPrinter)            // Graph after unrolling
+    // schedule(DotPrinter)         // Graph after unrolling
     schedule(PrinterLast)
     schedule(StructurePrint)
     schedule(PIRGen)
+    schedule(DRAMAddrAnalyzer)        // Get addresses for each DRAM object
 
     // External groups
     extern(grp("Memory"), targets = List($cala, cpp, maxj), withTypes = true)
     extern(grp("Controller"), targets = List($cala, maxj))
+    extern(grp("Convolution"), targets = List($cala, maxj))
     extern(grp("Unrolled"), targets = List($cala, maxj))
 
     extern(grp("ExternCounter"), targets = List($cala, cpp, maxj), withTypes = true)

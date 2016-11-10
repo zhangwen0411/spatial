@@ -66,7 +66,7 @@ trait PIRScheduler extends Traversal with PIRCommon {
       else          mapNodeToStage(lhs,rhs,ctx)
 
     case WriteAddrStage(mem, addr) =>
-      debug(s"""    $mem @ $addr [WRITE]""")
+      debug(s"    $mem @ $addr [WRITE]")
       writeAddrToStage(mem, addr, ctx)
 
     case OpStage(op, ins, out, isReduce) =>
@@ -132,7 +132,7 @@ trait PIRScheduler extends Traversal with PIRCommon {
       }
     }
     if (isReadOutsidePipe(mem, ctx.pipe)) { // Should always be true?
-      val vector = allocateGlobal(mem)
+      val vector = allocateGlobal(mem,ctx.isUnitCompute)
       propagateReg(value, ctx.reg(value), VectorOut(vector), ctx)
     }
   }
@@ -140,11 +140,11 @@ trait PIRScheduler extends Traversal with PIRCommon {
   def mapNodeToStage(lhs: Exp[Any], rhs: Def[Any], ctx: CUContext) = rhs match {
     // --- Reads
     case Pop_fifo(EatAlias(fifo), en) =>
-      val vector = allocateGlobal(fifo).asInstanceOf[VectorMem]
+      val vector = allocateGlobal(fifo,false).asInstanceOf[VectorMem]
       ctx.addReg(lhs, VectorIn(vector))
 
     case Par_pop_fifo(EatAlias(fifo), en) =>
-      val vector = allocateGlobal(fifo).asInstanceOf[VectorMem]
+      val vector = allocateGlobal(fifo,false).asInstanceOf[VectorMem]
       ctx.addReg(lhs, VectorIn(vector))
 
     // Create a reference to this SRAM
@@ -214,8 +214,9 @@ trait PIRScheduler extends Traversal with PIRCommon {
         ctx.addReg(reg, ctx.reg(value)) // Forward refs to reg to value
       }
       if (isRemotelyRead) { // Case 4
-        val scalar = allocateGlobal(reg)
-        val out = ScalarOut(scalar)
+        val isUnit = ctx.isUnitCompute
+        val scalar = allocateGlobal(reg, isUnit)
+        val out = if (isUnit) ScalarOut(scalar) else VectorOut(scalar)
         if (isInnerAcc)
           propagateReg(reg, ctx.reg(value), out, ctx) // Bypass
         else
@@ -293,13 +294,14 @@ trait PIRScheduler extends Traversal with PIRCommon {
         val output = ctx.cu.getOrAddReg(out){ TempReg() }
         val stage = MapStage(op, inputs, List(ctx.refOut(output)))
 
+        ctx.addStage(stage)
         // Don't generate control muxes if control logic is disabled
-        if (op == ALUMux) {
-          if (!hasControlLogic || GenControlLogic)
-            ctx.addStage(stage)
+        /*if (op == ALUMux) {
+          //if (!hasControlLogic || GenControlLogic)
+          ctx.addStage(stage)
         }
         else
-          ctx.addStage(stage)
+          ctx.addStage(stage)*/
       }
     }
   }
