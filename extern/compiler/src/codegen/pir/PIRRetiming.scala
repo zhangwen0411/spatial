@@ -36,13 +36,14 @@ trait PIRRetiming extends PIRTraversal {
     def getDelay(input: GlobalBus, cur: Int, visit: Set[CU]): Int = producer.get(input) match {
       case Some(cu) if visit.contains(cu) =>
         debug(s"    [CYCLE]")
-        0  // Don't retime cycles?
+        -1  // Don't retime cycles
       case Some(cu) if deps(cu).isEmpty =>
         debug(s"    ${cu.name}")
         cur+1
       case Some(cu) =>
         debug(s"    ${cu.name} -> " + deps(cu).mkString(", "))
-        deps(cu).map{dep => getDelay(dep,cur+1,visit+cu)}.max
+        val delays = deps(cu).map{dep => getDelay(dep,cur+1,visit+cu)}
+        if (delays.contains(-1)) -1 else delays.max
       case None => cur
     }
 
@@ -56,7 +57,7 @@ trait PIRRetiming extends PIRTraversal {
       val criticalPath = delays.max
 
       deps(cu).zip(delays).foreach{case (dep,dly) =>
-        if (dly < criticalPath && dly != 0) {
+        if (dly < criticalPath && dly > 0) {
           insertFIFO(cu, dep, (criticalPath - dly)*10)
         }
         else if (dly == 0) {

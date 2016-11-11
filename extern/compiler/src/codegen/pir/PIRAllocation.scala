@@ -141,41 +141,7 @@ trait PIRAllocation extends PIRTraversal {
     case Def(d) => throw new Exception(s"Don't know how to generate CU for\n  $pipe = $d")
   }
 
-
-  def prescheduleBurstTransfer(pipe: Symbol, mem: Symbol, ofs: Symbol, len: Symbol, mode: OffchipMemoryMode) = {
-    // Ofs and len must either be constants or results of reading registers written in another controller
-    val ofsWriter = ofs match {case Deff(Reg_read(reg)) => Some(writersOf(reg).head); case _ => None }
-    val lenWriter = len match {case Deff(Reg_read(reg)) => Some(writersOf(reg).head); case _ => None }
-
-    var ofsCUOpt = ofsWriter.map{writer => allocateCU(writer.controlNode)}
-    var lenCUOpt = lenWriter.map{writer => allocateCU(writer.controlNode)}
-
-    if (ofsCUOpt.isEmpty && lenCUOpt.isEmpty) {
-      val cu = allocateCU(pipe)
-      cu.deps = Nil // Both are constants, so no dependencies
-      ofsCUOpt = cu
-      lenCUOpt = cu
-    }
-    else if (lenCUOpt.isEmpty && ofsCUOpt.isDefined) lenCUOpt = ofsCUOpt
-    else if (lenCUOpt.isDefined && ofsCUOpt.isEmpty) ofsCUOpt = lenCUOpt
-    val lenCU = lenCUOpt.get
-    val ofsCU = ofsCUOpt.get
-
-    val dram = allocateDRAM(pipe, mem, mode)
-
-    val mcOfs = fresh[Index]
-    ofsCU.addReg(mcOfs, ScalarOut(DRAMOffset(dram)))
-    val ofsReg = ofs match {case Deff(Reg_read(reg)) => reg; case ofs => ofs }
-
-    val mcLen = fresh[Index]
-    lenCU.addReg(mcLen, ScalarOut(DRAMLength(dram)))
-    val lenReg = len match {case Deff(Reg_read(reg)) => reg; case len => len }
-
-    ofsCU.computeStages += OpStage(Bypass, List(ofsReg), mcOfs)
-    lenCU.computeStages += OpStage(Bypass, List(lenReg), mcLen)
-  }
-
-   def prescheduleRegisterRead(reg: Symbol, reader: Symbol, pipe: Option[Symbol]) = {
+  def prescheduleRegisterRead(reg: Symbol, reader: Symbol, pipe: Option[Symbol]) = {
     debug(s"Allocating register read: $reader")
     // Register reads may be used by more than one pipe
     readersOf(reg).filter(_.node == reader).map(_.controlNode).foreach{readCtrl =>
@@ -224,12 +190,13 @@ trait PIRAllocation extends PIRTraversal {
       }
     }
   }
-  def allocateReadSRAM(reader: Symbol, mem: Symbol, readerCU: PCU) {
+  def allocateReadSRAM(reader: Symbol, mem: Symbol, readerCU: PCU) = {
     val sram = allocateMem(mem, reader, readerCU)
 
     debug(s"  Allocating read SRAM $mem")
     debug(s"    reader   = $reader")
     debug(s"    readerCU = $readerCU")
+    sram
   }
 
   private def initializeSRAM(sram: CUMemory, mem_in: Symbol, read: Symbol, cu: PCU) {
@@ -443,6 +410,102 @@ trait PIRAllocation extends PIRTraversal {
     cu.computeStages ++= localCompute.map{s => DefStage(s, isReduce = reduceType(s).isDefined) }
   }
 
+  def prescheduleBurstTransfer(pipe: Symbol, mem: Symbol, ofs: Symbol, len: Symbol, mode: OffchipMemoryMode) = {
+    // Ofs and len must either be constants or results of reading registers written in another controller
+    val ofsWriter = ofs match {case Deff(Reg_read(reg)) => Some(writersOf(reg).head); case _ => None }
+    val lenWriter = len match {case Deff(Reg_read(reg)) => Some(writersOf(reg).head); case _ => None }
+
+    var ofsCUOpt = ofsWriter.map{writer => allocateCU(writer.controlNode)}
+    var lenCUOpt = lenWriter.map{writer => allocateCU(writer.controlNode)}
+
+    if (ofsCUOpt.isEmpty && lenCUOpt.isEmpty) {
+      val cu = allocateCU(pipe)
+      cu.deps = Nil // Both are constants, so no dependencies
+      ofsCUOpt = cu
+      lenCUOpt = cu
+    }
+    else if (lenCUOpt.isEmpty && ofsCUOpt.isDefined) lenCUOpt = ofsCUOpt
+    else if (lenCUOpt.isDefined && ofsCUOpt.isEmpty) ofsCUOpt = lenCUOpt
+    val lenCU = lenCUOpt.get
+    val ofsCU = ofsCUOpt.get
+
+    val dram = allocateDRAM(pipe, mem, mode)
+
+    val mcOfs = fresh[Index]
+    ofsCU.addReg(mcOfs, ScalarOut(DRAMOffset(dram)))
+    val ofsReg = ofs match {case Deff(Reg_read(reg)) => reg; case ofs => ofs }
+
+    val mcLen = fresh[Index]
+    lenCU.addReg(mcLen, ScalarOut(DRAMLength(dram)))
+    val lenReg = len match {case Deff(Reg_read(reg)) => reg; case len => len }
+
+    ofsCU.computeStages += OpStage(Bypass, List(ofsReg), mcOfs)
+    lenCU.computeStages += OpStage(Bypass, List(lenReg), mcLen)
+  }
+
+  def prescheduleGather(pipe: Symbol, mem: Symbol, local: Symbol, addrs: Symbol, len: Symbol) {
+    val cu = allocateCU(pipe)
+    val dram = allocateDRAM(pipe, mem, MemGather)
+
+    val n = cu.getOrElse(len){ allocateLocal(len, pipe) }
+    val ctr = CUCounter(ConstReg("0i"), localScalar(n), ConstReg("1i"))
+    val cc  = CChainInstance(quote(pipe)+"_cc", List(ctr))
+    cu.cchains += cc
+    val i = CounterReg(cc, 0)
+    cu.regs += i
+
+
+    val addr = allocateReadSRAM(pipe, addrs, cu)
+    addr.readAddr = Some(i)
+
+    val addrIn = fresh[Any]
+    cu.addReg(addrIn, SRAMReadReg(addr))
+
+    val addrOut = fresh[Any]
+    cu.addReg(addrOut, VectorOut(DRAMAddress(dram)))
+
+    cu.computeStages += OpStage(Bypass, List(addrIn), addrOut)
+
+    readersOf(local).foreach{reader =>
+      val readerCU = allocateCU(reader.controlNode)
+      copyIterators(readerCU, cu)
+
+      val sram = allocateMem(local, reader.node, readerCU)
+      sram.mode = FIFOOnWriteMode
+      sram.writeAddr = None
+      sram.vector = Some(DRAMDataIn(dram))
+    }
+  }
+
+  def prescheduleScatter(pipe: Symbol, mem: Symbol, local: Symbol, addrs: Symbol, len: Symbol) {
+    val cu = allocateCU(pipe)
+    val dram = allocateDRAM(pipe, mem, MemScatter)
+
+    val n = cu.getOrElse(len){ allocateLocal(len, pipe) }
+    val ctr = CUCounter(ConstReg("0i"), localScalar(n), ConstReg("1i"))
+    val cc  = CChainInstance(quote(pipe)+"_cc", List(ctr))
+    cu.cchains += cc
+    val i = CounterReg(cc, 0)
+    cu.regs += i
+
+    val addr = allocateReadSRAM(pipe, addrs, cu)
+    val data = allocateReadSRAM(pipe, local, cu)
+    addr.readAddr = Some(i)
+    data.readAddr = Some(i)
+
+    val addrIn = fresh[Any]
+    val dataIn = fresh[Any]
+    cu.addReg(addrIn, SRAMReadReg(addr))
+    cu.addReg(dataIn, SRAMReadReg(data))
+
+    val addrOut = fresh[Any]
+    val dataOut = fresh[Any]
+    cu.addReg(addrOut, VectorOut(DRAMAddress(dram)))
+    cu.addReg(dataOut, VectorOut(DRAMDataOut(dram)))
+
+    cu.computeStages += OpStage(Bypass, List(addrIn), addrOut)
+    cu.computeStages += OpStage(Bypass, List(dataIn), dataOut)
+  }
 
 
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) = rhs match {
@@ -466,6 +529,12 @@ trait PIRAllocation extends PIRTraversal {
 
     case BurstStore(mem,fifo,ofs,len,p) =>
       prescheduleBurstTransfer(lhs, mem, ofs, len, MemStore)
+
+    case Scatter(mem, local, addrs, len, _, i) =>
+      prescheduleScatter(lhs, mem, local, addrs, len)
+
+    case Gather(mem, local, addrs, len, _, i) =>
+      prescheduleGather(lhs, mem, local, addrs, len)
 
     case _ => super.traverse(lhs, rhs)
   }
