@@ -54,6 +54,7 @@ trait SpatialAffineAnalyzer extends AffineAnalyzer {
   verboseMode = SpatialConfig.verbose
 
 
+  // FIXME: Is this incorrect if the register is communicating results between two streaming pipes? (ISSUE #45)
   override def invariantUnapply(x: Exp[Index]): Option[Exp[Index]] = x match {
     case Exact(_) => Some(x)  // May not be constant yet but will be in future
     case LocalReader(reads) =>
