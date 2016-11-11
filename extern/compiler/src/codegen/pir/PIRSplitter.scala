@@ -16,8 +16,12 @@ trait PIRSplitter extends PIRSplitting with PIRRetiming {
   val mappingIn  = mutable.HashMap[Symbol, CU]()
   val mappingOut = mutable.HashMap[Symbol, List[CU]]()
 
-  val ComputeMax = SplitCost(vIn=4, vOut=2, vLoc=1, comp=6, write=4, read=4, mems=4)
-  val UnitMax    = SplitCost(vIn=4, vOut=2, vLoc=1, comp=6, write=4, read=4, mems=4)
+//  val ComputeMax = SplitCost(vIn=4, vOut=2, vLoc=1, comp=6, write=4, read=4, mems=4)
+//  val UnitMax    = SplitCost(vIn=4, vOut=2, vLoc=1, comp=6, write=4, read=4, mems=4)
+
+  val ComputeMax = SplitCost(vIn=3, vOut=3, vLoc=1, comp=2, write=1, read=1, mems=1)
+  val UnitMax    = SplitCost(vIn=3, vOut=3, vLoc=1, comp=2, write=1, read=1, mems=1)
+
 
 
   override def run[A:Manifest](b: Block[A]) = {

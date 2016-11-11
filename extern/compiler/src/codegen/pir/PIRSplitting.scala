@@ -134,13 +134,13 @@ trait PIRSplitting extends PIRTraversal {
    **/
   case class WriteGroup(mems: List[CUMemory], stages: List[Stage])
 
-  class Partition(write: Map[Int, WriteGroup], compute: ArrayBuffer[Stage]) {
+  class Partition(write: Map[Int, WriteGroup], compute: ArrayBuffer[Stage], mems: Set[CUMemory]) {
     var wstages = Map[Int, WriteGroup]() ++ write
     var cstages: List[Stage] = compute.toList
     var cchains: Set[CUCChain] = Set[CUCChain]()
+    var srams: Set[CUMemory] = Set[CUMemory]() ++ mems
 
     def nonEmpty = wstages.nonEmpty || cstages.nonEmpty
-    def srams = wstages.values.flatMap(_.mems).toSet
 
     def allStages: Iterator[Stage] = cstages.iterator ++ wstages.values.flatMap(_.stages.iterator)
 
@@ -181,7 +181,7 @@ trait PIRSplitting extends PIRTraversal {
     }
   }
   object Partition {
-    def empty = new Partition(Map[Int,WriteGroup](), ArrayBuffer[Stage]() )
+    def empty = new Partition(Map[Int,WriteGroup](), ArrayBuffer[Stage](), Set[CUMemory]())
   }
 
   // Recompute required memories + write stages for given compute stages
@@ -205,6 +205,7 @@ trait PIRSplitting extends PIRTraversal {
     }
 
     val ownedSRAMs = (inputs intersect sramOwners).collect{case LocalRef(_,SRAMReadReg(sram)) => sram}
+    p.srams = ownedSRAMs
 
     val keep = p.wstages.flatMap{case (i,grp) =>
       val keys = grp.mems filter (ownedSRAMs contains _)
@@ -239,7 +240,7 @@ trait PIRSplitting extends PIRTraversal {
     val local  = p.allStages.toList
     val remote = all diff local
 
-    val localIns: Set[LocalComponent] = local.flatMap(_.inputMems).toSet
+    val localIns: Set[LocalComponent] = local.flatMap(_.inputMems).toSet filterNot(isControl(_))
     val localOuts: Set[LocalComponent] = local.flatMap(_.outputMems).toSet
     val remoteIns: Set[LocalComponent] = remote.flatMap(_.inputMems).toSet
     val remoteOuts: Set[LocalComponent] = remote.flatMap(_.outputMems).toSet
@@ -421,13 +422,14 @@ trait PIRSplitting extends PIRTraversal {
 
 
     val partitions = ArrayBuffer[Partition]()
-    var current: Partition = new Partition(writeGroups, cu.computeStages)
+    var current: Partition = new Partition(writeGroups, cu.computeStages, cu.srams)
     var remote: Partition = Partition.empty
 
     def getCost(p: Partition) = partitionCost(p, partitions, allStages, others, isUnit)
 
     while (remote.nonEmpty || current.nonEmpty) {
       debug(s"Computing partition ${partitions.length}")
+      recomputeOwnedSRAMs(current, sramOwners)
       var cost = getCost(current)
       while (cost > arch) {
         remote addCompute current.popCompute(sramOwners)  // split off a compute stage
@@ -558,10 +560,22 @@ trait PIRSplitting extends PIRTraversal {
       case VectorIn(bus) => bus
       case ScalarOut(bus) => bus
       case VectorOut(bus) => bus
-      case SRAMReadReg(mem)     => if (isScalar) CUScalar(mem.name+"_data") else CUVector(mem.name+"_data")
-      case FeedbackAddrReg(mem) => if (isScalar) CUScalar(mem.name+"_addr") else CUVector(mem.name+"_addr")
-      case FeedbackDataReg(mem) => if (isScalar) CUScalar(mem.name+"_data") else CUVector(mem.name+"_data")
-      case _                    => if (isScalar) CUScalar(reg.id+"_bus")    else CUVector(reg.id+"_bus")
+      case SRAMReadReg(mem)     =>
+        val bus = if (isScalar) CUScalar(mem.name+"_data") else CUVector(mem.name+"_data")
+        globals += bus
+        bus
+      case FeedbackAddrReg(mem) =>
+        val bus = if (isScalar) CUScalar(mem.name+"_addr") else CUVector(mem.name+"_addr")
+        globals += bus
+        bus
+      case FeedbackDataReg(mem) =>
+        val bus = if (isScalar) CUScalar(mem.name+"_data") else CUVector(mem.name+"_data")
+        globals += bus
+        bus
+      case _                    =>
+        val bus = if (isScalar) CUScalar("bus_" + reg.id)    else CUVector("bus_" + reg.id)
+        globals += bus
+        bus
     }
 
     def portOut(reg: LocalComponent, isScalar: Boolean) = globalBus(reg,isScalar) match {
@@ -573,9 +587,10 @@ trait PIRSplitting extends PIRTraversal {
       case bus:VectorBus => VectorIn(bus)
     }
 
-    def rerefIn(reg: LocalComponent, isScalar: Boolean = cu.isUnit): LocalRef = {
+    def rerefIn(reg: LocalComponent, isScalar: Boolean = orig.isUnit): LocalRef = {
       val in = reg match {
         case _:ConstReg | _:CounterReg => reg
+        case _:ValidReg | _:ControlReg => reg
         case _:ReduceMem[_]    => if (localOuts.contains(reg)) reg else portIn(reg, isScalar)
         case SRAMReadReg(sram) => if (cu.srams.contains(sram)) reg else portIn(reg, isScalar)
         case _                 => if (cu.regs.contains(reg)) reg else portIn(reg, isScalar)
@@ -583,7 +598,7 @@ trait PIRSplitting extends PIRTraversal {
       cu.regs += in
       ctx.refIn(in)
     }
-    def rerefOut(reg: LocalComponent, isScalar: Boolean = cu.isUnit): List[LocalRef] = {
+    def rerefOut(reg: LocalComponent, isScalar: Boolean = orig.isUnit): List[LocalRef] = {
       val outs = reg match {
         case _:ScalarOut => List(reg)
         case _:VectorOut => List(reg)

@@ -20,17 +20,39 @@ trait PIRRetiming extends PIRTraversal {
 
     compute.foreach{cu =>
       globalOutputs(cu).foreach{bus => producer += bus -> cu}
-      deps += cu -> globalInputs(cu).toList
+
+      // Ignore scalar inputs for cchains, srams (they can't be retimed...)
+      val ins = globalInputs(cu.allStages)
+      deps += cu -> ins.toList
     }
 
-    def getDelay(input: GlobalBus, cur: Int): Int = producer.get(input) match {
-      case Some(cu) if deps(cu).isEmpty => 1
-      case Some(cu) =>  (1 +: deps(cu).map{dep => getDelay(dep,cur+1)}).max // max or 1 if empty
+    //       |
+    //       A
+    //       |
+    //       B <-- F
+    //      / \    |
+    //     C   D - E
+
+    def getDelay(input: GlobalBus, cur: Int, visit: Set[CU]): Int = producer.get(input) match {
+      case Some(cu) if visit.contains(cu) =>
+        debug(s"    [CYCLE]")
+        0  // Don't retime cycles?
+      case Some(cu) if deps(cu).isEmpty =>
+        debug(s"    ${cu.name}")
+        cur+1
+      case Some(cu) =>
+        debug(s"    ${cu.name} -> " + deps(cu).mkString(", "))
+        deps(cu).map{dep => getDelay(dep,cur+1,visit+cu)}.max
       case None => cur
     }
 
     compute.foreach{cu => if (deps(cu).nonEmpty) {
-      val delays = deps(cu).map{dep => getDelay(dep, 0) }
+      debug(s"Retiming inputs to CU ${cu.name}: ")
+
+      val delays = deps(cu).map{dep =>
+        debug(s"  $dep")
+        getDelay(dep, 0, Set(cu))
+      }
       val criticalPath = delays.max
 
       deps(cu).zip(delays).foreach{case (dep,dly) =>

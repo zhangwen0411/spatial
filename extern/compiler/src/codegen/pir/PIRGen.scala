@@ -199,7 +199,7 @@ trait PIRGenTransformer extends PIRTraversal {
       emit(decl)
 
     case mc@MemoryController(name,region,mode) =>
-      emit(s"val ${quote(mc)} = MemoryController($mode, ${quote(region)}")
+      emit(s"val ${quote(mc)} = MemoryController($mode, ${quote(region)})")
 
     case mem: OffChip   => emit(s"val ${quote(mem)} = OffChip()")
     case bus: InputArg  => emit(s"val ${quote(bus)} = ArgIn()")
@@ -218,7 +218,7 @@ trait PIRGenTransformer extends PIRTraversal {
   }
 
   def preallocateFeedbackRegs(cu: CU) = cu.regs.foreach{
-    case reg@FeedbackDataReg(mem) => emit(s"val ${quote(reg)} = CU.wtAddr(${quote(mem)})")
+    case reg@FeedbackAddrReg(mem) => emit(s"val ${quote(reg)} = CU.wtAddr(${quote(mem)})")
     case _ => //nothing
   }
 
