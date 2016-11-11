@@ -19,6 +19,7 @@ trait PIRSplitter extends PIRSplitting with PIRRetiming {
   val ComputeMax = SplitCost(vIn=4, vOut=2, vLoc=1, comp=6, write=4, read=4, mems=4)
   val UnitMax    = SplitCost(vIn=4, vOut=2, vLoc=1, comp=6, write=4, read=4, mems=4)
 
+
   override def run[A:Manifest](b: Block[A]) = {
     super.run(b)
 

@@ -236,7 +236,11 @@ trait PIRScheduler extends PIRTraversal {
     val isOuterAcc = isAccum(reg) && !isInnerAcc && isLocallyRead && isLocallyWritten
     val isRemotelyRead = isReadOutsidePipe(reg, ctx.pipe)
 
-    debug(s"[REG WRITE] localRead:$isLocallyRead, localWrite:$isLocallyWritten, innerAcc:$isInnerAcc, outerAcc:$isOuterAcc, remoteRead:$isRemotelyRead")
+    val Deff(d) = writer
+
+    debug(s"[REG WRITE] $writer = $d")
+    debug(s"  Reg = $reg, value = $value")
+    debug(s"  localRead:$isLocallyRead, localWrite:$isLocallyWritten, innerAcc:$isInnerAcc, outerAcc:$isOuterAcc, remoteRead:$isRemotelyRead")
 
     if (isOuterAcc) { // Case 2
       val out = ctx.cu.getOrElse(reg){ allocateLocal(reg, ctx.pipe) }
@@ -246,7 +250,8 @@ trait PIRScheduler extends PIRTraversal {
       ctx.addReg(reg, ctx.reg(value))
     }
     if (isRemotelyRead) {
-      val start = if (isInnerAcc || isOuterAcc) ctx.reg(reg) else ctx.reg(value)
+      // Handle registers for cross-lane accumulation specially
+      val start = if (isInnerAcc) ctx.reg(value) else ctx.reg(reg)
       if (isArgOut(reg)) {
         val bus = OutputArg(quote(reg))
         globals += bus
@@ -322,8 +327,10 @@ trait PIRScheduler extends PIRTraversal {
       // This input must be in the previous stage's reduction register
       // Ensure this either by adding a bypass register for raw inputs or changing the output
       // of the previous stage from a temporary register to the reduction register
+      debug(s"[REDUCE] $op, ins = $ins, out = $out")
+
       val input = ins.head
-      val accum = ins.last
+      val accum = aliasOf(ins.last)
       val inputReg = ctx.reg(input)
       val usedInput = propagateReg(input, inputReg, ReduceReg(), ctx)
       val zero = accum match {

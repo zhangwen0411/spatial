@@ -34,7 +34,7 @@ trait PIRTraversal extends ControllerTools with QuotingExp {
       AccumReg(init)
     }
     else if (!isLocallyRead) {
-      if (isUnitPipe(pipe)) {
+      if (isUnitPipe(pipe) || isInnerAccum(reg)) {
         val bus = CUScalar(quote(reg))
         globals += bus
         ScalarOut(bus)
@@ -46,7 +46,7 @@ trait PIRTraversal extends ControllerTools with QuotingExp {
       }
     }
     else if (!isLocallyWritten) {
-      if (isWrittenByUnitPipe(reg)) {
+      if (isWrittenByUnitPipe(reg) || isInnerAccum(reg)) {
         val bus = CUScalar(quote(reg))
         globals += bus
         ScalarIn(bus).asInstanceOf[LocalComponent]  // Weird scala type error here

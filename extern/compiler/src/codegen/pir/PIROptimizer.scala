@@ -36,16 +36,24 @@ trait PIROptimizer extends PIRTraversal {
     val outs = stages.flatMap{stage => stage.outputMems.filter{t => isReadable(t) && isWritable(t) }}.toSet
     val unusedRegs = outs diff ins
 
-    debug(s"Removing unused registers from $cu: " + unusedRegs.mkString(", "))
-    stages.foreach{stage => stage.outs = stage.outs.filterNot{ref => unusedRegs contains ref.reg}}
-    cu.regs --= unusedRegs
+    if (unusedRegs.nonEmpty) {
+      debug(s"Removing unused registers from $cu: ")
+      unusedRegs.foreach{reg => debug(s"  $reg")}
+
+      stages.foreach{stage => stage.outs = stage.outs.filterNot{ref => unusedRegs contains ref.reg}}
+      cu.regs --= unusedRegs
+    }
 
     // Remove unused counterchain copies
     val usedCCs = usedCChains(cu)
     val unusedCopies = cu.cchains.collect{case cc:CChainCopy if !usedCCs.contains(cc) => cc}
 
-    debug(s"Removing unused counterchain copies from $cu: " + unusedCopies.mkString(", "))
-    cu.cchains --= unusedCopies
+    if (unusedCopies.nonEmpty) {
+      debug(s"Removing unused counterchain copies from $cu")
+      unusedCopies.foreach{cc => debug(s"  $cc")}
+
+      cu.cchains --= unusedCopies
+    }
   }
 
 
@@ -84,29 +92,55 @@ trait PIROptimizer extends PIRTraversal {
   // Once scheduled, a typical route-through case just looks like a CU with a single stage
   // which takes a vecIn and bypasses to a vecOut, which is easier to pattern match on
   def removeRouteThrus(cu: CU) = if (cu.parent.isDefined) {
+    debug(s"Checking $cu for route through stages: ")
+    cu.computeStages.foreach{stage => debug(s"  $stage") }
+
     val bypassStages = cu.computeStages.flatMap{
       case bypass@MapStage(Bypass, List(LocalRef(_,VectorIn(in: DRAMDataIn))), List(LocalRef(_,VectorOut(out: VectorBus)))) =>
-        swapBus(cus, out, in)
-        Some(bypass)
+        if (isInterCU(out)) {
+          debug(s"Found route-thru: $in -> $out")
+          swapBus(cus, out, in)
+          Some(bypass)
+        }
+        else None
       case bypass@MapStage(Bypass, List(LocalRef(_,VectorIn(in: VectorBus))), List(LocalRef(_,VectorOut(out: VectorBus)))) =>
         cus.find{cu => vectorOutputs(cu) contains in} match {
           case Some(producer) if producer.parent == cu.parent =>
-            swapBus(cus, out, in)
-            Some(bypass)
+            // If both are buses to/from MC/Args, do nothing
+            // If out is a bus to MC/Args, swap writers of in to write out instead
+            // If in is a bus from MC/Args, swap readers of out to readers of in
+            // If both are inter-CU buses, swap readers of out to readers of in
+            if (isInterCU(in) || isInterCU(out)) {
+              val orig = if (isInterCU(out)) out else in
+              val swap = if (isInterCU(out)) in else out
+
+              debug(s"Found route-thru $in -> $out, swap: $orig -> $swap")
+              swapBus(cus, orig, swap)
+              Some(bypass)
+            }
+            else None
           case _ => None
         }
       case bypass@MapStage(Bypass, List(LocalRef(_,ScalarIn(in: ScalarBus))), List(LocalRef(_,ScalarOut(out: ScalarBus)))) =>
         cus.find{cu => scalarOutputs(cu) contains in} match {
           case Some(producer) if producer.parent == cu.parent =>
-            swapBus(cus, out, in)
-            Some(bypass)
+
+            if (isInterCU(in) || isInterCU(out)) {
+              val orig = if (isInterCU(out)) out else in
+              val swap = if (isInterCU(out)) in else out
+
+              debug(s"Found route-thru $in -> $out, swap: $orig -> $swap")
+              swapBus(cus, orig, swap)
+              Some(bypass)
+            }
+            else None
           case _ => None
         }
       case _ => None
     }
     if (bypassStages.nonEmpty) {
-      debug(s"Removing route through stages from $cu: ")
-      bypassStages.foreach{stage => debug(s"  $stage")}
+      debug(s"  Removing route through stages: ")
+      bypassStages.foreach{stage => debug(s"    $stage")}
       removeComputeStages(cu, bypassStages.toSet)
     }
   }

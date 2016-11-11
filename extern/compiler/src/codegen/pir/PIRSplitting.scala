@@ -81,8 +81,12 @@ trait PIRSplitting extends PIRTraversal {
     val groups = groupBuses(globalOutputs(cu))
     nVectorOuts(groups)
   }
-  def nVectorOuts(groups: BusGroups): Int = {
-    val scalarGrps = Math.ceil(groups.scalars.size.toDouble / SCALARS_PER_BUS).toInt
+  def nVectorOuts(groups: BusGroups, countScalars: Boolean = true): Int = {
+    val scalarGrps = if (countScalars) {
+      Math.ceil(groups.scalars.size.toDouble / SCALARS_PER_BUS).toInt
+    }
+    else 0
+
     groups.vectors.size + scalarGrps
   }
 
@@ -106,13 +110,12 @@ trait PIRSplitting extends PIRTraversal {
                               this.read > that.read || this.mems > that.mems)
 
     def toStat = SplitStats(alus = comp+write, mems = this.mems, vecIn = vIn, vecOut = vOut)
+
+    override def toString = s"  vIn: $vIn, vOut: $vOut, vLoc: $vLoc, " +
+                            s"comp: $comp, wrt: $write, read: $read, mems: $mems"
   }
 
-  def report(cost: SplitCost) = {
-    val SplitCost(vIn, vOut, vLoc, comp, writes, read, mems) = cost
-    debug(s"  vIn = $vIn, vOut = $vOut, vLoc = $vLoc")
-    debug(s"  comp = $comp, wrt = $writes, read = $read, mems = $mems")
-  }
+  def report(cost: SplitCost) = debug(cost.toString)
 
   /**
     CU splitting is graph partitioning, where each partition has a limited number of inputs, outputs, and nodes
@@ -212,7 +215,6 @@ trait PIRSplitting extends PIRTraversal {
       if (keys.nonEmpty) Some(i -> WriteGroup(keys,grp.stages)) else None
     }
     if (debugMode) {
-      debug(s"  SRAMs: " + ownedSRAMs.mkString(", "))
       drop.foreach{case (k,v) =>
         v.mems.foreach{m => debug(s"  [drop] $k -> $m")}
       }
@@ -223,6 +225,17 @@ trait PIRSplitting extends PIRTraversal {
 
   // Calculate total cost for given partition
   def partitionCost(p: Partition, prev: ArrayBuffer[Partition], all: List[Stage], others: Iterable[CU], isUnit: Boolean) = {
+    if (debugMode) {
+      debug(s"\n\n")
+      debug(s"  Write stages:")
+      for ((i,grp) <- p.wstages) {
+        debug(s"    Memories: " + grp.mems.map(_.name).mkString(", "))
+        grp.stages.foreach{stage => debug(s"      $stage")}
+      }
+      debug(s"  Compute stages: ")
+      p.cstages.foreach{stage => debug(s"    $stage") }
+    }
+
     val local  = p.allStages.toList
     val remote = all diff local
 
@@ -233,6 +246,8 @@ trait PIRSplitting extends PIRTraversal {
 
     val localReads: Set[CUMemory] = localIns.collect{case SRAMReadReg(sram) => sram}
     val remoteReads: Set[CUMemory] = remoteIns.collect{case SRAMReadReg(sram) => sram}
+    // Inserted bypass reads
+    val bypassReads: Set[CUMemory] = localOuts.collect{case SRAMReadReg(sram) => sram}
 
     val localWrites: Set[CUMemory] = localOuts.collect{case FeedbackDataReg(sram) => sram}
     val localAddrs: Set[CUMemory] = localOuts.collect{case FeedbackAddrReg(sram) => sram}
@@ -241,8 +256,11 @@ trait PIRSplitting extends PIRTraversal {
     val cuInBuses = globalInputs(localIns) ++ globalInputs(p.srams) ++ globalInputs(p.cchains)
     val cuOutBuses = globalOutputs(localOuts)
 
-    var vIns: Int   = nVectorIns(groupBuses(cuInBuses), others)
-    var vOuts: Int  = nVectorOuts(groupBuses(cuOutBuses))
+    val cuGrpsIn = groupBuses(cuInBuses)
+    val cuGrpsOut = groupBuses(cuOutBuses)
+
+    var vIns: Int   = nVectorIns(cuGrpsIn, others)
+    var vOuts: Int  = nVectorOuts(cuGrpsOut, countScalars = false)
     var vLocal: Int = 0
 
     var sIns = Map[Int, Int]()
@@ -250,7 +268,7 @@ trait PIRSplitting extends PIRTraversal {
       if (!sIns.contains(part)) sIns += part -> 1
       else sIns += part -> (sIns(part) + 1)
     }
-    var sOuts: Int = 0
+    var sOuts: Int = localOuts.count{case ScalarOut(_) => true; case _ => false}
 
 
     // --- SRAMs
@@ -262,15 +280,22 @@ trait PIRSplitting extends PIRTraversal {
         addIn(prev.indexWhere(_.srams contains sram))
       }
     }
+    debug(s"  SRAMs: ")
+    debug(s"    Remotely hosted, locally read: " + remotelyOwnedSRAMs.mkString(", "))
 
     // Add outputs to account for locally hosted, remotely read SRAMs
-    val remotelyReadSRAMs = remoteReads intersect p.srams
+    // EXCEPT ones which we've already inserted bypass vectors for
+    val remotelyReadSRAMs = (remoteReads intersect p.srams) diff bypassReads
     if (!isUnit) vOuts += remotelyReadSRAMs.size
     else         sOuts += remotelyReadSRAMs.size
+
+    debug(s"    Locally hosted, remotely read: " + remotelyReadSRAMs.mkString(", "))
 
     // Feedback data to locally hosted SRAMs
     val locallyWrittenSRAMs = localWrites intersect p.srams
     vLocal += locallyWrittenSRAMs.size
+
+    debug(s"    Locally hosted, locally written: " + locallyWrittenSRAMs.mkString(", "))
 
     // Feedback data to remotely hosted SRAMs
     // TODO: Is this actually supported?
@@ -278,13 +303,28 @@ trait PIRSplitting extends PIRTraversal {
     if (!isUnit) vOuts += remotelyWrittenSRAMs.size
     else         sOuts += remotelyWrittenSRAMs.size
 
+    debug(s"    Remotely hosted, locally written: " + remotelyWrittenSRAMs.mkString(", "))
+
+
     // Feedback address to remotely hosted SRAMs
     val remotelyAddressedSRAMs = localAddrs diff p.srams
     if (!isUnit) vOuts += remotelyAddressedSRAMs.size
     else         sOuts += remotelyAddressedSRAMs.size
 
+    debug(s"    Remotely hosted, locally addressed: " + remotelyAddressedSRAMs.mkString(", "))
+
 
     // --- Registers
+    if (debugMode) {
+      debug(s"  Arg ins: " + cuGrpsIn.args.mkString(", "))
+
+      val scalars = cuGrpsIn.scalars.map{bus => s"$bus [" + others.find{cu => scalarOutputs(cu) contains bus}.map(_.name).getOrElse("X") + "]" }
+
+      debug(s"  Scalar ins: " + scalars.mkString(", "))
+      debug(s"  Vector ins: " + cuGrpsIn.vectors.mkString(", "))
+      debug(s"  Scalar outs: " + cuGrpsOut.scalars.mkString(", "))
+      debug(s"  Vector outs: " + cuGrpsOut.vectors.mkString(", "))
+    }
     // Live inputs from other partitions
     val liveIns  = localIns intersect remoteOuts
     if (!isUnit) vIns += liveIns.size
@@ -294,10 +334,14 @@ trait PIRSplitting extends PIRTraversal {
       }
     }
 
+    debug(s"  Live ins: " + liveIns.mkString(", "))
+
     // Live outputs to other partitions
-    val liveOuts = remoteIns intersect localOuts
+    val liveOuts = (remoteIns intersect localOuts)
     if (!isUnit) vOuts += liveOuts.size
     else         sOuts += liveOuts.size
+
+    debug(s"  Live outs: " + liveOuts.mkString(", "))
 
     // Pack scalar inputs and outputs into vectors
     sIns.values.foreach{ins =>
@@ -326,7 +370,11 @@ trait PIRSplitting extends PIRTraversal {
     // TODO: One virtual memory may cost more than one physical memory...
     val mems = p.srams.size
 
-    SplitCost(vIns, vOuts, vLocal, compute, writes, reads, mems)
+    val cost = SplitCost(vIns, vOuts, vLocal, compute, writes, reads, mems)
+
+    debug(s"  $cost")
+
+    cost
   }
 
   def getSRAMOwners(stageGroups: List[List[Stage]]): Set[LocalRef] = {
@@ -401,34 +449,26 @@ trait PIRSplitting extends PIRTraversal {
           remote = Partition.empty
         }
         else {
-          if (debugMode) {
-            debug(s"Failed splitting with remaining stages: ")
-            debug(s"Write stages: ")
-            for ((i,grp) <- remote.wstages) {
-              debug(s"  Write Group #$i: ${grp.mems}")
-              grp.stages.foreach{stage => debug(s"    $stage")}
-            }
-            debug(s"Compute stages: ")
-            remote.cstages.foreach{stage => debug(s"  $stage") }
-
-            val cost = getCost(remote)
-            report(cost)
-
-            current.wstages ++= remote.wstages
-            current.cstages ++= remote.cstages
-            debug("\nCost for each split option: ")
-            while (current.nonEmpty) {
-              current.popCompute(sramOwners)
-              report(getCost(current))
-            }
-          }
-          var errReport = "Write stages: "
+          var errReport = s"Failed splitting in $cu"
+          errReport += "\nWrite stages: "
           for ((i,grp) <- remote.wstages) {
-            errReport += s"\n  Write Group #$i: ${grp.mems}"
+            errReport += s"\n  Group #$i: " + grp.mems.mkString(", ")
             grp.stages.foreach{stage => errReport += s"\n    $stage"}
           }
           errReport += s"\nCompute stages: "
-          remote.cstages.foreach{stage => errReport += s"\n    $stage" }
+          remote.cstages.foreach{stage => errReport += s"\n  $stage" }
+
+          errReport += "\nCost for each split option: "
+          val cost = getCost(remote)
+          errReport += s"\n$cost"
+
+          current.wstages ++= remote.wstages
+          current.cstages ++= remote.cstages
+
+          while (current.nonEmpty) {
+            current.popCompute(sramOwners)
+            errReport += "\n" + getCost(current).toString
+          }
           throw new SplitException(errReport)
         }
       } // end if empty
