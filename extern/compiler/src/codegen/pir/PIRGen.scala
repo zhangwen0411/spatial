@@ -28,6 +28,7 @@ trait PIRGenTransformer extends PIRTraversal {
   lazy val scheduler = new PIRScheduler{val IR: PIRGenTransformer.this.IR.type = PIRGenTransformer.this.IR}
   lazy val optimizer = new PIROptimizer{val IR: PIRGenTransformer.this.IR.type = PIRGenTransformer.this.IR}
   lazy val splitter  = new PIRSplitter{val IR: PIRGenTransformer.this.IR.type = PIRGenTransformer.this.IR}
+  lazy val hacks     = new PIRHacks{val IR: PIRGenTransformer.this.IR.type = PIRGenTransformer.this.IR}
   lazy val dse       = new PIRDSE{val IR: PIRGenTransformer.this.IR.type = PIRGenTransformer.this.IR}
 
   val cus = mutable.HashMap[Exp[Any],List[ComputeUnit]]()
@@ -65,13 +66,18 @@ trait PIRGenTransformer extends PIRTraversal {
       splitter.mappingIn ++= optimizer.mapping
       splitter.run(b)
 
-      cus ++= splitter.mappingOut
-      globals ++= splitter.globals
+      hacks.mappingIn ++= splitter.mappingOut
+      hacks.globals ++= splitter.globals
     }
     else {
-      for ((s,cu) <- optimizer.mapping) cus(s) = List(cu)
-      globals ++= optimizer.globals
+      for ((s,cu) <- optimizer.mapping) hacks.mappingIn(s) = List(cu)
+      hacks.globals ++= optimizer.globals
     }
+    hacks.run(b)
+
+    cus ++= hacks.mappingOut
+    globals ++= hacks.globals
+
 
     if (SpatialConfig.enableArchDSE) {
       dse.globals ++= optimizer.globals
@@ -138,7 +144,7 @@ trait PIRGenTransformer extends PIRTraversal {
       emit(s"""val ${ctr.name} = (${quoteInCounter(start)}, ${quoteInCounter(end)}, ${quoteInCounter(stride)}) // Counter""")
 
     case sram: CUMemory =>
-      var decl = s"""val ${sram.name} = SRAM(size = ${sram.size}, mode = ${sram.mode}"""
+      var decl = s"""val ${sram.name} = ${quote(sram.mode)}(size = ${sram.size}"""
 
       sram.writeCtrl match {
         case Some(cchain) => decl += s""", writeCtr = ${cchain.name}(0)"""
@@ -151,18 +157,21 @@ trait PIRGenTransformer extends PIRTraversal {
         case None => throw new Exception(s"No banking defined for $sram")
       }
 
-      if (sram.bufferDepth > 1 && sram.mode == SRAMMode) {
-        val swapRead = sram.swapRead match {
-          case Some(cchain) => s"swapRead = ${cchain.name}(0)"
+      if (sram.bufferDepth > 1 && sram.mode != FIFOMode) {
+        var buffering = s", buffering = MultiBuffer(${sram.bufferDepth}"
+        sram.swapRead match {
+          case Some(cchain) => buffering += s", swapRead = ${cchain.name}(0)"
           case None => throw new Exception(s"No swap read controller defined for $sram")
         }
-        val swapWrite = sram.swapWrite match {
-          case Some(cchain) => s"swapWrite = ${cchain.name}(0)"
+
+        sram.swapWrite match {
+          case Some(cchain) => buffering += s", swapWrite = ${cchain.name}(0)"
+          case None if sram.mode != SRAMMode => // Ok
           case None => throw new Exception(s"No swap write controller defined for $sram")
         }
-        decl += s""", buffering = MultiBuffer(${sram.bufferDepth}, ${swapRead}, ${swapWrite})"""
+        decl += s"$buffering)"
       }
-      else if (sram.mode == SRAMMode) {
+      else if (sram.mode != FIFOMode) {
         decl += ", buffering = SingleBuffer()"
       }
       decl += ")"
@@ -222,6 +231,12 @@ trait PIRGenTransformer extends PIRTraversal {
     case _ => //nothing
   }
 
+  def quote(mode: LocalMemoryMode): String = mode match {
+    case SRAMMode => "SRAM"
+    case FIFOMode => "FIFO"
+    case FIFOOnWriteMode => "SemiFIFO"
+  }
+
   def quote(sram: CUMemory): String = sram.name
   def quote(x: GlobalComponent): String = x match {
     case OffChip(name)       => s"${name}_oc"
@@ -240,7 +255,7 @@ trait PIRGenTransformer extends PIRTraversal {
 
   def quote(cu: CU): String = cu.style match {
     case UnitCU       => "UnitPipeline"
-    case StreamCU if cu.allStages.isEmpty => "StreamController"
+    case StreamCU if cu.allStages.isEmpty && !cu.isDummy => "StreamController"
     case StreamCU     => "StreamPipeline"
     case PipeCU       => "Pipeline"
     case MetaPipeCU   => "MetaPipeline"

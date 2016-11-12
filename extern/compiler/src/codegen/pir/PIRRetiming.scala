@@ -8,6 +8,8 @@ trait PIRRetiming extends PIRTraversal {
   val IR: SpatialExp with PIRCommonExp
   import IR.{infix_until => _, _}
 
+  var STAGES: Int = 10
+
   /**
    * For all vector inputs for each CU, if inputs have mismatched delays or come
    * from other stages (and LCA is not a stream controller), put them through a retiming FIFO
@@ -57,8 +59,8 @@ trait PIRRetiming extends PIRTraversal {
       val criticalPath = delays.max
 
       deps(cu).zip(delays).foreach{case (dep,dly) =>
-        if (dly < criticalPath && dly > 0) {
-          insertFIFO(cu, dep, (criticalPath - dly)*10)
+        if (dly <= criticalPath && dly > 0) {
+          insertFIFO(cu, dep, (criticalPath - dly + 1)*STAGES)
         }
         else if (dly == 0) {
           val produce = others.find{cu => globalOutputs(cu) contains dep}
@@ -66,7 +68,7 @@ trait PIRRetiming extends PIRTraversal {
             lca(cu, produce.get) match {
               case Some(parent) if parent.style == StreamCU => // No action
               case None => // ???
-              case _ => insertFIFO(cu, dep, 1000) // TODO: Calculate this!
+              case _ => insertFIFO(cu, dep, 4096)
             }
           }
         }

@@ -54,7 +54,7 @@ trait PIRTraversal extends ControllerTools with QuotingExp {
       else {
         val bus = CUVector(quote(reg))
         globals += bus
-        VectorIn(bus).asInstanceOf[LocalComponent]
+        VectorIn(bus).asInstanceOf[LocalComponent]  // Weird scala type error here
       }
     }
     else {
@@ -62,7 +62,7 @@ trait PIRTraversal extends ControllerTools with QuotingExp {
     }
   }
 
-  def allocateLocal(x: Symbol, pipe: Symbol, read: Option[Symbol] = None,  write: Option[Symbol] = None) = x match {
+  def allocateLocal(x: Symbol, pipe: Symbol, read: Option[Symbol] = None,  write: Option[Symbol] = None): LocalComponent = x match {
     case c if isConstant(c) => ConstReg(extractConstant(x))
     case reg@Deff(Argin_new(_)) =>
       val bus = new InputArg(quote(reg))
@@ -75,7 +75,7 @@ trait PIRTraversal extends ControllerTools with QuotingExp {
       ScalarOut(bus)
 
     case reg@Deff(Reg_new(_))     => allocateReg(reg, pipe, read, write)
-    case read@Deff(Reg_read(reg)) => allocateReg(reg, pipe, Some(read), write)
+    case read@Deff(Reg_read(reg)) => allocateLocal(reg, pipe, Some(read), write)
 
     case _ => TempReg()
   }

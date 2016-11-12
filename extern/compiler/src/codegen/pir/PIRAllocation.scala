@@ -441,6 +441,11 @@ trait PIRAllocation extends PIRTraversal {
 
     ofsCU.computeStages += OpStage(Bypass, List(ofsReg), mcOfs)
     lenCU.computeStages += OpStage(Bypass, List(lenReg), mcLen)
+
+    // HACK- no dependents of ofsCU or lenCU
+    mapping.values.foreach{cu =>
+      cu.deps = cu.deps.filterNot{dep => dep == ofsCU || dep == lenCU }
+    }
   }
 
   def prescheduleGather(pipe: Symbol, mem: Symbol, local: Symbol, addrs: Symbol, len: Symbol) {
