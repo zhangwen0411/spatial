@@ -19,8 +19,7 @@ trait PIRGenTransformer extends PIRTraversal {
 
   val genControlLogic = false
 
-
-  lazy val dir = sys.env("PIR_HOME") + "/apps/"
+  lazy val dir = sys.env("PIR_HOME") + "/apps/src/"
   val app = Config.degFilename.dropRight(4)
   val filename = app + ".scala"
 
@@ -103,7 +102,7 @@ trait PIRGenTransformer extends PIRTraversal {
     emit("import pir.PIRApp")
     emit("")
     open(s"""object ${app}Design extends PIRApp {""")
-    emit(s"""override val arch = Config0""")
+    emit(s"""override val arch = SN_4x4""")
     open(s"""def main(args: String*)(top:Top) = {""")
   }
   def generateFooter() {
@@ -210,11 +209,11 @@ trait PIRGenTransformer extends PIRTraversal {
     case mc@MemoryController(name,region,mode) =>
       emit(s"val ${quote(mc)} = MemoryController($mode, ${quote(region)})")
 
-    case mem: OffChip   => emit(s"val ${quote(mem)} = OffChip()")
-    case bus: InputArg  => emit(s"val ${quote(bus)} = ArgIn()")
-    case bus: OutputArg => emit(s"val ${quote(bus)} = ArgOut()")
-    case bus: ScalarBus => emit(s"val ${quote(bus)} = Scalar()")
-    case bus: VectorBus => emit(s"val ${quote(bus)} = Vector()")
+    case mem: OffChip   => emit(s"""val ${quote(mem)} = OffChip("${mem.name}")""")
+    case bus: InputArg  => emit(s"""val ${quote(bus)} = ArgIn("${bus.name}")""")
+    case bus: OutputArg => emit(s"""val ${quote(bus)} = ArgOut("${bus.name}")""")
+    case bus: ScalarBus => emit(s"""val ${quote(bus)} = Scalar("${bus.name}")""")
+    case bus: VectorBus => emit(s"""val ${quote(bus)} = Vector("${bus.name}")""")
 
     case x => throw new Exception(s"Don't know how to generate PIR component $x")
   }
