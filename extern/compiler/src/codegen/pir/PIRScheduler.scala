@@ -137,6 +137,7 @@ trait PIRScheduler extends PIRTraversal {
       if (sram.mode != FIFOMode) sram.mode = FIFOOnWriteMode
       sram.writeAddr = None
       sram.writeCtrl = None
+      sram.swapWrite = None
 
       start match {
         case Some(e) => ctx.reg(e) match {

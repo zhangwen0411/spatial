@@ -41,15 +41,19 @@ trait PIRDSE extends PIRSplitting with PIRRetiming {
     val invalid = new PrintStream(s"$dir/${name}_invalid.csv")
 
     val header = SplitStats()
-    valid.println("VIns, Vouts, Compute, Read/Write, SRAMs," + header.heading + ", #ALU,#SRAM,#Vin,#Vout, ALU Util, SRAM Util, VecIn Util, VecOut Util")
-    invalid.println("VIns, Vouts, Compute, Read/Write, Mems")
+    invalid.println("VIns, Vouts, Compute, Read/Write, Stages, SRAMs")
+    valid.println  ("VIns, Vouts, Compute, Read/Write, Stages, SRAMs," + header.heading +
+                    ", #ALU,#SRAM,#Vin,#Vout, ALU Util, SRAM Util, VecIn Util, VecOut Util, " +
+                    ", SIn/CU, SOut/CU, VIn/CU, VOut/CU, SIn/Stage, VIn/Stage")
 
     for (vIns <- 2 to 6) { //2 to 6) {
     for (vOuts <- 1 to 3) {
     for (readWrite <- 1 to 10) {
     for (comps <- 0 to (10-readWrite)) {
     for (mmems <- 1 to vIns) {
-      System.out.print(s"vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems: ")
+      val stages = comps + readWrite
+      STAGES = stages
+
       var others = ArrayBuffer[CU]()
       val pipe = SplitCost(vIn=vIns, vOut=vOuts, vLoc=1, comp=comps, write=readWrite, read=readWrite, mems=mmems)
       val unit = SplitCost(vIn=vIns, vOut=vOuts, vLoc=1, comp=comps, write=readWrite, read=readWrite, mems=mmems)
@@ -85,15 +89,24 @@ trait PIRDSE extends PIRSplitting with PIRRetiming {
         val memUtil = stats.mems.toFloat / nMems
         val vInUtil = stats.mems.toFloat / nVIns
         val vOutUtil = stats.mems.toFloat / nVOut
-        System.out.println("PASS")
-        valid.println(s"$vIns, $vOuts, $comps, $readWrite, $mmems, " + stats.toString +
-                      s",$nALUs,$nMems,$nVIns,$nVOut, $aluUtil, $memUtil, $vInUtil, $vOutUtil")
+
+        val avgSIn  = stats.sclIn.toFloat / (nPipes + nUnits)
+        val avgSOut = stats.sclOut.toFloat / (nPipes + nUnits)
+        val avgVIn  = stats.vecIn.toFloat / (nPipes + nUnits)
+        val avgVOut = stats.vecOut.toFloat / (nPipes + nUnits)
+
+        val sInPerStage = stats.sclIn.toFloat / (stats.alus.toFloat / LANES)
+        val vInPerStage = stats.vecIn.toFloat / (stats.alus.toFloat / LANES)
+
+        System.out.println(s"vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems: PASS")
+        valid.println(s"$vIns, $vOuts, $comps, $readWrite, $stages, $mmems, " + stats.toString +
+                      s",$nALUs,$nMems,$nVIns,$nVOut, $aluUtil, $memUtil, $vInUtil, $vOutUtil, " +
+                      s",$avgSIn,$avgSOut,$avgVIn,$avgVOut, $sInPerStage, $vInPerStage")
       }
       catch {case e:SplitException =>
-        System.out.println("FAIL")
-        //System.out.println(s"Failing stages:")
+        System.out.println(s"vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems: FAIL")
         System.out.println(e.msg)
-        invalid.println(s"$vIns, $vOuts, $comps, $readWrite, $mmems")
+        invalid.println(s"$vIns, $vOuts, $comps, $readWrite, $stages, $mmems")
       }
     }}}}}
     valid.close()

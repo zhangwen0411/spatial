@@ -265,7 +265,7 @@ trait PIR {
   abstract class AbstractComputeUnit {
     val name: String
     val pipe: Symbol
-    val style: CUStyle
+    var style: CUStyle
     var parent: Option[AbstractComputeUnit] = None
     def isUnit = style == UnitCU
     def isMemoryUnit = false //cuType == BurstTransfer || cuType == RandomTransfer
@@ -311,7 +311,7 @@ trait PIR {
   }
 
   type CU = ComputeUnit
-  case class ComputeUnit(name: String, pipe: Symbol, style: CUStyle) extends AbstractComputeUnit {
+  case class ComputeUnit(name: String, pipe: Symbol, var style: CUStyle) extends AbstractComputeUnit {
     val writeStages   = mutable.HashMap[List[CUMemory], mutable.ArrayBuffer[Stage]]()
     val computeStages = mutable.ArrayBuffer[Stage]()
     val controlStages = mutable.ArrayBuffer[Stage]()
@@ -320,10 +320,11 @@ trait PIR {
 
     def allStages: Iterator[Stage] = writeStages.valuesIterator.flatMap(_.iterator) ++ computeStages.iterator ++
                                      controlStages.iterator
+    var isDummy: Boolean = false
   }
 
   type PCU = PseudoComputeUnit
-  case class PseudoComputeUnit(name: String, pipe: Symbol, style: CUStyle) extends AbstractComputeUnit {
+  case class PseudoComputeUnit(name: String, pipe: Symbol, var style: CUStyle) extends AbstractComputeUnit {
     val writeStages = mutable.HashMap[List[CUMemory], (Symbol, List[PseudoStage])]()
     val computeStages = mutable.ArrayBuffer[PseudoStage]()
 

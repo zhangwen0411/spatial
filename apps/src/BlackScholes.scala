@@ -8,7 +8,7 @@ trait BlackScholesApp extends SpatialApp {
 
   val margin = 0.5f // Validates true if within +/- margin
   val tileSize = 96
-  val outerPar = 3
+  val outerPar = 1
   val innerPar = 2
 
   final val inv_sqrt_2xPI = 0.39894228040143270286f
