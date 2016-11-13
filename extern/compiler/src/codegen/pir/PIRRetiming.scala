@@ -21,10 +21,10 @@ trait PIRRetiming extends PIRTraversal {
     val compute = cus.filter(_.allStages.nonEmpty)
 
     compute.foreach{cu =>
-      globalOutputs(cu).foreach{bus => producer += bus -> cu}
+      globalOutputs(cu).foreach{case bus:VectorBus => producer += bus -> cu; case _ => }
 
       // Ignore scalar inputs for cchains, srams (they can't be retimed...)
-      val ins = globalInputs(cu.allStages)
+      val ins = globalInputs(cu.allStages).collect{case bus: VectorBus => bus}
       deps += cu -> ins.toList
     }
 

@@ -214,9 +214,22 @@ trait PIRTraversal extends ControllerTools with QuotingExp {
       case _ => sc
     }
 
+    def swapBus_write(write: SRAMWriter) = {
+      write.vector = write.vector.map{case `orig` => swap; case bus => bus}
+      write.swapWrite.foreach{cc => swapBus_cchain(cc) }
+      write.writeCtrl.foreach{cc => swapBus_cchain(cc) }
+
+      write match {
+        case write: FIFOWrite =>
+          write.
+    }
+
     def swapBus_sram(sram: CUMemory): Unit = {
-      sram.vector = sram.vector.map{case `orig` => swap; case vec => vec}
       sram.readAddr = sram.readAddr.map{reg => swapBus_readAddr(reg)}
+
+      sram.writes.foreach{write => swapBus_write(write) }
+
+      sram.vector = sram.vector.map{case `orig` => swap; case vec => vec}
       sram.writeAddr = sram.writeAddr.map{reg => swapBus_writeAddr(reg)}
       sram.writeStart = sram.writeStart.map{reg => swapBus_localScalar(reg)}
       sram.writeEnd = sram.writeEnd.map{reg => swapBus_localScalar(reg)}
@@ -359,11 +372,13 @@ trait PIRTraversal extends ControllerTools with QuotingExp {
     def pipe = cu.pipe
     def init() = {}
   }
-  case class WriteContext(override val cu: ComputeUnit, pipe: Symbol, srams: List[CUMemory]) extends CUContext(cu) {
-    def init() { cu.writeStages += srams -> mutable.ArrayBuffer[Stage]() }
+  case class WriteContext(override val cu: ComputeUnit, writer: Symbol, pipe: Symbol, srams: List[CUMemory]) extends CUContext(cu) {
     def stages = cu.writeStages(srams)
-    def addStage(stage: Stage) { cu.writeStages(srams) += stage }
+    def addStage(stage: Stage) { cu.writeStages((writer,srams)) += stage }
     def isWriteContext = true
+
+    def init() { cu.writeStages += (writer,srams) -> mutable.ArrayBuffer[Stage]() }
+
   }
 
 

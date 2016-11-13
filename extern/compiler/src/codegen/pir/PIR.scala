@@ -202,23 +202,53 @@ trait PIR {
     override def toString = name
   }
 
+  abstract class SRAMWriter {
+    var vector: Option[GlobalBus] = None
+    var swapWrite: Option[CUCChain],
+    var writeCtrl: Option[CUCChain]
+  }
+
+  case class FIFOWrite(
+    var vector: Option[GlobalBus],
+    var swapWrite: Option[CUCChain],
+    var swapCtrl: Option[CUCChain]
+  ) extends SRAMWriter
+
+  case class SemiFIFOWrite(
+    var vector: Option[GlobalBus],
+    var writeStart: Option[LocalScalar],
+    var writeEnd: Option[LocalScalar],
+    var swapWrite: Option[CUCChain],
+    var writeCtrl: Option[CUCChain]
+  )
+  case class SRAMWrite(
+    var vector: Option[GlobalBus],
+    var writeAddr: Option[WriteAddr],
+    var swapWrite: Option[CUCChain],
+    var writeCtrl: Option[CUCChain]
+  )
+
 
   // --- Compute unit memories
-  case class CUMemory(name: String, size: Int, mem: Symbol, reader: Symbol) {
-    var mode: LocalMemoryMode = SRAMMode
+  case class CUMemory(name: String, size: Int, mem: Symbol, reader: Symbol, writes: Array[SRAMWriter]) {
+    //var mode: LocalMemoryMode = SRAMMode
     var bufferDepth: Int = 1
     var banking: Option[SRAMBanking] = None
-    var vector: Option[GlobalBus] = None
 
     var readAddr: Option[ReadAddr] = None
-    var writeAddr: Option[WriteAddr] = None
-
-    var writeStart: Option[LocalScalar] = None
-    var writeEnd: Option[LocalScalar] = None
-
-    var swapWrite: Option[CUCChain] = None
     var swapRead: Option[CUCChain] = None
-    var writeCtrl: Option[CUCChain] = None
+
+    // Multiple writers
+    var writers: List[Symbol] = Nil
+
+    def setWrite(writer:Symbol, write: SRAMWriter) {
+      val i = writers.indexOf(writer)
+      if (i >= 0)
+        writes(i) = write
+      else
+        throw new Exception(s"SRAM $name does not appear to have writer $writer")
+    }
+
 
     override def toString = name
   }
@@ -312,7 +342,7 @@ trait PIR {
 
   type CU = ComputeUnit
   case class ComputeUnit(name: String, pipe: Symbol, var style: CUStyle) extends AbstractComputeUnit {
-    val writeStages   = mutable.HashMap[List[CUMemory], mutable.ArrayBuffer[Stage]]()
+    val writeStages   = mutable.HashMap[(Symbol,List[CUMemory]), mutable.ArrayBuffer[Stage]]()
     val computeStages = mutable.ArrayBuffer[Stage]()
     val controlStages = mutable.ArrayBuffer[Stage]()
 
@@ -325,7 +355,7 @@ trait PIR {
 
   type PCU = PseudoComputeUnit
   case class PseudoComputeUnit(name: String, pipe: Symbol, var style: CUStyle) extends AbstractComputeUnit {
-    val writeStages = mutable.HashMap[List[CUMemory], (Symbol, List[PseudoStage])]()
+    val writeStages = mutable.HashMap[(Symbol,Symbol,List[CUMemory]), List[PseudoStage]]()
     val computeStages = mutable.ArrayBuffer[PseudoStage]()
 
     def copyToConcrete(): ComputeUnit = {

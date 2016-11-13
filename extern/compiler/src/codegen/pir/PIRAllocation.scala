@@ -163,12 +163,12 @@ trait PIRAllocation extends PIRTraversal {
 
       val sram = allocateMem(mem, reader.node, readerCU)
       if (readerCU == writerCU) {
-        sram.vector = Some(LocalVectorBus)
+        sram.setVector(writer, LocalVectorBus)
       }
       else {
         val bus = if (writerCU.isUnit) CUScalar(quote(mem)) else CUVector(quote(mem))
         globals += bus
-        sram.vector = Some(bus)
+        sram.setVector(writer, bus)
       }
 
       debug(s"  Allocating written SRAM $mem")
@@ -186,7 +186,7 @@ trait PIRAllocation extends PIRTraversal {
       val groups = srams.groupBy(_._1).mapValues(_.map(_._2))
       for ((readerCU,srams) <- groups if readerCU != writerCU) {
         debug(s"""  Adding write stages to $readerCU for SRAMs: ${srams.mkString(", ")}""")
-        readerCU.writeStages(srams) = (writerCU.pipe,stages)
+        readerCU.writeStages((writer,pipe,srams)) = stages
       }
     }
   }
@@ -208,50 +208,81 @@ trait PIRAllocation extends PIRTraversal {
 
     // Find first writer corresponding to this reader
     val writers = writersOf(mem).filter{writer => instanceIndicesOf(writer,mem).contains(instIndex) }
-    if (writers.length > 1) {
+    /*if (writers.length > 1) {
       throw new Exception(s"$mem: $writers: PIR currently cannot handle multiple writers")
-    }
-    val writer = writers.headOption
+    }*/
 
-    val writerCU = writer.map{w => allocateCU(w.controlNode) }
-    val swapWritePipe = writer.flatMap{w => topControllerOf(w, mem, instIndex) }
+    val writeBanks = writers.map{writer =>
+      val writerCU = allocateCU(writer.controlNode)
+
+      val swapWritePipe = topControllerOf(writer, mem, instIndex)
+      val swapWriteCU = swapWritePipe.map{ctrl => allocateCU( topControllerHack(writer,ctrl).node ) }
+
+      val remoteWriteCtrl = writerCU.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}
+
+      val remoteSwapWriteCtrl = swapWriteCU.flatMap{cu => cu.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}}
+
+      val writeCtrl = remoteWriteCtrl.flatMap{cc => cu.cchains.find(_.name == cc.name) }
+      val swapWrite = remoteSwapWriteCtrl.flatMap{cc => cu.cchains.find(_.name == cc.name) }
+
+      val write = if (isFIFO(mem.tp)) {
+        FIFOWrite(vector = None, swapWrite, writeCtrl)
+      }
+      else {
+        SRAMWrite(vector = None, writeAddr = None, swapWrite, writeCtrl)
+      }
+
+      sram.setWrite(writer, write)
+
+      // Banking
+      val writeIter = writeCtrl.flatMap{cc => cu.innermostIter(cc) }
+
+      if (isFIFO(mem.tp)) Strided(1) else bank(mem, writer.node, writeIter)
+    }
+    val writeBanking = writeBanks.fold(NoBanks){(a,b) => mergeBanking(a,b) }
+
+
+    //val writer = writers.headOption
+
+    //val writerCU = writer.map{w => allocateCU(w.controlNode) }
+    //val swapWritePipe = writer.flatMap{w => topControllerOf(w, mem, instIndex) }
     val swapReadPipe  = topControllerOf(reader, mem, instIndex)
 
-    val swapWriteCU = (writer, swapWritePipe) match {
+    /*val swapWriteCU = (writer, swapWritePipe) match {
       case (Some(write), Some(ctrl)) =>
         val topCtrl = topControllerHack(write, ctrl)
         Some(allocateCU(topCtrl.node))
       case _ => None
-    }
+    }*/
     val swapReadCU = swapReadPipe.map{ctrl =>
         val topCtrl = topControllerHack(reader, ctrl)
         allocateCU(topCtrl.node)
     }
 
-    val remoteWriteCtrl = writerCU.flatMap{cu => cu.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}}
-    val remoteSwapWriteCtrl = swapWriteCU.flatMap{cu => cu.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}}
+    //val remoteWriteCtrl = writerCU.flatMap{cu => cu.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}}
+    //val remoteSwapWriteCtrl = swapWriteCU.flatMap{cu => cu.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}}
     val remoteSwapReadCtrl = swapReadCU.flatMap{cu => cu.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}}
 
     val readCtrl = cu.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}
-    val writeCtrl = remoteWriteCtrl.flatMap{cc => cu.cchains.find(_.name == cc.name) }
-    val swapWrite = remoteSwapWriteCtrl.flatMap{cc => cu.cchains.find(_.name == cc.name) }
+    //val writeCtrl = remoteWriteCtrl.flatMap{cc => cu.cchains.find(_.name == cc.name) }
+    //val swapWrite = remoteSwapWriteCtrl.flatMap{cc => cu.cchains.find(_.name == cc.name) }
     val swapRead  = remoteSwapReadCtrl.flatMap{cc => cu.cchains.find(_.name == cc.name) }
 
-    val writeIter = writeCtrl.flatMap{cc => cu.innermostIter(cc) }
+    //val writeIter = writeCtrl.flatMap{cc => cu.innermostIter(cc) }
     val readIter  = readCtrl.flatMap{cc => cu.innermostIter(cc) }
 
     val banking = if (isFIFO(mem.tp)) Strided(1) else {
       val readBanking  = bank(mem, read, readIter)
-      val writeBanking = writer.map{w => bank(mem, w.node, writeIter) }.getOrElse(NoBanks)
       mergeBanking(writeBanking, readBanking)
     }
 
-    sram.writeCtrl = writeCtrl
-    sram.swapWrite = swapWrite
+    //sram.writeCtrl = writeCtrl
+    //sram.swapWrite = swapWrite
     sram.swapRead  = swapRead
     sram.banking   = Some(banking)
     sram.bufferDepth = instance.depth
-    if (isFIFO(mem.tp)) sram.mode = FIFOMode
+    sram.writers = writers
+    //if (isFIFO(mem.tp)) sram.mode = FIFOMode
   }
 
   def allocateMem(mem: Symbol, reader: Symbol, cu: PCU): CUMemory = {
@@ -261,7 +292,9 @@ trait PIRAllocation extends PIRTraversal {
     cu.srams.find{sram => sram.mem == mem && sram.reader == reader}.getOrElse{
       val name = s"${quote(mem)}_${quote(reader)}"
       val size = dimsOf(mem).map{case Exact(d) => d}.product.toInt
-      val sram = CUMemory(name, size, mem, reader)
+      val nWrites = writersOf(mem).length
+      val writes = new Array[SRAMWriter](nWrites)
+      val sram = CUMemory(name, size, mem, reader, writes)
       initializeSRAM(sram, mem, reader, cu)
       cu.srams += sram
       sram
@@ -478,7 +511,7 @@ trait PIRAllocation extends PIRTraversal {
       val sram = allocateMem(local, reader.node, readerCU)
       sram.mode = FIFOOnWriteMode
       sram.writeAddr = None
-      sram.vector = Some(DRAMDataIn(dram))
+      sram.setVector(pipe, DRAMDataIn(dram))
     }
   }
 

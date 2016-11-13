@@ -149,7 +149,7 @@ trait PIRSplitting extends PIRTraversal {
     Nodes must be duplicated/created depending on how the graph is partitioned
     Could model this as conditional costs for nodes in context of their partition?
    **/
-  case class WriteGroup(mems: List[CUMemory], stages: List[Stage])
+  case class WriteGroup(writer: Symbol, mems: List[CUMemory], stages: List[Stage])
 
   class Partition(write: Map[Int, WriteGroup], compute: ArrayBuffer[Stage], mems: Set[CUMemory]) {
     var wstages = Map[Int, WriteGroup]() ++ write
@@ -471,7 +471,7 @@ trait PIRSplitting extends PIRTraversal {
 
 
   def splitCU(cu: CU, arch: SplitCost, others: Iterable[CU]): List[CU] = {
-    val writeGroups = Map[Int,WriteGroup]() ++ cu.writeStages.zipWithIndex.map{case ((mems,stages),i) => i -> WriteGroup(mems,stages.toList) }
+    val writeGroups = Map[Int,WriteGroup]() ++ cu.writeStages.zipWithIndex.map{case (((writer,mems),stages),i) => i -> WriteGroup(writer,mems,stages.toList) }
     val sramOwners = getSRAMOwners(cu.computeStages.toList +: cu.writeStages.values.map(_.toList).toList)
 
     if (debugMode) {
@@ -546,7 +546,7 @@ trait PIRSplitting extends PIRTraversal {
           var errReport = s"Failed splitting in $cu"
           errReport += "\nWrite stages: "
           for ((i,grp) <- remote.wstages) {
-            errReport += s"\n  Group #$i: " + grp.mems.mkString(", ")
+            errReport += s"\n  Group #$i: Writer: ${grp.writer}, " + grp.mems.mkString(", ")
             grp.stages.foreach{stage => errReport += s"\n    $stage"}
           }
           errReport += s"\nCompute stages: "
@@ -576,7 +576,7 @@ trait PIRSplitting extends PIRTraversal {
           report(getCost(current))
           debug(s"Write stages:")
           for ((i,grp) <- current.wstages) {
-            debug(s"    Memories: " + grp.mems.map(_.name).mkString(", "))
+            debug(s"    Writer: ${grp.writer}, Memories: " + grp.mems.map(_.name).mkString(", "))
             grp.stages.foreach{stage => debug(s"      $stage")}
           }
           debug(s"  Compute stages: ")
@@ -615,8 +615,8 @@ trait PIRSplitting extends PIRTraversal {
         reportStats(getStats(cu, cus.filterNot(_ == cu)++others))
 
         debug(s"  Write stages: ")
-        for ((mems,stages) <- cu.writeStages) {
-          debug(s"    Memories: " + mems.map(_.name).mkString(", "))
+        for ((grp,stages) <- cu.writeStages) {
+          debug(s"    Memories: Writer: ${grp._1}, " + grp._2.map(_.name).mkString(", "))
           stages.foreach{stage => debug(s"      $stage")}
         }
         debug(s"  Compute stages: ")
@@ -638,7 +638,7 @@ trait PIRSplitting extends PIRTraversal {
 
     cu.srams ++= part.srams
 
-    cu.writeStages ++= part.wstages.map{case (i,WriteGroup(mems,stages)) => mems -> ArrayBuffer(stages:_*) }
+    cu.writeStages ++= part.wstages.map{case (i,WriteGroup(writer,mems,stages)) => (writer,mems) -> ArrayBuffer(stages:_*) }
 
     val local = part.cstages
     val remote = orig.allStages.toList diff part.allStages.toList

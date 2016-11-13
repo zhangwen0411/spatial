@@ -185,6 +185,11 @@ trait PIRGenTransformer extends PIRTraversal {
         case None if sram.mode == FIFOMode => // ok
         case addr => throw new Exception(s"Disallowed memory read address in $sram: $addr")
       }
+
+      for (i <- 0 until sram.writers.length) {
+        val writeAddr =
+      }
+
       sram.writeAddr match {
         case Some(_:CounterReg | _:ConstReg) => decl += s""".wtAddr(${quote(sram.writeAddr.get)})"""
         case Some(_:WriteAddrWire | _:FeedbackAddrReg) =>

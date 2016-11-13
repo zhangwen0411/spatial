@@ -40,7 +40,7 @@ trait PIRScheduler extends PIRTraversal {
       }
       debug(s"  Write stages:")
       for ((k,v) <- pcu.writeStages) {
-        debug(s"    Memories: " + k.mkString(", "))
+        debug(s"    Memories: ($k._1) " +  k._2.mkString(", "))
         for (stage <- v._2) debug(s"      $stage")
       }
       debug(s"  Compute stages:")
@@ -51,10 +51,11 @@ trait PIRScheduler extends PIRTraversal {
     var writeStageRegs = cu.regs
 
     // --- Schedule write contexts
-    for ((srams,grp) <- pcu.writeStages) {
-      val writer = grp._1
-      val stages = grp._2
-      val ctx = WriteContext(cu, writer, srams)
+    for ((grp,stages) <- pcu.writeStages) {
+      val writer  = grp._1
+      val control = grp._2
+      val srams   = grp._3
+      val ctx = WriteContext(cu, writer, control, srams)
       ctx.init()
       stages.foreach{stage => scheduleStage(stage, ctx) }
 
@@ -86,9 +87,10 @@ trait PIRScheduler extends PIRTraversal {
         }
       }
 
-      for (srams <- cu.writeStages.keys) {
-        debug(s"Generated write stages ($srams): ")
-        cu.writeStages(srams).foreach(stage => debug(s"  $stage"))
+      debug(s"Write stages:")
+      for ((grp,stages) <- cu.writeStages) {
+        debug(s"  Writer: ${grp._1}, SRAMs: ${grp._2}: ")
+        stages.foreach(stage => debug(s"    $stage"))
       }
       debug("Generated compute stages: ")
       cu.computeStages.foreach(stage => debug(s"  $stage"))
