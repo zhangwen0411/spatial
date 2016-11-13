@@ -283,14 +283,22 @@ trait PIRTraversal extends ControllerTools with QuotingExp {
     def ref(reg: LocalComponent, out: Boolean, stage: Int = stageNum): LocalRef = reg match {
       // If the previous stage computed the read address for this load, use the registered output
       // of the memory directly. Otherwise, use the previous stage
-      case SRAMReadReg(mem) =>
-        /*debug(s"Referencing SRAM $mem in stage $stage")
+      case SRAMReadReg(sram) =>
+        /*debug(s"Referencing SRAM $sram in stage $stage")
         debug(s"  Previous stage: $prevStage")
-        debug(s"  SRAM read addr: ${mem.readAddr.get}")*/
-        if (prevStage.isEmpty || prevStage.get.outputMems.contains(mem.readAddr.get))
+        debug(s"  SRAM read addr: ${sram.readAddr}")*/
+        if (prevStage.isEmpty || sram.mode == FIFOMode)
           LocalRef(-1, reg)
-        else
-          LocalRef(stage-1, reg)
+        else {
+          if (sram.mode != FIFOMode && sram.readAddr.isDefined) {
+            if (prevStage.get.outputMems.contains(sram.readAddr.get))
+              LocalRef(-1, reg)
+            else
+              LocalRef(stage-1,reg)
+          }
+          else
+            throw new Exception(s"No address defined for SRAM $sram")
+        }
 
       case reg: CounterReg if isWriteContext && prevStage.isEmpty =>
         //debug(s"Referencing counter $reg in first write stage")

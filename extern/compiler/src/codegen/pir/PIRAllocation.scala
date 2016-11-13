@@ -412,8 +412,8 @@ trait PIRAllocation extends PIRTraversal {
 
   def prescheduleBurstTransfer(pipe: Symbol, mem: Symbol, ofs: Symbol, len: Symbol, mode: OffchipMemoryMode) = {
     // Ofs and len must either be constants or results of reading registers written in another controller
-    val ofsWriter = ofs match {case Deff(Reg_read(reg)) => Some(writersOf(reg).head); case _ => None }
-    val lenWriter = len match {case Deff(Reg_read(reg)) => Some(writersOf(reg).head); case _ => None }
+    val ofsWriter = ofs match {case Deff(Reg_read(reg)) if writersOf(reg).nonEmpty => Some(writersOf(reg).head); case _ => None }
+    val lenWriter = len match {case Deff(Reg_read(reg)) if writersOf(reg).nonEmpty => Some(writersOf(reg).head); case _ => None }
 
     var ofsCUOpt = ofsWriter.map{writer => allocateCU(writer.controlNode)}
     var lenCUOpt = lenWriter.map{writer => allocateCU(writer.controlNode)}
