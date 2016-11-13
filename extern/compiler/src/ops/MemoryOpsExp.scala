@@ -6,6 +6,7 @@ import scala.virtualization.lms.internal.{Traversal}
 import scala.reflect.{Manifest,SourceContext}
 import ppl.delite.framework.transform.{DeliteTransform}
 import scala.collection.mutable.Set
+import ppl.delite.framework.{Config}
 
 import spatial.shared._
 import spatial.shared.ops._
@@ -328,6 +329,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
   val IR: UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DRAMAddrAnalysisExp with DeliteTransform
           with UnrolledOpsExp with ControllerOpsExp with ExternPrimitiveOpsExp with ReductionAnalysisExp
 
+  val read_port_dup_map = List[String]()
   import IR.{println => _, assert => _, infix_until => _, _}
   import FPGAParameters._
 
@@ -388,8 +390,8 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
 
       // Quote duplicate
       // TODO: Change to common "quote duplicate" method?
-      def quoteDuplicate(mem: Exp[Any], i: Int): String = {
-        if      (isSRAM(mem.tp)) s"""${quote(mem)}_${i}"""
+      def quoteDuplicate(mem: Exp[Any], i: Int, ii: Int): String = {
+        if      (isSRAM(mem.tp)) s"""${quote(mem)}_${i}_${ii}"""
         else if (isReg(mem.tp))  s"""${quote(mem)}_${i}_lib"""
         else throw new Exception("Cannot double buffer type " + mem.tp)
       }
@@ -405,6 +407,11 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           // Note: Grouping by sets of integers here. Accesses to a buffer should either have one port or all ports, so this is ok
           val readsByPort = readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
           val writesByPort = writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
+          val numDupDups = if (isSRAM(mem.tp)) {
+            if (nameOf(mem).getOrElse("") == "mu0Tile" | nameOf(mem).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+              d.duplicates
+            } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
+            } else {1}
 
           if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
           // Get all siblings of read/write ports and match to ports of buf
@@ -425,11 +432,13 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
               throw UndefinedSwapControllerException(mem, i, accesses, ports.head)
             else if (isBuffered) {
               val portlist = ports.mkString{","} // TODO: Can probably use ports.head here
-              emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, new int[] { $portlist }); /*$comment*/""")
+              (0 until numDupDups).foreach {ii =>
+                emit(s"""${quoteDuplicate(mem, i, ii)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, new int[] { $portlist }); /*$comment*/""")
+              }
             }
           }
           if (d.depth > 1) { // Deprecated dblbuf
-            val suff = if (isSRAM(mem.tp)) {""} else if (isReg(mem.tp)) {"_lib"}
+            val suff = if (isSRAM(mem.tp)) {"_"} else if (isReg(mem.tp)) {"_lib"}
             val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length == 1 }.flatten
             val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
             val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
@@ -444,14 +453,18 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
             dummyDonePorts.foreach{ port =>
               val ctrlId = port + firstActivePort
               val node = allSiblings(ctrlId)
-              emit(s"""${quoteDuplicate(mem,i)}.connectStageCtrl(${quote(node)}_done, ${quote(node)}_en, new int[] {$port}); /*orphan, connecting port ${port} + ${firstActivePort}*/""")
+              (0 until numDupDups).foreach { ii =>
+                emit(s"""${quoteDuplicate(mem,i,ii)}.connectStageCtrl(${quote(node)}_done, ${quote(node)}_en, new int[] {$port}); /*orphan, connecting port ${port} + ${firstActivePort}*/""")
+              }
             }
 
-            emit(s"""${quote(mem)}_${i}${suff}.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
-            emit(s"""${quote(mem)}_${i}${suff}.connectUnreadPorts(new int[] {${dummyRPorts.mkString(",")}});""")
-            // emit(s"""${quote(mem)}_${i}${suff}.connectUntouchedPorts(new int[] {}); //new int[] {${dummyDonePorts.mkString(",")}});""")
-            if (writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }.toList.length == 0) {
-              emit(s"""${quote(mem)}_${i}${suff}.connectDummyBroadcast();""")
+            (0 until numDupDups).foreach { ii =>
+              emit(s"""${quoteDuplicate(mem,i,ii)}.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
+              emit(s"""${quoteDuplicate(mem,i,ii)}.connectUnreadPorts(new int[] {${dummyRPorts.mkString(",")}});""")
+              // emit(s"""${quoteDuplicate(mem,i,ii)}.connectUntouchedPorts(new int[] {}); //new int[] {${dummyDonePorts.mkString(",")}});""")
+              if (writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }.toList.length == 0) {
+                emit(s"""${quoteDuplicate(mem,i,ii)}.connectDummyBroadcast();""")
+              }
             }
           } else {
             readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectRdone") }
@@ -520,6 +533,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     }
   }
 
+
   def sramLoad(read: Sym[Any], sram: Exp[SRAM[Any]], addr: Exp[Any], par: Boolean = false) {
     emitComment("Sram_load {")
     val dups = duplicatesOf(sram)
@@ -528,8 +542,24 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     val b_i = instanceIndicesOf(reader, sram).head    // Instance indices should have exactly one index for reads
     val p = portsOf(read, sram, b_i).head
     val readCtrl = reader.controlNode
+    var subsubdup = 0
+    // Check if there are multiplie readers on this port of this instance, so we can hardcode banks
+    val connectString = if (nameOf(sram).getOrElse("") == "mu0Tile" | nameOf(sram).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+      subsubdup = read_port_dup_map.count{ case a => a == s"${quote(sram)}_${b_i} port $p"}
+      read_port_dup_map = read_port_dup_map :+ s"${quote(sram)}_${b_i} port $p"
+      s"connectRport("
+      } else { if (readers.map{r => 
+        val this_b_i = instanceIndicesOf(r,sram).head
+        val this_p = portsOf(r, sram, this_b_i).head
+        if (s"${b_i} $p" == s"${this_b_i} ${this_p}") 1 else 0
+      }.reduce{_+_} > 1) {
+        val this_hardcoded_bank = read_port_dup_map.count{ case a => a == s"${quote(sram)}_${b_i} port $p"}
+        read_port_dup_map = read_port_dup_map :+ s"${quote(sram)}_${b_i} port $p"
+        s"connectDirectRport(${this_hardcoded_bank},"}
+      else {"connectRport("}} // issue #46 TODO FIX THIS ASAP!!
+    // Console.println(s"current port map for read $read sram $sram list ${read_port_dup_map}")
 
-    val sram_name = s"${quote(sram)}_${b_i}"
+    val sram_name = s"${quote(sram)}_${b_i}_$subsubdup"
     val pre = if (!par) maxJPre(sram) else "DFEVector<DFEVar>"
     val num_dims = dimsOf(sram).length
     val inds = parIndicesOf(read)
@@ -543,35 +573,35 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     match_tuple match { //(inds_length, num_dims, par)
       case (1,1,false) =>
         emit(s"// This could be part of indirect addressing, so delay it for BFS")
-        rdPre = s"stream.offset(${quote(sram_name)}.connectRport("
+        rdPre = s"stream.offset(${quote(sram_name)}.${connectString}"
         rdPost = s"),-${quote(readCtrl)}_offset)"
         addrString = quote(inds(0)(0))
         addEmittedConsts(inds(0)(0))
       case (1,1,true) =>
-        rdPre = s"new DFEVectorType<DFEVar>(${sram_name}.type, ${inds.length}).newInstance(this, Arrays.asList(${quote(sram_name)}.connectRport("
+        rdPre = s"new DFEVectorType<DFEVar>(${sram_name}.type, ${inds.length}).newInstance(this, Arrays.asList(${quote(sram_name)}.${connectString}"
         rdPost = ")))"
         addrString = quote(inds(0)(0))
         addEmittedConsts(inds(0)(0))
       case (_,1,false) => // Is this one even possible?
-        rdPre = s"${quote(sram_name)}.connectRport("
+        rdPre = s"${quote(sram_name)}.${connectString}"
         rdPost = ")"
         addrString = quote(addr)
       case (_,1,true) =>
-        rdPre = s"${quote(sram_name)}.connectRport("
+        rdPre = s"${quote(sram_name)}.${connectString}"
         rdPost = ")"
         addrString = quote(addr)
       case (1,2,false) =>
-        rdPre = s"${quote(sram_name)}.connectRport("
+        rdPre = s"${quote(sram_name)}.${connectString}"
         rdPost = ")"
         addrString = quote(inds(0)(0)) + ", " + quote(inds(0)(1))
         addEmittedConsts(inds(0)(0), inds(0)(1))
       case (1,2,true) =>
-        rdPre = s"new DFEVectorType<DFEVar>(${sram_name}.type, ${inds.length}).newInstance(this, Arrays.asList(${quote(sram_name)}.connectRport("
+        rdPre = s"new DFEVectorType<DFEVar>(${sram_name}.type, ${inds.length}).newInstance(this, Arrays.asList(${quote(sram_name)}.${connectString}"
         rdPost = ")))"
         addrString = quote(inds(0)(0)) + ", " + quote(inds(0)(1))
         addEmittedConsts(inds(0)(0), inds(0)(1))
       case (_,2,_) =>
-        rdPre = s"${quote(sram_name)}.connectRport("
+        rdPre = s"${quote(sram_name)}.${connectString}"
         rdPost = ")"
         addrString = row_col_indices(inds,"","")
       case (_,_,_) =>
@@ -580,19 +610,19 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
 
     val dummyOverride = if (isDummy(sram)) {bankOverride(read) match {
         case -1 =>
-          rdPre = s"${quote(sram_name)}.connectRport("
+          rdPre = s"${quote(sram_name)}.${connectString}"
           rdPost = ")"
           addrString = quote(addr)
           ""
         case b =>
-          rdPre = s"${quote(sram_name)}.connectRport("
+          rdPre = s"${quote(sram_name)}.${connectString}"
           rdPost = ")"
           addrString = quote(addr)
           s", $b"
       }} else {""}
 
     emit(s"""$pre ${quote(read)} = ${rdPre}${addrString}${portInfo}${dummyOverride}${rdPost}; // matched $match_tuple ${nameOf(sram).getOrElse("")}""")
-    emit(s"""// debug.simPrintf(<insert enable>, "read ${nameOf(sram).getOrElse("")}-${quote(sram_name)} %d @ %d", ${quote(read)}, ${addrString});""")
+    emit(s"""// debug.simPrintf(<insert enable>, "read ${nameOf(sram).getOrElse("")}-${quote(sram_name)} %d @ %d\\n", ${quote(read)}, ${addrString});""")
     // Handle if loading a composite type
     //n.compositeValues.zipWithIndex.map { t =>
     //  val v = t._1
@@ -726,9 +756,14 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       val accString = offsetPre + accEn + offsetPost
       val globalEnString = globalEnComma + offsetPre + globalEn + offsetPost
       if (isDummy(sram)) {addrString = quote(addr)} // Dummy override for char test
-      emit(s"""${quote(sram)}_${ii}.${wrType}${addrString},
-        $dataString, ${accString}${globalEnString}, new int[] {$p}); // tuple $match_tuple to ${nameOf(sram).getOrElse("")}""")
-      emit(s"""// debug.simPrintf(${accString},"${nameOf(sram).getOrElse("")}-${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", ${dataString}, ${addrString});""")
+      val numdups = if (nameOf(sram).getOrElse("") == "mu0Tile" | nameOf(sram).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+        dd.duplicates
+      } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
+      (0 until numdups).foreach { sub_i => 
+        emit(s"""${quote(sram)}_${ii}_${sub_i}.${wrType}${addrString},
+          $dataString, ${accString}${globalEnString}, new int[] {$p}); // tuple $match_tuple to ${nameOf(sram).getOrElse("")}""")
+        emit(s"""// debug.simPrintf(${accString},"${nameOf(sram).getOrElse("")}-${quote(sram)}_${ii} wr %f @ ${addrDbg} on {$p}\\n", ${dataString}, ${addrString});""")
+      }
     }
     emitComment("} Sram_store")
   }
@@ -737,7 +772,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Dram_new(size) =>
         emitComment(s""" Dram_new(${quote(size)}) {""")
-        alwaysGen { emit(s"""int ${quote(sym)} = ${dramAddr(sym)}/${burstSize};""") }
+        alwaysGen { emit(s"""int ${quote(sym)} = (int) ${dramAddr(sym)}L/${burstSize};""") }
         emitComment(s""" Dram_new(${quote(size)}) }""")
 
     case Gather(mem,local,addrs,len,_,i) =>
@@ -746,6 +781,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       print_stage_prefix(s"Gather par${quote(par)}",s"",s"${quote(sym)}", false)
       val access = writersOf(local).find(_.node == sym).get
       val i = instanceIndicesOf(access, addrs).head
+
       val parStr = if (par == 1) {
 //         emit(s"""DFEVar ${quote(sym)}_waddr = ${quote(addrs)}_$i.type.newInstance(this);
 // DFEVar ${quote(sym)}_wdata = ${quote(local)}_0.type.newInstance(this); // Assume duplicate _0 exists
@@ -756,8 +792,8 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       }
 
       emit("{")
-      emit(s"""DFEVector<DFEVar> ${quote(sym)}_waddr = new DFEVectorType<DFEVar>(${quote(addrs)}_$i.type, 1).newInstance(this);
-DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0.type, 1).newInstance(this);
+      emit(s"""DFEVector<DFEVar> ${quote(sym)}_waddr = new DFEVectorType<DFEVar>(${quote(addrs)}_${i}_0.type, 1).newInstance(this);
+DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>(${quote(local)}_0_0.type, 1).newInstance(this); /* TODO: Why is this hardcoded to 0_0???? */
 DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
       emit(s"""DFEVar ${quote(sym)}_forceLdSt = ${quote(len)} > 0;""")
@@ -766,12 +802,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         this,
         ${quote(sym)}_en, ${quote(sym)}_done, ${bound(worker).get.toInt}, $parStr
         ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
-        ${quote(addrs)}_$i, ${quote(len)},
+        ${quote(addrs)}_${i}_0, ${quote(len)},
         ${quote(mem)},  "${quote(mem)}_${quote(sym)}_in",
         ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
       val wType = if ((par == 1)) {"connectWport("} else {s"connectDirectWport($worker,"}
-      duplicatesOf(local).zipWithIndex.foreach { case (m,i) =>
-        emit(s"""${quote(local)}_$i.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
+      duplicatesOf(local).zipWithIndex.foreach { case (m,i) => 
+        emit(s"""${quote(local)}_0_0.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen); // TODO: Why is this hardcoded to 0?""") 
       }
       emit("}")
       print_stage_suffix(quote(sym),false)
@@ -799,7 +835,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         this,
         ${quote(sym)}_en, ${quote(sym)}_done, ${bound(worker).get.toInt}, ${parStr}
         ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
-        ${quote(addrs)}_$i, ${quote(local)}_$j, ${quote(len)},
+        ${quote(addrs)}_${i}_0, ${quote(local)}_${j}_0, ${quote(len)},
         ${quote(mem)}, "${quote(mem)}_${quote(sym)}_out");""")
       emit("}")
       print_stage_suffix(quote(sym),false)
@@ -1155,44 +1191,57 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           dups.zipWithIndex.foreach { case (r, i) =>
             val banks = getBanking(r)
             val strides = getStride(r)
-            if (isDummy(sym)) {
-              emit(s"""DummyMemLib ${quote(sym)}_${i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""")
+            val numdups = if (nameOf(sym).getOrElse("") == "mu0Tile" | nameOf(sym).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+              r.duplicates
             } else {
-              if (r.depth == 1) {
-                emit(s"""BramLib ${quote(sym)}_${i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides}, ${distinctParents.length}); // ${nameOf(sym).getOrElse("")}""")
-              // } else if (r.depth == 2) {
-              //   val numReaders_for_this_duplicate = readersOf(sym).filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
-              //   emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
-              //   emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
-              //     ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
+              1
+            } //SUPER TODO: issue #46, FIX ASAP ASAP ASAP
+            (0 until numdups).foreach { case sub_i =>
+              if (isDummy(sym)) {
+                emit(s"""DummyMemLib ${quote(sym)}_${i}_${sub_i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""")
               } else {
-                def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
-                val row_majors = readersOf(sym).filter{read =>
-                  instanceIndicesOf(read,sym).head == i
-                }.map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
-                val all_same = (row_majors.reduce{_&_} == row_majors.reduce{_|_})
-                // {
-                //   throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
-                // }
-                val read_pars = readersOf(sym).filter{ read =>
-                  instanceIndicesOf(read,sym).head == i
-                }.map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.length}
-                val read_head = read_pars.head
-                val varying_rd_sizes = if (!(read_pars.map{a => a == read_head}.reduce{_&_})) {true} else {false}
-                  // Console.println(s"Warning!  NBuf has readers of different pars.  Template will do its best to handle this")
-                  // throw new Exception(s"""Cannot handle multiple NBuf readers on ${nameOf(sym).getOrElse("")} if they do not have the same access par! ($read_pars)""")
-                val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
-                val write_head = write_pars.head
-                if (!(write_pars.map{a => a == write_head}.reduce{_&_})) {
-                  throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")
+                if (r.depth == 1) {
+                  emit(s"""BramLib ${quote(sym)}_${i}_${sub_i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides}, ${distinctParents.length}); // ${nameOf(sym).getOrElse("")}""")
+                // } else if (r.depth == 2) {
+                //   val numReaders_for_this_duplicate = readersOf(sym).filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
+                //   emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
+                //   emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
+                //     ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
+                } else {
+                  def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
+                  val row_majors = readersOf(sym).filter{read =>
+                    instanceIndicesOf(read,sym).head == i
+                  }.map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
+                  val all_same = (row_majors.reduce{_&_} == row_majors.reduce{_|_})
+                  // {
+                  //   throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
+                  // }
+                  val read_pars = readersOf(sym).filter{ read =>
+                    instanceIndicesOf(read,sym).head == i
+                  }.map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.length}
+                  val read_head = read_pars.head
+                  val varying_rd_sizes = if (!(read_pars.map{a => a == read_head}.reduce{_&_})) {true} else {false}
+                    // Console.println(s"Warning!  NBuf has readers of different pars.  Template will do its best to handle this")
+                    // throw new Exception(s"""Cannot handle multiple NBuf readers on ${nameOf(sym).getOrElse("")} if they do not have the same access par! ($read_pars)""")
+                  val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
+                  val write_head = write_pars.head
+                  if (!(write_pars.map{a => a == write_head}.reduce{_&_})) {
+                    throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")
+                  }
+                  val numDirectPorts = if (nameOf(sym).getOrElse("") == "logregX") { // Issue #46 FIX ASAP!!!
+                    r.duplicates
+                  } else {
+                    1
+                  }
+                  emit(s"""NBufKernelLib ${quote(sym)}_${i}_${sub_i} = new NBufKernelLib(this, "${quote(sym)}_${i}_${sub_i}",
+                    ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
+                    $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
+                    ${all_same}, /*all_same access (row_major or col_major)*/
+                    new boolean[] {${row_majors.map{a => a | size1==1}.mkString(",")}}, /*rowmajor read?*/
+                    ${write_head}, ${read_head} /*writepar, readpar*/,
+                    ${varying_rd_sizes}, new int[] {${read_pars.map{a => a}.mkString(",")}}); /*varying rd sizes, rdpars*/
+                    //${numDirectPorts} /*num Direct Ports (for DirectR in logreg/kmeans outerpar*/)); // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}""")
                 }
-                emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}",
-                  ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
-                  $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
-                  ${all_same}, /*all_same access (row_major or col_major)*/
-                  new boolean[] {${row_majors.map{a => a | size1==1}.mkString(",")}}, /*rowmajor read?*/
-                  ${write_head}, ${read_head} /*writepar, readpar*/,
-                  ${varying_rd_sizes}, new int[] {${read_pars.map{a => a}.mkString(",")}} /*varying rd sizes, rdpars*/); // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}""")
               }
             }
           }

@@ -6,6 +6,7 @@ import scala.reflect.{Manifest,SourceContext}
 import scala.collection.mutable.Set
 import java.io.{File, FileWriter, PrintWriter}
 import ppl.delite.framework.transform.{DeliteTransform}
+import ppl.delite.framework.{Config}
 
 import spatial.shared._
 import spatial.shared.ops._
@@ -410,6 +411,10 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
       print_stage_prefix(s"Hwblock",s"",s"${quote(sym)}")
 			inHwScope = true
       emit(s"""
+
+/***********************************************
+ TopKernelLib for app ${Config.degFilename.dropRight(4)}
+************************************************/
 // Dummy counter to initialize all registers on first cycle
 Count.Params initParams = control.count.makeParams(2)
                           .withEnable(top_en)

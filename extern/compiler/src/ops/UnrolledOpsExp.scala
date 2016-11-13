@@ -5,6 +5,7 @@ import scala.reflect.{Manifest,SourceContext}
 import ppl.delite.framework.transform.{DeliteTransform}
 import java.io.{File, PrintWriter}
 import scala.collection.mutable.HashMap
+import ppl.delite.framework.{Config}
 
 import spatial.compiler._
 import spatial.compiler.ops._
@@ -14,7 +15,8 @@ trait UnrolledOpsExp extends ExternPrimitiveTypesExp with MemoryOpsExp {
 
   var insideReduceKernel = false
 
-  val controller_tree = new PrintWriter(new File("controller_tree.html" ))
+  val appname = Config.degFilename.dropRight(4)
+  val controller_tree = new PrintWriter(new File(s"controller_tree_${appname}.html" ))
   val table_init = """<TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">"""
 
   def print_stage_prefix(title: String, ctr: String, node: String, hasThingsInside: Boolean = true) {
@@ -406,7 +408,12 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DF
                     a match {
                       case Deff(Sram_new(_,_)) => 
                         val dups = duplicatesOf(a)
-                        dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
+                        dups.zipWithIndex.map { case (r, i) => 
+                          val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft!
+                            r.duplicates
+                          } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
+                          List.tabulate(numdups) { ii => quote(a) + "_" + i + "_" + ii}
+                        }.flatten.toList
                       case Deff(Reg_new(_)) => 
                         val dups = duplicatesOf(a)
                         dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
@@ -418,10 +425,14 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DF
                       case Deff(Sram_new(_,_)) => 
                         val dups = duplicatesOf(a)
                         dups.zipWithIndex.map { case (r, i) => 
+                          val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft!
+                            r.duplicates
+                          } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
+                          List.tabulate(numdups){ ii => 
                           if (isDummy(a)) "DummyMemLib" else {
                             if (r.depth == 1) "BramLib" else "NBufKernelLib"
                           }
-                        }.toList
+                        }}.flatten.toList
                       case Deff(Reg_new(_)) => 
                         val dups = duplicatesOf(a)
                         dups.zipWithIndex.map { case (r, i) => 
@@ -532,7 +543,12 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
               a match {
                 case Deff(Sram_new(_,_)) => 
                   val dups = duplicatesOf(a)
-                  dups.zipWithIndex.map { case (r, i) => quote(a) + "_" + i }.toList
+                  dups.zipWithIndex.map { case (r, i) => 
+                    val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft!
+                      r.duplicates
+                    } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
+                    List.tabulate(numdups) { ii => quote(a) + "_" + i + "_" + ii}
+                  }.flatten.toList
                 case Deff(Reg_new(_)) => 
                   val dups = duplicatesOf(a)
                   dups.zipWithIndex.map { case (r, i) => (reduceType(a.asInstanceOf[Exp[Any]]), i) match {
@@ -552,10 +568,14 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
                 case Deff(Sram_new(_,_)) => 
                   val dups = duplicatesOf(a)
                   dups.zipWithIndex.map { case (r, i) => 
+                    val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft!
+                      r.duplicates
+                    } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
+                    List.tabulate(numdups){ ii => 
                     if (isDummy(a)) "DummyMemLib" else {
                       if (r.depth == 1) "BramLib" else "NBufKernelLib"
                     }
-                  }.toList
+                  }}.flatten.toList
                 case Deff(Reg_new(_)) => 
                   val dups = duplicatesOf(a)
                   dups.zipWithIndex.map { case (r, i) => (reduceType(a.asInstanceOf[Exp[Any]]), i) match {

@@ -83,10 +83,10 @@ object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp // Args: 5
 trait CharLoadTestApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 4;
-  val outerPar = 2;
-  val dim0 = 96;
-  val dim1 = 96;
+  val innerPar = 16;
+  val outerPar = 3;
+  val dim0 = 192;
+  val dim1 = 9600;
 
   def CharLoad(srcHost: Rep[Array[T]], iters: Rep[SInt]) = {
     val sinnerPar = param(innerPar);
@@ -154,10 +154,10 @@ object CharStoreTest extends SpatialAppCompiler with CharStore // Args: 5 3
 trait CharStore extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 4;
-  val outerPar = 4;
-  val dim0 = 192;
-  val dim1 = 1920;
+  val innerPar = 1;
+  val outerPar = 1;
+  val dim0 = 96;
+  val dim1 = 96;
   def CharStore(iters: Rep[T], numin: Rep[T]) = {
     val sinnerPar = param(innerPar);
     val tileSize0 = param(dim0);
@@ -225,10 +225,10 @@ object CharBramTest extends SpatialAppCompiler with CharBram // Args: 5 1 0
 trait CharBram extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val innerPar = 4;
-  val outerPar = 2;
+  val innerPar = 16;
+  val outerPar = 3;
   val dim0 = 192;
-  val dim1 = 192;
+  val dim1 = 9600;
   def CharBram(numin: Rep[T], addrIn0: Rep[T], addrIn1: Rep[T]) = {
     val tileDim0 = param(dim0);
     val tileDim1 = param(dim1);
