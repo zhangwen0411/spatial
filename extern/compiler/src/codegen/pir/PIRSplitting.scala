@@ -70,14 +70,18 @@ trait PIRSplitting extends PIRTraversal {
 
   def nMems(cu: CU, others: Iterable[CU]): Int = {
     val groups = groupBuses(globalInputs(cu))
+    cu.srams.size + nMems(groups, others)
+  }
+  def nMems(groups: BusGroups, others: Iterable[CU]): Int = {
     val scalarGrps = if (groups.scalars.nonEmpty) {
       val producers = groups.scalars.groupBy{bus => others.find{cu => scalarOutputs(cu) contains bus}}
       producers.values.map{ss => Math.ceil(ss.size.toDouble / SCALARS_PER_BUS).toInt }.sum
     }
     else 0
 
-    cu.srams.size + scalarGrps
+    scalarGrps
   }
+
 
   def nScalarIn(cu: CU) = {
     val groups = groupBuses(globalInputs(cu))
@@ -276,7 +280,7 @@ trait PIRSplitting extends PIRTraversal {
       p.cstages.foreach{stage => debug(s"    $stage") }
 
       debug(s"  CChains: ")
-      p.cchains.foreach{cc => debug(s"    $cc : " + globalInputs(cc).mkString(", ")) }
+      p.cchains.foreach{cc => debug(s"    $cc :: " + globalInputs(cc).mkString(", ")) }
     }
 
     val local  = p.allStages.toList
@@ -316,16 +320,25 @@ trait PIRSplitting extends PIRTraversal {
     }
     var sOuts: Int = localOuts.count{case ScalarOut(_) => true; case _ => false}
 
+    var nSRAMs: Int = 0
 
     // --- SRAMs
+    nSRAMs += p.srams.size
+    nSRAMs += nMems(cuGrpsIn)
+
+
     // NOTE: Have to be careful not to double count here!
     debug(s"  SRAMs: ")
+    debug(s"    Locally hosted: " + p.srams.mkString(", "))
 
     // 1. Inputs to account for remotely hosted, locally read SRAMs
     // EXCEPT ones which we've already inserted bypass vectors for (appear as live ins)
     // Needs bypass: NO
     val remoteHostLocalRead = (localReads diff p.srams) diff remoteBypasses
-    if (!isUnit) vIns += remoteHostLocalRead.size
+    if (!isUnit) {
+      vIns += remoteHostLocalRead.size
+      nSRAMs += remoteHostLocalRead.size // Retiming
+    }
     else {
       remoteHostLocalRead.foreach{sram =>
         addIn(prev.indexWhere(_.srams contains sram))
@@ -374,7 +387,10 @@ trait PIRSplitting extends PIRTraversal {
       case FeedbackAddrReg(sram) => p.srams contains sram
       case ReadAddrWire(sram)    => p.srams contains sram
     }
-    if (!isUnit) vIns += localHostRemoteAddr.size
+    if (!isUnit) {
+      vIns += localHostRemoteAddr.size
+      nSRAMs += localHostRemoteAddr.size // Retiming vector
+    }
     else {
       val prevOuts = prev.map(_.allStages.flatMap(_.outputMems).toSet)
 
@@ -388,7 +404,7 @@ trait PIRSplitting extends PIRTraversal {
         case FeedbackAddrReg(sram) => sram
         case ReadAddrWire(sram) => sram
       }
-      debug(s"  Locally hosted, remotely addressed: " + remotelyAddressed.mkString(", "))
+      debug(s"    Locally hosted, remotely addressed: " + remotelyAddressed.mkString(", "))
     }
 
 
@@ -405,7 +421,10 @@ trait PIRSplitting extends PIRTraversal {
     }
     // Live inputs from other partitions
     val liveIns  = localIns intersect remoteOuts
-    if (!isUnit) vIns += liveIns.size
+    if (!isUnit) {
+      vIns += liveIns.size
+      nSRAMs += liveIns.size // Retiming vectors
+    }
     else {
       liveIns.foreach{in =>
         addIn(prev.indexWhere{part => localOutputs(part.allStages) contains in})
@@ -423,7 +442,9 @@ trait PIRSplitting extends PIRTraversal {
 
     // Pack scalar inputs and outputs into vectors
     sIns.values.foreach{ins =>
-      vIns += Math.ceil(ins.toDouble / SCALARS_PER_BUS).toInt
+      val grpSize = Math.ceil(ins.toDouble / SCALARS_PER_BUS).toInt
+      vIns += grpSize
+      nSRAMs += grpSize // Retiming scalar bus
     }
 
     vOuts += Math.ceil(sOuts.toDouble / SCALARS_PER_BUS).toInt
@@ -456,13 +477,11 @@ trait PIRSplitting extends PIRTraversal {
     val compute = rawCompute + bypasses
 
     // TODO: One virtual memory may cost more than one physical memory...
-    val mems = p.srams.size
-
 
     // Scalars
     val sclIns = sIns.values.fold(0){_+_} + cuGrpsIn.args.size + cuGrpsIn.scalars.size
 
-    val cost = SplitCost(sclIns, sOuts, vIns, vOuts, vLocal, compute, writes, reads, mems)
+    val cost = SplitCost(sclIns, sOuts, vIns, vOuts, vLocal, compute, writes, reads, nSRAMs)
 
     debug(s"  $cost")
 
