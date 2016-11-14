@@ -44,31 +44,31 @@ trait LogRegApp extends SpatialApp {
       val btheta = SRAM[T](D)
 
       Sequential(iters by 1) { epoch =>
-        val gradAcc = SRAM[T](D)
-        Pipe(N by BN){ i =>
-          val logregX = SRAM[T](BN, D)
-          val logregY = SRAM[T](BN)
-          Parallel {
-            logregX := x(i::i+BN, 0::D par P2)
-            logregY := y(i::i+BN par P2)
+
+        Sequential.fold(1 by 1, P2)(btheta){ xx =>
+          val gradAcc = SRAM[T](D)
+          Pipe(N by BN){ i =>
+            val logregX = SRAM[T](BN, D)
+            val logregY = SRAM[T](BN)
+            Parallel {
+              logregX := x(i::i+BN, 0::D par P2)
+              logregY := y(i::i+BN par P2)
+            }
+            Fold(BN par P3, P2)(gradAcc, 0.as[T]){ ii =>
+              val pipe2Res = Reg[T]
+              val subRam   = SRAM[T](D)
+
+              val dotAccum = Reduce(D par P2)(0.as[T]){ j => logregX(ii,j) * btheta(j) }{_+_}  // read
+              Pipe { pipe2Res := (logregY(ii) - sigmoid(dotAccum.value)) }
+              Pipe(D par P2) {j => subRam(j) = logregX(ii,j) - pipe2Res.value }
+              subRam
+            }{_+_}
           }
-          Fold(BN par P3, P2)(gradAcc, 0.as[T]){ ii =>
-            val pipe2Res = Reg[T]
-            val subRam   = SRAM[T](D)
-
-            val dotAccum = Reduce(D par P2)(0.as[T]){ j => logregX(ii,j) * btheta(j) }{_+_}  // read
-            Pipe { pipe2Res := (logregY(ii) - sigmoid(dotAccum.value)) }
-            Pipe(D par P2) {j => subRam(j) = logregX(ii,j) - pipe2Res.value }
-            subRam
-          }{_+_}
-        }
-
-        Fold (1 by 1 par param(1),P2) (btheta, 0.as[T]){ j =>
           gradAcc
-        }{case (b,g) => b+g*A}
+        }{(b,g) => b+g*A}
 
         // Flush gradAcc
-        Pipe(D by 1 par P2) { i => gradAcc(i) = 0.as[T]}
+        //Pipe(D by 1 par P2) { i => gradAcc(i) = 0.as[T]}
       }
       theta(0::D par P2) := btheta // read
     }

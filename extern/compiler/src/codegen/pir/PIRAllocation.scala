@@ -542,6 +542,10 @@ trait PIRAllocation extends PIRTraversal {
     case Gather(mem, local, addrs, len, _, i) =>
       prescheduleGather(lhs, mem, local, addrs, len)
 
+    // Something bad happened if these are still in the IR
+    case _:OpForeach => throw new Exception(s"Disallowed compact op $lhs = $rhs")
+    case _:OpReduce[_,_] => throw new Exception(s"Disallowed compact op $lhs = $rhs")
+    case _:OpMemReduce[_,_] => throw new Exception(s"Disallowed compact op $lhs = $rhs")
     case _ => super.traverse(lhs, rhs)
   }
 
