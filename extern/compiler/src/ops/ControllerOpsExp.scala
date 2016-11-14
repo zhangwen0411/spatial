@@ -1284,7 +1284,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
       print_stage_prefix(s"Hwblock",s"",s"${quote(sym)}")
 			inHwScope = true
-      /*
+      
 			emitComment("Emitting Hwblock dependencies {")
       val hwblockDeps = recursiveDeps(rhs)
       expToArg.keys.filterNot { hwblockDeps.contains(_) } foreach { argToExp -= expToArg(_) }
@@ -1318,13 +1318,18 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
          }
       }
 			emitComment(" End Hwblock dependencies }")
-      emitComment(s"quoteSuffix = $quoteSuffix")
-      emit(s"""var ${quote(sym)}_en = top_en;""")
-      emitGlobalWire(s"""${quote(sym)}_done""")
-      emit(s"""top_done <== ${quote(sym)}_done;""")
-      emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")*/
-      //emitController(sym, None)
-      emitComment("\n--------------- HW BLOCK ----------------\n")      
+      //emitComment(s"quoteSuffix = $quoteSuffix")
+      
+      emitComment("\n //Setup Top Level IO")
+      emit(s"""val ${quote(sym)}_en = Bool()""")
+      emit(s"""${quote(sym)}_en <> top_en""")
+      //emitGlobalWire(s"""${quote(sym)}_done""")
+      emit(s"""val ${quote(sym)}_done = Bool()""")
+      emit(s"""top_done <> ${quote(sym)}_done""")
+      emitComment("\n")
+
+      emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")
+      emitController(sym, None)     
       emitBlock(func)
 			inHwScope = false
       print_stage_suffix(quote(sym))
@@ -1492,13 +1497,15 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         } else {
           1
         }
-        emit(s"""OffsetExpr ${quote(sym)}_offset = stream.makeOffsetAutoLoop("${quote(sym)}_offset");""")
-        emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this, $numCounters));""")
-        emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
-        emit(s"""    ${quote(sym)}_done <== stream.offset(${quote(sym)}_sm.getOutput("sm_done"),-1-${quote(sym)}_offset);""")
+        //emit(s"""OffsetExpr ${quote(sym)}_offset = stream.makeOffsetAutoLoop("${quote(sym)}_offset");""")
+        emit(s"""val ${quote(sym)}_sm = new ${smStr}($numCounters)""")
+        //emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
+        emit(s"""    ${quote(sym)}_en <> ${quote(sym)}_sm.io.sm_en""")
+        emit(s"""    ${quote(sym)}_done <> ${quote(sym)}_sm.io.sm_done""")
+        //emit(s"""    ${quote(sym)}_done <== stream.offset(${quote(sym)}_sm.getOutput("sm_done"),-1-${quote(sym)}_offset);""")
 
-        emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
-        emitGlobalWire(s"""${quote(sym)}_rst_done""")
+        emit(s"""val ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.rst_en""")
+        //emitGlobalWire(s"""${quote(sym)}_rst_done""")
         emit(s"""${quote(sym)}_sm.connectInput("rst_done", ${quote(sym)}_rst_done);""")
         emit(s"""${quote(sym)}_rst_done <== stream.offset(${quote(sym)}_rst_en, -${quote(sym)}_offset-1);""")
         if (!cchain.isDefined) {
@@ -1527,9 +1534,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         }
         emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
       case SequentialPipe =>
-        emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this));""")
-        emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
-        emit(s"""    ${quote(sym)}_done <== stream.offset(${quote(sym)}_sm.getOutput("sm_done"),-1);""")
+        emit(s"""val ${quote(sym)}_sm = new ${smStr}()""")
+        emit(s"""    ${quote(sym)}_en <> ${quote(sym)}_sm.io.sm_en""")
+        emit(s"""    ${quote(sym)}_done <> ${quote(sym)}_sm.io.sm_done""")
         if (cchain.isDefined) {
           val Def(EatReflect(Counterchain_new(counters))) = cchain.get
           var niter_str = s""

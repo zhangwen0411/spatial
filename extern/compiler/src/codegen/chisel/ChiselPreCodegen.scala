@@ -44,6 +44,11 @@ trait ChiselPreCodegen extends Traversal  {
   //   }
   // }
 
+  def emitBuildSBT(stream:PrintWriter) = {
+	this.stream = stream
+  	emit(s"""libraryDependencies += "edu.berkeley.cs" %% "chisel" % "latest.release"""")
+  }
+
   def quote(x: Exp[Any]) = x match {
     case s@Sym(n) => {
       s match {
@@ -72,11 +77,20 @@ trait ChiselPreCodegen extends Traversal  {
 		withStream(newStream("ChiselManager")) {
 			chiselManagerGen.emitManager(stream, argInOuts, memStreams)
 		}
+		withStream(newSBTStream("build")) {
+			emitBuildSBT(stream)
+		}
 		b
 	}
 
+	def newSBTStream(fileName:String):PrintWriter = {
+		val path = buildDir + java.io.File.separator + fileName + ".sbt"
+		val pw = new PrintWriter(path)
+		pw
+	}
+
 	def newStream(fileName:String):PrintWriter = {
-		val path = buildDir + java.io.File.separator + fileName + ".chisel"
+		val path = buildDir + java.io.File.separator + fileName + ".scala"
 		val pw = new PrintWriter(path)
 		pw
 	}

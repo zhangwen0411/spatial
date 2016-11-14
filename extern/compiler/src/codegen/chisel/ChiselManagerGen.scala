@@ -95,92 +95,29 @@ trait ChiselManagerGen {
 
   val mPreamble =
 	s"""
-	class TopManager extends CustomManager {
-	  private static final CPUTypes int8_t =    CPUTypes.INT8;
-	  private static final CPUTypes int16_t =    CPUTypes.INT16;
-	  private static final CPUTypes int32_t =    CPUTypes.INT32;
-	  private static final CPUTypes int64_t =    CPUTypes.INT64;
-	  private static final CPUTypes uint8_t =    CPUTypes.UINT8;
-	  private static final CPUTypes uint16_t =    CPUTypes.UINT16;
-	  private static final CPUTypes uint32_t =    CPUTypes.UINT32;
-	  private static final CPUTypes uint64_t =    CPUTypes.UINT64;
-	  private static final CPUTypes FLOAT = CPUTypes.FLOAT;
-	  private static final CPUTypes DOUBLE = CPUTypes.DOUBLE;
+	class TopManager extends Module {
+		// Empty for now
 	"""
 
 	  val mEpilogue =
 	s"""
-	  public static void main(String[] args) {
-	    TopManager m = new TopManager(new EngineParameters(args));
-
-	    BuildConfig c = new BuildConfig(BuildConfig.Level.FULL_BUILD);
-	    c.setBuildEffort(BuildConfig.Effort.HIGH);
-	    c.setEnableTimingAnalysis(true);
-	    m.setBuildConfig(c);
-
-	    m.createSLiCinterface(interfaceRead("readLMem"));
-	    m.createSLiCinterface(interfaceWrite("writeLMem"));
-	    m.createSLiCinterface(interfaceDefault());
-	    m.build();
-	  }
 	}
 	"""
 
 	val mReadIntf =
 	s"""
-	  // CPU -> LMEM (read interface)
-	  private static EngineInterface interfaceRead(String name) {
-	    EngineInterface ei = new EngineInterface(name);
-	    InterfaceParam size = ei.addParam("size", uint32_t);
-	    InterfaceParam start = ei.addParam("start", uint32_t);
-	    InterfaceParam sizeInBytes = size;
-
-	    // Stop the kernel from running
-	    ei.setScalar("TopKernel", "en", 0);
-
-	    // Setup address map and access pattern
-	    ei.setLMemLinear("fromlmem", start, sizeInBytes);
-	    ei.setStream("tocpu", uint8_t, sizeInBytes);
-	    ei.ignoreAll(Direction.IN_OUT);
-	    return ei;
-	  }
 	"""
 
 	val mWriteIntf =
 	s"""
-	  // LMEM -> CPU (write interface)
-	  private static EngineInterface interfaceWrite(String name) {
-	    EngineInterface ei = new EngineInterface(name);
-	    InterfaceParam size = ei.addParam("size", uint32_t);
-	    InterfaceParam start = ei.addParam("start", uint32_t);
-	    InterfaceParam sizeInBytes = size;
-
-	    // Stop the kernel from running
-	    ei.setScalar("TopKernel", "en", 0);
-
-	    // Setup address map and access pattern
-	    ei.setLMemLinear("tolmem", start, sizeInBytes);
-	    ei.setStream("fromcpu", uint8_t, sizeInBytes);
-	    ei.ignoreAll(Direction.IN_OUT);
-	    return ei;
-	  }
 	"""
 
 	val mDefaultIntfPreamble =
 	s"""
-	  // Interface to run DFE (default interface)
-	  private static EngineInterface interfaceDefault() {
-	    EngineInterface ei = new EngineInterface();
-	    ei.setTicks("TopKernel", Long.MAX_VALUE);
-	    ei.setScalar("TopKernel", "en", 1);
 	"""
 
 	val mDefaultIntfEpilogue =
 	s"""
-	    ei.setLMemInterruptOn("intrStream");
-	    ei.ignoreAll(Direction.IN_OUT);
-	    return ei;
-	  }
 	"""
 
 	val cpuIntfOld =
@@ -223,44 +160,6 @@ trait ChiselManagerGen {
 
 	val mConstructorPreamble =
 	s"""
-	  TopManager(EngineParameters engineParameters) {
-	    super(engineParameters);
-
-	    // Disable stream status blocks
-	    DebugLevel debugLevel = new DebugLevel();
-	    debugLevel.setHasStreamStatus(false);
-	    debug.setDebugLevel(debugLevel);
-
-	    // Setup stream clock and memory clock
-	    config.setDefaultStreamClockFrequency($streamClock);
-	    config.setOnCardMemoryFrequency(LMemFrequency.MAX4MAIA_$memClock);
-	    config.setEnableAddressGeneratorsInSlowClock(true);
-
-    // Allow non-multiple transitions for parallel tile loaders: may affect area
-    config.setAllowNonMultipleTransitions(true);
-
-	    // Setup memory controller clock and config
-	//    MemoryControllerConfig mem_cfg = new MemoryControllerConfig();
-	////    mem_cfg.setBurstSize(4); //MAX3: 4 = 4*384 bits, 8 = 8*384 bits
-	//    mem_cfg.setDataReadFIFOExtraPipelineRegInFabric(true);
-	//    mem_cfg.setDataFIFOExtraPipelineRegInFabric(true); //timing-23may
-	//    //mem_cfg.setDataFIFOPrimitiveWidth(5*72);
-	//    config.setMemoryControllerConfig(mem_cfg);
-
-	    // Create a KernelConfiguration object that sets the OptimizationTechnique
-	    // to optimize for area, which is the default in the 2014.1 compiler
-	    // TODO: This causes build failures with MaxJ during source annotation. Investigate why
-	    KernelConfiguration kernelConfig = getCurrentKernelConfig();
-	    kernelConfig.warnings.setWarningBehaviour(KernelConfiguration.WarningOptions.Warning.ALL,
-	    	KernelConfiguration.WarningOptions.WarningBehaviour.IGNORE);
-	    // kernelConfig.optimization.setOptimizationTechnique(OptimizationTechnique.AREA);
-	    // KernelBlock k = addKernel(new TopKernel(makeKernelParameters("TopKernel", kernelConfig)));
-
-	    KernelBlock k = addKernel(new TopKernel(makeKernelParameters("TopKernel")));
-
-	    $cpuIntf
-
-	    $intrIntf
 	"""
 
 val mConstructorEpilogue =
