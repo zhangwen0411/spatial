@@ -8,9 +8,9 @@ trait MatMult_outerApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   val tileSizeM = 2
-  val tileSizeN = 288
-  val tileSizeP = 288
-  val innerPar = 8
+  val tileSizeN = 192
+  val tileSizeP = 192
+  val innerPar = 16
   val midPar = 1
   val outerPar = 2
 
@@ -43,7 +43,7 @@ trait MatMult_outerApp extends SpatialApp {
     Accel {
       Sequential(M by bm, N by bn par op) { (i,j) =>
         val tileC = SRAM[T](bm, bn)
-        tileC := c(i::i+bm, j::j+bn)
+        // tileC := c(i::i+bm, j::j+bn)
        	Pipe(P by bp) { k =>
           val tileA = SRAM[T](bm, bp)
           val tileB = SRAM[T](bp, bn)
@@ -58,8 +58,8 @@ trait MatMult_outerApp extends SpatialApp {
             }
             tileC_partial
           }{_+_}
-          c(i::i+bm, j::j+bn par ip) := tileC
      		}
+        c(i::i+bm, j::j+bn par ip) := tileC
      	}
     }
     getMem(c)

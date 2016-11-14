@@ -7,11 +7,11 @@ trait MatMult_innerApp extends SpatialApp {
   type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
 
-  val tileSizeM = 4
-  val tileSizeN = 1152
+  val tileSizeM = 8
+  val tileSizeN = 192
   val tileSizeP = 192
-  val innerPar = 32
-  val midPar = 1
+  val innerPar = 4
+  val midPar = 2
   val outerPar = 2
 
   def MatMult_inner(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
@@ -40,10 +40,10 @@ trait MatMult_innerApp extends SpatialApp {
 
     Accel {
       Pipe(M by bm, (N by bn) par op){(i,j) =>
+        val tileC = SRAM[T](bm, bn)
         Pipe((P by bp) par upMidPar){k =>
           val tileA = SRAM[T](bm, bp)
           val tileB = SRAM[T](bp, bn)
-          val tileC = SRAM[T](bm, bn)
           Parallel {
             tileA := a(i::i+bm, k::k+bp)
             tileB := b(k::k+bp, j::j+bn)
@@ -53,8 +53,8 @@ trait MatMult_innerApp extends SpatialApp {
             val prev = mux(k == 0, 0.as[T], tileC(ii,jj))
             tileC(ii,jj) = prev + prod.value // Is a unit pipe that should be recognized as accum
           }
-          c(i::i+bm, j::j+bn par stPar) := tileC
         }
+        c(i::i+bm, j::j+bn par stPar) := tileC
       }
     }
     getMem(c)

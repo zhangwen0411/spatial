@@ -240,7 +240,7 @@ trait Controllers {
        **/
       static (ctrl) ("fold", (T,C), CurriedMethodSignature(List(List(CounterChain, MInt),List(C(T)),List(Indices ==> C(T)), List((T,T) ==> T)), C(T)), (TMem(T,C(T)),TNum(T))) implements composite ${
         val ccInner = $2.iterator(List($1))
-        val pipe = memreduce_op[T,C]($0, ccInner, $2, None, $3, $4)
+        val pipe = memreduce_op[T,C]($0, ccInner, $2, Some(implicitly[Num[T]].zero), $3, $4)
         styleOf(pipe) = \$style
         $2
       }

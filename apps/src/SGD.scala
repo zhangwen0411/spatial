@@ -42,10 +42,10 @@ object SGD extends SpatialAppCompiler with SGDApp // Args: 1 5
 trait SGDApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt
-  val modelSize = 768
+  val modelSize = 384
   val tileSize = 192
-  val innerPar = 16
-  val outerPar = 2
+  val innerPar = 4
+  val outerPar = 1
   val margin = 1
 
 
@@ -71,14 +71,14 @@ trait SGDApp extends SpatialApp {
 
     Accel {
       val y_tile = SRAM[T](tileSize)
-      // val update = SRAM[T](D)
       val sgdmodel = SRAM[T](D)
       Sequential(E by 1) { e =>
         Sequential (N by tileSize) { b =>
           y_tile := y(b::b+tileSize par op)
-          Sequential.fold(tileSize by 1 par op)(sgdmodel) { i =>
+          // Sequential.fold(tileSize by 1 par op)(sgdmodel) { i =>
+          Sequential(tileSize by 1) {i => 
             val y_err = Reg[T](0)
-            val update = SRAM[T](D)
+            // val update = SRAM[T](D)
             val x_tile = SRAM[T](D)
             Parallel{
               x_tile := x(b+i, 0 :: D par ip)
@@ -89,10 +89,9 @@ trait SGDApp extends SpatialApp {
             }
 
             Pipe (D by 1 par ip) { j =>
-              update(j) = x_tile(j)*y_err.value*A
+              sgdmodel(j) = sgdmodel(j) + x_tile(j)*y_err.value*A
             }
-            update
-          }{_+_}
+          }
         }
       }
       result(0::D par ip) := sgdmodel

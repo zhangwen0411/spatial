@@ -423,6 +423,10 @@ Count.Params initParams = control.count.makeParams(2)
 Counter init = control.count.makeCounter(initParams);
 DFEVar global_rst = init.getCount() === 0;
 """)
+      if (Config.degFilename.dropRight(4) == "SGD") {
+        emit(s"""// MaxJ sucks and SGD compilation hangs unless we put in a print line for some dumbass reason
+          debug.simPrintf(global_rst,"You happy now maxj?"); """)
+      }
 			emitComment("Emitting Hwblock dependencies {")
       val hwblockDeps = recursiveDeps(rhs)
       expToArg.keys.filterNot { hwblockDeps.contains(_) } foreach { argToExp -= expToArg(_) }

@@ -408,7 +408,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
           val readsByPort = readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
           val writesByPort = writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
           val numDupDups = if (isSRAM(mem.tp)) {
-            if (nameOf(mem).getOrElse("") == "mu0Tile" | nameOf(mem).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+            if (nameOf(mem).getOrElse("") == "mu0Tile" | nameOf(mem).getOrElse("") == "mu1Tile" | nameOf(mem).getOrElse("") == "btheta" | nameOf(mem).getOrElse("") == "sgdmodel") { // Crazy issue 46 witchcraft
               d.duplicates
             } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
             } else {1}
@@ -544,7 +544,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
     val readCtrl = reader.controlNode
     var subsubdup = 0
     // Check if there are multiplie readers on this port of this instance, so we can hardcode banks
-    val connectString = if (nameOf(sram).getOrElse("") == "mu0Tile" | nameOf(sram).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+    val connectString = if (nameOf(sram).getOrElse("") == "mu0Tile" | nameOf(sram).getOrElse("") == "mu1Tile" | nameOf(sram).getOrElse("") == "btheta" | nameOf(sram).getOrElse("") == "sgdmodel") { // Crazy issue 46 witchcraft
       subsubdup = read_port_dup_map.count{ case a => a == s"${quote(sram)}_${b_i} port $p"}
       read_port_dup_map = read_port_dup_map :+ s"${quote(sram)}_${b_i} port $p"
       s"connectRport("
@@ -756,7 +756,7 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
       val accString = offsetPre + accEn + offsetPost
       val globalEnString = globalEnComma + offsetPre + globalEn + offsetPost
       if (isDummy(sram)) {addrString = quote(addr)} // Dummy override for char test
-      val numdups = if (nameOf(sram).getOrElse("") == "mu0Tile" | nameOf(sram).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+      val numdups = if (nameOf(sram).getOrElse("") == "mu0Tile" | nameOf(sram).getOrElse("") == "mu1Tile" | nameOf(sram).getOrElse("") == "btheta" | nameOf(sram).getOrElse("") == "sgdmodel") { // Crazy issue 46 witchcraft
         dd.duplicates
       } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
       (0 until numdups).foreach { sub_i => 
@@ -772,11 +772,12 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Dram_new(size) =>
         emitComment(s""" Dram_new(${quote(size)}) {""")
-        alwaysGen { emit(s"""int ${quote(sym)} = (int) ${dramAddr(sym)}L/${burstSize};""") }
+        alwaysGen { emit(s"""int ${quote(sym)} = (int) (${dramAddr(sym)}L/${burstSize});""") }
         emitComment(s""" Dram_new(${quote(size)}) }""")
 
     case Gather(mem,local,addrs,len,_,i) =>
       val worker = childrenOf(parentOf(sym).get).indexOf(sym)
+      Console.println(s"""workers ${childrenOf(parentOf(sym).get)} under ${parentOf(sym).get} id $worker""")
       val par = childrenOf(parentOf(sym).get).length
       print_stage_prefix(s"Gather par${quote(par)}",s"",s"${quote(sym)}", false)
       val access = writersOf(local).find(_.node == sym).get
@@ -800,7 +801,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       emit(s"""DFEVar ${quote(sym)}_isLdSt = dfeBool().newInstance(this);""")
       emit(s"""GatherLib ${quote(sym)} = new GatherLib(
         this,
-        ${quote(sym)}_en, ${quote(sym)}_done, ${bound(worker).get.toInt}, $parStr
+        ${quote(sym)}_en, ${quote(sym)}_done, ${worker}, $parStr
         ${quote(sym)}_isLdSt, ${quote(sym)}_forceLdSt,
         ${quote(addrs)}_${i}_0, ${quote(len)},
         ${quote(mem)},  "${quote(mem)}_${quote(sym)}_in",
@@ -1191,7 +1192,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           dups.zipWithIndex.foreach { case (r, i) =>
             val banks = getBanking(r)
             val strides = getStride(r)
-            val numdups = if (nameOf(sym).getOrElse("") == "mu0Tile" | nameOf(sym).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft
+            val numdups = if (nameOf(sym).getOrElse("") == "mu0Tile" | nameOf(sym).getOrElse("") == "mu1Tile" | nameOf(sym).getOrElse("") == "btheta" | nameOf(sym).getOrElse("") == "sgdmodel") { // Crazy issue 46 witchcraft
               r.duplicates
             } else {
               1
@@ -1201,7 +1202,11 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                 emit(s"""DummyMemLib ${quote(sym)}_${i}_${sub_i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""")
               } else {
                 if (r.depth == 1) {
-                  emit(s"""BramLib ${quote(sym)}_${i}_${sub_i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides}, ${distinctParents.length}); // ${nameOf(sym).getOrElse("")}""")
+                  val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
+                  val write_head = write_pars.head
+                  emit(s"""BramLib ${quote(sym)}_${i}_${sub_i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, 
+                    /*banks*/ ${banks}, /* stride */ ${strides}, 
+                    ${distinctParents.length}, ${write_head} /*wpar*/); // ${nameOf(sym).getOrElse("")}""")
                 // } else if (r.depth == 2) {
                 //   val numReaders_for_this_duplicate = readersOf(sym).filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
                 //   emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
@@ -1228,19 +1233,28 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   if (!(write_pars.map{a => a == write_head}.reduce{_&_})) {
                     throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")
                   }
-                  val numDirectPorts = if (nameOf(sym).getOrElse("") == "logregX") { // Issue #46 FIX ASAP!!!
-                    r.duplicates
+                  val numDirectWPorts = if (nameOf(sym).getOrElse("") == "logregX" | nameOf(sym).getOrElse("") == "logregY") { // Issue #46 FIX ASAP!!!
+                    Math.min(writersOf(sym).length,r.duplicates)
+                  } else if (nameOf(sym).getOrElse("") == "smvresult") {
+                    writersOf(sym).length
                   } else {
                     1
                   }
-                  emit(s"""NBufKernelLib ${quote(sym)}_${i}_${sub_i} = new NBufKernelLib(this, "${quote(sym)}_${i}_${sub_i}",
+                  val numDirectRPorts = if (nameOf(sym).getOrElse("") == "logregX" | nameOf(sym).getOrElse("") == "smvresult") { // Issue #46 FIX ASAP!!!
+                    Math.min(readersOf(sym).length,r.duplicates)
+                  } else if (nameOf(sym).getOrElse("") == "logregY" | nameOf(sym).getOrElse("") == "smvtileSizes") {
+                    readersOf(sym).length // Because the read happens in a unit pipe, duplicates not calculated correctly
+                  } else {
+                    1
+                  }
+                  emit(s"""NBufKernelLib ${quote(sym)}_${i}_${sub_i} = new NBufKernelLib(this, "${quote(sym)}_${i}_${sub_i}", // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}
                     ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
                     $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
                     ${all_same}, /*all_same access (row_major or col_major)*/
                     new boolean[] {${row_majors.map{a => a | size1==1}.mkString(",")}}, /*rowmajor read?*/
                     ${write_head}, ${read_head} /*writepar, readpar*/,
-                    ${varying_rd_sizes}, new int[] {${read_pars.map{a => a}.mkString(",")}}); /*varying rd sizes, rdpars*/
-                    //${numDirectPorts} /*num Direct Ports (for DirectR in logreg/kmeans outerpar*/)); // ${nameOf(sym).getOrElse("")} readers ${readersOf(sym)}""")
+                    ${varying_rd_sizes}, new int[] {${read_pars.map{a => a}.mkString(",")}}, /*varying rd sizes, rdpars*/
+                    ${numDirectWPorts}, ${numDirectRPorts} /*num Direct W, R Ports (for DirectR in logreg/kmeans outerpar*/);""")
                 }
               }
             }

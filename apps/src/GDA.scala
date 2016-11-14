@@ -8,8 +8,8 @@ trait GDA_App extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   val margin = 1
-  val innerPar = 4
-  val outerPar = 1
+  val innerPar = 8
+  val outerPar = 2
   val MAXC = 96
   val C = MAXC
   val tileSize = 96

@@ -409,7 +409,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DF
                       case Deff(Sram_new(_,_)) => 
                         val dups = duplicatesOf(a)
                         dups.zipWithIndex.map { case (r, i) => 
-                          val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft!
+                          val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile" | nameOf(a).getOrElse("") == "btheta" | nameOf(a).getOrElse("") == "sgdmodel") { // Crazy issue 46 witchcraft!
                             r.duplicates
                           } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
                           List.tabulate(numdups) { ii => quote(a) + "_" + i + "_" + ii}
@@ -425,7 +425,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DF
                       case Deff(Sram_new(_,_)) => 
                         val dups = duplicatesOf(a)
                         dups.zipWithIndex.map { case (r, i) => 
-                          val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft!
+                          val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile" | nameOf(a).getOrElse("") == "btheta" | nameOf(a).getOrElse("") == "sgdmodel") { // Crazy issue 46 witchcraft!
                             r.duplicates
                           } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
                           List.tabulate(numdups){ ii => 
@@ -544,7 +544,7 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
                 case Deff(Sram_new(_,_)) => 
                   val dups = duplicatesOf(a)
                   dups.zipWithIndex.map { case (r, i) => 
-                    val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft!
+                    val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile" | nameOf(a).getOrElse("") == "btheta" | nameOf(a).getOrElse("") == "sgdmodel") { // Crazy issue 46 witchcraft!
                       r.duplicates
                     } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
                     List.tabulate(numdups) { ii => quote(a) + "_" + i + "_" + ii}
@@ -568,7 +568,7 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
                 case Deff(Sram_new(_,_)) => 
                   val dups = duplicatesOf(a)
                   dups.zipWithIndex.map { case (r, i) => 
-                    val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile") { // Crazy issue 46 witchcraft!
+                    val numdups = if (nameOf(a).getOrElse("") == "mu0Tile" | nameOf(a).getOrElse("") == "mu1Tile" | nameOf(a).getOrElse("") == "btheta" | nameOf(a).getOrElse("") == "sgdmodel") { // Crazy issue 46 witchcraft!
                       r.duplicates
                     } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
                     List.tabulate(numdups){ ii => 

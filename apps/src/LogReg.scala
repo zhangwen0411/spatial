@@ -8,10 +8,10 @@ trait LogRegApp extends SpatialApp {
   type T = Flt
 
   val tileSize = 384
-  val innerPar = 8
-  val outerPar = 1
+  val innerPar = 16
+  val outerPar = 4
   val margin = 5
-  val dim = 288
+  val dim = 192
   val D = dim
 
   val A = 1
@@ -42,7 +42,7 @@ trait LogRegApp extends SpatialApp {
 
     Accel {
       val btheta = SRAM[T](D)
-      btheta := theta(0::D par P2)
+      // btheta := theta(0::D par P2)
 
       Sequential(iters by 1) { epoch => 
         val gradAcc = SRAM[T](D)
@@ -51,7 +51,7 @@ trait LogRegApp extends SpatialApp {
           val logregY = SRAM[T](BN)
           Parallel {
             logregX := x(i::i+BN, 0::D par P2)
-            logregY := y(i::i+BN par P2)
+            logregY := y(i::i+BN par P3)
           }
           Fold(BN par P3, P2)(gradAcc, 0.as[T]){ ii =>
             val pipe2Res = Reg[T]

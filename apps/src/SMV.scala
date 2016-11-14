@@ -9,18 +9,18 @@ trait SMVApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   val tileSize = 96
-  val innerPar = 1
+  val innerPar = 4
   val outerPar = 1
   val pp = 3840
-  val NNZ = 50
+  val maximumNNZ = 60
   val margin = 1
 
-  def smv(AC: Rep[Array[SInt]], AD: Rep[Array[T]], S: Rep[Array[SInt]], V: Rep[Array[T]],nn: Rep[SInt]) = {
+  def smv(AC: Rep[Array[SInt]], AD: Rep[Array[T]], S: Rep[Array[SInt]], V: Rep[Array[T]],nn: Rep[SInt], NNZ: Rep[SInt]) = {
     val N = ArgIn[SInt]
     setArg(N,nn)
 
-    val aC = DRAM[SInt](pp,NNZ)
-    val aD = DRAM[T](pp,NNZ)
+    val aC = DRAM[SInt](pp,maximumNNZ)
+    val aD = DRAM[T](pp,maximumNNZ)
     val sizes = DRAM[SInt](pp)
     val v = DRAM[T](pp)
     val out = DRAM[T](N)
@@ -35,30 +35,30 @@ trait SMVApp extends SpatialApp {
     setMem(v, V)
 
     Accel {
-      Pipe(N by tileSize par op){ rowchunk =>
-        val result = SRAM[T](tileSize)
-        val tileSizes = SRAM[SInt](tileSize)
-        tileSizes := sizes(rowchunk :: rowchunk+tileSize par ip)
-        Sequential(tileSize by 1){row =>
+      Pipe(N by tileSize){ rowchunk =>
+        val smvresult = SRAM[T](tileSize)
+        val smvtileSizes = SRAM[SInt](tileSize)
+        smvtileSizes := sizes(rowchunk :: rowchunk+tileSize par ip)
+        Sequential(tileSize by 1 par op){row =>
           val csrCols = SRAM[SInt](tileSize)
           val csrData = SRAM[T](tileSize)
           val vecGathered = SRAM[T](tileSize)
 
           // Load dense csr piece
-          val len = tileSizes(row)
+          val len = smvtileSizes(row)
           val OCROW = (rowchunk+row) // TODO: Issue #47
           csrCols := aC(OCROW, 0 :: len par ip)
           csrData := aD(OCROW, 0 :: len par ip)
-          vecGathered := v(csrCols, len)
+          vecGathered := v(csrCols par ip, len)
 
-          val acc = Reduce(len by 1)(0.as[T]) { i =>
+          val acc = Reduce(len by 1 par ip)(0.as[T]) { i =>
             csrData(i) * vecGathered(i)
           }{_+_}
 
-          result(row) = acc.value
+          smvresult(row) = acc.value
 
         }
-      out(rowchunk::rowchunk+tileSize par stPar) := result
+      out(rowchunk::rowchunk+tileSize par stPar) := smvresult
       }
     }
     getMem(out)
@@ -71,25 +71,25 @@ trait SMVApp extends SpatialApp {
   }
 
   def main() = {
-    val maxNNZ = NNZ
     val N = args(0).to[SInt]
+    val NNZ = maximumNNZ//args(1).to[SInt]
     val P = pp
 
-    val AC = Array.tabulate(N){ i => Array.tabulate(maxNNZ) { j => j * 3}}
-    val AD = Array.tabulate(N){ i => Array.fill(maxNNZ) {random[T](5) }}
-    val S = Array.tabulate(N){ i => maxNNZ }
+    val AC = Array.tabulate(N){ i => Array.tabulate(NNZ) { j => j * 3}}
+    val AD = Array.tabulate(N){ i => Array.fill(NNZ) {random[T](5) }}
+    val S = Array.tabulate(N){ i => NNZ }
     val V = Array.tabulate(P){ i => i }
 
-    val result = smv(AC.flatten, AD.flatten, S, V, N)
+    val smvresult = smv(AC.flatten, AD.flatten, S, V, N, NNZ)
 
     val gold = AC.zip(AD) { (col, data) => col.zip(data) {(c, d) =>
       d*V(c)
     }.reduce{_+_}}
 
     printArr(gold, "gold: ")
-    printArr(result, "result: ")
+    printArr(smvresult, "smvresult: ")
 
-    val cksum = result.zip(gold){(a,b) => a - margin < b && a + margin > b}.reduce{_&&_}
+    val cksum = smvresult.zip(gold){(a,b) => a - margin < b && a + margin > b}.reduce{_&&_}
     println("PASS: " + cksum + " (SMV)")
 
   }
