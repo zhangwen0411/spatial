@@ -101,7 +101,7 @@ trait PIRGenTransformer extends PIRTraversal {
     emit("import pir.PIRApp")
     emit("")
     open(s"""object ${app}Design extends PIRApp {""")
-    emit(s"""override val arch = SN_4x4""")
+    //emit(s"""override val arch = SN_4x4""")
     open(s"""def main(args: String*)(top:Top) = {""")
   }
   def generateFooter() {
