@@ -11,6 +11,10 @@ trait PIRTraversal extends ControllerTools with QuotingExp {
 
   //override def quote(x: Symbol) = super.quote(aliasOf(x))
 
+  val LANES = 16         // Number of SIMD lanes per CU
+  val REDUCE_STAGES = 5  // Number of stages required to reduce across all lanes
+
+
   // --- Allocating
   var globals = Set[GlobalComponent]()
 

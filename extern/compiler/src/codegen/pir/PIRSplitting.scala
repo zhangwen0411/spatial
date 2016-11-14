@@ -12,8 +12,6 @@ trait PIRSplitting extends PIRTraversal {
 
   class SplitException(val msg: String) extends Exception("Unable to split!")
 
-  val LANES = 16         // Number of SIMD lanes per CU
-  val REDUCE_STAGES = 5  // Number of stages required to reduce across all lanes
 
   var SCALARS_PER_BUS = 2
 
@@ -70,14 +68,18 @@ trait PIRSplitting extends PIRTraversal {
 
   def nMems(cu: CU, others: Iterable[CU]): Int = {
     val groups = groupBuses(globalInputs(cu))
+    cu.srams.size + nMems(groups, others)
+  }
+  def nMems(groups: BusGroups, others: Iterable[CU]): Int = {
     val scalarGrps = if (groups.scalars.nonEmpty) {
       val producers = groups.scalars.groupBy{bus => others.find{cu => scalarOutputs(cu) contains bus}}
       producers.values.map{ss => Math.ceil(ss.size.toDouble / SCALARS_PER_BUS).toInt }.sum
     }
     else 0
 
-    cu.srams.size + scalarGrps
+    scalarGrps
   }
+
 
   def nScalarIn(cu: CU) = {
     val groups = groupBuses(globalInputs(cu))
@@ -253,13 +255,10 @@ trait PIRSplitting extends PIRTraversal {
     (keep, drop)
   }
 
-  def recomputeOwnedCChains(p: Partition, control: Iterable[Stage], cchains: Set[CUCChain], isEdge: Boolean) = {
-    if (isEdge) {
-      p.cchains ++= cchains
-    }
-    else {
-      p.cchains = usedCChains(p.allStages) ++ usedCChains(p.srams) ++ usedCChains(control)
-    }
+  def recomputeOwnedCChains(p: Partition, control: Iterable[Stage], ctrl: Option[CUCChain], isEdge: Boolean) = {
+    p.cchains = usedCChains(p.allStages) ++ usedCChains(p.srams) ++ usedCChains(control)
+
+    if (isEdge && ctrl.isDefined) p.cchains += ctrl.get
   }
 
 
@@ -276,7 +275,7 @@ trait PIRSplitting extends PIRTraversal {
       p.cstages.foreach{stage => debug(s"    $stage") }
 
       debug(s"  CChains: ")
-      p.cchains.foreach{cc => debug(s"    $cc : " + globalInputs(cc).mkString(", ")) }
+      p.cchains.foreach{cc => debug(s"    $cc :: " + globalInputs(cc).mkString(", ")) }
     }
 
     val local  = p.allStages.toList
@@ -316,16 +315,25 @@ trait PIRSplitting extends PIRTraversal {
     }
     var sOuts: Int = localOuts.count{case ScalarOut(_) => true; case _ => false}
 
+    var nSRAMs: Int = 0
 
     // --- SRAMs
+    nSRAMs += p.srams.size
+    nSRAMs += nMems(cuGrpsIn, others)
+
+
     // NOTE: Have to be careful not to double count here!
     debug(s"  SRAMs: ")
+    debug(s"    Locally hosted: " + p.srams.mkString(", "))
 
     // 1. Inputs to account for remotely hosted, locally read SRAMs
     // EXCEPT ones which we've already inserted bypass vectors for (appear as live ins)
     // Needs bypass: NO
     val remoteHostLocalRead = (localReads diff p.srams) diff remoteBypasses
-    if (!isUnit) vIns += remoteHostLocalRead.size
+    if (!isUnit) {
+      vIns += remoteHostLocalRead.size
+      nSRAMs += remoteHostLocalRead.size // Retiming
+    }
     else {
       remoteHostLocalRead.foreach{sram =>
         addIn(prev.indexWhere(_.srams contains sram))
@@ -374,7 +382,10 @@ trait PIRSplitting extends PIRTraversal {
       case FeedbackAddrReg(sram) => p.srams contains sram
       case ReadAddrWire(sram)    => p.srams contains sram
     }
-    if (!isUnit) vIns += localHostRemoteAddr.size
+    if (!isUnit) {
+      vIns += localHostRemoteAddr.size
+      nSRAMs += localHostRemoteAddr.size // Retiming vector
+    }
     else {
       val prevOuts = prev.map(_.allStages.flatMap(_.outputMems).toSet)
 
@@ -388,7 +399,7 @@ trait PIRSplitting extends PIRTraversal {
         case FeedbackAddrReg(sram) => sram
         case ReadAddrWire(sram) => sram
       }
-      debug(s"  Locally hosted, remotely addressed: " + remotelyAddressed.mkString(", "))
+      debug(s"    Locally hosted, remotely addressed: " + remotelyAddressed.mkString(", "))
     }
 
 
@@ -405,7 +416,10 @@ trait PIRSplitting extends PIRTraversal {
     }
     // Live inputs from other partitions
     val liveIns  = localIns intersect remoteOuts
-    if (!isUnit) vIns += liveIns.size
+    if (!isUnit) {
+      vIns += liveIns.size
+      nSRAMs += liveIns.size // Retiming vectors
+    }
     else {
       liveIns.foreach{in =>
         addIn(prev.indexWhere{part => localOutputs(part.allStages) contains in})
@@ -423,7 +437,9 @@ trait PIRSplitting extends PIRTraversal {
 
     // Pack scalar inputs and outputs into vectors
     sIns.values.foreach{ins =>
-      vIns += Math.ceil(ins.toDouble / SCALARS_PER_BUS).toInt
+      val grpSize = Math.ceil(ins.toDouble / SCALARS_PER_BUS).toInt
+      vIns += grpSize
+      nSRAMs += grpSize // Retiming scalar bus
     }
 
     vOuts += Math.ceil(sOuts.toDouble / SCALARS_PER_BUS).toInt
@@ -456,13 +472,11 @@ trait PIRSplitting extends PIRTraversal {
     val compute = rawCompute + bypasses
 
     // TODO: One virtual memory may cost more than one physical memory...
-    val mems = p.srams.size
-
 
     // Scalars
     val sclIns = sIns.values.fold(0){_+_} + cuGrpsIn.args.size + cuGrpsIn.scalars.size
 
-    val cost = SplitCost(sclIns, sOuts, vIns, vOuts, vLocal, compute, writes, reads, mems)
+    val cost = SplitCost(sclIns, sOuts, vIns, vOuts, vLocal, compute, writes, reads, nSRAMs)
 
     debug(s"  $cost")
 
@@ -501,12 +515,13 @@ trait PIRSplitting extends PIRTraversal {
       sramOwners.foreach{s => debug(s"  $s")}
     }
     // Sanity check
-    cu.srams.foreach{sram =>
+    // HACK: Eliminate SRAMs without readers implicitly here
+    /*cu.srams.foreach{sram =>
       val owner = sramOwners.find{case LocalRef(_,SRAMReadReg(`sram`)) => true; case _ => false}
       if (owner.isEmpty) {
         throw new Exception(s"CU $cu does not have an owner reference for memory $sram")
       }
-    }
+    }*/
 
     val isUnit = cu.isUnit
     val allStages = cu.allStages.toList
@@ -516,8 +531,10 @@ trait PIRSplitting extends PIRTraversal {
     var current: Partition = new Partition(writeGroups, cu.computeStages, cu.srams)
     var remote: Partition = Partition.empty
 
+    var ctrl = cu.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}
+
     def recomputeCChains(p: Partition) = {
-      recomputeOwnedCChains(p, cu.controlStages, cu.cchains, !remote.nonEmpty || partitions.isEmpty)
+      recomputeOwnedCChains(p, cu.controlStages, ctrl, !remote.nonEmpty || partitions.isEmpty)
     }
     def getCost(p: Partition) = partitionCost(p, partitions, allStages, others, isUnit)
 

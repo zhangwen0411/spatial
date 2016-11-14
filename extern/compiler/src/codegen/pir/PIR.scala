@@ -221,6 +221,21 @@ trait PIR {
     var writeCtrl: Option[CUCChain] = None
 
     override def toString = name
+
+    def copyMem(name: String) = {
+      val copy = CUMemory(name, size, mem, reader)
+      copy.mode = this.mode
+      copy.bufferDepth = this.bufferDepth
+      copy.banking = this.banking
+      copy.vector = this.vector
+      copy.readAddr = this.readAddr
+      copy.writeAddr = this.writeAddr
+      copy.writeStart = this.writeStart
+      copy.swapWrite = this.swapWrite
+      copy.swapRead = this.swapRead
+      copy.writeCtrl = this.writeCtrl
+      copy
+    }
   }
 
 

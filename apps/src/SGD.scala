@@ -129,7 +129,7 @@ trait SGDApp extends SpatialApp {
   //     val sgdmodel = SRAM[T](D)
   //     val y_err = SRAM[T](tileSize)
   //     Sequential(E by 1) { e =>
-  //       Sequential(N by tileSize) { tile => 
+  //       Sequential(N by tileSize) { tile =>
   //         Parallel {
   //           x_tile := x(tile::tile + tileSize, 0::D par ip)
   //           y_tile := y(tile::tile + tileSize)
