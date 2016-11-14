@@ -2,14 +2,14 @@
 
 make
 
-tests=( "SimpleSequential" "DeviceMemcpy" "SimpleTileLoadStore" "FifoLoad" "ParFifoLoad" "FifoLoadStore" "SimpleReduce" "Niter" "SimpleFold" "Memcpy2D" "BlockReduce1D" "UnalignedLd" "BlockReduce2D" "ScatterGather" "InOutArg" "FifoPushPop" "DotProduct" "OuterProduct" "GDA" "BlackScholes" "TPCHQ6")
+tests=( "SimpleSequential" "DeviceMemcpy" "SimpleTileLoadStore" "FifoLoad" "ParFifoLoad" "FifoLoadStore" "SimpleReduce" "Niter" "SimpleFold" "Memcpy2D" "BlockReduce1D" "UnalignedLd" "BlockReduce2D" "ScatterGather" "InOutArg" "FifoPushPop" "DotProduct" "OuterProduct" "BlackScholes" "GDA" "MatMult_outer" "MatMult_inner" "Kmeans_fission" "LogReg" "PageRank" "SGD" "TPCHQ6" "BFS")
 
 #MultiplexedWriteTest, BubbledWriteTest, SequentialWrites
 
 for i in "${tests[@]}"
 do : 
-  echo "spatial --CGRA* $i"
-  spatial --CGRA* $i
+  echo "spatial --CGRA+ $i"
+  spatial --CGRA+ $i
   rm -rf logs/log$i
   mkdir logs/log$i
   mv logs/*.log logs/log$i/

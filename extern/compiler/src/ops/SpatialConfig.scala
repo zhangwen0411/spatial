@@ -17,7 +17,7 @@ object SpatialConfig {
 
   // Plasticine limits
   var sIn: Int = getProperty("plasticine.sIn", "8").toInt
-  var sbus: Int = getProperty("plasticine.sbus", "2").toInt
+  var sbus: Int = getProperty("plasticine.sbus", "4").toInt
   var vIn: Int = getProperty("plasticine.vIn", "4").toInt
   var vOut: Int = getProperty("plasticine.vOut", "1").toInt
   var comp: Int = getProperty("plasticine.comp", "6").toInt

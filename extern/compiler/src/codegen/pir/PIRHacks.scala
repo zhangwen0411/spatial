@@ -5,7 +5,7 @@ import scala.collection.mutable
 
 trait PIRHacks extends PIRTraversal {
   val IR: SpatialExp with PIRCommonExp
-  import IR._
+  import IR.{assert => _, _}
 
   override val name = "PIR Hacks"
   override val recurse = Always
@@ -107,6 +107,13 @@ trait PIRHacks extends PIRTraversal {
             }
 
           case _ => // Do nothing
+        }
+      }
+      else if (cu.allStages.isEmpty && !cu.isDummy) {
+        // Eliminate cchain copies in outer loops
+        cu.cchains = cu.cchains.filter{
+          case _:CChainInstance | _:UnitCChain => true
+          case _ => false
         }
       }
     }

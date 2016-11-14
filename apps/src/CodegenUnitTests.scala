@@ -735,7 +735,7 @@ trait ScatterGatherApp extends SpatialApp {
   val tileSize = 384
   val maxNumAddrs = 1536
   val offchip_dataSize = maxNumAddrs*6
-  val P = parameter(2)
+  val P = parameter(1)
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
@@ -1076,9 +1076,9 @@ trait FifoPushPopApp extends SpatialApp {
     Accel {
       val f1 = FIFO[SInt](tileSize)
       val accum = Reg[SInt](0)
-      Fold(size by tileSize)(accum, 0.as[SInt]) { iter => 
+      Fold(size by tileSize)(accum, 0.as[SInt]) { iter =>
         Pipe(tileSize by 1) { i => f1.push(iter + i) }
-        Reduce(tileSize by 1)(0.as[SInt]) { i => 
+        Reduce(tileSize by 1)(0.as[SInt]) { i =>
           f1.pop
         }{_+_}
       }{_+_}
@@ -1119,7 +1119,7 @@ trait FifoPushPopApp extends SpatialApp {
 //     setMem(OCvalues, values)
 
 //     Accel {
-//       Sequential(N by tileSize) { i => 
+//       Sequential(N by tileSize) { i =>
 //         val kTile = BRAM[SInt](tileSize)
 //         val vTile = BRAM[SInt](tileSize)
 //         val rTile = BRAM[SInt](tileSize)
@@ -1141,7 +1141,7 @@ trait FifoPushPopApp extends SpatialApp {
    // // Read input args
    //  val dim = args(0).toInt
 
-   //  // Use input args to make random off chip array values 
+   //  // Use input args to make random off chip array values
    //  setArg("B",dim)
 
    //  // Generate new data
@@ -1158,7 +1158,7 @@ trait FifoPushPopApp extends SpatialApp {
    //    println("<supressed>")
    //  }
    //  else {
-   //    keys.zip(values).map { case (a,b) => println(a + " - " + b)} 
+   //    keys.zip(values).map { case (a,b) => println(a + " - " + b)}
    //  }
 
    //  // val results = keys.zip(values).groupBy(_._1).mapValues(_.map(_._2).sum)
@@ -1166,7 +1166,7 @@ trait FifoPushPopApp extends SpatialApp {
    //  var reductions = buckets map {_ => 0}
    //  for (i <- 0 until buckets.length) {
    //    reductions(i) = keys.zip(values).filter(_._1 == buckets(i)).map(_._2).sum
-   //  } 
+   //  }
 
 
 
@@ -1175,7 +1175,7 @@ trait FifoPushPopApp extends SpatialApp {
    //    println("<supressed>")
    //  }
    //  else {
-   //    buckets.zip(reductions).map { case (a,b) => println(a + " - " + b)} 
+   //    buckets.zip(reductions).map { case (a,b) => println(a + " - " + b)}
    //  }
 
 //   }
