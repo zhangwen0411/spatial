@@ -252,6 +252,7 @@ trait PIRGenTransformer extends PIRTraversal {
   }
 
   def quote(cu: CU): String = cu.style match {
+    case UnitCU if cu.allStages.isEmpty && !cu.isDummy => "Sequential" // outer unit is "Sequential"
     case UnitCU       => "UnitPipeline"
     case StreamCU if cu.allStages.isEmpty && !cu.isDummy => "StreamController"
     case StreamCU     => "StreamPipeline"

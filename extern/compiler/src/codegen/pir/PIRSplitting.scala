@@ -257,13 +257,10 @@ trait PIRSplitting extends PIRTraversal {
     (keep, drop)
   }
 
-  def recomputeOwnedCChains(p: Partition, control: Iterable[Stage], cchains: Set[CUCChain], isEdge: Boolean) = {
-    if (isEdge) {
-      p.cchains ++= cchains
-    }
-    else {
-      p.cchains = usedCChains(p.allStages) ++ usedCChains(p.srams) ++ usedCChains(control)
-    }
+  def recomputeOwnedCChains(p: Partition, control: Iterable[Stage], ctrl: Option[CUCChain], isEdge: Boolean) = {
+    p.cchains = usedCChains(p.allStages) ++ usedCChains(p.srams) ++ usedCChains(control)
+
+    if (isEdge && ctrl.isDefined) p.cchains += ctrl.get
   }
 
 
@@ -535,8 +532,10 @@ trait PIRSplitting extends PIRTraversal {
     var current: Partition = new Partition(writeGroups, cu.computeStages, cu.srams)
     var remote: Partition = Partition.empty
 
+    var ctrl = cu.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}
+
     def recomputeCChains(p: Partition) = {
-      recomputeOwnedCChains(p, cu.controlStages, cu.cchains, !remote.nonEmpty || partitions.isEmpty)
+      recomputeOwnedCChains(p, cu.controlStages, ctrl, !remote.nonEmpty || partitions.isEmpty)
     }
     def getCost(p: Partition) = partitionCost(p, partitions, allStages, others, isUnit)
 
