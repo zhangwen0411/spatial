@@ -12,8 +12,6 @@ trait PIRSplitting extends PIRTraversal {
 
   class SplitException(val msg: String) extends Exception("Unable to split!")
 
-  val LANES = 16         // Number of SIMD lanes per CU
-  val REDUCE_STAGES = 5  // Number of stages required to reduce across all lanes
 
   var SCALARS_PER_BUS = 2
 
