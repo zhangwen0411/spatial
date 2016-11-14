@@ -515,12 +515,13 @@ trait PIRSplitting extends PIRTraversal {
       sramOwners.foreach{s => debug(s"  $s")}
     }
     // Sanity check
-    cu.srams.foreach{sram =>
+    // HACK: Eliminate SRAMs without readers implicitly here
+    /*cu.srams.foreach{sram =>
       val owner = sramOwners.find{case LocalRef(_,SRAMReadReg(`sram`)) => true; case _ => false}
       if (owner.isEmpty) {
         throw new Exception(s"CU $cu does not have an owner reference for memory $sram")
       }
-    }
+    }*/
 
     val isUnit = cu.isUnit
     val allStages = cu.allStages.toList

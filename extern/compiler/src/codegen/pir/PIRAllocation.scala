@@ -557,7 +557,46 @@ trait PIRAllocation extends PIRTraversal {
   }
 
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
-    for (cu <- mapping.values) {
+    val cus = mapping.values
+    val owner = cus.flatMap{cu => cu.srams.map{sram =>
+      (sram.reader, sram.mem) -> (cu, sram)
+    }}.toMap
+
+    for (cu <- cus) {
+      var nSRAMs = cu.srams.size
+      var prevN = -1
+      while (nSRAMs != prevN) {
+        prevN = nSRAMs
+        addSRAMsReadInWriteStages()
+        nSRAMs = cu.srams.size
+      }
+
+      def addSRAMsReadInWriteStages() {
+        val writeStages = cu.writeStages.values.flatMap(_._2).toList
+
+        val newWrites = writeStages.foreach{
+          case DefStage(reader@LocalReader(reads), _) => reads foreach {
+            case (EatAlias(mem),indices) =>
+              if (isBuffer(mem) && !cu.srams.exists{sram => sram.reader == reader && sram.mem == mem}) {
+                val (ownerCU,orig) = owner((reader, mem))
+                val copy = orig.copyMem(orig.name+"_"+quote(cu.pipe))
+                cu.srams += copy
+
+                val key = ownerCU.writeStages.keys.find{key => key.contains(orig)}
+
+                if (key.isDefined) {
+                  cu.writeStages += List(copy) -> ownerCU.writeStages(key.get)
+                }
+                debug(s"Adding SRAM $copy ($reader, $mem) read in write stage of $cu")
+              }
+          }
+          case _ =>
+        }
+      }
+
+
+    }
+    for (cu <- cus) {
       for (sram <- cu.srams) {
         initializeSRAM(sram, sram.mem, sram.reader, cu)
       }

@@ -8,24 +8,24 @@ trait PageRankApp extends SpatialApp {
   type T = Flt
   type Array[T] = ForgeArray[T]
 
-/*                                                              
-                                        0                                   
+/*
+                                        0
        _________________________________|__________________________________________________________
-      |                   |                 |                  |                 |                 |       
-      1                   3                 5                  7                 9                 11                                                        
+      |                   |                 |                  |                 |                 |
+      1                   3                 5                  7                 9                 11
    ___|______        _____|____         ____|__          ______|______           |        _________|____________
   |     |    |      |     |    |       |       |        |      |      |          |       |       |        |     |
-  2     50   55     4     92   49      150     6        8      10     12        42      110     210      310   311                                   
- _|_    _|_   |    _|_    |   _|_      |     __|_       |      |      |         |        |       |      _|_     |                                                         
-|   |  |   |  |   |   |   |  |   |     |    |    |      |      |      |         |        |       |     |   |    |       
-57 100 58 101 140 60 102  99 120 115   13  103  104    105    106    108        43      111     211   300  301  290                                               
+  2     50   55     4     92   49      150     6        8      10     12        42      110     210      310   311
+ _|_    _|_   |    _|_    |   _|_      |     __|_       |      |      |         |        |       |      _|_     |
+|   |  |   |  |   |   |   |  |   |     |    |    |      |      |      |         |        |       |     |   |    |
+57 100 58 101 140 60 102  99 120 115   13  103  104    105    106    108        43      111     211   300  301  290
                   |
             ______|________
-           |   |   |   |   |                                               
-           80 131 132 181 235                                                            
-                                                                       
-                                                                     
-                                                                     
+           |   |   |   |   |
+           80 131 132 181 235
+
+
+
 */
   val edges_per_page = 6 // Will make this random later
   val margin = 1
@@ -61,15 +61,21 @@ trait PageRankApp extends SpatialApp {
         // val newPrIdx = mux(oldPrIdx == 1, 0.as[SInt], 1.as[SInt])
         Sequential(NP by tileSize) { tid =>
           val currentPR = SRAM[T](tileSize)
+          val initPR = SRAM[T](tileSize)
+
           val edgesId = SRAM[SInt](tileSize)
           val edgesLen = SRAM[SInt](tileSize)
-          Pipe {currentPR := OCpages(tid::tid+tileSize) }
+          Pipe {initPR := OCpages(tid::tid+tileSize) }
           Pipe {edgesId := OCedgeId(tid :: tid+tileSize) }
           Pipe {edgesLen := OCedgeLen(tid :: tid+tileSize) }
           Sequential(tileSize by 1) { pid =>
             val startId = edgesId(pid)
             val numEdges = Reg[SInt](0)
             Pipe{numEdges := edgesLen(pid)}
+
+            def pageRank(id: Rep[SInt]) = {
+              mux(id <= pid, initPR(pid), currentPR(pid))
+            }
 
             // Gather edges indices and counts
             val edges = SRAM[SInt](tileSize)
@@ -78,40 +84,47 @@ trait PageRankApp extends SpatialApp {
             Pipe {counts := OCcounts(startId::startId+numEdges.value) }
 
             // Triage edges based on if they are in current tile or offchip
-            val offAddr = Reg[SInt](0)
-            val onAddr = Reg[SInt](0)
-            val frontierOff = SRAM[SInt](tileSize)
-            val frontierOn = SRAM[T](tileSize)
+            val offLoc = SRAM[SInt](tileSize)
+            val offAddr = Reg[SInt](-1)
             Sequential(numEdges.value by 1){ i =>
               val addr = edges(i) // Write addr to both tiles, but only inc one addr
-              Pipe{frontierOff(offAddr.value) = addr }
-              Pipe{frontierOn(onAddr.value) = currentPR(addr - tid)}
-              Parallel{
-                Pipe{onAddr := onAddr.value + mux(addr >= tid && addr < tid+tileSize, 1, 0)}
-                Pipe{offAddr := offAddr.value + mux(addr >= tid && addr < tid+tileSize, 0, 1)}
-              }
+              val onchip = addr >= tid && addr < tid+tileSize
+              offAddr := offAddr.value + mux(onchip, 0, 1)
+              offLoc(i) = mux(onchip, offAddr.value, -1.as[SInt])
             }
+
+            // Set up gather addresses
+            val frontierOff = SRAM[SInt](tileSize)
+            Sequential(numEdges.value by 1){i =>
+              frontierOff(offLoc(i)) = edges(i)
+            }
+
             // Gather offchip ranks
             val gatheredPR = SRAM[T](tileSize)
             Pipe {gatheredPR := OCpages(frontierOff, offAddr.value)}
 
-            // Concat with onchip ranks
-            Pipe(offAddr.value by 1) { i =>
-              val appendAddr = onAddr.value + i
-              Pipe{frontierOn(appendAddr) = gatheredPR(i)}
-            }
-
             // Compute new PR
-            val pr = Reduce(numEdges.value by 1)(0.as[T]){ i => frontierOn(i) / counts(i).to[T] }{_+_}
+            val pr = Reduce(numEdges.value by 1)(0.as[T]){ i =>
+              val addr = edges(i)
+              val off  = offLoc(i)
+              val onchipRank = pageRank(addr - tid)
+
+              val offchipRank = gatheredPR(off)
+
+              val rank = mux(off == -1.as[SInt], onchipRank, offchipRank)
+
+              rank / counts(i).to[T]
+            }{_+_}
+            //val pr = Reduce(numEdges.value by 1)(0.as[T]){ i => frontier(i) / counts(i).to[T] }{_+_}
 
             // Update PR
             currentPR(pid) = pr.value * damp + (1.as[T] - damp)
 
-            // Reset counts
-            Parallel{
+            // Reset counts (Plasticine: assume this is done by CUs)
+            /*Parallel{
               Pipe{onAddr := 0}
               Pipe{offAddr := 0}
-            }
+            }*/
 
           }
           OCpages(tid::tid+tileSize) := currentPR
@@ -134,10 +147,10 @@ trait PageRankApp extends SpatialApp {
     val NE = 18432
 
     val OCpages = Array.tabulate[T](NP){i => random[T](3)}
-    val OCedges = Array.tabulate(NP){i => Array.tabulate(edges_per_page) {j => 
+    val OCedges = Array.tabulate(NP){i => Array.tabulate(edges_per_page) {j =>
       if (i < edges_per_page) j else i - j}}.flatten
     val OCcounts = Array.tabulate(NP){i => Array.tabulate(edges_per_page) { j => edges_per_page }}.flatten
-    val OCedgeId = Array.tabulate(NP) {i => i*edges_per_page } 
+    val OCedgeId = Array.tabulate(NP) {i => i*edges_per_page }
     val OCedgeLen = Array.tabulate(NP) { i => edges_per_page }
 
     val result = pagerank(OCpages, OCedges, OCcounts, OCedgeId, OCedgeLen, iters, damp, NP)
@@ -158,7 +171,7 @@ trait PageRankApp extends SpatialApp {
         val these_edges = iterator.map{j => OCedges(j)}
         val these_pages = these_edges.map{j => gold(j)}
         val these_counts = these_edges.map{j => OCcounts(j)}
-        val pr = these_pages.zip(these_counts){ (p,c) => 
+        val pr = these_pages.zip(these_counts){ (p,c) =>
           // println("page " + i + " doing " + p + " / " + c)
           p/c.to[T]
         }.reduce{_+_}
@@ -167,7 +180,7 @@ trait PageRankApp extends SpatialApp {
       }
     }
 
-    printArr(gold, "gold: ")    
+    printArr(gold, "gold: ")
     printArr(result, "result: ")
     val cksum = result.zip(gold){ case (o, g) => (g < (o + margin)) && g > (o - margin)}.reduce{_&&_}
     println("PASS: " + cksum + " (PageRank)")
