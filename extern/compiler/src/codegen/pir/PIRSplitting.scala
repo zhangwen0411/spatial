@@ -4,6 +4,8 @@ import spatial.compiler._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
+import scala.util.control.NoStackTrace
+
 trait PIRSplitting extends PIRTraversal {
   val IR: SpatialExp with PIRCommonExp
   import IR._
@@ -13,7 +15,7 @@ trait PIRSplitting extends PIRTraversal {
   val LANES = 16         // Number of SIMD lanes per CU
   val REDUCE_STAGES = 5  // Number of stages required to reduce across all lanes
 
-  val SCALARS_PER_BUS = 4
+  var SCALARS_PER_BUS = 2
 
   case class SplitStats(
     cus:    Int = 0,
@@ -49,7 +51,7 @@ trait PIRSplitting extends PIRTraversal {
     ccus = if (cu.allStages.isEmpty) 1 else 0,
     ucus = if (cu.isUnit) 1 else 0,
     alus = nUsedALUs(cu),
-    mems = cu.srams.size,
+    mems = nMems(cu, others),
     sclIn = nScalarIn(cu),
     sclOut = nScalarOut(cu),
     vecIn = nVectorIns(cu, others),
@@ -64,6 +66,17 @@ trait PIRSplitting extends PIRTraversal {
       case _:ReduceStage => lanes // ALUs used by reduction tree
       case _ => 0
     }.fold(0){_+_}
+  }
+
+  def nMems(cu: CU, others: Iterable[CU]): Int = {
+    val groups = groupBuses(globalInputs(cu))
+    val scalarGrps = if (groups.scalars.nonEmpty) {
+      val producers = groups.scalars.groupBy{bus => others.find{cu => scalarOutputs(cu) contains bus}}
+      producers.values.map{ss => Math.ceil(ss.size.toDouble / SCALARS_PER_BUS).toInt }.sum
+    }
+    else 0
+
+    cu.srams.size + scalarGrps
   }
 
   def nScalarIn(cu: CU) = {
@@ -122,7 +135,7 @@ trait PIRSplitting extends PIRTraversal {
     read:  Int = 0, // Read stages (assumed to at least partially overlap with compute)
     mems:  Int = 0  // SRAMs
   ) {
-    def >(that: SplitCost) = (this.vIn > that.vIn || this.vOut > that.vOut || this.vLoc > that.vLoc ||
+    def >(that: SplitCost) = (this.sIn > that.sIn || this.vIn > that.vIn || this.vOut > that.vOut || this.vLoc > that.vLoc ||
                               this.comp > (that.comp + that.write) || this.write > that.write ||
                               this.read > that.read || this.mems > that.mems)
 
@@ -541,7 +554,7 @@ trait PIRSplitting extends PIRTraversal {
           remote = Partition.empty
         }
         else {
-          debug(s"Failed splitting! Playing back current set of stages: ")
+          debug(s"Failed splitting! Playing back splitting of remaining stages: ")
 
           var errReport = s"Failed splitting in $cu"
           errReport += "\nWrite stages: "
@@ -567,7 +580,7 @@ trait PIRSplitting extends PIRTraversal {
 
             errReport += "\n" + getCost(current).toString
           }
-          throw new SplitException(errReport)
+          throw new SplitException(errReport) with NoStackTrace
         }
       } // end if empty
       else {

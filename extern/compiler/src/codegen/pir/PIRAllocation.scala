@@ -85,6 +85,7 @@ trait PIRAllocation extends PIRTraversal {
     val style = pipe match {
       case Deff(_:UnitPipe) => UnitCU
       case Deff(_:Hwblock)  => UnitCU
+      case _ if styleOf(pipe) == SequentialPipe && isInnerPipe(pipe) => UnitCU
       case _ => typeToStyle(styleOf(pipe))
     }
 

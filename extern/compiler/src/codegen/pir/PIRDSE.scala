@@ -41,22 +41,30 @@ trait PIRDSE extends PIRSplitting with PIRRetiming {
     val invalid = new PrintStream(s"$dir/${name}_invalid.csv")
 
     val header = SplitStats()
-    invalid.println("VIns, Vouts, Compute, Read/Write, Stages, SRAMs")
-    valid.println  ("VIns, Vouts, Compute, Read/Write, Stages, SRAMs," + header.heading +
+    invalid.println("Scl/Bus, SIns, VIns, Vouts, Compute, Read/Write, Stages, SRAMs")
+    valid.println  ("Scl/Bus, SIns, VIns, Vouts, Compute, Read/Write, Stages, SRAMs," + header.heading +
                     ", #ALU,#SRAM,#Vin,#Vout, ALU Util, SRAM Util, VecIn Util, VecOut Util, " +
                     ", SIn/CU, SOut/CU, VIn/CU, VOut/CU, SIn/Stage, VIn/Stage")
 
-    for (vIns <- 2 to 6) { //2 to 6) {
-    for (vOuts <- 1 to 3) {
-    for (readWrite <- 1 to 10) {
-    for (comps <- 0 to (10-readWrite)) {
-    for (mmems <- 1 to vIns) {
+    // Total: ~38,000 combinations...
+    var pass = 0
+    var fail = 0
+    var first: String = ""
+
+    for (vIns <- 2 to 6) { // 5
+    for (vOuts <- 1 to 3) { // 3
+    for (readWrite <- 1 to 6) { // 7
+    for (comps <- 0 to (10-readWrite)) { // 5
+    for (mmems <- vIns-2 to vIns) { // 3
+    for (sbus <- List(1,2,4)) { // 3
+    for (sIns <- 2 to Math.min(vIns*sbus,16) by 2) { // 8  --- implies existence of a vIns*sbus : sIns crossbar (or some other selection mechanism)
       val stages = comps + readWrite
       STAGES = stages
+      SCALARS_PER_BUS = sbus
 
       var others = ArrayBuffer[CU]()
-      val pipe = SplitCost(vIn=vIns, vOut=vOuts, vLoc=1, comp=comps, write=readWrite, read=readWrite, mems=mmems)
-      val unit = SplitCost(vIn=vIns, vOut=vOuts, vLoc=1, comp=comps, write=readWrite, read=readWrite, mems=mmems)
+      val pipe = SplitCost(sIn= sIns, vIn=vIns, vOut=vOuts, vLoc=1, comp=comps, write=readWrite, read=readWrite, mems=mmems)
+      val unit = SplitCost(sIn= sIns, vIn=vIns, vOut=vOuts, vLoc=1, comp=comps, write=readWrite, read=readWrite, mems=mmems)
 
       try {
         var nPipes = 0
@@ -77,8 +85,8 @@ trait PIRDSE extends PIRSplitting with PIRRetiming {
             if (cu.allStages.nonEmpty) {
               if (cu.isUnit) nUnits += 1 else nPipes += 1
             }
+            others += cu
           }
-          others ++= split
         }
         val nALUs = LANES * (nPipes + nUnits) * (comps + readWrite)
         val nMems = mmems * (nPipes + nUnits)
@@ -98,20 +106,29 @@ trait PIRDSE extends PIRSplitting with PIRRetiming {
         val sInPerStage = stats.sclIn.toFloat / (stats.alus.toFloat / LANES)
         val vInPerStage = stats.vecIn.toFloat / (stats.alus.toFloat / LANES)
 
-        System.out.println(s"vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems: PASS")
-        valid.println(s"$vIns, $vOuts, $comps, $readWrite, $stages, $mmems, " + stats.toString +
+        if (pass == 0) {
+          first = s"sbus=$sbus, sIn=$sIns, vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems"
+        }
+        pass += 1
+
+        System.out.println(s"sbus=$sbus, sIn=$sIns, vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems: PASS")
+        valid.println(s"$sbus, $sIns, $vIns, $vOuts, $comps, $readWrite, $stages, $mmems, " + stats.toString +
                       s",$nALUs,$nMems,$nVIns,$nVOut, $aluUtil, $memUtil, $vInUtil, $vOutUtil, " +
                       s",$avgSIn,$avgSOut,$avgVIn,$avgVOut, $sInPerStage, $vInPerStage")
       }
       catch {case e:SplitException =>
-        System.out.println(s"vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems: FAIL")
+        fail += 1
+        System.out.println(s"sbus=$sbus, sIn=$sIns, vIn=$vIns, vOut=$vOuts, comps=$comps, read/write=$readWrite, mems=$mmems: FAIL")
         System.out.println(e.msg)
-        invalid.println(s"$vIns, $vOuts, $comps, $readWrite, $stages, $mmems")
+        invalid.println(s"$sbus, $sIns, $vIns, $vOuts, $comps, $readWrite, $stages, $mmems")
       }
-    }}}}}
+    }}}}}}}
     valid.close()
     invalid.close()
 
+    System.out.println(s"Pass: $pass (${100.0f * pass.toFloat / (pass + fail)})%")
+    System.out.println(s"Fail: $fail (${100.0f * fail.toFloat / (pass + fail)})%")
+    System.out.println(s"Smallest: $first")
   }
 
 }

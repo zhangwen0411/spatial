@@ -7,15 +7,9 @@ trait BlackScholesApp extends SpatialApp {
   type Array[B] = ForgeArray[B]
 
   val margin = 0.5f // Validates true if within +/- margin
-<<<<<<< HEAD
   val tileSize = 9600
   val outerPar = 1
   val innerPar = 8
-=======
-  val tileSize = 96
-  val outerPar = 1
-  val innerPar = 2
->>>>>>> origin/transform
 
   final val inv_sqrt_2xPI = 0.39894228040143270286f
 
@@ -146,11 +140,11 @@ trait BlackScholesApp extends SpatialApp {
 
     val out = blackscholes(types, prices, strike, rate, vol, time)
 
-    val inds_array = Array.tabulate(N)(j =>
+    /*val inds_array = Array.tabulate(N)(j =>
       // j
       BlkSchlsEqEuroNoDiv(prices(j), strike(j), rate(j), vol(j), time(j), types(j))
     )
-    val gold = inds_array
+    val gold = inds_array*/
     // val gold = (inds_array) map { i =>
     //   val rate = srate(i)
     //   val strike = sstrike(i)
@@ -205,11 +199,11 @@ trait BlackScholesApp extends SpatialApp {
     //   // mux(otype == 0, optionPrice2, optionPrice1)
     //   // xDiv
     // }
-    printArr(gold, "gold: ")
+    //printArr(gold, "gold: ")
     printArr(out, "result: ")
 
-    val cksum = out.zip(gold){ case (o, g) => (g < (o + margin)) && g > (o - margin)}.reduce{_&&_}
-    println("PASS: " + cksum + " (BlackSholes)")
+    //val cksum = out.zip(gold){ case (o, g) => (g < (o + margin)) && g > (o - margin)}.reduce{_&&_}
+    //println("PASS: " + cksum + " (BlackSholes)")
 
 
   }

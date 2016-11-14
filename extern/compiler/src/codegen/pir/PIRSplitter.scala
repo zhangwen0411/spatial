@@ -16,15 +16,28 @@ trait PIRSplitter extends PIRSplitting with PIRRetiming {
   val mappingIn  = mutable.HashMap[Symbol, CU]()
   val mappingOut = mutable.HashMap[Symbol, List[CU]]()
 
-  val ComputeMax = SplitCost(vIn=4, vOut=1, vLoc=1, comp=6, write=4, read=4, mems=4)
-  val UnitMax    = SplitCost(vIn=4, vOut=1, vLoc=1, comp=6, write=4, read=4, mems=4)
+  lazy val ComputeMax = SplitCost(
+    sIn=SpatialConfig.sIn,
+    vIn=SpatialConfig.vIn,
+    vOut=SpatialConfig.vOut,
+    vLoc=1,
+    comp=SpatialConfig.comp,
+    write=SpatialConfig.readWrite,
+    read=SpatialConfig.readWrite,
+    mems=SpatialConfig.mems
+  )
   STAGES = 10
+  SCALARS_PER_BUS = SpatialConfig.sbus
 
   override def run[A:Manifest](b: Block[A]) = {
     super.run(b)
-
-    val cuMapping = mappingIn.keys.map{k => mappingIn(k).asInstanceOf[ACU] -> mappingOut(k).head.asInstanceOf[ACU] }.toMap
-    swapCUs(mappingOut.values.flatten, cuMapping)
+    try {
+      val cuMapping = mappingIn.keys.map{k => mappingIn(k).asInstanceOf[ACU] -> mappingOut(k).head.asInstanceOf[ACU] }.toMap
+      swapCUs(mappingOut.values.flatten, cuMapping)
+    }
+    catch {case e: SplitException =>
+      sys.exit(-1)
+    }
     b
   }
 
@@ -35,10 +48,20 @@ trait PIRSplitter extends PIRSplitting with PIRRetiming {
 
   def split(cu: CU): List[CU] = {
     if (cu.allStages.nonEmpty) {
-      val max = if (cu.isUnit) UnitMax else ComputeMax
-      val others = mappingOut.values.flatten
-      val cus = splitCU(cu, max, others)
+      val others = mutable.ArrayBuffer[CU]()
+      others ++= mappingOut.values.flatten
+
+      val cus = splitCU(cu, ComputeMax, others)
       retime(cus, others)
+
+      cus.foreach{cu =>
+        val cost = getStats(cu, others)
+        if (cost.mems > ComputeMax.mems)
+          throw new Exception(s"${cu.srams} > ${ComputeMax.mems}, exceeded maximum SRAMs after retiming")
+
+        others += cu
+      }
+
       cus
     }
     else List(cu)
