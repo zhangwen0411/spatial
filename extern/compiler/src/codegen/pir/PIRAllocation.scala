@@ -262,8 +262,7 @@ trait PIRAllocation extends PIRTraversal {
     cu.srams.find{sram => sram.mem == mem && sram.reader == reader}.getOrElse{
       val name = s"${quote(mem)}_${quote(reader)}"
       val size = dimsOf(mem).map{case Exact(d) => d}.product.toInt
-      val sram = CUMemory(name, size, mem, reader)
-      initializeSRAM(sram, mem, reader, cu)
+      val sram = CUMemory(name, size, aliasOf(mem), reader)
       cu.srams += sram
       sram
     }
@@ -555,5 +554,15 @@ trait PIRAllocation extends PIRTraversal {
     mapping.clear()
     globals = Set.empty
     super.preprocess(b)
+  }
+
+  override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
+    for (cu <- mapping.values) {
+      for (sram <- cu.srams) {
+        initializeSRAM(sram, sram.mem, sram.reader, cu)
+      }
+    }
+
+    super.postprocess(b)
   }
 }

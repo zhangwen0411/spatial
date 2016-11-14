@@ -47,10 +47,12 @@ trait KmeansApp_fission extends SpatialApp {
     setMem(points, points_in)
 
     Accel {
-      val cts = SRAM[T](MAXK, MAXD)
+      // Initial centroids (from points)
+      val origCts = SRAM[T](MAXK, MAXD)
+      origCts := points(0::K,0::D par P0)
 
-      // Load initial centroids (from points)
-      cts := points(0::K,0::D par P0)
+      // All other iterations
+      val cts = SRAM[T](MAXK, MAXD)
 
       val DM1 = D - 1
 
@@ -65,20 +67,19 @@ trait KmeansApp_fission extends SpatialApp {
           // For each point in this set
           Fold(BN par P3, PR)(newCents, 0.as[T]){pt =>
             // Find the index of the closest centroid
-            val dists = SRAM[T](MAXK)
-
-            val last = Reg[T]
-            Sequential(K par P4){ct =>
-              val dist = Reduce(D par P2)(0.as[T]){d => (pts(pt,d) - cts(ct,d)) ** 2}{_+_}
-              dists(ct) = dist
-              last := dist
-            }
-
             val minCent = Reg[SInt]
             val minDist = Reg[T](100000.as[T])
-            Pipe(K by 1){ct =>
-              minDist := min(minDist.value, dists(ct))
-              minCent := mux(minDist == dists(ct), ct, minCent.value)
+            Pipe(K par PX){ct =>
+              val dist = Reduce(D par P2)(0.as[T]){d =>
+                val cent = mux(epoch == 0, origCts(ct,d), cts(ct,d))
+                (pts(pt,d) - cent) ** 2
+              }{_+_}
+
+              Pipe {
+                val d = dist.value
+                minDist := min(minDist.value, d)
+                minCent := mux(minDist.value == d, ct, minCent.value)
+              }
             }
 
             // Store this point to the set of accumulators
@@ -100,9 +101,9 @@ trait KmeansApp_fission extends SpatialApp {
           cts(ct, d) = newCents(ct,d) / centCount(ct)
         }
         // Flush centroid accumulator
-        Pipe(K by 1, D par P2){(ct,d) =>
+        /*Pipe(K by 1, D par P2){(ct,d) =>
           newCents(ct,d) = 0.as[T]
-        }
+        }*/
       }
 
       val flatCts = SRAM[T](K*D)
