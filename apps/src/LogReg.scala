@@ -42,9 +42,8 @@ trait LogRegApp extends SpatialApp {
 
     Accel {
       val btheta = SRAM[T](D)
-      btheta := theta(0::D par P2)
 
-      Sequential(iters by 1) { epoch => 
+      Sequential(iters by 1) { epoch =>
         val gradAcc = SRAM[T](D)
         Pipe(N by BN){ i =>
           val logregX = SRAM[T](BN, D)
@@ -98,21 +97,21 @@ trait LogRegApp extends SpatialApp {
       gold(i) = theta(i)
     }
     for (i <- 0 until iters) {
-      val next = sX.zip(sY) {case (row, y) => 
+      val next = sX.zip(sY) {case (row, y) =>
         // println("sigmoid for " + y + " is " + sigmoid(row.zip(gold){_*_}.reduce{_+_}))
-        val sub = y - sigmoid(row.zip(gold){(a,b) => 
+        val sub = y - sigmoid(row.zip(gold){(a,b) =>
           // println("doing " + a + " * " + b + " on row " + y)
           a*b}.reduce{_+_})
-        row.map{a => 
+        row.map{a =>
           // println("subtraction for " + y + " is " + (a - sub))
           a - sub}
-      }.reduce{(a,b) => a.zip(b){_+_}}  
+      }.reduce{(a,b) => a.zip(b){_+_}}
       for (i <- 0 until D) {
         gold(i) = gold(i) + next(i)
       }
       // printArr(gold, "gold now")
     }
-    
+
 
     printArr(gold, "gold: ")
     printArr(result, "result: ")
