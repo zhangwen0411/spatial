@@ -19,7 +19,9 @@ import java.io.PrintStream
 import scala.virtualization.lms.util.GraphUtil._
 
 trait DSE extends Traversal {
-  val IR: SpatialCompiler
+  val IR: SpatialExp with NodeMetadataOpsExp with MemoryAnalysisExp with LatencyAnalysisExp with AreaAnalysisExp with ParamRestrictions
+          with BoundAnalysisExp with ParameterAnalysisExp
+
   import IR.{infix_until => _, _}
 
   override val name = "Design Space Exploration"

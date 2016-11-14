@@ -44,7 +44,7 @@ trait SGDApp extends SpatialApp {
   type T = Flt
   val modelSize = 384
   val tileSize = 192
-  val innerPar = 4
+  val innerPar = 16
   val outerPar = 1
   val margin = 1
 

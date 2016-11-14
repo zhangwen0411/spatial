@@ -254,8 +254,7 @@ trait SpatialDSL extends ForgeApplication
     val RewriteTransformer    = traversal("RewriteTransformer", isExtern=true)
 
     // CGRA stuff
-    val PIRScheduling     = analyzer("PIRSchedule", isExtern=true)
-    val PIRGen            = traversal("PIRGen", isExtern=true) // Technically a codegen
+    val PIRGen            = transformer("PIRGen", isExtern=true) // Technically a codegen
     val PlasticineLatency = traversal("PlasticineLatencyAnalyzer", isExtern=true)
 
     // --- Transformer ordering notes

@@ -1,0 +1,27 @@
+#!/bin/bash
+
+make
+
+apps=("DotProduct" "OuterProduct" "BlackScholes" "GDA" "GEMM" "Kmeans" "LogReg" "PageRank" "SGD" "TPCHQ1" "TPCHQ6" "TRSM" "TriangleCounting")
+
+for i in "${apps[@]}"
+do : 
+  echo "spatial --CGRA* $i"
+  spatial --CGRA* $i
+  rm -rf logs/log$i
+  mkdir logs/log$i
+  mv logs/*.log logs/log$i/
+done
+
+# quick hack for checking for exceptions (may not always work)
+for i in "${apps[@]}"
+do : 
+  cd logs/log$i
+  for j in $(ls) 
+    do :
+      if [[ $j = *"Exception"* ]]; then 
+        echo "Error in $i"
+      fi
+    done
+  cd ../..
+done

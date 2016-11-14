@@ -7,7 +7,7 @@ trait SimpleSequentialApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   def simpleseq(xin: Rep[SInt], yin: Rep[SInt]) = {
-    val innerPar = param(4); domainOf(innerPar) = (1, 1, 1)
+    val innerPar = param(1); domainOf(innerPar) = (1, 1, 1)
     val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
 
     val x = ArgIn[SInt]
@@ -395,7 +395,7 @@ trait NiterApp extends SpatialApp {
 
 
   def nIterTest(len: Rep[SInt]) = {
-    val innerPar = param(8); domainOf(innerPar) = (1, 1, 1)
+    val innerPar = param(1); domainOf(innerPar) = (1, 1, 1)
     val tileSize = param(constTileSize); domainOf(constTileSize) = (constTileSize, constTileSize, constTileSize)
     bound(len) = 9216
 
@@ -441,7 +441,7 @@ trait SimpleFoldApp extends SpatialApp {
   val constTileSize = 96
 
   def simple_fold(src: Rep[Array[T]]) = {
-    val innerPar = param(8); domainOf(innerPar) = (1, 1, 1)
+    val innerPar = param(1); domainOf(innerPar) = (1, 1, 1)
     val tileSize = param(constTileSize); domainOf(tileSize) = (constTileSize, constTileSize, constTileSize)
     val len = src.length; bound(len) = 9216
 

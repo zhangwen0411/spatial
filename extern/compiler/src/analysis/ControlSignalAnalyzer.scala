@@ -101,8 +101,14 @@ trait ControlSignalAnalyzer extends Traversal {
     val factors = parFactorsOf(cc)
     inds.zip(factors).foreach{case (i,p) => parFactorOf(i) = p }
 
+
+//    inds.take(inds.length - 1).foreach{i => unrollFactorsOf(i) = unrollFactors }
+
     // ASSUMPTION: Only parallelize by innermost loop currently
     unrollFactors ++= List(parFactors(cc).last) //unrollFactors ++= factors
+
+//    unrollFactorsOf(inds.last) = unrollFactors
+
 
     traverseWith(ctrl)(b)
     unrollFactors = prevUnrollFactors
@@ -153,7 +159,14 @@ trait ControlSignalAnalyzer extends Traversal {
       writersOf(mem) = writersOf(mem) :+ (writer, ctrl)        // (5)
       writtenIn(ctrl) = writtenIn(ctrl) :+ mem                 // (10)
       // This memory is set as an accumulator if it's written value depends on the memory (some read node)
-      value.foreach{input => isAccum(mem) = hasDependency(input, mem) }  // (6)
+      value.foreach{input => isAccum(mem) = isAccum(mem) || hasDependency(input, mem) }  // (6)
+
+      val en = writer match {
+        case Deff(Reg_write(reg,value,en)) => Some(en)
+        case _ => None // TODO
+      }
+      en.foreach{e => isAccum(mem) = isAccum(mem) || hasDependency(e, mem) }
+
       debug(s"Adding writer ($writer,$ctrl) to $mem")
     }
   }

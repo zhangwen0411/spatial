@@ -5,10 +5,10 @@ import spatial.shared._
 object OuterProduct extends SpatialAppCompiler with OuterProductApp
 trait OuterProductApp extends SpatialApp {
   type T = SInt
-  val tileSize1 = 768
-  val tileSize2 = 192
-  val op = 2
-  val ip = 8
+  val tileSize1 = 96
+  val tileSize2 = 96
+  val op = 1
+  val ip = 1
 
   def outerproduct(a: Rep[ForgeArray[T]], b: Rep[ForgeArray[T]]) = {
     val tileSizeA = tileSize1 (96 -> 96 -> 38400)

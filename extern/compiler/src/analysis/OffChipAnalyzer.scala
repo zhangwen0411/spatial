@@ -17,7 +17,7 @@ trait OffChipAnalyzer extends Traversal {
   debugMode = SpatialConfig.debugging
   verboseMode = SpatialConfig.verbose
 
-  var softValue: Map[Exp[Reg[Any]], Exp[Any]] = Map.empty
+  var softValue: Map[Exp[Reg[_]], Exp[Any]] = Map.empty
   var offchips: Set[Exp[DRAM[Any]]] = Set.empty
 
   override def traverse(lhs: Sym[Any], rhs: Def[Any]) = rhs match {

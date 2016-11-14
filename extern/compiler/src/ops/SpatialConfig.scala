@@ -13,4 +13,14 @@ object SpatialConfig {
   var loudModels: Boolean = getProperty("spatial.loudmodels", "false") != "false"
   var enableArchDSE: Boolean = getProperty("spatial.pdse", "false") != "false"
   var enableSplitting: Boolean = getProperty("spatial.split", "true") != "false"
+
+
+  // Plasticine limits
+  var sIn: Int = getProperty("plasticine.sIn", "8").toInt
+  var sbus: Int = getProperty("plasticine.sbus", "2").toInt
+  var vIn: Int = getProperty("plasticine.vIn", "4").toInt
+  var vOut: Int = getProperty("plasticine.vOut", "1").toInt
+  var comp: Int = getProperty("plasticine.comp", "6").toInt
+  var readWrite: Int = getProperty("plasticine.rw", "4").toInt
+  var mems: Int = getProperty("plasticine.mems", "4").toInt
 }

@@ -1,0 +1,29 @@
+#!/bin/bash
+
+make
+
+tests=( "SimpleSequential" "DeviceMemcpy" "SimpleTileLoadStore" "FifoLoad" "ParFifoLoad" "FifoLoadStore" "SimpleReduce" "Niter" "SimpleFold" "Memcpy2D" "BlockReduce1D" "UnalignedLd" "BlockReduce2D" "ScatterGather" "InOutArg" "FifoPushPop" "DotProduct" "OuterProduct" "GDA" "BlackScholes" "TPCHQ6")
+
+#MultiplexedWriteTest, BubbledWriteTest, SequentialWrites
+
+for i in "${tests[@]}"
+do : 
+  echo "spatial --CGRA* $i"
+  spatial --CGRA* $i
+  rm -rf logs/log$i
+  mkdir logs/log$i
+  mv logs/*.log logs/log$i/
+done
+
+# quick hack for checking for exceptions (may not always work)
+for i in "${tests[@]}"
+do : 
+  cd logs/log$i
+  for j in $(ls) 
+    do :
+      if [[ $j = *"Exception"* ]]; then 
+        echo "Error in $i"
+      fi
+    done
+  cd ../..
+done

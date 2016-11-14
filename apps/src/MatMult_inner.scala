@@ -13,6 +13,7 @@ trait MatMult_innerApp extends SpatialApp {
   val innerPar = 4
   val midPar = 2
   val outerPar = 2
+  val storePar = 1
 
   def MatMult_inner(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
     val M = ArgIn[SInt]
@@ -29,11 +30,12 @@ trait MatMult_innerApp extends SpatialApp {
     val bm = tileSizeM (1 -> 1536)
     val bn = tileSizeN (96 -> 96 -> 1536)
     val bp = tileSizeP (96 -> 96 -> 1536)
+
     val op = outerPar (1 -> 6)
-    val mp = midPar (1 -> 96)
+    val mp = midPar   (1 -> 96)
     val ip = innerPar (1 -> 96)
-    val upMidPar = 1 (1 -> 1)
-    val stPar    = innerPar (1 -> 1)
+    val px = 1 (1 -> 1) // Cannot parallelize accum across k blocks
+    val stPar = storePar (1 -> 1)
 
     setMem(a, A)
     setMem(b, B)
@@ -41,14 +43,14 @@ trait MatMult_innerApp extends SpatialApp {
     Accel {
       Pipe(M by bm, (N by bn) par op){(i,j) =>
         val tileC = SRAM[T](bm, bn)
-        Pipe((P by bp) par upMidPar){k =>
+        Pipe((P by bp) par px){k =>
           val tileA = SRAM[T](bm, bp)
           val tileB = SRAM[T](bp, bn)
           Parallel {
-            tileA := a(i::i+bm, k::k+bp)
+            tileA := a(i::i+bm, k::k+bp) // Reads M*N*P times
             tileB := b(k::k+bp, j::j+bn)
           }
-          Sequential(bm by 1, (bn by 1) par mp){ (ii,jj) =>    // MetaPipe?
+          Pipe(bm by 1, (bn by 1) par mp){ (ii,jj) =>    // MetaPipe?
             val prod = Reduce((bp by 1) par ip)(0.as[T]){ kk => tileA(ii, kk) * tileB(kk, jj) }{_+_}
             val prev = mux(k == 0, 0.as[T], tileC(ii,jj))
             tileC(ii,jj) = prev + prod.value // Is a unit pipe that should be recognized as accum
