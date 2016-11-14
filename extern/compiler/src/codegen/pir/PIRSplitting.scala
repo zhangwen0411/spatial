@@ -324,7 +324,7 @@ trait PIRSplitting extends PIRTraversal {
 
     // --- SRAMs
     nSRAMs += p.srams.size
-    nSRAMs += nMems(cuGrpsIn)
+    nSRAMs += nMems(cuGrpsIn, others)
 
 
     // NOTE: Have to be careful not to double count here!
