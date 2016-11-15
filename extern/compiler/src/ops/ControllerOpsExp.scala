@@ -500,7 +500,7 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
       emitComment(s"quoteSuffix = $quoteSuffix")
       emit(s"""DFEVar ${quote(sym)}_en = top_en;""")
       emitGlobalWire(s"""${quote(sym)}_done""")
-      emit(s"""top_done <== ${quote(sym)}_done;""")
+      emit(s"""top_done := ${quote(sym)}_done;""")
       emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")
       emitController(sym, None)
       emitBlock(func)
@@ -1284,7 +1284,6 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
       print_stage_prefix(s"Hwblock",s"",s"${quote(sym)}")
 			inHwScope = true
-      /*
 			emitComment("Emitting Hwblock dependencies {")
       val hwblockDeps = recursiveDeps(rhs)
       expToArg.keys.filterNot { hwblockDeps.contains(_) } foreach { argToExp -= expToArg(_) }
@@ -1321,9 +1320,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       emitComment(s"quoteSuffix = $quoteSuffix")
       emit(s"""var ${quote(sym)}_en = top_en;""")
       emitGlobalWire(s"""${quote(sym)}_done""")
-      emit(s"""top_done <== ${quote(sym)}_done;""")
-      emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")*/
-      //emitController(sym, None)
+      emit(s"""top_done := ${quote(sym)}_done;""")
+      emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")
+      emitController(sym, None)
       emitComment("\n--------------- HW BLOCK ----------------\n")      
       emitBlock(func)
 			inHwScope = false
@@ -1492,19 +1491,18 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         } else {
           1
         }
-        emit(s"""OffsetExpr ${quote(sym)}_offset = stream.makeOffsetAutoLoop("${quote(sym)}_offset");""")
-        emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this, $numCounters));""")
-        emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
-        emit(s"""    ${quote(sym)}_done <== stream.offset(${quote(sym)}_sm.getOutput("sm_done"),-1-${quote(sym)}_offset);""")
+        emit(s"""var ${quote(sym)}_sm = Module(new ${smStr}($numCounters));""")
+        emit(s"""    ${quote(sym)}_sm.io.sm_en := ${quote(sym)}_en;""")
+        emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done""")
 
-        emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
+        emit(s"""var ${quote(sym)}_rst_en := ${quote(sym)}_sm.io.rst_en;""")
         emitGlobalWire(s"""${quote(sym)}_rst_done""")
-        emit(s"""${quote(sym)}_sm.connectInput("rst_done", ${quote(sym)}_rst_done);""")
-        emit(s"""${quote(sym)}_rst_done <== stream.offset(${quote(sym)}_rst_en, -${quote(sym)}_offset-1);""")
+        emit(s"""${quote(sym)}_sm.io.rst_done = ${quote(sym)}_rst_done;""")
+        emit(s"""${quote(sym)}_rst_done := ${quote(sym)}_rst_en;""")
         if (!cchain.isDefined) {
           // Unit pipe, emit constant 1's wherever required
-          emit(s"""${quote(sym)}_sm.connectInput("sm_maxIn_0", constant.var(dfeInt(32), 1));""")
-          emit(s"""${quote(sym)}_sm.connectInput("ctr_done", stream.offset(${quote(sym)}_sm.getOutput("ctr_en"), -1));""")
+          emit(s"""${quote(sym)}_sm.io.sm_maxIn_0 := UInt(1);""")
+          emit(s"""${quote(sym)}_sm.io.ctr_done := ${quote(sym)}_sm.io.ctr_en;""")
         }
       case CoarsePipe =>
         emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this));""")
@@ -1527,9 +1525,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         }
         emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
       case SequentialPipe =>
-        emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this));""")
-        emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
-        emit(s"""    ${quote(sym)}_done <== stream.offset(${quote(sym)}_sm.getOutput("sm_done"),-1);""")
+        emit(s"""var ${quote(sym)}_sm = Module(new ${smStr}));""")
+        emit(s"""    ${quote(sym)}_sm.io.sm_en := ${quote(sym)}_en;""")
+        emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done""")
         if (cchain.isDefined) {
           val Def(EatReflect(Counterchain_new(counters))) = cchain.get
           var niter_str = s""
@@ -1541,11 +1539,11 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
             niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}))"
           }
           emit(s"""var ${quote(sym)}_niter = ${quote(niter_str)};""")
-          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", ${quote(sym)}_niter.cast(dfeUInt(32)));""")
+          emit(s"""${quote(sym)}_sm,io.sm_numIter := ${quote(sym)}_niter.cast(dfeUInt(32)));""")
         } else {
-          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", constant.var(dfeUInt(32), 1));""")
+          emit(s"""${quote(sym)}_sm.io.sm_numIter := UInt(1);""")
         }
-        emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
+        emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.rst_en;""")
       case ForkJoin =>
         emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this));""")
         emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
@@ -1559,9 +1557,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     if (!isInnerPipe(sym)) {
 		  childrenOf(sym).zipWithIndex.foreach { case (c, idx) =>
 		  	emitGlobalWire(s"""${quote(c)}_done""")
-		  	emit(s"""${quote(sym)}_sm.connectInput("s${idx}_done", ${quote(c)}_done);""")
+		  	emit(s"""${quote(sym)}_sm.io.s${idx}_done := ${quote(c)}_done;""")
         emitGlobalWire(s"""${quote(c)}_en""")
-        emit(s"""${quote(c)}_en <== ${quote(sym)}_sm.getOutput("s${quote(idx)}_en");""")
+        emit(s"""${quote(c)}_en := ${quote(sym)}_sm.io.s${quote(idx)}_en;""")
         childrenSet += (s"${quote(c)}_en, ${quote(c)}_done")
         percentDSet += (s"${idx}: %d %d")
 		  	enDeclaredSet += c

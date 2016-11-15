@@ -1872,7 +1872,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
     case Argin_new(init) =>
       withStream(baseStream) {
         val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-        emit(s"""DFEVar ${quote(sym)} = io.scalarInput("${quote(sym)}", $ts );""")
+        emit(s"""var ${quote(sym)} = UInt(INPUT)""")
       }
       if (argToExp.contains(sym.asInstanceOf[Sym[Reg[Any]]])) {
         emit(s"""${quote(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))} <== ${quote(sym)};""")

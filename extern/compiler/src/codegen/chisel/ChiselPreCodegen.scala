@@ -16,33 +16,33 @@ import scala.collection.mutable.Set
 import ppl.delite.framework.DeliteApplication
 
 trait ChiselPreCodegen extends Traversal  {
-	val IR:SpatialExp with MemoryAnalysisExp with UnrollingTransformExp with ExternPrimitiveOpsExp
-	import IR.{infix_until => _, looprange_until => _, println => _, _}
+    val IR:SpatialExp with MemoryAnalysisExp with UnrollingTransformExp with ExternPrimitiveOpsExp
+    import IR.{infix_until => _, looprange_until => _, println => _, _}
 
-	var buildDir:String = _
+    var buildDir:String = _
 
   //debugMode = false
   override val name = "ChiselPreCodegen"
 
-	lazy val chiselManagerGen = new ChiselManagerGen {
-		val IR: ChiselPreCodegen.this.IR.type = ChiselPreCodegen.this.IR
-	}
+    lazy val chiselManagerGen = new ChiselManagerGen {
+        val IR: ChiselPreCodegen.this.IR.type = ChiselPreCodegen.this.IR
+    }
 
-  // def isConstOrArgOrBnd(x: Exp[Any]) = x match {
-  //   case s@Sym(n) => {
-  //     s match {
-  //       case Deff(ConstFixPt(_,_,_,_)) => true
-  //       case Deff(ConstFltPt(_,_,_)) => true
-  //       case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
-  //         xx match {
-  //           case Deff(Argin_new(_)) => true
-  //           case _ =>  false
-  //         }
-  //       case Deff(_) => false // None
-  //       case _ => true // Is bound
-  //     }
-  //   }
-  // }
+   //def isConstOrArgOrBnd(x: Exp[Any]) = x match {
+     //case s@Sym(n) => {
+       //s match {
+         //case Deff(ConstFixPt(_,_,_,_)) => true
+         //case Deff(ConstFltPt(_,_,_)) => true
+         //case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
+           //xx match {
+             //case Deff(Argin_new(_)) => true
+             //case _ =>  false
+           //}
+         //case Deff(_) => false // None
+         //case _ => true // Is bound
+       //}
+     //}
+   //}
 
   def quote(x: Exp[Any]) = x match {
     case s@Sym(n) => {
@@ -60,28 +60,28 @@ trait ChiselPreCodegen extends Traversal  {
       chiselManagerGen.quote(x)
   }
 
-	val argInOuts  = Set.empty[Sym[Reg[_]]]
-	val memStreams = Set.empty[Sym[Any]]
+    val argInOuts  = Set.empty[Sym[Reg[_]]]
+    val memStreams = Set.empty[Sym[Any]]
 
   override def preprocess[A:Manifest](b: Block[A]): Block[A] = {
-		argInOuts.clear
-		memStreams.clear
-		b
-	}
+        argInOuts.clear
+        memStreams.clear
+        b
+    }
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
-		withStream(newStream("ChiselManager")) {
-			chiselManagerGen.emitManager(stream, argInOuts, memStreams)
-		}
-		b
-	}
+        withStream(newStream("ChiselManager")) {
+            chiselManagerGen.emitManager(stream, argInOuts, memStreams)
+        }
+        b
+    }
 
-	def newStream(fileName:String):PrintWriter = {
-		val path = buildDir + java.io.File.separator + fileName + ".chisel"
-		val pw = new PrintWriter(path)
-		pw
-	}
+    def newStream(fileName:String):PrintWriter = {
+        val path = buildDir + java.io.File.separator + fileName + ".scala"
+        val pw = new PrintWriter(path)
+        pw
+    }
 
-	var stream:PrintWriter = _
+    var stream:PrintWriter = _
 
   def withStream[A](out: PrintWriter)(body: => A): A = {
     val save = stream
@@ -90,61 +90,61 @@ trait ChiselPreCodegen extends Traversal  {
   }
 
 
-	def emit(str: String):Unit = {
-		stream.println(str)
-	}
+    def emit(str: String):Unit = {
+        stream.println(str)
+    }
 
   override def traverseStm(stm: Stm): Unit = stm match { // override this to implement custom traversal
     case TP(sym, rhs) => {
-			preGenNodes(sym,rhs)
-			super.traverseStm(stm)
-		}
+            preGenNodes(sym,rhs)
+            super.traverseStm(stm)
+        }
     case _ =>
       super.traverseStm(stm)
-	}
+    }
 
   def preGenNodes(sym: Sym[Any], rhs: Def[Any]):Unit = rhs match {
     case e@Hwblock(func) =>
-			withStream(newStream("sequential_" + quote(sym))) {
-				emitSeqSM(quote(sym), childrenOf(sym).length)
-			}
-		case e@ParallelPipe(func: Block[Unit]) =>
-			withStream(newStream("parallel_" + quote(sym))) {
-				emitParallelSM(quote(sym), childrenOf(sym).length)
-			}
+            withStream(newStream("sequential_" + quote(sym))) {
+                emitSeqSM(quote(sym), childrenOf(sym).length)
+            }
+        case e@ParallelPipe(func: Block[Unit]) =>
+            withStream(newStream("parallel_" + quote(sym))) {
+                emitParallelSM(quote(sym), childrenOf(sym).length)
+            }
     case e@OpForeach(cchain, func, inds) =>
-			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
-				case CoarsePipe =>
-					withStream(newStream("metapipe_" + quote(sym))) {
-    				emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
-					}
-				case InnerPipe =>
-				case SequentialPipe =>
-					withStream(newStream("sequential_" + quote(sym))) {
-    				emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
-					}
-			}
+            styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
+                case CoarsePipe =>
+                    withStream(newStream("metapipe_" + quote(sym))) {
+                    emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
+                    }
+                case InnerPipe =>
+                case SequentialPipe =>
+                    withStream(newStream("sequential_" + quote(sym))) {
+                    emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
+                    }
+            }
     case e@OpReduce(cchain, accum, zero, foldAccum, ldFunc, stFunc, func, rFunc, inds, acc, res, rV) =>
-			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
+            styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
 
-				case CoarsePipe =>
-					withStream(newStream("metapipe_" + quote(sym))) {
-    				emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
-					}
-				case InnerPipe =>
-				case SequentialPipe =>
-					withStream(newStream("sequential_" + quote(sym))) {
-    				emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
-					}
-			}
+                case CoarsePipe =>
+                    withStream(newStream("metapipe_" + quote(sym))) {
+                    emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
+                    }
+                case InnerPipe =>
+                case SequentialPipe =>
+                    withStream(newStream("sequential_" + quote(sym))) {
+                    emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
+                    }
+            }
 
     case e@UnrolledForeach(cc, func, inds, vs) =>
-			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
-				case CoarsePipe =>
-					withStream(newStream("metapipe_" + quote(sym))) {
-    				emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
-					}
-				case InnerPipe =>
+            styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
+                case CoarsePipe =>
+                    withStream(newStream("metapipe_" + quote(sym))) {
+                    emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
+                    }
+                case InnerPipe =>
           parentOf(sym).get match {
             case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
               if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
@@ -154,11 +154,11 @@ trait ChiselPreCodegen extends Traversal  {
               }
             case _ =>
           }
-				case SequentialPipe =>
-					withStream(newStream("sequential_" + quote(sym))) {
-    				emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
-					}
-			}
+                case SequentialPipe =>
+                    withStream(newStream("sequential_" + quote(sym))) {
+                    emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
+                    }
+            }
     case e@UnrolledReduce(cchain, accum, func, rFunc, inds, vs, acc, rV) =>
       withStream(newStream("metapipe_" + quote(sym))) {
         emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
@@ -172,12 +172,12 @@ trait ChiselPreCodegen extends Traversal  {
       }
 
     case e@UnitPipe(func) =>
-			styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
-				case CoarsePipe =>
-					withStream(newStream("metapipe_" + quote(sym))) {
+            styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
+                case CoarsePipe =>
+                    withStream(newStream("metapipe_" + quote(sym))) {
             emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
-					}
-				case InnerPipe =>
+                    }
+                case InnerPipe =>
           parentOf(sym).get match {
             case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
               if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
@@ -187,11 +187,11 @@ trait ChiselPreCodegen extends Traversal  {
               }
             case _ =>
           }
-				case SequentialPipe =>
+                case SequentialPipe =>
           withStream(newStream("sequential_" + quote(sym))) {
             emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
-					}
-			}
+                    }
+            }
 
     case e@Counter_new(start,end,step,par) =>
       withStream(newStream("counter_" + quote(sym))) {
@@ -204,7 +204,7 @@ trait ChiselPreCodegen extends Traversal  {
         emitCtrSM(quote(sym), pars, 0, counters.length)
       }
 
-		case e:Argin_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
+        case e:Argin_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
     case e:Argout_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
 
     case _:BurstStore[_] => memStreams += sym
@@ -247,10 +247,10 @@ trait ChiselPreCodegen extends Traversal  {
     case Reflect(s, u, effects) =>
       preGenNodes(sym, s)
     case Reify(s, u, effects) =>
-		case _ => {
-			//println("tp:" + sym.tp.erasure.getSimpleName() + "rhs:" + rhs)
-		}
-	}
+        case _ => {
+            //println("tp:" + sym.tp.erasure.getSimpleName() + "rhs:" + rhs)
+        }
+    }
 
 //   def emitNBufSM(name: String, i: Int, bufs: Int) = {
 //   stream.println(s"""
@@ -1054,13 +1054,13 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
   }
 
   def emitSeqSM(name: String, numStates: Int):Unit = {
-		if (numStates==0) {
-			emit(s"""//Number of stages = 0 for ${name}. Nothing is emitted""")
-			return
-		}
+        if (numStates==0) {
+            emit(s"""//Number of stages = 0 for ${name}. Nothing is emitted""")
+            return
+        }
     emit("""
-import Chisel._
-""")
+    import Chisel._
+    """)
 
   val smName = name
   val states = (0 until numStates).map(List(_)).toList
@@ -1074,7 +1074,7 @@ import Chisel._
 
   emit("""
 
-  	 // Module IO
+       // Module IO
     val io = new Bundle {
       
       // State machine IO
@@ -1117,19 +1117,19 @@ import Chisel._
   """)
 
   emit("""
-	// Initialize registers
+    // Initialize registers
     val stateFF = Reg(init = pipeInit)
     val sizeFF = Reg(init = 0)
     val counterFF = Reg(init = 0)
     val rstCounterFF = Reg(init = 0)
 
-	// Bitvector keeps track of which kernels have finished execution
-	// This is a useful hardware synchronization structure to keep
-	// track of which kernels have executed/finished execution
-	val bitVector = Bits(0, ${numStates})
+    // Bitvector keeps track of which kernels have finished execution
+    // This is a useful hardware synchronization structure to keep
+    // track of which kernels have executed/finished execution
+    val bitVector = Bits(0, ${numStates})
 
     def resetBitVector() = {
-    	bitVector := 0
+        bitVector := 0
     }
     """)
 
@@ -1156,7 +1156,7 @@ import Chisel._
           }
 
           is (pipeReset) {
-          	rst_en := 1;
+              rst_en := 1;
             rstCounterFF := rstCounterFF + 1
             when (rstCounterFF === rstCycles) {
               stateFF := S0
@@ -1172,11 +1172,11 @@ import Chisel._
     val name = stateNames(i)
     emit(s"""
           is (${name}) {""")
-    		for (s <- state) {
+            for (s <- state) {
                emit(s"""s${s}_en <== ~(  bitVector(s) | s${s}_done);""")
             }
 
-      		stateTextSeq(state(0), numStates)
+              stateTextSeq(state(0), numStates)
     emit(s"""
           }""")
   }
@@ -1205,87 +1205,87 @@ import Chisel._
     "S" + state.map( _.toString).reduce(_+_)
   }
 
-	def emitParallelSM(name: String, numParallel: Int):Unit = {
-		if (numParallel==0) {
-			emit(s"""//Number of parallel stages = 0 for ${name}. Nothing is emitted""")
-			return
-		}
-		emit(s"""
-			import Chisel._ 
+    def emitParallelSM(name: String, numParallel: Int):Unit = {
+        if (numParallel==0) {
+            emit(s"""//Number of parallel stages = 0 for ${name}. Nothing is emitted""")
+            return
+        }
+        emit(s"""
+            import Chisel._ 
 
-		    // States
-    		val pipeInit :: pipeRun :: pipeDone :: Nil = Enum(UInt(), 3)
-  		""")
+            // States
+            val pipeInit :: pipeRun :: pipeDone :: Nil = Enum(UInt(), 3)
+          """)
 
 
-		emit(s"""
-			// Module IO
-    		val io = new Bundle {
+        emit(s"""
+            // Module IO
+            val io = new Bundle {
       
-     		// State machine IO
-      		val sm_done = Bool(OUTPUT)
-      		val sm_en = Bool(INPUT)
-			""");
+             // State machine IO
+              val sm_done = Bool(OUTPUT)
+              val sm_en = Bool(INPUT)
+            """);
 
-		for(i <- 0 until numParallel) {
-			emit(s"""
-				val s${i}_done = Bool(INPUT)
-				val s${i}_en = Bool(OUTPUT)
-				""")
-		}
+        for(i <- 0 until numParallel) {
+            emit(s"""
+                val s${i}_done = Bool(INPUT)
+                val s${i}_en = Bool(OUTPUT)
+                """)
+        }
 
-		emit(s"""
-			// State storage
-			val stateFF = Reg(init = pipeInit)
-			val bitVector = Bits(0, ${numParallel})
+        emit(s"""
+            // State storage
+            val stateFF = Reg(init = pipeInit)
+            val bitVector = Bits(0, ${numParallel})
 
-			val numParallel = ${numParallel}
-			""")
+            val numParallel = ${numParallel}
+            """)
 
-		emit(s"""
-			when (sm_en) {
-					""")
+        emit(s"""
+            when (sm_en) {
+                    """)
 
-		for(i <- 0 until numParallel) {
-			emit(s"""
-				when (s${i}_done) {
-					bitVector($i) := 1
-				""")
-			for (i <- 0 until numParallel) {
-				emit(s"""s${i}_en := ~(bitVector(${i}) | s${i}_done)""")
-			}
-			emit(s"""}""")
-								
-		}
+        for(i <- 0 until numParallel) {
+            emit(s"""
+                when (s${i}_done) {
+                    bitVector($i) := 1
+                """)
+            for (i <- 0 until numParallel) {
+                emit(s"""s${i}_en := ~(bitVector(${i}) | s${i}_done)""")
+            }
+            emit(s"""}""")
+                                
+        }
 
-		emit(s"""
-			switch (stateFF) {
-				is (pipeInit) {
-					stateFF := pipeRun
-				}
-				""")
+        emit(s"""
+            switch (stateFF) {
+                is (pipeInit) {
+                    stateFF := pipeRun
+                }
+                """)
 
-		emit(s"""
-			is (pipeRun) {""")
-				val condStr = (0 until numParallel).map("bitVector(" + _ + ")").reduce(_ + " & " + _)
-				emit(s"""
-					IF($condStr) {
-						bitVector := 0
-						stateFF := pipeDone
-					}
-			}
+        emit(s"""
+            is (pipeRun) {""")
+                val condStr = (0 until numParallel).map("bitVector(" + _ + ")").reduce(_ + " & " + _)
+                emit(s"""
+                    IF($condStr) {
+                        bitVector := 0
+                        stateFF := pipeDone
+                    }
+            }
 
-			is (pipeDone) {
-				bitVector := 0
-				sm_done := 1
-				stateFF := pipeDone;
-			}
-			
-			}
-				}
-			}
-			""")
-	}
+            is (pipeDone) {
+                bitVector := 0
+                sm_done := 1
+                stateFF := pipeDone;
+            }
+            
+            }
+                }
+            }
+            """)
+    }
 
   private def getStates(N: Int) = {
     val l = 0.until(N).toList
@@ -1337,10 +1337,10 @@ import Chisel._
   }
 
   def emitMPSM(name: String, numStates: Int):Unit = {
-		if (numStates==0) {
-			emit(s"""//Number of stages = 0 for ${name}. Nothing is emitted""")
-			return
-		}
+        if (numStates==0) {
+            emit(s"""//Number of stages = 0 for ${name}. Nothing is emitted""")
+            return
+        }
     emit("""
 package engine;
   import com.maxeler.maxcompiler.v2.kernelcompiler.KernelLib;
