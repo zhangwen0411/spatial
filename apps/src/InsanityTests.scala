@@ -6,6 +6,33 @@ import spatial.shared._
  * Odd tests to test the soundness of Spatial regardless of realistic app construction.
  **/
 
+object IndirectWrite extends SpatialAppCompiler with IndirectWriteApp
+trait IndirectWriteApp extends SpatialApp {
+  def main() {
+    val A = DRAM[SInt](96)
+    val B = DRAM[SInt](96)
+    val C = DRAM[SInt](32)
+
+    Accel {
+      val a = SRAM[SInt](32)
+      val b = SRAM[SInt](32)
+      val c = SRAM[SInt](32)
+
+      Pipe(96 by 32){i =>
+        Parallel {
+          a := A(i::i+32)
+          b := B(i::i+32)
+        }
+
+        Pipe(32 by 1){j =>
+          c(a(i)) = b(i)
+        }
+      }
+      C(0::32) := c
+    }
+  }
+}
+
 // Testing LMS CSE of (dense) Tiles
 object TileCseTest extends SpatialAppCompiler with TileCseTestApp
 trait TileCseTestApp extends SpatialApp {

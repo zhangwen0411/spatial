@@ -345,7 +345,7 @@ trait PIRTraversal extends ControllerTools with QuotingExp {
     }
 
     // A CU can have multiple SRAMs for a given mem symbol, one for each local read
-    def memories(mem: Symbol) = readersOf(mem).filter(_.controlNode == cu.pipe).map{reader => this.mem(mem, reader.node) }
+    def memories(mem: Symbol) = cu.srams.filter(_.mem == mem)
 
 
     // HACK: Keep track of first read of accum reg (otherwise can use the wrong stage)

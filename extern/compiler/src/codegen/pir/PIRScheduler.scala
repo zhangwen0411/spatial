@@ -38,6 +38,10 @@ trait PIRScheduler extends PIRTraversal {
       for ((s,r) <- cu.regTable) {
         debug(s"  $s -> $r")
       }
+      debug(s"  SRAMs:")
+      for (sram <- pcu.srams) {
+        debug(s"""    $sram (sym: ${sram.mem}, reader: ${sram.reader})""")
+      }
       debug(s"  Write stages:")
       for ((k,v) <- pcu.writeStages) {
         debug(s"    Memories: " + k.mkString(", "))
@@ -73,7 +77,7 @@ trait PIRScheduler extends PIRTraversal {
       if (cu.srams.nonEmpty) {
         debug(s"SRAMs: ")
         for (sram <- cu.srams) {
-          debug(s"""  $sram [${sram.mode}]""")
+          debug(s"""  $sram [${sram.mode}] (sym: ${sram.mem}, reader: ${sram.reader})""")
           debug(s"""    banking   = ${sram.banking.map(_.toString).getOrElse("N/A")}""")
           debug(s"""    vector    = ${sram.vector.map(_.toString).getOrElse("N/A")}""")
           debug(s"""    writeAddr = ${sram.writeAddr.map(_.toString).getOrElse("N/A")}""")
@@ -128,11 +132,15 @@ trait PIRScheduler extends PIRTraversal {
   }
 
   def writeAddrToStage(mem: Symbol, addr: Symbol, ctx: CUContext, local: Boolean = false) {
+    debug(s"Setting write address for " + ctx.memories(mem).mkString(", "))
+
     ctx.memories(mem).foreach{sram =>
       sram.writeAddr = Some(allocateAddrReg(sram, addr, ctx, write=true, local=local))
     }
   }
   def fifoOnWriteToStage(mem: Symbol, start: Option[Symbol], end: Option[Symbol], ctx: CUContext) {
+    debug(s"Setting FIFO-on-write for " + ctx.memories(mem).mkString(", "))
+
     ctx.memories(mem).foreach{sram =>
       if (sram.mode != FIFOMode) sram.mode = FIFOOnWriteMode
       sram.writeAddr = None
