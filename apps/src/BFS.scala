@@ -23,24 +23,24 @@ import spatial.shared._
                                                           | |
                                                           | |
                                                           |_|
-                                                                       
-                                        0                                   
+
+                                        0
        _________________________________|__________________________________________________________
-      |                   |                 |                  |                 |                 |       
-      1                   3                 5                  7                 9                 11                                                        
+      |                   |                 |                  |                 |                 |
+      1                   3                 5                  7                 9                 11
    ___|______        _____|____         ____|__          ______|______           |        _________|____________
   |     |    |      |     |    |       |       |        |      |      |          |       |       |        |     |
-  2     50   55     4     92   49      150     6        8      10     12        42      110     210      310   311                                   
- _|_    _|_   |    _|_    |   _|_      |     __|_       |      |      |         |        |       |      _|_     |                                                         
-|   |  |   |  |   |   |   |  |   |     |    |    |      |      |      |         |        |       |     |   |    |       
-57 100 58 101 140 60 102  99 120 115   13  103  104    105    106    108        43      111     211   300  301  290                                               
+  2     50   55     4     92   49      150     6        8      10     12        42      110     210      310   311
+ _|_    _|_   |    _|_    |   _|_      |     __|_       |      |      |         |        |       |      _|_     |
+|   |  |   |  |   |   |   |  |   |     |    |    |      |      |      |         |        |       |     |   |    |
+57 100 58 101 140 60 102  99 120 115   13  103  104    105    106    108        43      111     211   300  301  290
                   |
             ______|________
-           |   |   |   |   |                                               
-           80 131 132 181 235                                                            
-                                                                       
-                                                                     
-                                                                     
+           |   |   |   |   |
+           80 131 132 181 235
+
+
+
 */
 object BFS extends SpatialAppCompiler with BFSApp
 trait BFSApp extends SpatialApp {
@@ -97,16 +97,22 @@ trait BFSApp extends SpatialApp {
             lastLen := frontierCounts(lastFetch)
           }
           Pipe{pieceMem := OCedges(nextId :: nextId + nextLen.value)}
-          Pipe(nextLen.value by 1) { kk => 
+
+          val frontierAddr = SRAM[SInt](tileSize)
+          Pipe(nextLen.value by 1) { kk =>
             /* Since Fold is a metapipe and we read concatReg before
-               we write to it, this means iter0 and iter1 both read 
+               we write to it, this means iter0 and iter1 both read
                0 in concatReg.  I.e. we always see the previous iter's
                value of concatReg, so we should add nextLen to it here
                if we are not on the first iter (since concatReg is and
                should be 0)
             */
             val plus = mux(k == 0, 0, lastLen.value)
-            frontierNodes(kk + concatReg.value + plus) = pieceMem(kk)
+            frontierAddr(kk) = kk + concatReg.value + plus
+          }
+
+          Pipe(nextLen.value by 1) { kk =>
+            frontierNodes(frontierAddr(kk)) = pieceMem(kk)
           }
           nextLen
         }{_+_}
