@@ -23,4 +23,6 @@ object SpatialConfig {
   var comp: Int = getProperty("plasticine.comp", "6").toInt
   var readWrite: Int = getProperty("plasticine.rw", "4").toInt
   var mems: Int = getProperty("plasticine.mems", "4").toInt
+
+  var checkBounds: Boolean = getProperty("plasticine.bnds", "false") != "false"
 }

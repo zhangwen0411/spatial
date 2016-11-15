@@ -139,19 +139,26 @@ trait PIRScheduler extends PIRTraversal {
       sram.writeCtrl = None
       sram.swapWrite = None
 
-      start match {
-        case Some(e) => ctx.reg(e) match {
-          case x: LocalScalar => sram.writeStart = Some(x)
-          case x => throw new Exception(s"Invalid FIFO-on-write start $x")
-        }
-        case None => // Do nothing
+      // HACK: Raghu and Yaqi don't like unaligned loads
+      if (!SpatialConfig.checkBounds) {
+        sram.writeStart = None
+        sram.writeEnd = None
       }
-      end match {
-        case Some(e) => ctx.reg(e) match {
-          case x: LocalScalar => sram.writeEnd = Some(x)
-          case x => throw new Exception(s"Invalid FIFO-on-write start $x")
+      else {
+        start match {
+          case Some(e) => ctx.reg(e) match {
+            case x: LocalScalar => sram.writeStart = Some(x)
+            case x => throw new Exception(s"Invalid FIFO-on-write start $x")
+          }
+          case None => // Do nothing
         }
-        case None => // No end
+        end match {
+          case Some(e) => ctx.reg(e) match {
+            case x: LocalScalar => sram.writeEnd = Some(x)
+            case x => throw new Exception(s"Invalid FIFO-on-write start $x")
+          }
+          case None => // No end
+        }
       }
     }
   }

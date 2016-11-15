@@ -8,7 +8,7 @@ import scala.util.control.NoStackTrace
 
 trait PIRSplitting extends PIRTraversal {
   val IR: SpatialExp with PIRCommonExp
-  import IR._
+  import IR.{assert => _, _}
 
   class SplitException(val msg: String) extends Exception("Unable to split!")
 
@@ -67,8 +67,9 @@ trait PIRSplitting extends PIRTraversal {
   }
 
   def nMems(cu: CU, others: Iterable[CU]): Int = {
-    val groups = groupBuses(globalInputs(cu))
-    cu.srams.size + nMems(groups, others)
+    val sramVectors = cu.srams.flatMap(_.vector)
+    val nonRetimedGroups = groupBuses(globalInputs(cu) diff sramVectors)
+    cu.srams.size + nMems(nonRetimedGroups, others)
   }
   def nMems(groups: BusGroups, others: Iterable[CU]): Int = {
     val scalarGrps = if (groups.scalars.nonEmpty) {
@@ -166,44 +167,82 @@ trait PIRSplitting extends PIRTraversal {
    **/
   case class WriteGroup(mems: List[CUMemory], stages: List[Stage])
 
-  class Partition(write: Map[Int, WriteGroup], compute: ArrayBuffer[Stage], mems: Set[CUMemory]) {
+  class Partition(write: Map[Int, WriteGroup], compute: ArrayBuffer[Stage], mems: Set[CUMemory], owners: Set[LocalRef], cc: Option[CUCChain], edge: Boolean) {
     var wstages = Map[Int, WriteGroup]() ++ write
     var cstages: List[Stage] = compute.toList
     var cchains: Set[CUCChain] = Set[CUCChain]()
     var srams: Set[CUMemory] = Set[CUMemory]() ++ mems
 
+    private val sramOwners: Set[LocalRef] = owners
+    private val isEdge: Boolean = edge
+    private val ctrl: Option[CUCChain] = cc
+
+    recomputeSRAMs()
+    recomputeCChains(false)
+
     def nonEmpty = wstages.nonEmpty || cstages.nonEmpty
 
     def allStages: Iterator[Stage] = cstages.iterator ++ wstages.values.flatMap(_.stages.iterator)
 
-    def spliceOwner(mem: CUMemory, sramOwners: Set[LocalRef]) = {
-      val ownerOpt = sramOwners.find{case LocalRef(_,SRAMReadReg(`mem`)) => true; case _ => false}
-      val stageIdx = if (ownerOpt.isDefined) cstages.indexWhere{stage => stage.inputRefs contains ownerOpt.get} else -1
-      if (ownerOpt.isDefined && stageIdx > -1) {
-        val owner = ownerOpt.get
-        val output = LocalRef(owner.stage+1, owner.reg) // Stage doesn't matter here
-        val newOwner = MapStage(Bypass, List(owner), List(output))
+    def spliceSRAMOwner(): Boolean = {
+      val ownerIdx = cstages.indexWhere{
+        case stage@MapStage(Bypass,ins,outs) =>
+          !outs.exists{case LocalRef(_,SRAMReadReg(_)) => true; case _ => false} &&
+          (ins exists (sramOwners contains _))
 
-        cstages(stageIdx) match {
-          case stage:MapStage => stage.ins = stage.ins.map{case `owner` => output; case ref => ref}
-          case _ => throw new Exception("Reduce stage is not a valid SRAM read host stage")
-        }
-        cstages = cstages.take(stageIdx) ++ (newOwner +: cstages.drop(stageIdx))
+        case stage@MapStage(op,ins,_) => (ins exists (sramOwners contains _))
+        case _ => false
       }
-      else throw new Exception(s"Cannot find owner for $mem")
+      if (ownerIdx > -1) {
+        val stage = cstages(ownerIdx)
+
+        val owner = stage.inputRefs.find(sramOwners contains _).get
+        val output = LocalRef(owner.stage+1, owner.reg) // Stage doesn't matter here
+        val bypass = MapStage(Bypass, List(owner), List(output))
+
+        stage match {
+          case stage@MapStage(op,ins,outs) => stage.ins = stage.ins.map{case `owner` => output; case ref => ref}
+          case _ => throw new Exception("Cannot have ReduceStage as SRAM owner")
+        }
+        assert(!stage.inputRefs.contains(owner))
+        assert(stage.inputRefs.contains(output))
+        cstages = cstages.take(ownerIdx) ++ (bypass +: cstages.drop(ownerIdx))
+
+        true
+      }
+      else false
     }
 
-    def popCompute(sramOwners: Set[LocalRef]) = {
-      val stage = cstages.last
-      cstages = cstages.dropRight(1)
+    def popHead(n: Int = 1) = {
+      val stages = cstages.take(n)
+      cstages = cstages.drop(n)
       val (keep, drop) = recomputeOwnedSRAMs(this, sramOwners)
       wstages = keep
-      (stage, drop)
+      recomputeCChains(false)
+      (stages, drop, cstages.isEmpty)
     }
-    def addCompute(drop: (Stage, Map[Int, WriteGroup])) {
-      cstages = drop._1 +: cstages
-      val keys = wstages.keySet ++ drop._2.keySet
-      val joined = keys.map{k => (wstages.get(k), drop._2.get(k)) match {
+
+    def popTail(n: Int = 1) = {
+      val stages = cstages.takeRight(n)
+      cstages = cstages.dropRight(n)
+      val (keep, drop) = recomputeOwnedSRAMs(this, sramOwners)
+      wstages = keep
+      recomputeCChains(false)
+      (stages, drop, cstages.isEmpty)
+    }
+
+    private def recomputeCChains(nowEdge: Boolean) {
+      recomputeOwnedCChains(this, ctrl, isEdge || nowEdge)
+    }
+
+    private def recomputeSRAMs() {
+      val (keep, drop) = recomputeOwnedSRAMs(this, sramOwners)
+      wstages = keep
+    }
+
+    private def add(writes: Map[Int, WriteGroup]) {
+      val keys = wstages.keySet ++ writes.keySet
+      val joined = keys.map{k => (wstages.get(k), writes.get(k)) match {
         case (Some(a),Some(b)) => k -> WriteGroup((a.mems ++ b.mems).distinct, a.stages)
         case (Some(a), None)   => k -> a
         case (None, Some(b))   => k -> b
@@ -211,9 +250,26 @@ trait PIRSplitting extends PIRTraversal {
       }}.toMap
       wstages = joined
     }
+
+    def addTail(drop: (List[Stage], Map[Int, WriteGroup], Boolean)) {
+      cstages = cstages ++ drop._1
+      add(drop._2)
+      recomputeSRAMs()
+      recomputeCChains(drop._3)
+    }
+
+    def addHead(drop: (List[Stage], Map[Int, WriteGroup], Boolean)) {
+      cstages = drop._1 ++ cstages
+      add(drop._2)
+      recomputeSRAMs()
+      recomputeCChains(drop._3)
+    }
+
   }
   object Partition {
-    def empty = new Partition(Map[Int,WriteGroup](), ArrayBuffer[Stage](), Set[CUMemory]())
+    def empty(owners: Set[LocalRef], cc: Option[CUCChain], isEdge: Boolean) = {
+      new Partition(Map[Int,WriteGroup](), ArrayBuffer[Stage](), Set[CUMemory](), owners, cc, isEdge)
+    }
   }
 
   // Recompute required memories + write stages for given compute stages
@@ -255,8 +311,8 @@ trait PIRSplitting extends PIRTraversal {
     (keep, drop)
   }
 
-  def recomputeOwnedCChains(p: Partition, control: Iterable[Stage], ctrl: Option[CUCChain], isEdge: Boolean) = {
-    p.cchains = usedCChains(p.allStages) ++ usedCChains(p.srams) ++ usedCChains(control)
+  def recomputeOwnedCChains(p: Partition, /*control: Iterable[Stage],*/ ctrl: Option[CUCChain], isEdge: Boolean) = {
+    p.cchains = usedCChains(p.allStages) ++ usedCChains(p.srams) /*++ usedCChains(control)*/
 
     if (isEdge && ctrl.isDefined) p.cchains += ctrl.get
   }
@@ -319,12 +375,21 @@ trait PIRSplitting extends PIRTraversal {
 
     // --- SRAMs
     nSRAMs += p.srams.size
-    nSRAMs += nMems(cuGrpsIn, others)
+
+    val sramVectors = p.srams.flatMap(_.vector)
+    val nonRetimedGroups = groupBuses(cuInBuses diff sramVectors)
+
+    nSRAMs += nMems(nonRetimedGroups, others)
 
 
-    // NOTE: Have to be careful not to double count here!
+    // TODO: Have to be more careful not to double count here!
+    // Can double count for bypasses and multiple outputs for single stage
+
     debug(s"  SRAMs: ")
-    debug(s"    Locally hosted: " + p.srams.mkString(", "))
+    debug(s"    Locally hosted: ")
+    if (debugMode) {
+      p.srams.foreach{sram => debug(s"      $sram :: " + globalInputs(sram).mkString(", ")) }
+    }
 
     // 1. Inputs to account for remotely hosted, locally read SRAMs
     // EXCEPT ones which we've already inserted bypass vectors for (appear as live ins)
@@ -442,6 +507,43 @@ trait PIRSplitting extends PIRTraversal {
       nSRAMs += grpSize // Retiming scalar bus
     }
 
+
+    // Count the scalar/vector outputs for each stage independently to avoid double counting
+    /*
+    var sOuts = 0
+    var vOuts = 0
+
+    p.cstages.foreach{
+      case MapStage(op,ins,outs) =>
+        if (op != Bypass) {
+          ins.foreach{
+            case ref@LocalRef(_,SRAMReadReg(sram)) =>
+              if (sramOwners.contains(ref) && localHostRemoteRead.contains(sram)) {
+                if (isUnit) sOuts += 1
+                else        vOuts += 1
+              }
+            case _ => // No output
+          }
+        }
+        val scalOrVec = outs.collect{
+          case _:ScalarOut => false
+          case _:VectorOut => true
+          case reg if (liveOuts contains reg) => !isUnit
+          case ReadAddrWire(sram) if remoteHostLocalAddr contains sram => !isUnit
+          case FeedbackAddrReg(sram) if remoteHostLocalAddr contains sram => !isUnit
+          case FeedbackDataReg(sram) if remoteHostLocalWrite contains sram => !isUnit
+        }
+        if (scalOrVec.nonEmpty) {
+          val isVec = scalOrVec.exists(_ == true)
+          if (isVec) vOuts += 1
+          else       sOuts += 1
+        }
+
+      case ReduceStage(op,init,in,acc) =>
+        if (liveOuts contains acc)
+          sOuts += 1
+    }*/
+
     vOuts += Math.ceil(sOuts.toDouble / SCALARS_PER_BUS).toInt
 
 
@@ -526,52 +628,37 @@ trait PIRSplitting extends PIRTraversal {
     val isUnit = cu.isUnit
     val allStages = cu.allStages.toList
 
+    val ctrl = cu.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}
+
 
     val partitions = ArrayBuffer[Partition]()
-    var current: Partition = new Partition(writeGroups, cu.computeStages, cu.srams)
-    var remote: Partition = Partition.empty
+    var current: Partition = Partition.empty(sramOwners, ctrl, true)
+    val remote: Partition = new Partition(writeGroups, cu.computeStages, cu.srams, sramOwners, ctrl, false)
 
-    var ctrl = cu.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}
-
-    def recomputeCChains(p: Partition) = {
-      recomputeOwnedCChains(p, cu.controlStages, ctrl, !remote.nonEmpty || partitions.isEmpty)
-    }
     def getCost(p: Partition) = partitionCost(p, partitions, allStages, others, isUnit)
 
-    while (remote.nonEmpty || current.nonEmpty) {
+    while (remote.nonEmpty) {
       debug(s"Computing partition ${partitions.length}")
 
-      // Force SRAM + cchain recompute
-      recomputeOwnedSRAMs(current, sramOwners)
-      recomputeCChains(current)
-
+      // Bite off a chunk to maximize compute usage
+      current addTail remote.popHead(arch.comp + arch.write)
       var cost = getCost(current)
-      while (cost > arch) {
 
-        remote addCompute current.popCompute(sramOwners)  // split off a compute stage
-        recomputeCChains(current)
-
+      while (!(cost > arch) && remote.nonEmpty) {
+        current addTail remote.popHead()
         cost = getCost(current)
       }
-      if (current.cstages.isEmpty) {
-        recomputeOwnedSRAMs(remote, sramOwners)
 
-        val spliceTarget = remote.srams.find{sram =>
-          val ownerOpt = sramOwners.find{case LocalRef(_,SRAMReadReg(`sram`)) => true; case _ => false}
-          if (ownerOpt.isEmpty) {
-            throw new Exception(s"No SRAM owner found for memory $sram in $cu")
-          }
-          val owner = ownerOpt.get
-          !remote.cstages.exists{case MapStage(Bypass,List(`owner`),_) => true; case _ => false}
-        }
-        if (spliceTarget.isDefined) {
-          debug(s"Splicing memory owner for SRAM ${spliceTarget.get} and retrying")
-          remote.spliceOwner(spliceTarget.get, sramOwners)
-          current = remote
-          remote = Partition.empty
-        }
-        else {
-          debug(s"Failed splitting! Playing back splitting of remaining stages: ")
+      while (cost > arch) {
+        remote addHead current.popTail()
+        cost = getCost(current)
+      }
+
+      if (current.cstages.isEmpty) {
+        // Find first SRAM owner which can still be spliced
+        debug(s"Failed splitting. Checking for splittable SRAM owner stages...")
+        if ( !remote.spliceSRAMOwner() ) {
+          debug(s"No remaining SRAM owners to split.")
 
           var errReport = s"Failed splitting in $cu"
           errReport += "\nWrite stages: "
@@ -582,21 +669,10 @@ trait PIRSplitting extends PIRTraversal {
           errReport += s"\nCompute stages: "
           remote.cstages.foreach{stage => errReport += s"\n  $stage" }
 
-          current = remote
-          remote = Partition.empty
-          recomputeOwnedSRAMs(current, sramOwners)
-          recomputeCChains(current)
-
-          errReport += "\nCost for each split option: "
+          errReport += "\nCost for last split option: "
+          current addTail remote.popHead()
           val cost = getCost(current)
           errReport += s"\n$cost"
-
-          while (current.nonEmpty) {
-            remote addCompute current.popCompute(sramOwners)
-            recomputeCChains(current)
-
-            errReport += "\n" + getCost(current).toString
-          }
           throw new SplitException(errReport) with NoStackTrace
         }
       } // end if empty
@@ -614,8 +690,7 @@ trait PIRSplitting extends PIRTraversal {
         }
 
         partitions += current
-        current = remote
-        remote = Partition.empty
+        current = Partition.empty(sramOwners, ctrl, false)
       }
     } // end while
 

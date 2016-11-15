@@ -113,8 +113,30 @@ trait PIRCommonExp extends PIRCommon with NodeMetadataOpsExp with MemoryAnalysis
     case StreamPipe     => StreamCU
   }
 
+  // HACK
+  def bank(mem: Symbol, access: Symbol, isUnit: Boolean) = {
+    val pattern = accessPatternOf(access).last
+    val stride  = 1
 
-  def bank(mem: Symbol, access: Symbol, iter: Option[Symbol]) = {
+    def bankFactor = if (isUnit) 1 else 16
+
+    val banking = pattern match {
+      case AffineAccess(Exact(a),i,b) => StridedBanking(a.toInt, bankFactor)
+      case StridedAccess(Exact(a), i) => StridedBanking(a.toInt, bankFactor)
+      case OffsetAccess(i, b)         => StridedBanking(1, bankFactor)
+      case LinearAccess(i)            => StridedBanking(1, bankFactor)
+      case InvariantAccess(b)         => NoBanking
+      case RandomAccess               => NoBanking
+    }
+    banking match {
+      case StridedBanking(stride,f) if f > 1  => Strided(stride)
+      case StridedBanking(stride,f) if f == 1 => NoBanks
+      case NoBanking if isUnit                => NoBanks
+      case NoBanking                          => Duplicated
+    }
+  }
+
+  /*def bank(mem: Symbol, access: Symbol, iter: Option[Symbol]) = {
     //val indices = accessIndicesOf(access)
     val pattern = accessPatternOf(access)
     val strides = constDimsToStrides(dimsOf(mem).map{case Exact(d) => d.toInt})
@@ -123,6 +145,15 @@ trait PIRCommonExp extends PIRCommon with NodeMetadataOpsExp with MemoryAnalysis
 
     if (pattern.forall(_ == InvariantAccess)) NoBanks
     else {
+      val ap = pattern.last
+      val str = stride.last
+      ap match {
+        case AffineAccess(Exact(a),i,b) =>
+      }
+
+      (pattern.last, stride.last) match {
+        case
+      }
       val banking = (pattern, strides).zipped.map{case (pattern, stride) => pattern match {
         case AffineAccess(Exact(a),i,b) => StridedBanking(a.toInt*stride, bankFactor(i))
         case StridedAccess(Exact(a), i) => StridedBanking(a.toInt*stride, bankFactor(i))
@@ -140,7 +171,7 @@ trait PIRCommonExp extends PIRCommon with NodeMetadataOpsExp with MemoryAnalysis
         case NoBanking                   => NoBanks
       }
     }
-  }
+  }*/
   def mergeBanking(bank1: SRAMBanking, bank2: SRAMBanking) = (bank1,bank2) match {
     case (Strided(s1),Strided(s2)) if s1 == s2 => Strided(s1)
     case (Strided(s1),Strided(s2)) => Diagonal(s1, s2)

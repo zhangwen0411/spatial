@@ -242,8 +242,8 @@ trait PIRAllocation extends PIRTraversal {
     val readIter  = readCtrl.flatMap{cc => cu.innermostIter(cc) }
 
     val banking = if (isFIFO(mem.tp)) Strided(1) else {
-      val readBanking  = bank(mem, read, readIter)
-      val writeBanking = writer.map{w => bank(mem, w.node, writeIter) }.getOrElse(NoBanks)
+      val readBanking  = bank(mem, read, cu.isUnit)
+      val writeBanking = writer.map{w => bank(mem, w.node, writerCU.get.isUnit) }.getOrElse(NoBanks)
       mergeBanking(writeBanking, readBanking)
     }
 
