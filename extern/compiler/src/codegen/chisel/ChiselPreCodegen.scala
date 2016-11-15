@@ -44,6 +44,11 @@ trait ChiselPreCodegen extends Traversal  {
      //}
    //}
 
+  def emitBuildSBT(stream:PrintWriter) = {
+	this.stream = stream
+  	emit(s"""libraryDependencies += "edu.berkeley.cs" %% "chisel" % "latest.release"""")
+  }
+
   def quote(x: Exp[Any]) = x match {
     case s@Sym(n) => {
       s match {
@@ -69,17 +74,26 @@ trait ChiselPreCodegen extends Traversal  {
         b
     }
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
-        withStream(newStream("ChiselManager")) {
-            chiselManagerGen.emitManager(stream, argInOuts, memStreams)
-        }
-        b
-    }
+		withStream(newStream("ChiselManager")) {
+			chiselManagerGen.emitManager(stream, argInOuts, memStreams)
+		}
+		withStream(newSBTStream("build")) {
+			emitBuildSBT(stream)
+		}
+		b
+	}
 
-    def newStream(fileName:String):PrintWriter = {
-        val path = buildDir + java.io.File.separator + fileName + ".scala"
-        val pw = new PrintWriter(path)
-        pw
-    }
+	def newSBTStream(fileName:String):PrintWriter = {
+		val path = buildDir + java.io.File.separator + fileName + ".sbt"
+		val pw = new PrintWriter(path)
+		pw
+	}
+
+	def newStream(fileName:String):PrintWriter = {
+		val path = buildDir + java.io.File.separator + fileName + ".scala"
+		val pw = new PrintWriter(path)
+		pw
+	}
 
     var stream:PrintWriter = _
 

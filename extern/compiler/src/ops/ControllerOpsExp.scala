@@ -1317,6 +1317,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
          }
       }
 			emitComment(" End Hwblock dependencies }")
+      emitComment("\n //Setup Top Level IO")
       emitComment(s"quoteSuffix = $quoteSuffix")
       emit(s"""var ${quote(sym)}_en = top_en;""")
       emitGlobalWire(s"""${quote(sym)}_done""")
@@ -1491,11 +1492,11 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         } else {
           1
         }
-        emit(s"""var ${quote(sym)}_sm = Module(new ${smStr}($numCounters));""")
+        emit(s"""val ${quote(sym)}_sm = Module(new ${smStr}($numCounters));""")
         emit(s"""    ${quote(sym)}_sm.io.sm_en := ${quote(sym)}_en;""")
         emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done""")
 
-        emit(s"""var ${quote(sym)}_rst_en := ${quote(sym)}_sm.io.rst_en;""")
+        emit(s"""val ${quote(sym)}_rst_en := ${quote(sym)}_sm.io.rst_en;""")
         emitGlobalWire(s"""${quote(sym)}_rst_done""")
         emit(s"""${quote(sym)}_sm.io.rst_done = ${quote(sym)}_rst_done;""")
         emit(s"""${quote(sym)}_rst_done := ${quote(sym)}_rst_en;""")
