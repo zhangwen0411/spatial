@@ -117,7 +117,7 @@ trait PIR {
   }
   case class CounterReg(cchain: CUCChain, idx: Int) extends LocalMem[CounterReg] with ReadAddr with WriteAddr {
     override def eql(that: CounterReg) = this.cchain == that.cchain && this.idx == that.idx
-    override def toString = cchain.name+s"($idx)"
+    override def toString = cchain+s"($idx)"
   }
 
   case class ControlReg() extends LocalMem[ControlReg] {

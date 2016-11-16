@@ -241,10 +241,25 @@ trait PIRTraversal extends ControllerTools with QuotingExp {
     cu.cchains.foreach{cchain => swapCU_cchain(cchain) }
     cu.parent = cu.parent.map{parent => mapping.getOrElse(parent,parent) }
     cu.deps = cu.deps.map{dep => mapping.getOrElse(dep, dep) }
+    cu.srams.foreach{sram => swapCU_sram(sram) }
+    cu.allStages.foreach{stage => stage.inputMems.foreach(swapCU_reg) }
 
-    def swapCU_cchain(cchain: CUCChain) = cchain match {
+    def swapCU_cchain(cchain: CUCChain): Unit = cchain match {
       case cc: CChainCopy => cc.owner = mapping.getOrElse(cc.owner,cc.owner)
       case _ => // No action
+    }
+    def swapCU_reg(reg: LocalComponent): Unit = reg match {
+      case CounterReg(cc,i) => swapCU_cchain(cc)
+      case ValidReg(cc,i) => swapCU_cchain(cc)
+      case _ =>
+    }
+
+    def swapCU_sram(sram: CUMemory) {
+      sram.swapWrite.foreach(swapCU_cchain)
+      sram.swapRead.foreach(swapCU_cchain)
+      sram.writeCtrl.foreach(swapCU_cchain)
+      sram.readAddr.foreach{case reg:LocalComponent => swapCU_reg(reg); case _ => }
+      sram.writeAddr.foreach{case reg:LocalComponent => swapCU_reg(reg); case _ => }
     }
   }
 

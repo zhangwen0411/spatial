@@ -17,10 +17,59 @@ trait PIRScheduler extends PIRTraversal {
 
   override def run[A:Manifest](b: Block[A]): Block[A] = {
     super.run(b)
-    val cuMapping = mappingIn.keys.map{s => mappingIn(s).asInstanceOf[ACU] -> mappingOut(s).asInstanceOf[ACU] }.toMap
+    val cuMapping = mappingIn.keys.map{s =>
+
+      debug(s"${mappingIn(s)} -> ${mappingOut(s)}")
+
+      mappingIn(s).asInstanceOf[ACU] -> mappingOut(s).asInstanceOf[ACU]
+    }.toMap
 
     // Swap dependencies, parents, cchain owners from pcu to cu
+
     swapCUs(mappingOut.values, cuMapping)
+
+
+    if (debugMode) {
+      for ((k,v) <- cuMapping) {
+        debug(s"$k -> $v")
+      }
+
+      for (cu <- mappingOut.values) {
+        debug(s"")
+        debug(s"Generated CU: $cu")
+        debug(s"Counter chains: ")
+        cu.cchains.foreach{cchain =>
+          debug(s"  $cchain")
+        }
+
+        if (cu.srams.nonEmpty) {
+          debug(s"SRAMs: ")
+          for (sram <- cu.srams) {
+            debug(s"""  $sram [${sram.mode}] (sym: ${sram.mem}, reader: ${sram.reader})""")
+            debug(s"""    banking   = ${sram.banking.map(_.toString).getOrElse("N/A")}""")
+            debug(s"""    vector    = ${sram.vector.map(_.toString).getOrElse("N/A")}""")
+            debug(s"""    writeAddr = ${sram.writeAddr.map(_.toString).getOrElse("N/A")}""")
+            debug(s"""    readAddr  = ${sram.readAddr.map(_.toString).getOrElse("N/A")}""")
+            debug(s"""    start     = ${sram.writeStart.map(_.toString).getOrElse("N/A")}""")
+            debug(s"""    end       = ${sram.writeEnd.map(_.toString).getOrElse("N/A")}""")
+            debug(s"""    swapWrite = ${sram.swapWrite.map(_.toString).getOrElse("N/A")}""")
+            debug(s"""    swapRead  = ${sram.swapRead.map(_.toString).getOrElse("N/A")}""")
+            debug(s"""    writeCtrl = ${sram.writeCtrl.map(_.toString).getOrElse("N/A")}""")
+          }
+        }
+
+        for (srams <- cu.writeStages.keys) {
+          debug(s"Generated write stages ($srams): ")
+          cu.writeStages(srams).foreach(stage => debug(s"  $stage"))
+        }
+        debug("Generated compute stages: ")
+        cu.computeStages.foreach(stage => debug(s"  $stage"))
+
+        debug(s"CU global inputs:")
+        globalInputs(cu).foreach{in => debug(s"  $in") }
+      }
+    }
+
     b
   }
 
@@ -72,34 +121,6 @@ trait PIRScheduler extends PIRTraversal {
     cu.regs ++= writeStageRegs
 
     mappingOut += pipe -> cu
-
-    if (debugMode) {
-      if (cu.srams.nonEmpty) {
-        debug(s"SRAMs: ")
-        for (sram <- cu.srams) {
-          debug(s"""  $sram [${sram.mode}] (sym: ${sram.mem}, reader: ${sram.reader})""")
-          debug(s"""    banking   = ${sram.banking.map(_.toString).getOrElse("N/A")}""")
-          debug(s"""    vector    = ${sram.vector.map(_.toString).getOrElse("N/A")}""")
-          debug(s"""    writeAddr = ${sram.writeAddr.map(_.toString).getOrElse("N/A")}""")
-          debug(s"""    readAddr  = ${sram.readAddr.map(_.toString).getOrElse("N/A")}""")
-          debug(s"""    start     = ${sram.writeStart.map(_.toString).getOrElse("N/A")}""")
-          debug(s"""    end       = ${sram.writeEnd.map(_.toString).getOrElse("N/A")}""")
-          debug(s"""    swapWrite = ${sram.swapWrite.map(_.toString).getOrElse("N/A")}""")
-          debug(s"""    swapRead  = ${sram.swapRead.map(_.toString).getOrElse("N/A")}""")
-          debug(s"""    writeCtrl = ${sram.writeCtrl.map(_.toString).getOrElse("N/A")}""")
-        }
-      }
-
-      for (srams <- cu.writeStages.keys) {
-        debug(s"Generated write stages ($srams): ")
-        cu.writeStages(srams).foreach(stage => debug(s"  $stage"))
-      }
-      debug("Generated compute stages: ")
-      cu.computeStages.foreach(stage => debug(s"  $stage"))
-
-      debug(s"CU global inputs:")
-      globalInputs(cu).foreach{in => debug(s"  $in") }
-    }
   }
 
   def scheduleStage(stage: PseudoStage, ctx: CUContext) = stage match {
