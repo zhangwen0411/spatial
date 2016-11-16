@@ -7,7 +7,7 @@ trait BlackScholesApp extends SpatialApp {
   type Array[B] = ForgeArray[B]
 
   val margin = 0.5f // Validates true if within +/- margin
-  val tileSize = 9600
+  val tileSize = 8000
   val outerPar = 1
   val innerPar = 8
 

@@ -645,11 +645,13 @@ trait PIRSplitting extends PIRTraversal {
       var cost = getCost(current)
 
       while (!(cost > arch) && remote.nonEmpty) {
+        //debug(s"Adding stages until exceeds cost")
         current addTail remote.popHead()
         cost = getCost(current)
       }
 
-      while (cost > arch) {
+      while (cost > arch && current.nonEmpty) {
+        //debug(s"Removing stage")
         remote addHead current.popTail()
         cost = getCost(current)
       }

@@ -6,7 +6,7 @@ object DotProduct extends SpatialAppCompiler with DotProductApp
 trait DotProductApp extends SpatialApp {
   type T = SInt
 
-  val tileSize = 96
+  val tileSize = 8000
   val innerPar = 2
   val outerPar = 1
   type Array[T] = ForgeArray[T]
@@ -32,8 +32,8 @@ trait DotProductApp extends SpatialApp {
     Accel {
       val reg = Reg[T]
       Fold(N by B par P1)(reg, 0.as[T]){ i =>
-        val b1 = FIFO[T](B)
-        val b2 = FIFO[T](B)
+        val b1 = SRAM[T](B)
+        val b2 = SRAM[T](B)
         val bn = Reg[SInt](999)
         Parallel { // ISSUE #2
           b1 := v1(i::i+B par P3)
@@ -41,7 +41,7 @@ trait DotProductApp extends SpatialApp {
           Pipe{ bn := min(N.value - i, B) }
         }
         Reduce(bn par P2)(0.as[T]){ii =>
-          b1.pop * b2.pop
+          b1(ii) * b2(ii)
         }{_+_} // Reg
       }{_+_} // Reg
       Pipe { out := reg }

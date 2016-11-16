@@ -34,7 +34,7 @@ trait PageRankApp extends SpatialApp {
   def pagerank(INpages: Rep[Array[T]], INedges: Rep[Array[SInt]], INcounts: Rep[Array[T]], INedgeId: Rep[Array[SInt]], INedgeLen: Rep[Array[SInt]], OCiters: Rep[SInt], OCdamp: Rep[T], np: Rep[SInt]) = {
 
     val NE = 9216
-    val tileSize = 96 // For now
+    val tileSize = 768 // For now
     val iters = ArgIn[SInt]
     val NP    = ArgIn[SInt]
     val damp  = ArgIn[T]

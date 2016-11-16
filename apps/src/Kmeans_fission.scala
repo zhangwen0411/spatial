@@ -8,8 +8,8 @@ trait KmeansApp_fission extends SpatialApp {
   type T = Flt
 
   val num_cents = 96
-  val dim = 12
-  val tileSize = 96
+  val dim = 384
+  val tileSize = 20
   val innerPar = 2
   val outerPar = 1
   val margin = 1

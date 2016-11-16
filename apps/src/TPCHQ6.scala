@@ -44,7 +44,7 @@ trait TPCHQ6_App extends SpatialApp {
   val MAX_DATE = 9999
   val MIN_DISC = 0
   val MAX_DISC = 9999
-  val tileSize = 96
+  val tileSize = 8000
   val outerPar = 1
   val innerPar = 2
   val margin = 1
@@ -76,10 +76,10 @@ trait TPCHQ6_App extends SpatialApp {
 
       val acc = Reg[FT]
       Fold(dataSize by ts par op)(acc, 0.as[FT]){ i =>
-        val datesTile  = FIFO[UInt](ts)
-        val quantsTile = FIFO[UInt](ts)
-        val disctsTile = FIFO[FT](ts)
-        val pricesTile = FIFO[FT](ts)
+        val datesTile  = SRAM[UInt](ts)
+        val quantsTile = SRAM[UInt](ts)
+        val disctsTile = SRAM[FT](ts)
+        val pricesTile = SRAM[FT](ts)
         Parallel {
           datesTile  := dates(i::i+ts par ip)
           quantsTile := quants(i::i+ts par ip)
@@ -87,10 +87,10 @@ trait TPCHQ6_App extends SpatialApp {
           pricesTile := prices(i::i+ts par ip)
         }
         Reduce(ts par ip)(0.as[FT]){ j =>
-          val date  = datesTile.pop
-          val disct = disctsTile.pop
-          val quant = quantsTile.pop
-          val price = pricesTile.pop
+          val date  = datesTile(j)
+          val disct = disctsTile(j)
+          val quant = quantsTile(j)
+          val price = pricesTile(j)
           val valid = date > minDate && date < maxDate && disct >= MIN_DISC && disct <= MAX_DISC && quant < 24
           mux(valid, price * disct, 0.0f)
         }{_+_}

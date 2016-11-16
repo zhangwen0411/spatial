@@ -48,7 +48,7 @@ trait BFSApp extends SpatialApp {
   type T = Flt
   type Array[T] = ForgeArray[T]
 
-  val tileSize = 384
+  val tileSize = 8000
   val edges_per_node = 6 // Will make this random later
 
 

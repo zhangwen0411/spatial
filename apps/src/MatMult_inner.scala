@@ -7,8 +7,8 @@ trait MatMult_innerApp extends SpatialApp {
   type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
 
-  val tileSizeM = 4
-  val tileSizeN = 1152
+  val tileSizeM = 8
+  val tileSizeN = 192
   val tileSizeP = 192
   val innerPar = 32
   val midPar = 1

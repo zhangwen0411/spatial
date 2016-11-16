@@ -103,6 +103,15 @@ trait PIROptimizer extends PIRTraversal {
           Some(bypass)
         }
         else None
+
+      case bypass@MapStage(Bypass, List(LocalRef(_,ScalarIn(in: ScalarBus))), List(LocalRef(_,ScalarOut(out: OutputArg)))) =>
+        if (isInterCU(in)) {
+          debug(s"Found route-thru: $in -> $out")
+          swapBus(cus, in, out)
+          Some(bypass)
+        }
+        else None
+
       case bypass@MapStage(Bypass, List(LocalRef(_,VectorIn(in: VectorBus))), List(LocalRef(_,VectorOut(out: VectorBus)))) =>
         cus.find{cu => vectorOutputs(cu) contains in} match {
           case Some(producer) if producer.parent == cu.parent =>

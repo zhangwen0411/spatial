@@ -7,11 +7,11 @@ trait LogRegApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt
 
-  val tileSize = 384
+  val tileSize = 40
   val innerPar = 8
   val outerPar = 1
   val margin = 5
-  val dim = 288
+  val dim = 192
   val D = dim
 
   val A = 1
