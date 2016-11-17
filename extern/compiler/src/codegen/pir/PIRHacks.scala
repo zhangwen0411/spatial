@@ -97,6 +97,7 @@ trait PIRHacks extends PIRTraversal {
           leaf.parent = Some(cu)
           leaf.deps ++= leaves
           leaf.isDummy = true
+          leaf.cchains += UnitCChain(quote(cu.pipe)+"_unitcc")
           mappingOut(cu.pipe) = mappingOut(cu.pipe) ++ List(leaf)
         }
         else {
@@ -111,6 +112,7 @@ trait PIRHacks extends PIRTraversal {
             copyIterators(newLeaf, cu)
             newLeaf.parent = Some(cu)
             newLeaf.deps ++= leaves
+            newLeaf.cchains += UnitCChain(quote(cu.pipe)+"_unitcc")
             newLeaf.isDummy = true
             mappingOut(leaves.last.pipe) = mappingOut(leaves.last.pipe) ++ List(newLeaf)
           }

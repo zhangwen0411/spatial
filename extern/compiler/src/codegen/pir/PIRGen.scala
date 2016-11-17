@@ -91,7 +91,7 @@ trait PIRGenTransformer extends PIRTraversal {
     msg("Done.")
     val nCUs = cus.values.flatten.filter{cu => cu.allStages.nonEmpty || cu.isDummy }.size
     msg(s"NUMBER OF CUS: $nCUs")
-    sys.exit()
+    //sys.exit()
   }
 
   def generateHeader() {
