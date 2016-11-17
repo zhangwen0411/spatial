@@ -5,8 +5,8 @@ import spatial.shared._
 object OuterProduct extends SpatialAppCompiler with OuterProductApp
 trait OuterProductApp extends SpatialApp {
   type T = SInt
-  val tileSize1 = 192
-  val tileSize2 = 384
+  val tileSize1 = 64
+  val tileSize2 = 64
   val op = 1
   val ip = 1
 

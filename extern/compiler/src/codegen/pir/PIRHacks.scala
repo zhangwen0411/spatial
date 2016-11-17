@@ -19,7 +19,8 @@ trait PIRHacks extends PIRTraversal {
   override def run[A:Manifest](b: Block[A]) = {
     msg(s"Starting traversal PIR Hacks")
     for ((pipe, cus) <- mappingIn) {
-      mappingOut += pipe -> mcHack(pipe, cus)
+      mcHack(pipe, cus)
+      mappingOut += pipe -> cus
     }
     streamHack()
     counterHack()
@@ -27,12 +28,14 @@ trait PIRHacks extends PIRTraversal {
     b
   }
 
-  def mcHack(pipe: Symbol, cus: List[CU]): List[CU] = {
+  def mcHack(pipe: Symbol, cus: List[CU]) {
     def allCUs = mappingIn.values.flatten
+
+    debug(s"MC Hack")
 
     // Set all CUs which write to a memory controller to StreamCUs
     // Either set parent to a streamcontroller, or make one and redirect parent
-    cus.flatMap{cu =>
+    cus.foreach{cu =>
       val writesMC = globalOutputs(cu) exists (_.isInstanceOf[DRAMBus])
 
       debug(s"${cu.name}: $writesMC")
@@ -40,41 +43,48 @@ trait PIRHacks extends PIRTraversal {
       // Set everything but first stages to streaming pipes
       if (writesMC && cu.deps.nonEmpty) cu.style = StreamCU
 
-      val add = if (writesMC) cu.parent match {
+
+      if (writesMC) cu.parent match {
         case Some(parent: CU) if parent.style != StreamCU =>
           val cusWithParent = allCUs.filter(_.parent == cu.parent).toSet
           val cusByMC = cusWithParent.groupBy(writtenMC)
 
+          debug(s"  cu: $cu")
+          debug(s"  parent: $parent")
+          debug(s"  w/ parent: $cusWithParent")
+          debug(s"  cus by MC: $cusByMC")
+
           // All CUs with this parent communicate with the same memory controller(s) as this CU
           if (cusByMC.keys.size == 1) {
             parent.style = StreamCU
-            Nil
           }
-          else {
+          /*else {
             val parent = makeStreamController(pipe, cu.parent)
             cu.parent = Some(parent)
             List(parent)
-          }
-        case None =>
+          }*/
+        /*case None =>
           val parent = makeStreamController(pipe, None)
           cu.parent = Some(parent)
-          List(parent)
+          List(parent)*/
         case _ =>
-          Nil
       }
-      else Nil
-
-      List(cu) ++ add
     }
   }
 
-  // Ensure that stream controllers have exactly one leaf
+  def writesToMC(cu: CU, cus: List[CU]): Boolean = {
+    val children = cus.filter(_.parent == Some(cu))
+
+    (cu +: children).exists{child => globalOutputs(child) exists (_.isInstanceOf[DRAMBus]) }
+  }
+
+  // Ensure that outer controllers have exactly one leaf
   def streamHack() {
     val cus = mappingOut.values.flatten.toList
     for (cu <- cus) {
-      if (cu.allStages.isEmpty && cu.style == StreamCU && !cu.isDummy) {
+      if (cu.allStages.isEmpty && !cu.isDummy) {
         val children = cus.filter(_.parent == Some(cu))
-        val writesMC = children.exists{child => globalOutputs(child) exists (_.isInstanceOf[DRAMBus]) }
+        val writesMC = writesToMC(cu, cus)
 
         val deps = children.flatMap(_.deps).toSet
 
@@ -88,6 +98,22 @@ trait PIRHacks extends PIRTraversal {
           leaf.deps ++= leaves
           leaf.isDummy = true
           mappingOut(cu.pipe) = mappingOut(cu.pipe) ++ List(leaf)
+        }
+        else {
+          // If we have a child controller leaf which itself has leaves which write to DRAM data bus
+          val leafWritesMC = leaves.exists{leaf =>
+            val leafChildren = cus.filter(_.parent == Some(leaf))
+            leafChildren.exists{child => globalOutputs(child) exists(_.isInstanceOf[DRAMDataOut]) }
+          }
+          if (leafWritesMC) {
+            // insert a dummy pipe after the writing leaf
+            val newLeaf = ComputeUnit(quote(cu.pipe)+"_leafX", cu.pipe, PipeCU)
+            copyIterators(newLeaf, cu)
+            newLeaf.parent = Some(cu)
+            newLeaf.deps ++= leaves
+            newLeaf.isDummy = true
+            mappingOut(leaves.last.pipe) = mappingOut(leaves.last.pipe) ++ List(newLeaf)
+          }
         }
       }
     }

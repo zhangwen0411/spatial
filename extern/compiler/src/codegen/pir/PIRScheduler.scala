@@ -166,7 +166,10 @@ trait PIRScheduler extends PIRTraversal {
       if (sram.mode != FIFOMode) sram.mode = FIFOOnWriteMode
       sram.writeAddr = None
       sram.writeCtrl = None
-      sram.swapWrite = None
+
+      val parentCtr = ctx.cu.parent.flatMap{parent => parent.cchains.find{case _:UnitCChain | _:CChainInstance => true; case _ => false}}
+
+      sram.swapWrite = parentCtr.flatMap{ctr => ctx.cu.cchains.find(_.name == ctr.name) }
 
       // HACK: Raghu and Yaqi don't like unaligned loads
       if (!SpatialConfig.checkBounds) {

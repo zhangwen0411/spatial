@@ -77,11 +77,12 @@ trait PIRCommon extends PIR {
 
       destCU.cchains ++= cchainCopies.map(_._2)
 
+      // FIXME: Shouldn't need to use getOrElse here
       srcCU.iterators.foreach{ case (iter,CounterReg(cchain,idx)) =>
-        destCU.addReg(iter, CounterReg(cchainMapping(cchain),idx))
+        destCU.addReg(iter, CounterReg(cchainMapping.getOrElse(cchain,cchain),idx))
       }
       srcCU.valids.foreach{case (iter, ValidReg(cchain,idx)) =>
-        destCU.addReg(iter, ValidReg(cchainMapping(cchain), idx))
+        destCU.addReg(iter, ValidReg(cchainMapping.getOrElse(cchain,cchain), idx))
       }
       cchainMapping
     }

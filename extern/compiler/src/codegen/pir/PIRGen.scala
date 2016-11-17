@@ -242,8 +242,8 @@ trait PIRGenTransformer extends PIRTraversal {
     case InputArg(name)      => s"${name}_argin"
     case OutputArg(name)     => s"${name}_argout"
     case LocalVectorBus      => "local"
-    case DRAMDataIn(mc)      => s"${quote(mc)}.dataIn"
-    case DRAMDataOut(mc)     => s"${quote(mc)}.dataOut"
+    case DRAMDataIn(mc)      => s"${quote(mc)}.vdata"
+    case DRAMDataOut(mc)     => s"${quote(mc)}.vdata"
     case DRAMOffset(mc)      => s"${quote(mc)}.ofs"
     case DRAMLength(mc)      => s"${quote(mc)}.len"
     case DRAMAddress(mc)     => s"${quote(mc)}.addrs"
@@ -256,6 +256,8 @@ trait PIRGenTransformer extends PIRTraversal {
     case UnitCU       => "UnitPipeline"
     case StreamCU if cu.allStages.isEmpty && !cu.isDummy => "StreamController"
     case StreamCU     => "StreamPipeline"
+    case UnitStreamCU if cu.allStages.isEmpty && !cu.isDummy => "StreamController" // TODO
+    case UnitStreamCU => "StreamPipeline" // TODO
     case PipeCU       => "Pipeline"
     case MetaPipeCU   => "MetaPipeline"
     case SequentialCU => "Sequential"

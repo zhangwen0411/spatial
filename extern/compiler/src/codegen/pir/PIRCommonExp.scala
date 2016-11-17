@@ -82,8 +82,8 @@ trait PIRCommonExp extends PIRCommon with NodeMetadataOpsExp with MemoryAnalysis
     case FixPt_Leq(_,_) => Some(FixLeq)
     case FixPt_Eql(_,_) => Some(FixEql)
     case FixPt_Neq(_,_) => Some(FixNeq)
-    case e: Min2[_] if isFixPtType(e.mT) => Some(FltMin)
-    case e: Max2[_] if isFixPtType(e.mT) => Some(FltMax)
+    case e: Min2[_] if isFixPtType(e.mT) => Some(FixMin)
+    case e: Max2[_] if isFixPtType(e.mT) => Some(FixMax)
 
     // Float ops currently assumed to be single op
     case FltPt_Add(_,_) => Some(FltAdd)

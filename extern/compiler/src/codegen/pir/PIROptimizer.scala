@@ -30,6 +30,9 @@ trait PIROptimizer extends PIRTraversal {
 
 
   def removeUnusedCUComponents(cu: CU) {
+    debug(s"")
+    debug(s"Checking CU $cu for unused components...")
+
     val stages = cu.allStages.collect{case m:MapStage => m}
     // Remove all unused temporary registers
     val ins  = stages.flatMap{stage => stage.inputMems.filter{t => isReadable(t) && isWritable(t) }}.toSet

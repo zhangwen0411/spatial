@@ -33,6 +33,7 @@ trait PIR {
   case object MetaPipeCU extends CUStyle
   case object StreamCU extends CUStyle
   case object UnitCU extends CUStyle
+  case object UnitStreamCU extends CUStyle
   //case object BurstTransfer extends CUStyle
   //case object RandomTransfer extends CUStyle
 
@@ -282,7 +283,7 @@ trait PIR {
     val pipe: Symbol
     var style: CUStyle
     var parent: Option[AbstractComputeUnit] = None
-    def isUnit = style == UnitCU
+    def isUnit = style == UnitCU || style == UnitStreamCU
     def isMemoryUnit = false //cuType == BurstTransfer || cuType == RandomTransfer
 
     var cchains: Set[CUCChain] = Set.empty
