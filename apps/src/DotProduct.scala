@@ -20,9 +20,10 @@ trait DotProductApp extends SpatialApp {
     val size = a.length
     bound(size) = 1920000
 
-    val N = ArgIn[SInt]
+    val N = 768000000.as[SInt] //ArgIn[SInt]
+    //setArg(N, size)
+
     val out = ArgOut[T]
-    setArg(N, size)
 
     val v1 = DRAM[T](N)
     val v2 = DRAM[T](N)
@@ -34,13 +35,13 @@ trait DotProductApp extends SpatialApp {
       Fold(N by B par P1)(reg, 0.as[T]){ i =>
         val b1 = SRAM[T](B)
         val b2 = SRAM[T](B)
-        val bn = Reg[SInt](999)
+        //val bn = Reg[SInt](999)
         Parallel { // ISSUE #2
           b1 := v1(i::i+B par P3)
           b2 := v2(i::i+B par P3)
-          Pipe{ bn := min(N.value - i, B) }
+          //Pipe{ bn := min(N.value - i, B) }
         }
-        Reduce(bn par P2)(0.as[T]){ii =>
+        Reduce(B par P2)(0.as[T]){ii =>
           b1(ii) * b2(ii)
         }{_+_} // Reg
       }{_+_} // Reg

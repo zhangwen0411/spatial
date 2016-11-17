@@ -10,7 +10,7 @@ trait GDA_App extends SpatialApp {
   val margin = 1
   val innerPar = 4
   val outerPar = 1
-  val MAXC = 384
+  val MAXC = 192
   val C = MAXC
   val tileSize = 20
   val pLoopPar = 2
@@ -26,10 +26,10 @@ trait GDA_App extends SpatialApp {
     val rows = yCPU.length;   bound(rows) = 360000
     val cols = mu0CPU.length; bound(cols) = MAXC
 
-    val R = ArgIn[SInt]
+    val R = 3840000.as[SInt] //ArgIn[SInt]
     // val C = ArgIn[SInt]
     // setArg(C, cols)
-    setArg(R, rows)
+    //setArg(R, rows)
 
     val x     = DRAM[T](R, C)
     val y     = DRAM[SInt](R)
@@ -59,7 +59,7 @@ trait GDA_App extends SpatialApp {
         Parallel {
           gdaYtile := y(r::r+rTileSize par subLoopPar)
           gdaXtile := x(r::r+rTileSize, 0::C par subLoopPar)  // Load tile of x
-          Pipe { blk := min(R.value - r, rTileSize) }
+          Pipe { blk := min(R - r, rTileSize) }
         }
 
         val sigmaBlk = SRAM[T](MAXC,MAXC)

@@ -16,12 +16,12 @@ trait MatMult_innerApp extends SpatialApp {
   val storePar = 1
 
   def MatMult_inner(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
-    val M = ArgIn[SInt]
-    val N = ArgIn[SInt]
-    val P = ArgIn[SInt]
-    setArg(M,mm)
-    setArg(N,nn)
-    setArg(P,pp)
+    val M = 48.as[SInt] //ArgIn[SInt]
+    val N = 7680.as[SInt] //ArgIn[SInt]
+    val P = 3840.as[SInt] //ArgIn[SInt]
+    //setArg(M,mm)
+    //setArg(N,nn)
+    //setArg(P,pp)
 
     val a = DRAM[T](M, P)
     val b = DRAM[T](P, N)

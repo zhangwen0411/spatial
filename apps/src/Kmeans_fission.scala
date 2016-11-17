@@ -35,12 +35,12 @@ trait KmeansApp_fission extends SpatialApp {
     val PR = innerPar (1 -> 4 -> 96)
     val P4 = innerPar (1 -> 4 -> 96)
 
-    val iters = ArgIn[SInt]
-    val N = ArgIn[SInt]
+    val iters = 5.as[SInt] //ArgIn[SInt]
+    val N = 1536.as[SInt]  //ArgIn[SInt]
     // val K = ArgIn[SInt]
     // val D = ArgIn[SInt]
-    setArg(iters, it)
-    setArg(N, numPoints)
+    // setArg(iters, it)
+    // setArg(N, numPoints)
 
     val points = DRAM[T](N, D)    // Input points
     val centroids = DRAM[T](num_cents*dim) // Output centroids

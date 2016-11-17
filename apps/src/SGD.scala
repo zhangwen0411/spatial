@@ -50,17 +50,17 @@ trait SGDApp extends SpatialApp {
 
 
   def sgd_onept(x_in: Rep[Array[T]], y_in: Rep[Array[T]], alpha: Rep[T], epochs: Rep[SInt], nn: Rep[SInt]) = {
-    val E = ArgIn[SInt]
-    val N = ArgIn[SInt]
-    val A = ArgIn[T]
+    val E = 30.as[SInt] //ArgIn[SInt]
+    val N = 38400.as[SInt] //ArgIn[SInt]
+    val A = 1.0f.as[T] //ArgIn[T]
     val D = modelSize
 
     val ip = innerPar (1 -> 1)
     val op = outerPar (1 -> 1)
 
-    setArg(E, epochs)
-    setArg(N, nn)
-    setArg(A, alpha)
+    //setArg(E, epochs)
+    //setArg(N, nn)
+    //setArg(A, alpha)
 
     val x = DRAM[T](N,D)
     val y = DRAM[T](N)

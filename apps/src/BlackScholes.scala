@@ -77,8 +77,8 @@ trait BlackScholesApp extends SpatialApp {
 
     val size = stypes.length; bound(size) = 9995328
 
-    lazy val N = ArgIn[SInt]
-    setArg(N, size)
+    lazy val N = 96000000.as[SInt] //ArgIn[SInt]
+    //setArg(N, size)
 
     val types    = DRAM[UInt](N)
     val prices   = DRAM[Flt](N)

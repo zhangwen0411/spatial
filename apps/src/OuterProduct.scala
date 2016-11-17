@@ -19,10 +19,10 @@ trait OuterProductApp extends SpatialApp {
     val M = a.length;  bound(M) = 38400
     val N = b.length;  bound(N) = 38400
 
-    val sizeA = ArgIn[SInt]
-    val sizeB = ArgIn[SInt]
-    setArg(sizeA, M)
-    setArg(sizeB, N)
+    val sizeA = 38400.as[SInt] //ArgIn[SInt]
+    val sizeB = 38400.as[SInt] //ArgIn[SInt]
+    //setArg(sizeA, M)
+    //setArg(sizeB, N)
 
     val vec1 = DRAM[T](sizeA)
     val vec2 = DRAM[T](sizeB)
@@ -41,8 +41,8 @@ trait OuterProductApp extends SpatialApp {
         Parallel {
           b1 := vec1(i::i+tileSizeA)
           b2 := vec2(j::j+tileSizeB)
-          Pipe{ blkA := min(sizeA.value - i, tileSizeA) }
-          Pipe{ blkB := min(sizeB.value - j, tileSizeB) }
+          Pipe{ blkA := min(sizeA - i, tileSizeA) }
+          Pipe{ blkB := min(sizeB - j, tileSizeB) }
         }
         Pipe(blkA by 1, blkB par innerPar){ (ii,jj) => outTile(ii, jj) = b1(ii) * b2(jj) } // 2
 

@@ -20,7 +20,7 @@ object SpatialConfig {
   var sbus: Int = getProperty("plasticine.sbus", "4").toInt
   var vIn: Int = getProperty("plasticine.vIn", "4").toInt
   var vOut: Int = getProperty("plasticine.vOut", "1").toInt
-  var comp: Int = getProperty("plasticine.comp", "6").toInt
+  var comp: Int = getProperty("plasticine.comp", "8").toInt
   var readWrite: Int = getProperty("plasticine.rw", "4").toInt
   var mems: Int = getProperty("plasticine.mems", "4").toInt
 

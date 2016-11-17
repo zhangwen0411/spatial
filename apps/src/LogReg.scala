@@ -21,10 +21,10 @@ trait LogRegApp extends SpatialApp {
   def logreg(x_in: Rep[Array[T]], y_in: Rep[Array[T]], tt: Rep[Array[T]], n: Rep[SInt], it: Rep[SInt]) = {
 
 
-    val iters = ArgIn[SInt]
-    val N = ArgIn[SInt]
-    setArg(iters, it)
-    setArg(N, n)
+    val iters = 5.as[SInt]  //ArgIn[SInt]
+    val N = 384000.as[SInt] //ArgIn[SInt]
+    //setArg(iters, it)
+    //setArg(N, n)
 
     val BN = tileSize (96 -> 96 -> 9600)
     val PX = 1 (1 -> 1)

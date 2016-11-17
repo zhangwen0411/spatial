@@ -88,6 +88,10 @@ trait PIRGenTransformer extends PIRTraversal {
     generateGlobals()
     traverseBlock(b)
     generateFooter()
+    msg("Done.")
+    val nCUs = cus.values.flatten.filter{cu => cu.allStages.nonEmpty || cu.isDummy }.size
+    msg(s"NUMBER OF CUS: $nCUs")
+    sys.exit()
   }
 
   def generateHeader() {

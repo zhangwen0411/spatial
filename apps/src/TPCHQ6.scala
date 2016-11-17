@@ -50,8 +50,8 @@ trait TPCHQ6_App extends SpatialApp {
   val margin = 1
 
   def tpchq6(datesIn: Rep[Array[UInt]], quantsIn: Rep[Array[UInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
-    val dataSize = ArgIn[SInt]
-    setArg(dataSize, datesIn.length)
+    val dataSize = 960000000.as[SInt] //ArgIn[SInt]
+    //setArg(dataSize, datesIn.length)
 
     val dates  = DRAM[UInt](dataSize)
     val quants = DRAM[UInt](dataSize)
