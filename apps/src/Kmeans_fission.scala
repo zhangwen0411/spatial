@@ -7,8 +7,8 @@ trait KmeansApp_fission extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt
 
-  val num_cents = 96
-  val dim = 384
+  val num_cents = 20
+  val dim = 96
   val tileSize = 20
   val innerPar = 16
   val outerPar = 4

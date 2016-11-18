@@ -30,9 +30,9 @@ trait MatMult_outerApp extends SpatialApp {
 
     val px = 1 (1 -> 1) // Cannot parallelize accum across k blocks
 
-    val bm        = param(8)
-    val bn        = param(192)
-    val bp        = param(192)
+    val bm        = param(16)
+    val bn        = param(48) // limited by sram size 2000 
+    val bp        = param(48) // limited by sram size 2000
 
     setMem(a, A)
     setMem(b, B)

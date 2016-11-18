@@ -9,7 +9,7 @@ trait LogRegApp extends SpatialApp {
 
   val innerPar = 16
   val outerPar = 16
-  val tileSize = 40
+  val tileSize = 10
   val margin = 5
   val dim = 192
   val D = dim
