@@ -43,11 +43,10 @@ trait SGDApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt
   val modelSize = 768
-  val tileSize = 192
   val innerPar = 16
-  val outerPar = 1
+  val outerPar = 12
+  val tileSize = 192
   val margin = 1
-
 
   def sgd_onept(x_in: Rep[Array[T]], y_in: Rep[Array[T]], alpha: Rep[T], epochs: Rep[SInt], nn: Rep[SInt]) = {
     val E = 30.as[SInt] //ArgIn[SInt]

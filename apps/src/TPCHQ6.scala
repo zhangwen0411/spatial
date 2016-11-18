@@ -45,8 +45,8 @@ trait TPCHQ6_App extends SpatialApp {
   val MIN_DISC = 0
   val MAX_DISC = 9999
   val tileSize = 8000
-  val outerPar = 1
-  val innerPar = 2
+  val innerPar = 16
+  val outerPar = 8
   val margin = 1
 
   def tpchq6(datesIn: Rep[Array[UInt]], quantsIn: Rep[Array[UInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {

@@ -10,9 +10,9 @@ trait MatMult_innerApp extends SpatialApp {
   val tileSizeM = 8
   val tileSizeN = 192
   val tileSizeP = 192
-  val innerPar = 32
+  val innerPar = 16
   val midPar = 1
-  val outerPar = 1
+  val outerPar = 10
   val storePar = 1
 
   def MatMult_inner(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
