@@ -4,7 +4,7 @@ import spatial.shared._
 
 // BLAS 3 TODO:
 
-// TRMM = lower triangular matrix times matrix, blocked horizontally
+// TRMM = lowertriangular matrix times matrix, blocked horizontally
 // SYR2K = Triangular symmetrix matrix times matrix, blocked in some horizontal + transpose scheme
 // A*A^T
 // A*B^T + B*A^T
