@@ -808,7 +808,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
       val wType = if ((par == 1)) {"connectWport("} else {s"connectDirectWport($worker,"}
       duplicatesOf(local).zipWithIndex.foreach { case (m,i) => 
-        emit(s"""${quote(local)}_0_0.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen); // TODO: Why is this hardcoded to 0?""") 
+        emit(s"""${quote(local)}_0_0.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen, new int[] {0}); // TODO: Why is this hardcoded to 0?""") 
       }
       emit("}")
       print_stage_suffix(quote(sym),false)
@@ -1091,6 +1091,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
             }
 
+            val hack = if (Config.degFilename.dropRight(4) == "BFS") {s"1-${quote(writeCtrl)}_offset"} else "1" // TODO: Fix this!!!
             val rstStr = quote(parentOf(reg).get) + "_done /*because _rst_en goes hi on each iter*/"
             writeCtrl match {
               // case p@Def(EatReflect(_:OpForeach | _:UnrolledForeach)) => // Safe to comment this out??
@@ -1103,7 +1104,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   case Some(fps: ReduceFunction) => fps match {
                     case FixPtSum =>
                       delayWrenToo = true
-                      emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(stream.offset(${rstStr}, -1) /*-1 for BFS*/).withEnable(${quote(reg)}_en);""")
+                      emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(stream.offset(${rstStr}, ${hack})).withEnable(${quote(reg)}_en);""")
                       emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(stream.offset(${quote(value)}, /*found dlay empirically*/1-${quote(writeCtrl)}_offset), ${quote(reg)}_accParams);""")
                       emit(s"""debug.simPrintf(${quote(reg)}_en & stream.offset(${quote(reg)}_en, -1) /* uncommented because maxj sucks */, "accum has %d (+ %d)\\n", ${quote(reg)}, ${quote(value)});""")
                     case FltPtSum =>
@@ -1135,10 +1136,11 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   }
                   case None =>
                     dups.foreach { case (dup, ii) =>
+                      val specialCase0Acc = (ii == 0 & dup.depth > 1) // I think this happens when we read before we write
                       val port = portsOf(writer, reg, ii).head
                       emit(s"""${quote(reg)}_${ii}_lib.write(${quote(value)}.cast(dfeRawBits(${quote(reg)}_${ii}_lib.bits)) /*offset makes BFS work*/,
  $enable /*makes BFS work*/, global_rst, $port); // 3 ${nameOf(reg).getOrElse("")}""")
-                      if (dup.depth == 1 & ii > 0 /*totally unsure about this logic*/) {
+                      if (ii >= 0 | specialCase0Acc /*totally unsure about this logic*/) {
                         emit(s"""${quote(reg)}_${ii}_delayed <== stream.offset(${quote(reg)}_${ii}, -${quote(writeCtrl)}_offset);""")
                       }
                     }

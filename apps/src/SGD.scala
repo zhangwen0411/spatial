@@ -42,9 +42,9 @@ object SGD extends SpatialAppCompiler with SGDApp // Args: 1 5
 trait SGDApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt
-  val modelSize = 384
+  val modelSize = 768
   val tileSize = 192
-  val innerPar = 16
+  val innerPar = 48
   val outerPar = 1
   val margin = 1
 

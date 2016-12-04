@@ -7,11 +7,11 @@ trait KmeansApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt
 
-  val num_cents = 96
+  val num_cents = 20
   val dim = 96
   val tileSize = 384
   val innerPar = 8
-  val outerPar = 2
+  val outerPar = 1
   val margin = 1
   val K = num_cents
   val D = dim
@@ -133,52 +133,52 @@ trait KmeansApp extends SpatialApp {
 
     // // val cts = Array.tabulate(K){i => Array.tabulate(D){d => pts(i,d) }}
 
-    val gold = Array.tabulate(K){i => Array.empty[T](D)}.unsafeMutable
-    val acc = Array.tabulate(K){i => Array.empty[T](D)}.unsafeMutable
-    val ii = Array.tabulate(K) {i=>i}
-    val counts = Array.empty[UInt](K)
-    for (i <- 0 until K) { for (d <- 0 until D) {
-      val row = pts(i)
-      gold(i)(d) = row(d)
-      acc(i)(d) = 0.as[T]
-    }}
-    for(epoch <- 0 until iters) {
-      // Really bad imperative version
-      def dist(p1: Rep[Array[T]], p2: Rep[Array[T]]) = p1.zip(p2){(a,b) => (a - b)**2 }.reduce(_+_)
-      for (i <- 0 until N) {
-        val pt = pts(i)
-        val distances = gold.map{ct => dist(pt, ct) }
-        // Issue #21 with metadata SoA forces us to get minIdx in this hacky way
-        val minDist = distances.reduce{(a,b) => if (a < b) a else b }
-        val minIdx = ii.map{a => if (distances(a) == minDist) a else 0.as[SInt]}.reduce{_+_}
-        // printArr(distances, "dst: ")
-        // println("mindst " + minDist)
-        // printIntArr(ii.map{a => if (distances(a) == minDist) a else 0.as[SInt]}, "id list: ")
-        println("point " + i + "matches id: " + minIdx)
+    // val gold = Array.tabulate(K){i => Array.empty[T](D)}.unsafeMutable
+    // val acc = Array.tabulate(K){i => Array.empty[T](D)}.unsafeMutable
+    // val ii = Array.tabulate(K) {i=>i}
+    // val counts = Array.empty[UInt](K)
+    // for (i <- 0 until K) { for (d <- 0 until D) {
+    //   val row = pts(i)
+    //   gold(i)(d) = row(d)
+    //   acc(i)(d) = 0.as[T]
+    // }}
+    // for(epoch <- 0 until iters) {
+    //   // Really bad imperative version
+    //   def dist(p1: Rep[Array[T]], p2: Rep[Array[T]]) = p1.zip(p2){(a,b) => (a - b)**2 }.reduce(_+_)
+    //   for (i <- 0 until N) {
+    //     val pt = pts(i)
+    //     val distances = gold.map{ct => dist(pt, ct) }
+    //     // Issue #21 with metadata SoA forces us to get minIdx in this hacky way
+    //     val minDist = distances.reduce{(a,b) => if (a < b) a else b }
+    //     val minIdx = ii.map{a => if (distances(a) == minDist) a else 0.as[SInt]}.reduce{_+_}
+    //     // printArr(distances, "dst: ")
+    //     // println("mindst " + minDist)
+    //     // printIntArr(ii.map{a => if (distances(a) == minDist) a else 0.as[SInt]}, "id list: ")
+    //     println("point " + i + "matches id: " + minIdx)
 
-        counts(minIdx) = counts(minIdx) + 1
-        for (j <- 0 until D) {
-          val row = acc(minIdx)
-          acc(minIdx)(j) = row(j) + pt(j)
-        }
+    //     counts(minIdx) = counts(minIdx) + 1
+    //     for (j <- 0 until D) {
+    //       val row = acc(minIdx)
+    //       acc(minIdx)(j) = row(j) + pt(j)
+    //     }
 
-      }
+    //   }
 
-      val actual = acc.zip(counts){(ct,n) => ct.map{p => p / n.to[T] }}
-      for (i <- 0 until K) { for (d <- 0 until D) {
-        val row = actual(i)
-        gold(i)(d) = row(d)
-      }}
-      // printArr(gold.flatten, "epoch " + epoch + ": ")
-    }
+    //   val actual = acc.zip(counts){(ct,n) => ct.map{p => p / n.to[T] }}
+    //   for (i <- 0 until K) { for (d <- 0 until D) {
+    //     val row = actual(i)
+    //     gold(i)(d) = row(d)
+    //   }}
+    //   // printArr(gold.flatten, "epoch " + epoch + ": ")
+    // }
 
-    // println("gold:   " + actual.map(a => a).reduce{_+_})
-    // println("result: " + result.map(a => a).reduce{_+_})
-    printArr(gold.flatten, "gold: ")
-    printArr(result, "result: ")
+    // // println("gold:   " + actual.map(a => a).reduce{_+_})
+    // // println("result: " + result.map(a => a).reduce{_+_})
+    // printArr(gold.flatten, "gold: ")
+    // printArr(result, "result: ")
 
-    val cksum = result.zip(gold.flatten){ case (o, g) => (g < (o + margin)) && g > (o - margin)}.reduce{_&&_}
-    println("PASS: " + cksum + " (Kmeans)")
+    // val cksum = result.zip(gold.flatten){ case (o, g) => (g < (o + margin)) && g > (o - margin)}.reduce{_&&_}
+    // println("PASS: " + cksum + " (Kmeans)")
   }
 
 

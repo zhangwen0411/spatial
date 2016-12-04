@@ -10,9 +10,10 @@ trait GDA_App extends SpatialApp {
   val margin = 1
   val innerPar = 8
   val outerPar = 2
-  val MAXC = 96
+  val MAXC = 48
+  val aligned_C = 96
   val C = MAXC
-  val tileSize = 96
+  val tileSize = 192
   val pLoopPar = 2
 
   def gda(xCPU: Rep[Array[T]], yCPU: Rep[Array[SInt]], mu0CPU: Rep[Array[T]], mu1CPU: Rep[Array[T]]) = {
@@ -33,9 +34,9 @@ trait GDA_App extends SpatialApp {
 
     val x     = DRAM[T](R, C)
     val y     = DRAM[SInt](R)
-    val mu0   = DRAM[T](C)
-    val mu1   = DRAM[T](C)
-    val sigma = DRAM[T](C, C)
+    val mu0   = DRAM[T](aligned_C)
+    val mu1   = DRAM[T](aligned_C)
+    val sigma = DRAM[T](aligned_C, aligned_C)
 
     setMem(x, xCPU)
     setMem(y, yCPU)
@@ -95,8 +96,8 @@ trait GDA_App extends SpatialApp {
 
     val x  = Array.fill(R){ Array.fill(C){ random[T](10) }}
     val ys = Array.fill(R){ random[SInt](1) }
-    val mu0 = Array.fill(C){ random[T](10) }
-    val mu1 = Array.fill(C){ random[T](10) }
+    val mu0 = Array.fill(aligned_C){ random[T](10) }
+    val mu1 = Array.fill(aligned_C){ random[T](10) }
 
     val result = gda(x.flatten, ys, mu0, mu1)
 

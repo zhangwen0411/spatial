@@ -7,7 +7,7 @@ trait MatMult_outerApp extends SpatialApp {
   type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
 
-  val tileSizeM = 2
+  val tileSizeM = 4
   val tileSizeN = 192
   val tileSizeP = 192
   val innerPar = 16
@@ -27,15 +27,15 @@ trait MatMult_outerApp extends SpatialApp {
     val c_init = DRAM[T](M, N)
     val c = DRAM[T](M, N)
 
-    val op = 1 (1 -> 6)
-    val mp = 1 (1 -> 96)
-    val ip = 1 (1 -> 96)
+    val op = outerPar (1 -> 6)
+    val mp = midPar (1 -> 96)
+    val ip = innerPar (1 -> 96)
 
     val px = 1 (1 -> 1) // Cannot parallelize accum across k blocks
 
-    val bm        = param(4)
-    val bn        = param(96)
-    val bp        = param(96)
+    val bm        = param(tileSizeM)
+    val bn        = param(tileSizeN)
+    val bp        = param(tileSizeP)
 
     setMem(a, A)
     setMem(b, B)

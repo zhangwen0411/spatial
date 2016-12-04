@@ -8,8 +8,8 @@ trait SMVApp extends SpatialApp {
   type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
 
-  val tileSize = 96
-  val innerPar = 4
+  val tileSize = 768
+  val innerPar = 8
   val outerPar = 1
   val pp = 3840
   val maximumNNZ = 60
@@ -39,7 +39,7 @@ trait SMVApp extends SpatialApp {
         val smvresult = SRAM[T](tileSize)
         val smvtileSizes = SRAM[SInt](tileSize)
         smvtileSizes := sizes(rowchunk :: rowchunk+tileSize par ip)
-        Sequential(tileSize by 1 par op){row =>
+        Pipe(tileSize by 1 par op){row =>
           val csrCols = SRAM[SInt](tileSize)
           val csrData = SRAM[T](tileSize)
           val vecGathered = SRAM[T](tileSize)
@@ -47,9 +47,11 @@ trait SMVApp extends SpatialApp {
           // Load dense csr piece
           val len = smvtileSizes(row)
           val OCROW = (rowchunk+row) // TODO: Issue #47
-          csrCols := aC(OCROW, 0 :: len par ip)
-          csrData := aD(OCROW, 0 :: len par ip)
-          vecGathered := v(csrCols par ip, len)
+          Parallel{
+            csrCols := aC(OCROW, 0 :: len par ip)
+            csrData := aD(OCROW, 0 :: len par ip)
+          }
+          vecGathered := v(csrCols, len)
 
           val acc = Reduce(len by 1 par ip)(0.as[T]) { i =>
             csrData(i) * vecGathered(i)

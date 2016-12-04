@@ -48,16 +48,19 @@ trait BFSApp extends SpatialApp {
   type T = Flt
   type Array[T] = ForgeArray[T]
 
-  val tileSize = 15360
-  val spacing = 6 // bound for computing offchip mem size
+  val staticTileSize = 1920000
+  val tileSize = 46080
+  val spacing = 3 // bound for computing offchip mem size
   val innerPar = 8
   val outerPar = 1
   val E = 9600000
   val N = 96000
 
-  def bfs(INnodes: Rep[Array[SInt]], INedges: Rep[Array[SInt]], INcounts: Rep[Array[SInt]], INids: Rep[Array[SInt]], e: Rep[SInt]) = {
+  def bfs(INnodes: Rep[Array[SInt]], INedges: Rep[Array[SInt]], INcounts: Rep[Array[SInt]], INids: Rep[Array[SInt]], e: Rep[SInt], d: Rep[SInt]) = {
 
     // val iters = ArgIn[SInt]
+    val depth = ArgIn[SInt]
+    setArg(depth, d)
     // val E = ArgIn[SInt] // Set to roughly max_edges_per_node * N 
     // setArg(iters, n)
     // setArg(E, e)
@@ -80,52 +83,64 @@ trait BFSApp extends SpatialApp {
     Accel {
       // Sequential(iters by 1) { tile => 
         val frontierNodes = SRAM[SInt](tileSize)
-        val frontierCounts = SRAM[SInt](tileSize)
-        val frontierIds = SRAM[SInt](tileSize)
+        val frontierCounts = SRAM[SInt](staticTileSize)
+        val frontierIds = SRAM[SInt](staticTileSize)
         val currentNodes = SRAM[SInt](tileSize)
         val frontierLevels = SRAM[SInt](tileSize)
         val pieceMem = SRAM[SInt](tileSize)
         val concatReg = Reg[SInt](0)
+        val allConcatReg = Reg[SInt](0)
         Parallel {
-          Pipe{frontierIds := OCids(0::tileSize par ip)}
-          Pipe{frontierCounts := OCcounts(0::tileSize par ip)}
+          Pipe{frontierIds := OCids(0::staticTileSize par ip)}
+          Pipe{frontierCounts := OCcounts(0::staticTileSize par ip)}
         }
 
-        Sequential(8 by 1) { i => //num layers to scan
+        Sequential(depth.value by 1) { i => //num layers to scan
           val numEdges = Reg[SInt](1)
-          Fold(numEdges.value by 1 par PX, PX)(concatReg, 0.as[SInt]) { k =>
-            val nextLen = Reg[SInt]
-            val nextId = Reg[SInt]
-            val lastLen = Reg[SInt]
-            val fetch = Reg[SInt]
-            val lastFetch = Reg[SInt]
-            Pipe{
-              fetch := currentNodes(k)
-              lastFetch := currentNodes(k-1)
-            }
-            Pipe{
-              nextId := frontierIds(fetch)
-              nextLen := frontierCounts(fetch)
-              lastLen := frontierCounts(lastFetch)
-            }
-            Pipe{pieceMem := OCedges(nextId :: nextId + nextLen.value par ip)}
-            Pipe(nextLen.value by 1) { kk => 
-              /* Since Fold is a metapipe and we read concatReg before
-                 we write to it, this means iter0 and iter1 both read 
-                 0 in concatReg.  I.e. we always see the previous iter's
-                 value of concatReg, so we should add nextLen to it here
-                 if we are not on the first iter (since concatReg is and
-                 should be 0)
-              */
-              val plus = mux(k == 0, 0, lastLen.value)
-              frontierNodes(kk + concatReg.value + plus) = pieceMem(kk)
-            }
-            nextLen
+          val allNumEdges = Reg[SInt](1)
+          // Step through all edges in frontier by tileSize
+          /* Divide tile size by average edges per page
+             so that we don't overflow
+          */
+          val stepSize = (tileSize.as[SInt]/5.as[SInt])
+          Sequential.fold(allNumEdges.value by stepSize)(allConcatReg) { piece =>
+            numEdges := min(allNumEdges.value - piece, stepSize)
+            // Grab the number of things that 
+            Fold(numEdges.value by 1 par PX, PX)(concatReg, 0.as[SInt]) { k =>
+              val nextLen = Reg[SInt]
+              val nextId = Reg[SInt]
+              val lastLen = Reg[SInt]
+              val fetch = Reg[SInt]
+              val lastFetch = Reg[SInt]
+              Pipe{
+                fetch := currentNodes(k)
+                lastFetch := currentNodes(k-1)
+              }
+              Pipe{
+                nextId := frontierIds(fetch)
+                nextLen := frontierCounts(fetch)
+                lastLen := frontierCounts(lastFetch)
+              }
+              Pipe{pieceMem := OCedges(nextId :: nextId + nextLen.value par ip)}
+              Pipe(nextLen.value by 1) { kk => 
+                /* Since Fold is a metapipe and we read concatReg before
+                   we write to it, this means iter0 and iter1 both read 
+                   0 in concatReg.  I.e. we always see the previous iter's
+                   value of concatReg, so we should add nextLen to it here
+                   if we are not on the first iter (since concatReg is and
+                   should be 0)
+                */
+                val plus = mux(k == 0, 0, lastLen.value)
+                frontierNodes(kk + concatReg.value + plus) = pieceMem(kk)
+              }
+              nextLen
+            }{_+_}
+            Pipe{concatReg.value by 1 par ip} { kk => currentNodes(kk) = frontierNodes(kk)}
+            Pipe(concatReg.value by 1 par ip) { k => frontierLevels(k) = i+1 }
+            OCresult(currentNodes, concatReg.value) := frontierLevels
+            concatReg
           }{_+_}
-          Pipe{concatReg.value by 1 par ip} { kk => currentNodes(kk) = frontierNodes(kk)}
-          Pipe(concatReg.value by 1 par ip) { k => frontierLevels(k) = i+1 }
-          OCresult(currentNodes, concatReg.value) := frontierLevels
-          Pipe{numEdges := concatReg.value}
+          Pipe{allNumEdges := allConcatReg.value}
         }
       // }
     }
@@ -231,20 +246,23 @@ trait BFSApp extends SpatialApp {
 
     /* NEW VERSION FOR PERFORMANCE MEASUREMENTS */
     val average_nodes_per_edge = args(0).to[SInt]
+    val d = args(1).to[SInt]
     val ed = E //args(1).to[SInt] // Set to roughly max_edges_per_node * N 
 
     val OCnodes = Array.tabulate(N) {i => 0}
-    val OCedges = Array.tabulate(ed){ i => i*3}
+    val OCedges = Array.tabulate(ed){ i => i*2}
     val OCids = Array.tabulate(N)( i => i*spacing)
-    val OCcounts = Array.tabulate(N){ i => random[SInt](average_nodes_per_edge)*2}
+    val OCcounts = Array.tabulate(N){ i => random[SInt](average_nodes_per_edge-1)*2+1}
 
+    // val bufferedSource = io.Source.fromFile("/tmp/finance.csv")
 
-    val result = bfs(OCnodes, OCedges, OCcounts, OCids, ed)
+    val result = bfs(OCnodes, OCedges, OCcounts, OCids, ed, d)
     // val gold = (6*1) + (16*2) + (22*3) + (5*4)
     // println("Cksum: " + gold + " == " + result.reduce{_+_})
 
     // val cksum = gold == result.reduce{_+_}
-    // printArr(result, "result: ")
+    printArr(result, "result: ")
+    println("Cksum = " + result.reduce{_+_})
     // println("PASS: " + cksum + " (BFS)")
 
   }

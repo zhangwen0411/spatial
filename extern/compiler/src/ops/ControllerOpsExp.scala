@@ -421,7 +421,7 @@ Count.Params initParams = control.count.makeParams(2)
                           .withMax(2)
                           .withWrapMode(WrapMode.STOP_AT_MAX);
 Counter init = control.count.makeCounter(initParams);
-DFEVar global_rst = init.getCount() === 0;
+DFEVar global_rst = constant.var(false); // Part of giant illegal loop in bfs... init.getCount() === 0;
 """)
       if (Config.degFilename.dropRight(4) == "SGD") {
         emit(s"""// MaxJ sucks and SGD compilation hangs unless we put in a print line for some dumbass reason

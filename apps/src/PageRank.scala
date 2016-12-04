@@ -30,13 +30,13 @@ trait PageRankApp extends SpatialApp {
 */
   val edges_per_page = 16 // Will make this random later
   val margin = 1
-  val innerPar = 2
+  val innerPar = 8
   val outerPar = 1
 
   def pagerank(INpages: Rep[Array[T]], INedges: Rep[Array[SInt]], INcounts: Rep[Array[SInt]], INedgeId: Rep[Array[SInt]], INedgeLen: Rep[Array[SInt]], OCiters: Rep[SInt], OCdamp: Rep[T], np: Rep[SInt]) = {
 
     val NE = 92160
-    val tileSize = 96 // For now
+    val tileSize = 3072 // For now
     val iters = ArgIn[SInt]
     val NP    = ArgIn[SInt]
     val damp  = ArgIn[T]
