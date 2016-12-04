@@ -1050,7 +1050,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
     val max = N-1
 
     emit(s"""when($condStr) {
-      bitVector := 0""")
+      (0 until numStates) foreach {i => bitVector(i) := Bool(false)}""")
     if (state == max) {
       emit(s"""
       counterFF := counterFF + 1;
@@ -1099,7 +1099,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
       val rst_en = Bool(OUTPUT)
 
       // Number of iterations
-      val sm_numIter = Bool(INPUT)
+      val sm_numIter = UInt(INPUT)
 
       // Generated state IO
       """)
@@ -1133,17 +1133,17 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
   emit("""
     // Initialize registers
     val stateFF = Reg(init = pipeInit)
-    val sizeFF = Reg(init = 0)
-    val counterFF = Reg(init = 0)
-    val rstCounterFF = Reg(init = 0)
+    val sizeFF = Reg(init = UInt(0, 32))
+    val counterFF = Reg(init = UInt(0, 32))
+    val rstCounterFF = Reg(init = UInt(0, 32))
 
     // Bitvector keeps track of which kernels have finished execution
     // This is a useful hardware synchronization structure to keep
     // track of which kernels have executed/finished execution
-    val bitVector = Bits(0, ${numStates})
+    val bitVector = Vec.fill(numStates) {Reg(init = Bool(0))}
 
     def resetBitVector() = {
-        bitVector := 0
+        (0 until numStates) foreach { i => bitVector(i) := Bool(false) }
     }
     """)
 
@@ -1155,7 +1155,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
   for(i <- 0 until numStates) {
     emit(s"""
         if (s${i}_done) {
-          bitVector := bitVector | ${1 << i}
+          bitVector(i) := Bool(true)	
         }""")
   }
 
@@ -1165,13 +1165,13 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
           is (pipeInit) {
             sizeFF := sm_numIter
             stateFF := pipeReset
-            counterFF := 0
-            rstCounterFF := 0
+            counterFF := UInt(0)
+            rstCounterFF := UInt(0)
           }
 
           is (pipeReset) {
-              rst_en := 1;
-            rstCounterFF := rstCounterFF + 1
+              rst_en := UInt(1);
+            rstCounterFF := rstCounterFF + UInt(1)
             when (rstCounterFF === rstCycles) {
               stateFF := S0
             }
@@ -1197,8 +1197,8 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
 
   emit(s"""
          is (pipeDone) {
-           bitVector := 0
-           sm_done := 1;
+           (0 until numStates) foreach {i => bitVector(i) := Bool(false)}
+           sm_done := Bool(true);
            stateFF := pipeInit
          }
 
@@ -1325,8 +1325,8 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
       emit("  stateFF := pipeDone")
     } else {
       if (state.contains(0)) {
-        emit("  counterFF := counterFF + 1")
-        emit("  when (counterFF >= sizeFF-1) {")
+        emit("  counterFF := counterFF + UInt(1)")
+        emit("  when (counterFF >= sizeFF-UInt(1)) {")
         stream.print("    stateFF := ")
         if (state.max == max) {
           if (state.size == 1) {  // Only state 0
