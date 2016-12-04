@@ -1221,9 +1221,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
   def emitBlock(y: Block[Any], blockName:String, doNotClose:Boolean = false): Unit = {
     emitComment("\n--------------- Emitting COMPUTATION BLOCK ----------------\n")
     emitComment(s"Block ${blockName} {")
-    emit("{")
+    //emit("{")
     emitBlock(y)
-    emit(s"""${if (doNotClose) "" else "}"}""")
+    //emit(s"""${if (doNotClose) "" else "}"}""")
     emitComment(s"} Block ${blockName}")
   }
 
@@ -1319,9 +1319,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 			emitComment(" End Hwblock dependencies }")
       emitComment("\n //Setup Top Level IO")
       emitComment(s"quoteSuffix = $quoteSuffix")
-      emit(s"""var ${quote(sym)}_en = top_en;""")
+      emit(s"""var ${quote(sym)}_en = io.top_en;""")
       emitGlobalWire(s"""${quote(sym)}_done""")
-      emit(s"""top_done := ${quote(sym)}_done;""")
+      emit(s"""io.top_done := ${quote(sym)}_done;""")
       emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")
       emitController(sym, None)
       emitComment("\n--------------- HW BLOCK ----------------\n")      
@@ -1492,18 +1492,27 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         } else {
           1
         }
+        emit(s"""val ${quote(sym)}_offset = 1;//Hard coding autoloop offset for now""")
         emit(s"""val ${quote(sym)}_sm = Module(new ${smStr}($numCounters));""")
-        emit(s"""    ${quote(sym)}_sm.io.sm_en := ${quote(sym)}_en;""")
-        emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done""")
+        emit(s"""${quote(sym)}_sm.io.sm_en := ${quote(sym)}_en;""")
+        emit(s"""val ${quote(sym)}_sm_offset = Module(new Offset(1 + ${quote(sym)}_offset))""")
+        emit(s"""${quote(sym)}_sm_offset.io.signal_in := ${quote(sym)}_sm.io.sm_done;""")
+        emit(s"""${quote(sym)}_done := ${quote(sym)}_sm_offset.io.signal_out;""")
 
-        emit(s"""val ${quote(sym)}_rst_en := ${quote(sym)}_sm.io.rst_en;""")
+        emit(s"""val ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.rst_en;""")
         emitGlobalWire(s"""${quote(sym)}_rst_done""")
-        emit(s"""${quote(sym)}_sm.io.rst_done = ${quote(sym)}_rst_done;""")
-        emit(s"""${quote(sym)}_rst_done := ${quote(sym)}_rst_en;""")
+        emit(s"""${quote(sym)}_sm.io.rst_done := ${quote(sym)}_rst_done;""")
+        //emit(s"""${quote(sym)}_rst_done := ${quote(sym)}_rst_en;""")
+        emit(s"""val ${quote(sym)}_rst_en_offset = Module(new Offset(1))""")
+        emit(s"""${quote(sym)}_rst_en_offset.io.signal_in := ${quote(sym)}_rst_en;""")
+        emit(s"""${quote(sym)}_rst_done := ${quote(sym)}_rst_en_offset.io.signal_out;""")
         if (!cchain.isDefined) {
           // Unit pipe, emit constant 1's wherever required
-          emit(s"""${quote(sym)}_sm.io.sm_maxIn_0 := UInt(1);""")
-          emit(s"""${quote(sym)}_sm.io.ctr_done := ${quote(sym)}_sm.io.ctr_en;""")
+          emit(s"""${quote(sym)}_sm.io.sm_maxIn(0) := UInt(1);""")
+          //emit(s"""${quote(sym)}_sm.io.ctr_done := ${quote(sym)}_sm.io.ctr_en;""")
+        emit(s"""val ${quote(sym)}_sm_out_offset = Module(new Offset(1))""")
+        emit(s"""${quote(sym)}_sm_out_offset.io.signal_in := ${quote(sym)}_sm.io.ctr_en;""")
+        emit(s"""${quote(sym)}_sm.io.ctr_done := ${quote(sym)}_sm_out_offset.io.signal_out;""")
         }
       case CoarsePipe =>
         emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this));""")
@@ -1526,9 +1535,12 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         }
         emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
       case SequentialPipe =>
-        emit(s"""var ${quote(sym)}_sm = Module(new ${smStr}));""")
+        emit(s"""val ${quote(sym)}_sm = Module(new ${smStr});""")
         emit(s"""    ${quote(sym)}_sm.io.sm_en := ${quote(sym)}_en;""")
-        emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done""")
+        //emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done;""")
+        emit(s"""val ${quote(sym)}_sm_offset = Module(new Offset(1))""")
+        emit(s"""${quote(sym)}_sm_offset.io.signal_in := ${quote(sym)}_sm.io.sm_done;""")
+        emit(s"""${quote(sym)}_done := ${quote(sym)}_sm_offset.io.signal_out;""")
         if (cchain.isDefined) {
           val Def(EatReflect(Counterchain_new(counters))) = cchain.get
           var niter_str = s""
@@ -1544,7 +1556,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         } else {
           emit(s"""${quote(sym)}_sm.io.sm_numIter := UInt(1);""")
         }
-        emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.rst_en;""")
+        emit(s"""val ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.rst_en;""")
       case ForkJoin =>
         emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this));""")
         emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
@@ -1575,8 +1587,8 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       if (cchain.isDefined) {
         emitCChainCtrl(sym, cchain.get)
       } else {
-        emit(s"""var ${quote(sym)}_datapath_en = ${quote(sym)}_en & ~${quote(sym)}_rst_en;""")
-        emit(s"""var ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en;""")
+        emit(s"""val ${quote(sym)}_datapath_en = ${quote(sym)}_en & ~${quote(sym)}_rst_en;""")
+        emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en;""")
       }
     }
 

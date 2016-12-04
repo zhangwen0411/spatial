@@ -1375,10 +1375,11 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
   override def emitFileFooter() = {
     emitBufferControlSignals()
     withStream(baseStream) {
+        emit("}")
       emit(s"""// Emit argin reads""")
       emitted_argins.toList.foreach {
         case (sym, regStr) =>
-          emit(s"""${maxJPre(sym)} ${quote(sym)} = $regStr; // reg read""")
+          emit(s"""${chiselPre(sym)} ${quote(sym)} = io.$regStr; // reg read""")
       }
     }
     super.emitFileFooter()
@@ -1871,8 +1872,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
     case Argin_new(init) =>
       withStream(baseStream) {
-        val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-        emit(s"""var ${quote(sym)} = UInt(INPUT)""")
+        val tsb = ctpstrb(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+        val tse = ctpstre(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+        emit(s"""var ${quote(sym)} = $tsb INPUT  $tse""")
       }
       if (argToExp.contains(sym.asInstanceOf[Sym[Reg[Any]]])) {
         emit(s"""${quote(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))} <== ${quote(sym)};""")
@@ -1941,7 +1943,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val writer = writersOf(reg).find(_.node == sym).get
 
       val writeCtrl = writersOf(reg).head.controlNode  // Regs have unique writer which also drives reset
-      val ts = tpstr(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])
+      val tsb = ctpstrb(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])
+      val tse = ctpstre(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])
+      val ts = tpstr(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])// Deprecated
       val allDups = duplicatesOf(reg).zipWithIndex
       val dups = allDups.filter{case (dup, i) => instanceIndicesOf(writer, reg).contains(i) }
 
@@ -1951,7 +1955,9 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           if (isAccum(reg)) throw new Exception(s"""ArgOut (${quote(reg)}) cannot be used as an accumulator!""")
 
           val controlStr = if (parentOf(reg).isEmpty) s"top_done" else quote(parentOf(reg).get) + "_done"
-          emit(s"""io.scalarOutput("${quote(reg)}", ${quote(value)}, $ts, $controlStr);""")
+          emitGlobal(s"""var ${quote(reg)} =  $tsb OUTPUT $tse;""")
+          emit(s"""io.${quote(reg)} := ${quote(value)}""")
+
 
         case _ =>
           if (isAccum(reg)) {

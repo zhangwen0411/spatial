@@ -587,7 +587,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Add(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           if (!isReduceResult(sym)) {
@@ -600,7 +600,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FltPt_Add(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           if (!isReduceResult(sym)) {
@@ -613,7 +613,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Div(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} / ${quote(b)};""")
@@ -622,7 +622,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FltPt_Div(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} / ${quote(b)};""")
@@ -631,7 +631,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Mul(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
@@ -640,7 +640,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FltPt_Mul(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
@@ -649,7 +649,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Lt(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
@@ -659,7 +659,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Leq(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
@@ -669,7 +669,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Neq(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
@@ -679,7 +679,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Eql(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
@@ -689,7 +689,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_And(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
@@ -698,7 +698,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Or(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} | ${quote(b)} ;""")
@@ -707,7 +707,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Lsh(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} << ${quote(b)} ;""")
@@ -716,7 +716,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Rsh(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} >> ${quote(b)} ;""")
@@ -725,7 +725,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FltPt_Lt(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
@@ -735,7 +735,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FltPt_Leq(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
@@ -745,7 +745,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FltPt_Neq(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
@@ -755,7 +755,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FltPt_Eql(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
@@ -766,7 +766,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
 
 
     case Bit_Not(a) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ~( ${quote(a)} );""")
@@ -775,7 +775,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case Bit_And(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
@@ -784,7 +784,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case Bit_Or(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} | ${quote(b)} ;""")
@@ -793,7 +793,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case Bit_Xor(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} ^ ${quote(b)} ;""")
@@ -802,7 +802,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case Bit_Xnor(a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ~ ( ${quote(a)} ^ ${quote(b)} ) ;""")
@@ -811,7 +811,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case Mux2(sel,a,b) =>
-      val pre = maxJPre(sym)
+      val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;""")
@@ -842,14 +842,16 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       case ((s, d)) =>
         d match {
           case ConstFixPt(x,_,_,_) =>
-            val ts = tpstr(parOf(s)) (s.tp, implicitly[SourceContext])
+            val tsb = ctpstrb(parOf(s)) (s.tp, implicitly[SourceContext])
+            val tse = ctpstre(parOf(s)) (s.tp, implicitly[SourceContext])
             withStream(baseStream) {
-              emit(s"""var ${quote(s)} = constant.var( $ts, $x ); """)
+              emit(s"""val ${quote(s)} =  $tsb $x $tse """)
             }
           case ConstFltPt(x,_,_) =>
-            val ts = tpstr(parOf(s)) (s.tp, implicitly[SourceContext])
+            val tsb = ctpstrb(parOf(s)) (s.tp, implicitly[SourceContext])
+            val tse = ctpstre(parOf(s)) (s.tp, implicitly[SourceContext])
             withStream(baseStream) {
-              emit(s"""var ${quote(s)} = constant.var( $ts, $x ); """)
+              emit(s"""val ${quote(s)} =  $tsb $x $tse """)
             }
           case _ =>
             withStream(baseStream) {

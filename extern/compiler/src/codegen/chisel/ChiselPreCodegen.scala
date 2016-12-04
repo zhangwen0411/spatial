@@ -1046,19 +1046,19 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
   }
 
   private def stateTextSeq(state: Int, N: Int) = {
-    val condStr = s"(bitVector(state))"
     val max = N-1
+    val condStr = s"(bitVector(${max}))"
 
     emit(s"""when($condStr) {
       (0 until numStates) foreach {i => bitVector(i) := Bool(false)}""")
     if (state == max) {
       emit(s"""
-      counterFF := counterFF + 1;
-      when (counterFF >= sizeFF-1) {
+      counterFF := counterFF + UInt(1);
+      when (counterFF >= sizeFF-UInt(1)) {
         stateFF := pipeDone;
       }
       .otherwise {
-        stateFF := S0;
+        stateFF := s0;
       }""")
       emit("}")
     } else {
@@ -1120,7 +1120,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
 
   for (i <- 0 until numStates) {
     emit(s"""
-      s${i}_en := Bool(false)""")
+      io.s${i}_en := Bool(false)""")
   }
 
 
@@ -1140,7 +1140,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
     // Bitvector keeps track of which kernels have finished execution
     // This is a useful hardware synchronization structure to keep
     // track of which kernels have executed/finished execution
-    val bitVector = Vec.fill(numStates) {Reg(init = Bool(0))}
+    val bitVector = Vec.fill(numStates) {Reg(init = Bool(false))}
 
     def resetBitVector() = {
         (0 until numStates) foreach { i => bitVector(i) := Bool(false) }
@@ -1148,14 +1148,14 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
     """)
 
   emit(s"""
-      when(sm_en) {
+      when(io.sm_en) {
 
         // State-agnostic update logic for bitVector
     """)
   for(i <- 0 until numStates) {
     emit(s"""
-        if (s${i}_done) {
-          bitVector(i) := Bool(true)	
+        when (io.s${i}_done) {
+        (0 until numStates) foreach { i => bitVector(i) := Bool(true) }
         }""")
   }
 
@@ -1163,17 +1163,17 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
         switch(stateFF) {
 
           is (pipeInit) {
-            sizeFF := sm_numIter
+            sizeFF := io.sm_numIter
             stateFF := pipeReset
             counterFF := UInt(0)
             rstCounterFF := UInt(0)
           }
 
           is (pipeReset) {
-              rst_en := UInt(1);
+              io.rst_en := UInt(1);
             rstCounterFF := rstCounterFF + UInt(1)
-            when (rstCounterFF === rstCycles) {
-              stateFF := S0
+            when (rstCounterFF === UInt(rstCycles)) {
+              stateFF := s0
             }
             .otherwise {
               stateFF := pipeReset
@@ -1187,7 +1187,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
     emit(s"""
           is (${name}) {""")
             for (s <- state) {
-               emit(s"""s${s}_en <== ~(  bitVector(s) | s${s}_done);""")
+               emit(s"""io.s${s}_en := ~(  bitVector(${i}) | io.s${s}_done);""")
             }
 
               stateTextSeq(state(0), numStates)
@@ -1198,7 +1198,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
   emit(s"""
          is (pipeDone) {
            (0 until numStates) foreach {i => bitVector(i) := Bool(false)}
-           sm_done := Bool(true);
+           io.sm_done := Bool(true);
            stateFF := pipeInit
          }
 
@@ -1206,17 +1206,17 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
       }
     }""")
 
-  emit("""
-      }
-    }
-  }
-}
-  """)
+  //emit("""
+      //}
+    //}
+  //}
+//}
+  //""")
 
   }
 
   private def stateStr(state:List[Int]) = {
-    "S" + state.map( _.toString).reduce(_+_)
+    "s" + state.map( _.toString).reduce(_+_)
   }
 
     def emitParallelSM(name: String, numParallel: Int):Unit = {
@@ -1257,12 +1257,12 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
             """)
 
         emit(s"""
-            when (sm_en) {
+            when (io.sm_en) {
                     """)
 
         for(i <- 0 until numParallel) {
             emit(s"""
-                when (s${i}_done) {
+                when (io.s${i}_done) {
                     bitVector($i) := 1
                 """)
             for (i <- 0 until numParallel) {

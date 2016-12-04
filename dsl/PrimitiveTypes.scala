@@ -259,7 +259,9 @@ trait PrimitiveTypes {
 
     
     // --- Chisel Backend
-    impl (boolean_to_bit) (codegen(chisel, ${ $0 }))
+    impl (boolean_to_bit) (codegen(chisel, ${
+    		var $sym = Bool( $0 );
+     }))
     impl (bit_to_string)  (codegen(chisel, ${ $0.toString }))
     impl (bit_to_bool)    (codegen(chisel, ${ $0 }))
 
