@@ -1047,7 +1047,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
 
   private def stateTextSeq(state: Int, N: Int) = {
     val max = N-1
-    val condStr = s"(bitVector(${max}))"
+    val condStr = s"(bitVector(${state}))"
 
     emit(s"""when($condStr) {
       (0 until numStates) foreach {i => bitVector(i) := Bool(false)}""")
@@ -1187,7 +1187,7 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
     emit(s"""
           is (${name}) {""")
             for (s <- state) {
-               emit(s"""io.s${s}_en := ~(  bitVector(${i}) | io.s${s}_done);""")
+               emit(s"""io.s${s}_en := ~(  bitVector(${s}) | io.s${s}_done);""")
             }
 
               stateTextSeq(state(0), numStates)
