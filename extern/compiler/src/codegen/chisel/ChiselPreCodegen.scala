@@ -74,12 +74,12 @@ trait ChiselPreCodegen extends Traversal  {
         b
     }
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
-		withStream(newStream("ChiselManager")) {
+		/*withStream(newStream("ChiselManager")) {
 			chiselManagerGen.emitManager(stream, argInOuts, memStreams)
 		}
 		withStream(newSBTStream("build")) {
 			emitBuildSBT(stream)
-		}
+		}*/
 		b
 	}
 
