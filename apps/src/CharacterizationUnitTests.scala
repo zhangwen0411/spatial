@@ -79,7 +79,7 @@ import spatial.shared._
 
 
 */
-object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp // Args: 5
+object CharLoadTest extends SpatialAppCompiler with CharLoadTestApp // Regression (Characterization) // Args: 5
 trait CharLoadTestApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -150,7 +150,7 @@ trait CharLoadTestApp extends SpatialApp {
   }
 }
 
-object CharStoreTest extends SpatialAppCompiler with CharStore // Args: 5 3
+object CharStoreTest extends SpatialAppCompiler with CharStore // Regression (Characterization) // Args: 5 3
 trait CharStore extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -221,7 +221,7 @@ trait CharStore extends SpatialApp {
 }
 
 
-object CharBramTest extends SpatialAppCompiler with CharBram // Args: 5 1 0
+object CharBramTest extends SpatialAppCompiler with CharBram // Regression (Characterization) // Args: 5 1 0
 trait CharBram extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]

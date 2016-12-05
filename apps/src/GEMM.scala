@@ -134,7 +134,7 @@ import spatial.shared._
 
 */
 
-object GEMM extends SpatialAppCompiler with GEMMApp
+object GEMM extends SpatialAppCompiler with GEMMApp // Regression (Dense) // Args: 4 192 192
 trait GEMMApp extends SpatialApp {
   type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]

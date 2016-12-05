@@ -2,7 +2,7 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object DotProduct extends SpatialAppCompiler with DotProductApp
+object DotProduct extends SpatialAppCompiler with DotProductApp // Regression (Dense) // Args: 192
 trait DotProductApp extends SpatialApp {
   type T = SInt
 

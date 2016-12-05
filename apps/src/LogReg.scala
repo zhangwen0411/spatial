@@ -2,7 +2,7 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object LogReg extends SpatialAppCompiler with LogRegApp
+object LogReg extends SpatialAppCompiler with LogRegApp // Regression (Dense) // Args: 1 384
 trait LogRegApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt

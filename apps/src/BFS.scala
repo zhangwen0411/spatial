@@ -42,7 +42,7 @@ import spatial.shared._
                                                                      
                                                                      
 */
-object BFS extends SpatialAppCompiler with BFSApp
+object BFS extends SpatialAppCompiler with BFSApp // Regression (Sparse) // Args: 4 5
 trait BFSApp extends SpatialApp {
   type Elem = Flt //FixPt[Signed, B16, B16]
   type T = Flt

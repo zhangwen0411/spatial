@@ -2,7 +2,7 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object PageRank extends SpatialAppCompiler with PageRankApp
+object PageRank extends SpatialAppCompiler with PageRankApp // Regression (Sparse) // Args: 1 192 0.5
 trait PageRankApp extends SpatialApp {
   type Elem = Flt //FixPt[Signed, B16, B16]
   type T = Flt

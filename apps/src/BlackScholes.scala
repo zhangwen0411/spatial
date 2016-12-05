@@ -2,7 +2,7 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object BlackScholes extends SpatialAppCompiler with BlackScholesApp
+object BlackScholes extends SpatialAppCompiler with BlackScholesApp // Regression (Dense) // Args: 384
 trait BlackScholesApp extends SpatialApp {
   type Array[B] = ForgeArray[B]
 

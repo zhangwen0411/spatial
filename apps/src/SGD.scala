@@ -38,7 +38,7 @@ import spatial.shared._
 
 
 
-object SGD extends SpatialAppCompiler with SGDApp // Args: 1 5
+object SGD extends SpatialAppCompiler with SGDApp // Regression (Dense) // Args: 2 192 1
 trait SGDApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt

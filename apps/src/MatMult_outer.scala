@@ -2,7 +2,7 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object MatMult_outer extends SpatialAppCompiler with MatMult_outerApp
+object MatMult_outer extends SpatialAppCompiler with MatMult_outerApp // Regression (Dense) // Args: 4 192 192
 trait MatMult_outerApp extends SpatialApp {
   type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]

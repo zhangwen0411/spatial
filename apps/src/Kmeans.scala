@@ -2,7 +2,7 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object Kmeans extends SpatialAppCompiler with KmeansApp
+object Kmeans extends SpatialAppCompiler with KmeansApp // Regression (Dense) // Args: 1 384
 trait KmeansApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt

@@ -3,7 +3,7 @@ import spatial.library._
 import spatial.shared._
 
 // Sparse Matrix Vector multiply
-object SMV extends SpatialAppCompiler with SMVApp
+object SMV extends SpatialAppCompiler with SMVApp // Regression (Sparse) // Args: 768
 trait SMVApp extends SpatialApp {
   type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]

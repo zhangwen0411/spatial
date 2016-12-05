@@ -2,7 +2,7 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object OuterProduct extends SpatialAppCompiler with OuterProductApp
+object OuterProduct extends SpatialAppCompiler with OuterProductApp // Regression (Dense) // Args: 192 192
 trait OuterProductApp extends SpatialApp {
   type T = SInt
   val tileSize1 = 192
