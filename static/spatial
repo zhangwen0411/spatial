@@ -16,7 +16,7 @@ def main():
   parser.add_argument('--nolog', dest='no_log', action='store_true', default=False, help='disables logging of compiler')
   parser.add_argument("--cpp", dest="cpp", action="store_true", default=True, help="enables cpp generation")
   parser.add_argument("--dot", dest="dot", action="store_true", default=False, help="enables dot generation")
-  parser.add_argument("--maxj", dest="maxj", action="store_true", default=False, help="enables maxj generation")
+  parser.add_argument("--maxj", dest="maxj", action="store_true", default=True, help="enables maxj generation")
   parser.add_argument("--outdir", dest="outdir", default="out", help="location of output dir, relative to publish dir")
   parser.add_argument('--test', dest="test", action="store_true", default=False, help="enables Scala testing mode")
 
@@ -25,7 +25,7 @@ def main():
   parser.add_argument('--CGRA*', dest='dseCGRA', action="store_true", default=False, help="enable ALL PIR features")
 
   parser.add_argument('--pdse', dest='pdse', action="store_true", default=False, help="enable CGRA DSE")
-  parser.add_argument('--CGRA', dest='cgra', action='store_true', default=True, help='enables PIR generation')
+  parser.add_argument('--CGRA', dest='cgra', action='store_true', default=False, help='enables PIR generation')
   parser.add_argument('--pdebug', dest='pir_debug', action='store_true', default=False, help='enables PIR debugging output')
   parser.add_argument('--split', dest='split', action="store_true", default=False, help="enable PIR CU splitting")
 
