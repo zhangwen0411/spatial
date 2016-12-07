@@ -150,8 +150,8 @@ trait CharLoadTestApp extends SpatialApp {
   }
 }
 
-object CharStoreTest extends SpatialAppCompiler with CharStore // Regression (Characterization) // Args: 5 3
-trait CharStore extends SpatialApp {
+object CharStoreTest extends SpatialAppCompiler with CharStoreTestApp // Regression (Characterization) // Args: 5 3
+trait CharStoreTestApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val innerPar = 1;
@@ -221,8 +221,8 @@ trait CharStore extends SpatialApp {
 }
 
 
-object CharBramTest extends SpatialAppCompiler with CharBram // Regression (Characterization) // Args: 5 1 0
-trait CharBram extends SpatialApp {
+object CharBramTest extends SpatialAppCompiler with CharBramTestApp // Regression (Characterization) // Args: 5 1 0
+trait CharBramTestApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val innerPar = 16;

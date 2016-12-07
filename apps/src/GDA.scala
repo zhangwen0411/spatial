@@ -2,8 +2,8 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object GDA extends SpatialAppCompiler with GDA_App // Regression (Dense) // Args: 192
-trait GDA_App extends SpatialApp {
+object GDA extends SpatialAppCompiler with GDAApp // Regression (Dense) // Args: 192
+trait GDAApp extends SpatialApp {
   type T = Flt
   type Array[T] = ForgeArray[T]
 
