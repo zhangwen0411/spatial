@@ -43,28 +43,31 @@ trait SimpleSequentialApp extends SpatialApp {
 }
 
 
-object DeviceMemcpy extends SpatialAppCompiler with DeviceMemcpyApp // Regression (Unit) // Args: 5
+object DeviceMemcpy extends SpatialAppCompiler with DeviceMemcpyApp // Regression (Unit) // Args: 288
 trait DeviceMemcpyApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
 
-  val N = 192
-  def memcpyViaFPGA(srcHost: Rep[Array[T]]) = {
+  // val N = 192
+  def memcpyViaFPGA(srcHost: Rep[Array[T]], c: Rep[SInt]) = {
+    val N = ArgIn[SInt]
+    setArg(N, c)
     val fpgamem = DRAM[SInt](N)
     setMem(fpgamem, srcHost)
 
-  	val y = ArgOut[SInt]
-    Accel { Pipe { y := 10 } }
+    val y = ArgOut[SInt]
+    Accel { Pipe { y := N } }
 
     getMem(fpgamem)
   }
 
   def main() {
-    val arraySize = N
+    // val arraySize = N
     val c = args(unit(0)).to[SInt]
+    val arraySize = c
 
     val src = Array.tabulate[SInt](arraySize) { i => i*c }
-    val dst = memcpyViaFPGA(src)
+    val dst = memcpyViaFPGA(src, c)
 
     println("Sent in: ")
     (0 until arraySize) foreach { i => print(src(i) + " ") }
