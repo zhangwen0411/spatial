@@ -7,7 +7,7 @@ trait SimpleSequentialApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   def simpleseq(xin: Rep[SInt], yin: Rep[SInt]) = {
-    val innerPar = param(4); domainOf(innerPar) = (1, 1, 1)
+    val innerPar = param(1); domainOf(innerPar) = (1, 1, 1)
     val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
 
     val x = ArgIn[SInt]
@@ -258,20 +258,20 @@ trait FifoLoadStoreApp extends SpatialApp {
 
     val srcFPGA = DRAM[SInt](N)
     val dstFPGA = DRAM[SInt](N)
-    val dummyOut = ArgOut[SInt]
+    // val dummyOut = ArgOut[SInt]
     setMem(srcFPGA, srcHost)
 
     Accel {
       val f1 = FIFO[SInt](tileSize)
-      Parallel {
+      // Parallel {
         Sequential {
           f1 := srcFPGA(0::tileSize)
           dstFPGA(0::tileSize) := f1
         }
-        Pipe(tileSize by 1) { i =>
-          dummyOut := i
-        }
-      }
+        // Pipe(tileSize by 1) { i => // This pipe forces the loadstore to run for enough iters
+        //   dummyOut := i
+        // }
+      // }
       ()
     }
     getMem(dstFPGA)
@@ -395,7 +395,7 @@ trait NiterApp extends SpatialApp {
 
 
   def nIterTest(len: Rep[SInt]) = {
-    val innerPar = param(8); domainOf(innerPar) = (1, 1, 1)
+    val innerPar = param(1); domainOf(innerPar) = (1, 1, 1)
     val tileSize = param(constTileSize); domainOf(constTileSize) = (constTileSize, constTileSize, constTileSize)
     bound(len) = 9216
 
@@ -439,10 +439,9 @@ trait SimpleFoldApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
   val constTileSize = 96
-  val N = 192
 
   def simple_fold(src: Rep[Array[T]]) = {
-    val innerPar = param(8); domainOf(innerPar) = (1, 1, 1)
+    val innerPar = param(1); domainOf(innerPar) = (1, 1, 1)
     val tileSize = param(constTileSize); domainOf(tileSize) = (constTileSize, constTileSize, constTileSize)
     val len = src.length; bound(len) = 9216
 
@@ -544,6 +543,7 @@ trait BlockReduce1DApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   val tileSize = 96
+  val p = 2
 
   def blockreduce_1d(src: Rep[ForgeArray[T]], size: Rep[SInt]) = {
 
@@ -592,13 +592,13 @@ trait BlockReduce1DApp extends SpatialApp {
   }
 }
 
-object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args: 2
+object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args: 100
 trait UnalignedLdApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
-  val N = 1920
+  val N = 19200
 
-  val numCols = 155
+  val numCols = 8
   val paddedCols = 1920
 
   def unaligned_1d(src: Rep[ForgeArray[T]], ii: Rep[T]) = {
@@ -610,7 +610,7 @@ trait UnalignedLdApp extends SpatialApp {
     setMem(srcFPGA, src)
 
     Accel {
-      val mem = SRAM[T](numCols)
+      val mem = SRAM[T](96)
       val accum = Reg[T](0)
       Fold(iters by 1)(accum, 0.as[T]) { k =>
         Pipe { mem := srcFPGA(k*numCols::k*numCols+numCols) }
@@ -668,7 +668,7 @@ trait BlockReduce2DApp extends SpatialApp {
       val accum = SRAM[T](tileSize,tileSize)
       Fold (rowsIn by tileSize, colsIn by tileSize)(accum, 0.as[T]) { (i,j)  =>
         val tile = SRAM[T](tileSize,tileSize)
-        tile := srcFPGA(i::i+tileSize, j::j+tileSize, param(1))
+        tile := srcFPGA(i::i+tileSize, j::j+tileSize)
         tile
       }{_+_}
       dstFPGA (0::tileSize, 0::tileSize) := accum
@@ -735,7 +735,7 @@ trait ScatterGatherApp extends SpatialApp {
   val tileSize = 384
   val maxNumAddrs = 1536
   val offchip_dataSize = maxNumAddrs*6
-  val P = parameter(2)
+  val P = parameter(1)
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
@@ -1061,65 +1061,122 @@ trait ChangingCtrMaxApp extends SpatialApp {
   }
 }
 
+object FifoPushPop extends SpatialAppCompiler with FifoPushPopApp // Args: 384
+trait FifoPushPopApp extends SpatialApp {
+  type T = SInt
 
+  type Array[T] = ForgeArray[T]
+  def fifopushpop(N: Rep[SInt]) = {
+    val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
+
+    val size = ArgIn[SInt]
+    setArg(size, N)
+    val acc = ArgOut[SInt]
+
+    Accel {
+      val f1 = FIFO[SInt](tileSize)
+      val accum = Reg[SInt](0)
+      Fold(size by tileSize)(accum, 0.as[SInt]) { iter => 
+        Pipe(tileSize by 1) { i => f1.push(iter + i) }
+        Reduce(tileSize by 1)(0.as[SInt]) { i => 
+          f1.pop
+        }{_+_}
+      }{_+_}
+      acc := accum
+    }
+    getArg(acc)
+  }
+
+  def main() {
+    val arraySize = args(0).to[SInt]
+
+    val gold = Array.tabulate(arraySize){ i => i }.reduce{_+_}
+    val dst = fifopushpop(arraySize)
+
+    println("gold: " + gold)
+    println("dst: " + dst)
+
+    val cksum = dst == gold
+    println("PASS: " + cksum + " (FifoPushPop)")
+
+
+  }
+}
 // object GroupByReduce extends SpatialAppCompiler with GroupByReduceApp // Args: none
 // trait GroupByReduceApp extends SpatialApp {
 
-//   val T = FixPt(32,0,false)
-//   val D4bit = FixPt(2,2,false)
-//   val M8bit = FixPt(4,4,false) // Fix2Float in Node.scala
-//   var dim = 96
-//   var par = 1
+//   val tileSize = 96
 
-
-//   def main(args: String*) = {
-//     if (!(args.size == 2)) {
-//       println(args.size)
-//       println("\nUsage: GroupByReduce <dim>")
-//       sys.exit(0)
-//     }
-//     dim = args(0).toInt
-//     par = args(1).toInt
-
-//     // Get sizes of data structures from host
-//     val B = ArgIn("B"); bound(B, dim)
-
+//   def groupbyreduce(keys: Rep[Array[SInt]], values: Rep[Array[SInt]], numPars: Rep[SInt]) = {
 //     // Declare off-chip data arrays
-//     val keys = OffChipArray(T)("keys", B)
-//     val values = OffChipArray(T)("values", B)
-//     val result = OffChipArray(T)("groups", B)
-//     val accum = OffChipArray(T)("accums", B)
+//     val N = ArgIn[SInt]
+//     val OCkeys = OffChipMem(T)("keys", numPars)
+//     val OCvalues = OffChipMem(T)("values", numPars)
+//     val OCresult = OffChipMem(T)("groups", tileSize)
+//     val OCaccum = OffChipMem (T)("accums", tileSize)
+//     setArg(N, numPars)
+//     setMem(OCkeys, keys)
+//     setMem(OCvalues, values)
 
-//     // LOAD THE DATA
-//     val kTile = SRAM(T, "ktile", dim, false)
-//     val vTile = SRAM(T, "vtile", dim, false)
-//     val kLd = TileMemLd(keys, B, Const(0), Const(0), kTile, 1, dim)
-//     kLd.withForce(Const(true))
-//     val vLd = TileMemLd(values, B, Const(0), Const(0), vTile, 1, dim)
-//     vLd.withForce(Const(true))
-//     val ldPipe = Parallel(kLd, vLd)
+//     Accel {
+//       Sequential(N by tileSize) { i => 
+//         val kTile = BRAM[SInt](tileSize)
+//         val vTile = BRAM[SInt](tileSize)
+//         val rTile = BRAM[SInt](tileSize)
+//         val aTile = BRAM[SInt](tileSize)
+//         kTile := OCkeys(i::i+tileSize, param(1))
+//         vTile := OCvalues(i::i+tileSize, param(1))
+//         (rTile, aTile) = GrpByRdc(kTile, vTile)
+//       }
+//       OCresult(0::tileSize) := rTile
+//       OCaccum(0::tileSize) := aTile
+//     }
 
-
-//     /*
-//     SECTION FOR NON-PAR
-//     */
-//     // GROUP BY REDUCE
-//     val rTile = SRAM(T, "rtile", dim, false)
-//     val acTile = SRAM(T, "actile", dim, false)
-//     val grbr = GrpByRdc(par, dim, kTile, vTile, rTile, acTile)
-//     val gbrPipe = Parallel(grbr)
-
-
-//     // STORE OFFCHIP
-//     val st = TileMemSt(1, result, B, Const(0), Const(0), rTile, 1, dim)
-//     st.withForce(Const(true))
-//     val st2 = TileMemSt(1, accum, B, Const(0), Const(0), acTile, 1, dim)
-//     st2.withForce(Const(true))
-
-//     val topCtr = Ctr((Const(1),1))
-//     // val last = List(ldPipe) ++ List(grpBlock._1) ++ List(st) ++ List(st2)
-//     val last = List(ldPipe) ++ List(gbrPipe) ++ List(st) ++ List(st2)
-//     val topCtrl = Sequential(topCtr,last:_*)
-
-//     topCtrl
+//     getMem(OCresult)
+//     getMem(OCaccum)
 //   }
+
+//   def main() = {
+
+   // // Read input args
+   //  val dim = args(0).toInt
+
+   //  // Use input args to make random off chip array values 
+   //  setArg("B",dim)
+
+   //  // Generate new data
+   //  val keys = Array.tabulate(dim){i => scala.util.Random.nextInt(31)}
+   //  val values = Array.tabulate(dim){i => scala.util.Random.nextInt(20)}
+
+   //  // Set offchip data tiles
+   //  setMem("values", values)
+   //  setMem("keys", keys)
+
+   //  // Show user what off chip array values are
+   //  println("\nkey-value pairs:")
+   //  if (dim > 100) {
+   //    println("<supressed>")
+   //  }
+   //  else {
+   //    keys.zip(values).map { case (a,b) => println(a + " - " + b)} 
+   //  }
+
+   //  // val results = keys.zip(values).groupBy(_._1).mapValues(_.map(_._2).sum)
+   //  var buckets = keys.distinct
+   //  var reductions = buckets map {_ => 0}
+   //  for (i <- 0 until buckets.length) {
+   //    reductions(i) = keys.zip(values).filter(_._1 == buckets(i)).map(_._2).sum
+   //  } 
+
+
+
+   //  println("\nbucket-reduction pairs:")
+   //  if (reductions.length > 100) {
+   //    println("<supressed>")
+   //  }
+   //  else {
+   //    buckets.zip(reductions).map { case (a,b) => println(a + " - " + b)} 
+   //  }
+
+//   }
+// }

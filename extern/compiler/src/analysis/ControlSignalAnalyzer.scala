@@ -101,8 +101,14 @@ trait ControlSignalAnalyzer extends Traversal {
     val factors = parFactorsOf(cc)
     inds.zip(factors).foreach{case (i,p) => parFactorOf(i) = p }
 
+
+//    inds.take(inds.length - 1).foreach{i => unrollFactorsOf(i) = unrollFactors }
+
     // ASSUMPTION: Only parallelize by innermost loop currently
     unrollFactors ++= List(parFactors(cc).last) //unrollFactors ++= factors
+
+//    unrollFactorsOf(inds.last) = unrollFactors
+
 
     traverseWith(ctrl)(b)
     unrollFactors = prevUnrollFactors
@@ -288,8 +294,10 @@ trait ControlSignalAnalyzer extends Traversal {
 
 
     // Scatter and gather are very high level nodes right now
-    case e:Scatter[_] => parFactorOf(e.i) = e.par
-    case e:Gather[_]  => parFactorOf(e.i) = e.par
+    case e:Scatter[_]   => parFactorOf(e.i) = e.par
+    case e:Gather[_]    => parFactorOf(e.i) = e.par
+    case e:Convolve[_]  => e.inds.zip(e.pars).foreach{case (i,p) => parFactorOf(i) = p }
+    case e:ConvLayer[_] => e.inds.zip(e.pars).foreach{case (i,p) => parFactorOf(i) = p }
 
     case _ => blocks(rhs).foreach{blk => traverseBlock(blk)}
   }

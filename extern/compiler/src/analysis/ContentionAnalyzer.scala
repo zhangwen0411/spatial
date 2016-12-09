@@ -36,6 +36,7 @@ trait ContentionAnalyzer {
     case Deff(_:BurstStore[_])    => 1
     case Deff(_:Scatter[_])       => 1
     case Deff(_:Gather[_])        => 1
+    case Deff(_:Convolve[_])      => 1
     case _ => 0
   }
 
@@ -62,6 +63,7 @@ trait ContentionAnalyzer {
     case Deff(_:BurstStore[_])    => contentionOf(x) = parent
     case Deff(_:Scatter[_])       => contentionOf(x) = parent
     case Deff(_:Gather[_])        => contentionOf(x) = parent
+    case Deff(_:Convolve[_])      => contentionOf(x) = parent
     case _ => // do nothing
   }
 

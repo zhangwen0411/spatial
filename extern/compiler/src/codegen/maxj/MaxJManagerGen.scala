@@ -8,7 +8,7 @@ import scala.reflect.SourceContext
 import java.io.{PrintWriter}
 
 trait MaxJManagerGen {
-	val IR:SpatialExp
+	val IR:SpatialExp with DRAMAddrAnalysisExp
 	import IR.{infix_until => _, looprange_until => _, println => _, _}
 
 	var stream:PrintWriter = _
@@ -294,7 +294,7 @@ s"""
     //}
   }
 
-  def emitConstructor(memStreams: Set[Sym[Any]]) = {
+  def emitConstructor(memStreams: List[Sym[Any]]) = {
     emit(mConstructorPreamble)
     emit("    // Setup LMEM -> DFE streams (input streams to DFE)")
     emit("    // Setup DFE -> LMEM (output streams from DFE)")
@@ -310,19 +310,39 @@ s"""
         emit(s"""// BurstLoad $streamName""")
         emit(s"""    DFELink ${streamName}_in = addStreamFromOnCardMemory("${streamName}_in", k.getOutput("${streamName}_in_cmd"));""")
         emit(s"""    k.getInput("${streamName}_in") <== ${streamName}_in;""")
+      case tt@Def(EatReflect(Convolve(img, kernel, output, img_dims, k_dims, strides, pars, inds))) =>
+      
+     	  val streamName1 = s"${quote(img)}_${quote(tt)}"
+        emit(s"""// DRAM Load $streamName1""")
+        // emit(s"""    DFELink ${streamName1}_in = addStreamFromOnCardMemory("${streamName1}_in", k.getOutput("${streamName1}_in_cmd"));""")
+        emit(s"""    DFELink ${streamName1}_in = addStreamFromOnCardMemory("${streamName1}_in", MemoryControlGroup.MemoryAccessPattern.LINEAR_1D);""")
+        emit(s"""    k.getInput("${streamName1}_in") <== ${streamName1}_in;""")
+
+     	  val streamName2 = s"${quote(kernel)}_${quote(tt)}"
+        emit(s"""// DRAM Load $streamName2""")
+        // emit(s"""    DFELink ${streamName2}_in = addStreamFromOnCardMemory("${streamName2}_in", k.getOutput("${streamName2}_in_cmd"));""")
+        emit(s"""    DFELink ${streamName2}_in = addStreamFromOnCardMemory("${streamName2}_in", MemoryControlGroup.MemoryAccessPattern.LINEAR_1D);""")
+        emit(s"""    k.getInput("${streamName2}_in") <== ${streamName2}_in;""")
+
+        val streamName3 = s"${quote(output)}_${quote(tt)}"
+        emit(s"""// DRAM Store $streamName3""")
+        // emit(s"""    DFELink ${streamName3}_out = addStreamToOnCardMemory("${streamName3}_out", k.getOutput("${streamName3}_out_cmd"));""")
+        emit(s"""    DFELink ${streamName3}_out = addStreamToOnCardMemory("${streamName3}_out", MemoryControlGroup.MemoryAccessPattern.LINEAR_1D);""")
+        emit(s"""    ${streamName3}_out <== k.getOutput("${streamName3}_out");""")
+
       case tt@Def(EatReflect(Scatter(mem,local,addrs,len,par,_))) =>
         val streamName = s"${quote(mem)}_${quote(tt)}"
         emit(s"""// Scatter $streamName""")
-	    val p = childrenOf(parentOf(tt).get).length
-	    val i = childrenOf(parentOf(tt).get).indexOf(tt)
+  	    val p = childrenOf(parentOf(tt).get).length
+        val i = childrenOf(parentOf(tt).get).indexOf(tt)
         emit(s"""    DFELink ${streamName}_out_rd_${i} = addStreamFromOnCardMemory("${streamName}_out_rd_${i}", k.getOutput("${streamName}_out_rd_cmd_${i}"));""")
         emit(s"""    k.getInput("${streamName}_out_rd_${i}") <== ${streamName}_out_rd_${i};""")
         emit(s"""    DFELink ${streamName}_out_$i = addStreamToOnCardMemory("${streamName}_out_$i", k.getOutput("${streamName}_out_cmd_$i"));""")
         emit(s"""    ${streamName}_out_$i <== k.getOutput("${streamName}_out_$i");""")
       case tt@Def(EatReflect(Gather(mem,local,addrs,len,_,i))) =>
-     	val streamName = s"${quote(mem)}_${quote(tt)}"
-	    val p = childrenOf(parentOf(tt).get).length
-	    val i = childrenOf(parentOf(tt).get).indexOf(tt)
+        val streamName = s"${quote(mem)}_${quote(tt)}"
+        val p = childrenOf(parentOf(tt).get).length
+        val i = childrenOf(parentOf(tt).get).indexOf(tt)
         emit(s"""// Gather $streamName""")
         emit(s"""    DFELink ${streamName}_in_$i = addStreamFromOnCardMemory("${streamName}_in_$i", k.getOutput("${streamName}_in_cmd_$i"));""")
         emit(s"""    k.getInput("${streamName}_in_$i") <== ${streamName}_in_$i;""")
@@ -336,7 +356,7 @@ s"""
     emit(mWriteIntf)
   }
 
-  def emitDefaultInterface(argInOuts: Set[Sym[Reg[_]]]) = {
+  def emitDefaultInterface(argInOuts: List[Sym[Reg[_]]], memStreams: List[Sym[Any]]) = {
     emit(mDefaultIntfPreamble)
     argInOuts.foreach { a =>
 			regType(a) match {
@@ -349,11 +369,41 @@ s"""
       		emit(s"""    ei.unignoreScalar("TopKernel", "${quote(a)}");""")
 			}
     }
-    emit(s"""    ei.unignoreScalar("TopKernel", "cycles");""")
+    memStreams.foreach{
+      case tt@Def(EatReflect(Convolve(img, kernel, output, img_dims, k_dims, strides, pars, inds))) =>
+      
+     	  val streamName1 = s"${quote(img)}_${quote(tt)}_in"
+     	  val streamName2 = s"${quote(kernel)}_${quote(tt)}_in"
+        val streamName3 = s"${quote(output)}_${quote(tt)}_out"
+
+        var outD = 1;
+        if (k_dims.length == 4) {
+          outD = k_dims(3)
+        }
+
+        val img_DRAM_dims = dimsOf(img)
+        val img_DRAM_size = bound(img_DRAM_dims(0)).get.toInt
+        
+        val kernel_DRAM_dims = dimsOf(kernel)
+        val kernel_DRAM_size = bound(kernel_DRAM_dims(0)).get.toInt
+        
+        val output_DRAM_dims = dimsOf(output)
+        val output_DRAM_size = bound(output_DRAM_dims(0)).get.toInt
+
+        emit(s"""     // Convolution currently uses linear memory regions""")
+        emit(s"""     ei.setLMemLinearWrapped("${streamName1}",  ${dramAddr(img   )},  ${img_DRAM_size*4},  ${img_DRAM_size*4*outD},  0);""")
+        emit(s"""     ei.setLMemLinear("${streamName2}",         ${dramAddr(kernel)},  ${kernel_DRAM_size*4});""")
+        emit(s"""     ei.setLMemLinear("${streamName3}",         ${dramAddr(output)},  ${output_DRAM_size*4});
+""")
+
+    case _ =>
+
+    }
+    emit(s"""      ei.unignoreScalar("TopKernel", "cycles");""")
     emit(mDefaultIntfEpilogue)
   }
 
-  def emitManager(stream:PrintWriter, argInOuts:Set[Sym[Reg[_]]], memStreams:Set[Sym[Any]]) = {
+  def emitManager(stream:PrintWriter, argInOuts:List[Sym[Reg[_]]], memStreams:List[Sym[Any]]) = {
 		this.stream = stream
     initPass()
     //println(s"""tileTransfers: """)
@@ -362,7 +412,7 @@ s"""
 		//argInOuts.foreach { a => println(quote(a)) }
     emitConstructor(memStreams)
     emitRWInterface()
-    emitDefaultInterface(argInOuts)
+    emitDefaultInterface(argInOuts, memStreams)
 
     finPass()
   }

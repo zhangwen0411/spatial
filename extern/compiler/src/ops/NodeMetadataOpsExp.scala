@@ -110,6 +110,8 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(Par_push_fifo(fifo,value,_,_))     => Some(LocalWrite(fifo,value))
     case EatReflect(BurstLoad(mem,fifo,_,_,_))         => Some(LocalWrite(fifo))
     case EatReflect(Gather(mem,local,addrs,_,_,_))     => Some(LocalWrite(local))
+    case EatReflect(e: Convolve[_])                    => Some(LocalWrite(e.output))
+    case EatReflect(e: ConvLayer[_])                   => Some(LocalWrite(e.output))
     case _ => None
   }
 
@@ -124,7 +126,17 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(BurstStore(mem,fifo,_,_,_))     => Some(LocalRead(fifo))
     case EatReflect(Gather(mem,local,addrs,_,_,_))  => Some(LocalRead(addrs))
     case EatReflect(Scatter(mem,local,addrs,_,_,_)) => Some(LocalRead(local) ++ LocalRead(addrs))
+    case EatReflect(e: ConvLayer[_])                => Some(LocalRead(e.image))
     case _ => None
+  }
+
+  def parize(par: Rep[Int]) = par match {
+    case Const(c) =>
+      val p = param(c)
+      domainOf(p) = (c,c,1)
+      p
+    case p: Param[_] => p.asInstanceOf[Param[Int]]
+    case _ => throw InvalidParFactorException(par)
   }
 
   private def indicesOf(addr: Exp[Any]): List[Exp[Index]] = addr match {
@@ -175,10 +187,11 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:Sram_new[_])      => true
     case EatReflect(_:Fifo_new[_])      => true
     case EatReflect(_:Cam_new[_,_])     => true
-    case EatReflect(_:Dram_new[_])   => true
+    case EatReflect(_:Dram_new[_])      => true
     case EatReflect(_:Counter_new)      => true
     case EatReflect(_:Counterchain_new) => true
     case EatReflect(_:DeliteStruct[_])  => true
+    case EatReflect(_:ListVector[_])    => true
     case _ => false
   }
 
@@ -188,6 +201,13 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:Counter_new)      => true
     case EatReflect(_:Counterchain_new) => true
     case EatReflect(_:DeliteStruct[_])  => true
+    case EatReflect(_:ListVector[_])    => true
+    case _ => false
+  }
+  // Allocations which can be directly used in primitive computation
+  def isPrimitiveAllocation(d: Def[Any]): Boolean = d match {
+    case EatReflect(_:DeliteStruct[_]) => true
+    case EatReflect(_:ListVector[_]) => true
     case _ => false
   }
 
@@ -196,6 +216,8 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case EatReflect(_:BurstStore[_]) => true
     case EatReflect(_:Gather[_]) => true
     case EatReflect(_:Scatter[_]) => true
+    case EatReflect(_:Convolve[_]) => true
+    case EatReflect(_:ConvLayer[_]) => true
     case _ => false
   }
   def isOffChipTransfer(e: Exp[Any]): Boolean = e match {
@@ -211,6 +233,11 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case Def(d) => isParallel(d)
     case _ => false
   }
+  def isUnitPipe(s: Exp[Any]): Boolean = s match {
+    case Deff(_:UnitPipe) => true
+    case _ => false
+  }
+
 
   def isPipeline(d: Def[Any]): Boolean = d match {
     case EatReflect(_:OpForeach)    => true
@@ -290,8 +317,10 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case _ => false
   }
 
-  def isConstant(s: Exp[Any]): Boolean = s match {
-    case Fixed(_) => true
+  def isConstant(x: Exp[Any]): Boolean = x match {
+    case Const(c) => true
+    case Exact(c) => true
+    case Def(ConstBit(c)) => true
     case _ => false
   }
 
@@ -360,6 +389,11 @@ trait NodeMetadataOpsExp extends NodeMetadataTypesExp {
     case Def(d) => isDynamicAllocation(d)
     case _ => false
   }
+  def isPrimitiveAllocation(s: Exp[Any]): Boolean = s match {
+    case Def(d) => isPrimitiveAllocation(d)
+    case _ => false
+  }
+
   def isLocalMemory(s: Exp[Any]) = isReg(s.tp) || isSRAM(s.tp) || isFIFO(s.tp) || isCache(s.tp)
 
   // Checks to see if lhs is dependent on rhs (used for checking for accum. cycles)

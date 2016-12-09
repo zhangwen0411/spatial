@@ -27,10 +27,10 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
   debugMode = SpatialConfig.debugging
   verboseMode = SpatialConfig.verbose
 
-  class Stage(val isControl: Boolean) {
-    val allocs: ArrayBuffer[Stm] = ArrayBuffer.empty
-    val nodes: ArrayBuffer[Stm] = ArrayBuffer.empty
-    val regReads: ArrayBuffer[Stm] = ArrayBuffer.empty
+  private class PipeStage(val isControl: Boolean) {
+    val allocs = ArrayBuffer[Stm]()
+    val nodes  = ArrayBuffer[Stm]()
+    val regReads = ArrayBuffer[Stm]()
 
     def dynamicAllocs: ArrayBuffer[Stm] = allocs.filter{
       case TP(s,d) => isDynamicAllocation(d)
@@ -58,10 +58,11 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
 
   // HACK: Have to get a reset value for inserted registers for writing out of unit pipes
   // TODO: Custom records
-  private def zero[T](mT: Manifest[T])(implicit ctx: SourceContext): Exp[T] = (mT match {
+  private def zero[T](mT: Manifest[T]): Exp[T] = (mT match {
     case FixPtType(mS,mI,mF) => canFixPtNum(mS,mI,mF).zero
     case FltPtType(mG,mE)    => canFltPtNum(mG,mE).zero
     case mT if isBitType(mT) => canBitNum.zero
+
     case TupNType(2,List(mA,mB)) => pack((zero(mA),zero(mB)))
     case TupNType(3,List(mA,mB,mC)) => pack((zero(mA),zero(mB),zero(mC)))
     case TupNType(4,List(mA,mB,mC,mD)) => pack((zero(mA),zero(mB),zero(mC),zero(mD)))
@@ -70,7 +71,12 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
     case TupNType(7,List(mA,mB,mC,mD,mE,mF,mG)) => pack((zero(mA),zero(mB),zero(mC),zero(mD),zero(mE),zero(mF),zero(mG)))
     case TupNType(8,List(mA,mB,mC,mD,mE,mF,mG,mH)) => pack((zero(mA),zero(mB),zero(mC),zero(mD),zero(mE),zero(mF),zero(mG),zero(mH)))
     case TupNType(9,List(mA,mB,mC,mD,mE,mF,mG,mH,mI)) => pack((zero(mA),zero(mB),zero(mC),zero(mD),zero(mE),zero(mF),zero(mG),zero(mH),zero(mI)))
-    case _ => throw UnknownZeroException(mT)
+    case mT => throw UnknownZeroException(mT)
+  }).asInstanceOf[Exp[T]]
+
+  private def zero[T:Manifest](e: Exp[T])(implicit ctx: SourceContext): Exp[T] = (e match {
+    case Deff(ListVector(elems)) => vectorize(elems.map{x => zero(x)(x.tp,ctx) })(elems.head.tp, ctx)
+    case _ => zero(manifest[T])
   }).asInstanceOf[Exp[T]]
 
   def wrapPrimitives[T:Manifest](blk: Block[T])(implicit ctx: SourceContext): Block[T] = {
@@ -81,13 +87,13 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
         focusExactScope(blk){ stms =>
 
           // Imperative version (functional version caused ugly scalac crash :( )
-          val stages: ArrayBuffer[Stage] = ArrayBuffer.empty
+          val stages = ArrayBuffer[PipeStage]()
           def curStage = stages.last
-          stages += new Stage(true)
+          stages += new PipeStage(true)
 
           stms foreach { case stm@TP(s,d) =>
             if (isPrimitiveNode(s)) {
-              if (curStage.isControl) stages += new Stage(false)
+              if (curStage.isControl) stages += new PipeStage(false)
               curStage.nodes += stm
             }
             else if (isRegisterRead(s)) {
@@ -95,11 +101,11 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
               curStage.regReads += stm
             }
             else if (isAllocation(s) || isConstant(s) || isGlobal(s)) {
-              if (isDynamicAllocation(s) && !curStage.isControl) curStage.nodes += stm
+              if (isPrimitiveAllocation(s) && !curStage.isControl) curStage.nodes += stm
               else curStage.allocs += stm
             }
             else {
-              stages += new Stage(true)
+              stages += new PipeStage(true)
               curStage.nodes += stm
             }
           }
@@ -121,7 +127,7 @@ trait UnitPipeTransformer extends MultiPassTransformer with SpatialTraversalTool
               debugs("Escaping symbols: " + escapingValues.mkString(", "))
               // Create registers for escaping symbols
               val regs = escapingValues.map{sym =>
-                val reg = reg_create(zero(sym.tp)(mpos(sym.pos)))(sym.tp, mpos(sym.pos))
+                val reg = reg_create( zero(sym)(sym.tp,mpos(sym.pos)) )(sym.tp, mpos(sym.pos))
                 debugs(s"Created new register $reg for escaping primitive $sym")
                 reg
               }

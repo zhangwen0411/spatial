@@ -56,14 +56,14 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
   object ConstFix {
     def unapply(x: Any): Option[Any] = x match {
       case ConstFixPt(x,_,_,_) => Some(x)
-      case Def(ConstFixPt(x,_,_,_)) => Some(x)
+      case Deff(ConstFixPt(x,_,_,_)) => Some(x)
       case _ => None
     }
   }
   object ConstFlt {
     def unapply(x: Any): Option[Any] = x match {
       case ConstFltPt(x,_,_) => Some(x)
-      case Def(ConstFltPt(x,_,_)) => Some(x)
+      case Deff(ConstFltPt(x,_,_)) => Some(x)
       case _ => None
     }
   }
@@ -84,6 +84,7 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
 
   def isStaticSize[T:Manifest](x: Rep[T]): Boolean = x match {
     case ConstFix(_) => true
+    case ConstFlt(_) => true
     case ParamFix(_) => true
     case _ => false
   }
@@ -153,6 +154,10 @@ trait ExternPrimitiveOpsExp extends ExternPrimitiveCompilerOps with ExternPrimit
     case _ => super.int_to_fix(x)
   }
 
+  override def mod[S:Manifest,I:Manifest](x: Rep[FixPt[S,I,B0]], y: Rep[FixPt[S,I,B0]])(implicit ctx: SourceContext) = (x,y) match {
+    case (ConstFix(a: Int), ConstFix(b: Int)) => lift_to[Int,FixPt[S,I,B0]](a % b)
+    case _ => super.mod(x,y)
+  }
 
   override def mirror[A:Manifest](e: Def[A], f: Transformer)(implicit pos: SourceContext): Exp[A] = (e match {
     case EatReflect(e@Min2(a,b)) => reflectPure(Min2(f(a),f(b))(e.mT,e.oT,e.nT,e.ctx))(mtype(manifest[A]),pos)
@@ -189,7 +194,7 @@ trait CGenExternPrimitiveOps extends CGenEffect {
 }
 
 trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
-  val IR:UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DeliteTransform
+  val IR:UnrollingTransformExp with SpatialExp with MemoryAnalysisExp with DRAMAddrAnalysisExp with  DeliteTransform
 
   import IR.{infix_until => _, looprange_until => _, println => _, _}
 
@@ -200,7 +205,6 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
     case lhs@Def(rhs) => if (!emitted_consts.contains((lhs, rhs))) { emitted_consts += ((lhs, rhs)) }
     case _ =>
   }
-
 
 	var traversals: List[Traversal{val IR: MaxJGenExternPrimitiveOps.this.IR.type}] = Nil
 
@@ -274,6 +278,24 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 
+    case FixPt_Sub(a,b) =>
+      val pre = maxJPre(sym)
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""$pre ${quote(sym)} = ${quote(a)} - ${quote(b)};""")
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
+    case FltPt_Sub(a,b) =>
+      val pre = maxJPre(sym)
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""$pre ${quote(sym)} = ${quote(a)} - ${quote(b)};""")
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
     case FixPt_Div(a,b) =>
       val pre = maxJPre(sym)
       rTreeMap(sym) match {
@@ -282,6 +304,29 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
         case m =>
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
+
+    case FieldApply(a, b) =>
+      val pre = maxJPre(sym)
+      val tp = tpstr(parOf(sym))(sym.tp, implicitly[SourceContext])
+      rTreeMap(sym) match {
+        case Nil =>
+          b match { // TODO: Decide slice based on bit lengths
+            case "_1" => emit(s"""$pre ${quote(sym)} = ${quote(a)}.slice(32,32).cast($tp);""")
+            case "_2" => emit(s"""$pre ${quote(sym)} = ${quote(a)}.slice(0,32).cast($tp);""")
+          }
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
+    case Internal_pack2(a,b) =>
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""DFEVar ${quote(sym)} = ${quote(a)}.cast(dfeRawBits(32)).cast(dfeUInt(32)).cast(dfeUInt(64)).cast(dfeRawBits(64)).shiftLeft(32) ^ ${quote(b)}.cast(dfeRawBits(32)).cast(dfeUInt(32)).cast(dfeUInt(64)).cast(dfeRawBits(64));""")
+
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
 
     case FltPt_Div(a,b) =>
       val pre = maxJPre(sym)
@@ -335,7 +380,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} !== {quote(b)};""")
+          emit(s"""${quote(sym)} <== ${quote(a)} !== ${quote(b)};""")
         case m =>
           emit(s"""// ${quote(sym)} already emitted in $m""")
       }
@@ -426,6 +471,9 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           emit(s"""// ${quote(sym)} already emitted in $m""")
       }
 
+    case FixPt_Mod(a,b) =>
+      emit(s"""${maxJPre(sym)} ${quote(sym)} = KernelMath.divMod(${quote(a)}.cast(dfeUInt(32)), ${quote(b)}.cast(dfeUInt(32))).getRemainder().cast(${quote(a)}.getType());""")
+
 
     case Bit_Not(a) =>
       val pre = maxJPre(sym)
@@ -438,11 +486,19 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
 
     case Bit_And(a,b) =>
       val pre = maxJPre(sym)
+      // // always emit in topkernel to fix Kmeans bug
+      // emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)}; /* emit inside and outside kernel for simplicity */""")
       rTreeMap(sym) match {
         case Nil =>
           emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
         case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
+          if (!insideReduceKernel) {
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
+          } else {
+            emit(s"""// ${quote(sym)} already emitted in $m""")
+          }
+
+
       }
 
     case Bit_Or(a,b) =>
@@ -479,6 +535,34 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
           emit(s"""$pre ${quote(sym)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;""")
         case m =>
           emit(s"""// ${quote(sym)} already emitted in $m""")
+      }
+
+    case Vec_apply(vec, idx) =>
+      rTreeMap(sym) match {
+        case Nil =>
+          emit(s"""DFEVar ${quote(sym)} = ${quote(vec)}[${quote(idx)}];""")
+        case m =>
+          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      }
+
+    case ListVector(elems) =>
+      rTreeMap(sym) match {
+        case Nil =>
+          if (isVector(elems(0).tp)) {
+            val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
+            emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map{a => quote(a) + "[0]"}.mkString(",")}));""")
+          } else {
+            val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])
+            emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map(quote).mkString(",")}));""")
+          }
+        case m =>
+          if (isVector(elems(0).tp)) {
+            val ts = tpstr(1)(elems(0).tp.typeArguments.head, implicitly[SourceContext])
+            emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this);""")
+          } else {
+            val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])
+            emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this);""")
+          }
       }
 
     case Tpes_Int_to_fix(x) =>  // Emit this node in MaxJ only if x is a const

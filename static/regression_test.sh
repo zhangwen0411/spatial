@@ -3,7 +3,7 @@
 ##########
 # CONFIG #
 ##########
-# Length of history to maintain in pretty printer (remember to manually add enough git commits)
+# Length of history to maintain in pretty printer
 hist=72
 branch=$1
 
@@ -14,18 +14,19 @@ app_classes=("dense" "sparse" "unit" "characterization")
 dense_test_list=("DotProduct" "MatMult_inner" "TPCHQ6" "BlackScholes" "MatMult_outer"
 	"Kmeans"  "GEMM"      "GDA"    "SGD"   "LogReg" "OuterProduct")
 dense_args_list=("9600"       "8 192 192"     "1920"   "960"          "8 192 192"    
-	"96 8 96" "8 192 192" "96 96" "96 96" "96"     "192 192")
+	"1 96" "8 192 192" "96 96"  "96 96" "768 2"     "192 192")
 sparse_test_list=("BFS" "PageRank" "TriangleCounting" "SparseSGD" "TPCHQ1")
-sparse_args_list=("960" "960"      "960"              "960"       "960"   )    
+sparse_args_list=("960" "2 384 1"  "960"              "960"       "960"   )    
 
 # Seconds to pause while waiting for apps to run
-delay=900
+delay=1320
+spacing=25
 
 # random=(`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 4`) # Random chars to add to directory to avoid new workers from wiping old
 random=(`date +"%H-%M"`) # Chars to add to directory to avoid new workers from wiping old
 
 # Override env vars to point to a separate directory for this regression test
-export TESTS_HOME="/home/mattfel/${branch}_regression_tests_${random}"
+export TESTS_HOME="${HOME}/${branch}_regression_tests_${random}"
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${TESTS_HOME}/hyperdsl
@@ -47,11 +48,11 @@ function write_comments {
 
 Comments
 --------
-* Expected FifoLoadStore to fail validation
-* Fix parallel ScatterGather to support interleaved banking rather than strided
+* ~~Expected FifoLoadStore to fail validation~~
+* ~~Fix parallel ScatterGather to support interleaved banking rather than strided~~
 * Expected GEMM to fail validation
 * Tighten validation margin on BlackScholes
-* Fix UnalignedLd bug with calculating burst address and cmd enable for unaligned lds
+* ~~Fix UnalignedLd bug with calculating burst address and cmd enable for unaligned lds~~
 * Make SGD work on more than 1 epoch
 " >> $1
 }
@@ -84,14 +85,17 @@ function update_log {
 		elif [[ $p == *"failed_did_not_finish"* ]]; then
 			echo "<------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
 			t=0
+		elif [[ $p == *"failed_compile_stuck"* ]]; then
+			echo "<----------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+			t=0
 		elif [[ $p == *"failed_app_not_written"* ]]; then
-			echo "<------------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+			echo "<----------------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
 			t=0
 		elif [[ $p == *"failed_build_in_spatial"* ]]; then
-			echo "<--------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+			echo "<------------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
 			t=0
 		elif [[ $p == *"failed_compile_maxj"* ]]; then
-			echo "<----------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+			echo "<--------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
 			t=0
 		elif [[ $p == *"failed_no_validation_check"* ]]; then
 			echo "<--------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
@@ -135,7 +139,7 @@ function update_log {
 			sed -i -e "1d" $perf_file
 		fi
 
-		cmd="python ${SPATIAL_HOME}/static/plotter.py ${branch}_${pname} ${SPATIAL_HOME}/spatial.wiki/"
+		cmd="/usr/local/bin/python2.7 ${SPATIAL_HOME}/static/plotter.py ${branch}_${pname} ${SPATIAL_HOME}/spatial.wiki/"
 		eval "$cmd"
 
 
@@ -146,7 +150,7 @@ function create_script {
 	echo "
 #!/bin/bash
 # Override env vars to point to a separate directory for this regression test
-export TESTS_HOME=/home/mattfel/${branch}_regression_tests_${random}
+export TESTS_HOME=${HOME}/${branch}_regression_tests_${random}
 export SPATIAL_HOME=${TESTS_HOME}/hyperdsl/spatial
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${TESTS_HOME}/hyperdsl
@@ -155,20 +159,22 @@ export FORGE_HOME=${HYPER_HOME}/forge
 export DELITE_HOME=${HYPER_HOME}/delite
 export LMS_HOME=${HYPER_HOME}/virtualization-lms-core
 export PIR_HOME=${HYPER_HOME}/spatial/published/Spatial
+export PATH=/opt/maxeler/maxcompiler-2014.1/bin:$PATH
 
-sleep ${3} # Backoff time to prevent those weird file IO errors
+sleep \$((${3}*${spacing})) # Backoff time to prevent those weird file IO errors
 
 cd ${PUB_HOME}
 ${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} 2>&1 | tee -a ${5}/log
 
 sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${5}/log
-sed -i \"s/error retrieving current directory/Ignoring getcwd e r r o r/g\" log
+sed -i \"s/error retrieving current directory/Ignoring getcwd e r r o r/g\" ${5}/log
+sed -i \"s/error: illegal sharing of mutable object/Ignoring scattergather mutable sharing e r r o r/g\" ${5}/log
 
 wc=\$(cat ${5}/log | grep \"couldn't find DEG file\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -1 (${4} Spatial Error)\"
-	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
    		echo \"[STATUS] Declaring failure app_not_written\"
     	touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_not_written.${3}_${4}
     fi
@@ -178,8 +184,9 @@ fi
 wc=\$(cat ${5}/log | grep \"error\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -2 (${4} Spatial Error)\"
-	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+	    cat ${5}/log
 	    echo \"[STATUS] Declaring failure build_in_spatial\"
     	touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
     fi
@@ -187,18 +194,26 @@ if [ \"\$wc\" -ne 0 ]; then
 fi
 
 cd ${5}/out
+# Patch makefile, Because ant won't run inside a makefile if I set the symlinks correctly
+sed -i \"s/JAVA_HOME = \/usr\/lib\/jvm\/java-7-openjdk-amd64/JAVA_HOME = \/usr/g\" Makefile
+sed -i \"s/ant/\/usr\/share\/ant\/bin\/ant/g\" Makefile
+sed -i '4i J_HOME=/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.40.x86_64' Makefile
+sed -i \"s/-I\\\$(JAVA_HOME)\/include -I\\\$(JAVA_HOME)\/include\/linux/-I\\\$(J_HOME)\/include -I\\\$(J_HOME)\/include\/linux/g\" Makefile
+
 make clean sim 2>&1 | tee -a ${5}/log
 wc=\$(cat ${5}/log | sed \"s/Error 1 (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
 	echo \"PASS: -3 (${4} Spatial Error)\"
-	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+	if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+	    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
 	    echo \"[STATUS] Declaring failure compile_maxj\"
 	    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_maxj.${3}_${4}
 	fi
 	exit 1
 fi
 
+rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
 cd out
 bash ${5}/out/run.sh ${args_list[i]} 2>&1 | tee -a ${5}/log
 if grep -q \"PASS: 1\" ${5}/log; then
@@ -241,7 +256,7 @@ fi" >> $1
 #################
 
 # Kill any maxcompilersims older than an hour
-stale_sims=(`ps axh -O user,etimes | grep mattfel | grep maxcompilersim  | awk '{if ($3 >= 1) print $1}'`)
+stale_sims=(`ps axh -O user,etime | grep mattfel | grep maxcompilersim  | awk '{if ($3 >= 1) print $1}'`)
 for job in ${stale_sims[@]}; do
 	kill -9 $job
 done
@@ -253,7 +268,7 @@ echo "[STATUS] `date`: Cloning stuff..."
 git clone git@github.com:stanford-ppl/hyperdsl.git > /dev/null
 if [ ! -d "./hyperdsl" ]; then
   echo "hyperdsl directory does not exist!"
-  result_file="/home/mattfel/hyperdsl/spatial/spatial.wiki/${branch}-Regression-Tests-Status.md"
+  result_file="${HOME}/hyperdsl/spatial/spatial.wiki/${branch}-Regression-Tests-Status.md"
   echo "Current global status on ${branch} branch:" > $result_file
   echo "-------------------------------" >> $result_file
   echo "" >> $result_file
@@ -262,7 +277,7 @@ if [ ! -d "./hyperdsl" ]; then
   echo "" >> $result_file
   echo "Error cloning hyperdsl!  Could not validate anything!" >> $result_file
   # git push
-  cd /home/mattfel/hyperdsl/spatial/spatial.wiki
+  cd ${HOME}/hyperdsl/spatial/spatial.wiki
   cmd="git add ${branch}-Regression-Tests-Status.md"
   eval "$cmd"
   git commit -m "automated status update"
@@ -279,6 +294,7 @@ git checkout -b spatial origin/spatial > /dev/null
 cd delite 
 git fetch > /dev/null 
 git checkout -b spatial origin/spatial > /dev/null 
+find ./ -type f -exec sed -i -e 's/^import tools.nsc/import scala.tools.nsc/g' {} \;
 # git pull origin spatial > /dev/null
 cd ../forge 
 git fetch > /dev/null 
@@ -294,13 +310,14 @@ cd spatial
 git fetch > /dev/null 
 cmd="git checkout -b ${branch} origin/${branch}"
 eval "$cmd" > /dev/null
+find ./ -type f -exec sed -i -e 's/^import tools.nsc/import scala.tools.nsc/g' {} \;
 # cmd="git pull origin ${branch}"
 # eval "$cmd" > /dev/null
 cd ../
 start_date=(`date`)
 echo "[STATUS] `date`: Done cloning stuff!"
 echo "[STATUS] `date`: Making hyperdsl..."
-sbt compile > /dev/null 
+# sbt compile > /dev/null 
 echo "[STATUS] `date`: hyperdsl done!"
 echo "[STATUS] `date`: Making spatial..."
 cd spatial
@@ -317,16 +334,16 @@ echo "[STATUS] `date`: Checking if spatial made correctly..."
 if [ ! -d "${PUB_HOME}" ]; then
   echo "$PUB_HOME directory does not exist!"
   # Use main repo's wiki for update
-  if [ ! -d "/home/mattfel/hyperdsl/spatial/spatial.wiki" ]; then
+  if [ ! -d "${HOME}/hyperdsl/spatial/spatial.wiki" ]; then
   	echo "FATAL ERROR! No default wiki!"
 	sleep 3
 	rm ${TESTS_HOME}
   	exit 1
   else 
-  	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
+  	cd ${HOME}/hyperdsl/spatial/spatial.wiki
 	git fetch
 	git reset --hard
-	result_file="/home/mattfel/hyperdsl/spatial/spatial.wiki/${branch}-Regression-Tests-Status.md"
+	result_file="${HOME}/hyperdsl/spatial/spatial.wiki/${branch}-Regression-Tests-Status.md"
 	echo "Current global status on ${branch} branch:" > $result_file
 	echo "-------------------------------" >> $result_file
 	echo "" >> $result_file
@@ -335,7 +352,7 @@ if [ ! -d "${PUB_HOME}" ]; then
 	echo "" >> $result_file
 	echo "Error building Spatial!  No published dir. Could not validate anything!" >> $result_file
 	# git push
-	cd /home/mattfel/hyperdsl/spatial/spatial.wiki
+	cd ${HOME}/hyperdsl/spatial/spatial.wiki
 	cmd="git add ${branch}-Regression-Tests-Status.md"
 	eval "$cmd"
 	git commit -m "automated status update"
@@ -393,6 +410,8 @@ cd ${PUB_HOME}
 
 # Use magic to free unused semaphores
 for semid in `ipcs -s | cut -d" " -f 2` ; do pid=`ipcs -s -i $semid | tail -n 2 | head -n 1 | awk '{print $5}'`; running=`ps --no-headers -p $pid | wc -l` ; if [ $running -eq 0 ] ; then ipcrm -s $semid ; fi ; done
+# Free old screens
+screen -ls | grep ${branch} | cut -d. -f1 | awk '{print $1}' | xargs kill
 
 IFS=$'\n'
 # Unit test apps (Add more by editing CodegenUnitTests.scala)
@@ -427,7 +446,7 @@ for ac in ${app_classes[@]}; do
 	# Initialize results
 	for i in `seq 0 $((${#test_list[@]}-1))`
 	do
-		touch ${SPATIAL_HOME}/regression_tests/${ac}/results/failed_did_not_finish.${i}_${test_list[i]}
+		touch ${SPATIAL_HOME}/regression_tests/${ac}/results/failed_compile_stuck.${i}_${test_list[i]}
 
 		# Make dir for this vulture job
 		vulture_dir="${SPATIAL_HOME}/regression_tests/${ac}/${i}_${test_list[i]}"
@@ -496,6 +515,7 @@ echo -e "\n\n***\n\n" >> $result_file
 # Link to logs
 echo -e "\n## [History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${branch}_Regression_Test_History.csv) \n" >> $result_file
 echo -e "\n## [Prettier History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${branch}_Pretty_Regression_Test_History.csv) \n" >> $result_file
+echo -e "\n## [Performance Results](https://www.dropbox.com/s/a91ra3wvdyr3x5b/Performance_Results.xlsx?dl=0) \n" >> $result_file
 
 write_comments $result_file
 
@@ -546,7 +566,7 @@ for aa in ${all_apps[@]}; do
 		a=(`echo $aa | sed "s/ //g" | sed "s/\[.*//g"`)
 		dashes=(`cat ${result_file} | grep "[0-9]\+\_$a\(\ \|\*\|\[\)" | sed "s/\[🗠.*//g" | grep -oh "\-" | wc -l`)
 		num=$(($dashes/4))
-		if [ $num = 0 ]; then bar=▇; elif [ $num = 1 ]; then bar=▆; elif [ $num = 2 ]; then bar=▅; elif [ $num = 3 ]; then bar=▄; elif [ $num = 4 ]; then bar=▃; elif [ $num = 5 ]; then bar=▂; elif [ $num = 6 ]; then bar=▁; else bar=□; fi
+		if [ $num = 0 ]; then bar=█; elif [ $num = 1 ]; then bar=▇; elif [ $num = 2 ]; then bar=▆; elif [ $num = 3 ]; then bar=▅; elif [ $num = 4 ]; then bar=▄; elif [ $num = 5 ]; then bar=▃; elif [ $num = 6 ]; then bar=▂; elif [ $num = 7 ]; then bar=▁; else bar=□; fi
 
 		# Print what the seds are for debug
 		# cmd="sed \"/^${a}\ \+,/ s/$/,$num/\" ${history_file}"
@@ -628,15 +648,20 @@ if [ $commitlines -ge $hist ]; then
 fi
 echo "$stamp- $hash_str / $dhash_str $marker" >> $pretty_file
 
+echo "rm -rf ${TESTS_HOME}" | tee /kunle/users/mattfel/why_didnt_delete
+
 # git push
 cd ${SPATIAL_HOME}/spatial.wiki
 git stash
 git pull
 git stash pop
+# Remove conflicts
+perl -0777 -i -pe 'BEGIN{undef $/;} s/\n=====.*>>>>>//smg' ./*
+perl -0777 -i -pe 's/\n<<<<<.*//g' ./*
 git add *
 git commit -m "automated status update via cron"
 git push
 
-sleep 3
-rm -rf ${TESTS_HOME}
-
+echo "rm -rf ${TESTS_HOME}" > /kunle/users/mattfel/why_didnt_delete
+rm -rf ${TESTS_HOME} | tee /kunle/users/mattfel/why_didnt_delete
+killall screen

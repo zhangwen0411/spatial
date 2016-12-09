@@ -20,9 +20,9 @@ for f in $PWD/*; do
     screen -S $SESSION_NAME -X screen -t $f
 
     # Switch terminal to bash
-    screen -S $SESSION_NAME -p $f -X stuff "bash\n"
+    screen -S $SESSION_NAME -p $f -X stuff "bash$(printf \\r)"
     
     # Launch $CMD in newly created screen window
-    screen -S $SESSION_NAME -p $f -X stuff "$CMD\n"
+    screen -S $SESSION_NAME -p $f -X stuff "$CMD$(printf \\r)"
   fi
 done

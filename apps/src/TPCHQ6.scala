@@ -45,8 +45,9 @@ trait TPCHQ6_App extends SpatialApp {
   val MIN_DISC = 0
   val MAX_DISC = 9999
   val tileSize = 96
-  val outerPar = 2
+  val outerPar = 1
   val innerPar = 2
+  val margin = 1
 
   def tpchq6(datesIn: Rep[Array[UInt]], quantsIn: Rep[Array[UInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
     val dataSize = ArgIn[SInt]
@@ -75,10 +76,10 @@ trait TPCHQ6_App extends SpatialApp {
 
       val acc = Reg[FT]
       Fold(dataSize by ts par op)(acc, 0.as[FT]){ i =>
-        val datesTile  = SRAM[UInt](ts)
-        val quantsTile = SRAM[UInt](ts)
-        val disctsTile = SRAM[FT](ts)
-        val pricesTile = SRAM[FT](ts)
+        val datesTile  = FIFO[UInt](ts)
+        val quantsTile = FIFO[UInt](ts)
+        val disctsTile = FIFO[FT](ts)
+        val pricesTile = FIFO[FT](ts)
         Parallel {
           datesTile  := dates(i::i+ts par ip)
           quantsTile := quants(i::i+ts par ip)
@@ -86,10 +87,10 @@ trait TPCHQ6_App extends SpatialApp {
           pricesTile := prices(i::i+ts par ip)
         }
         Reduce(ts par ip)(0.as[FT]){ j =>
-          val date  = datesTile(j)
-          val disct = disctsTile(j)
-          val quant = quantsTile(j)
-          val price = pricesTile(j)
+          val date  = datesTile.pop
+          val disct = disctsTile.pop
+          val quant = quantsTile.pop
+          val price = pricesTile.pop
           val valid = date > minDate && date < maxDate && disct >= MIN_DISC && disct <= MAX_DISC && quant < 24
           mux(valid, price * disct, 0.0f)
         }{_+_}
@@ -114,22 +115,22 @@ trait TPCHQ6_App extends SpatialApp {
     val quants = Array.fill(N){random[UInt](25) }
     // val discts = Array.fill(N){random[FT] * 0.05f + 0.02f}
     // val prices = Array.fill(N){random[FT] * 1000f}
-    val discts = Array.fill(N){random[FT] / 100000}
-    val prices = Array.fill(N){random[FT] / 100000}
+    val discts = Array.fill(N){random[FT] /*/ 100000*/}
+    val prices = Array.fill(N){random[FT] /*/ 100000*/}
 
     val result = tpchq6(dates, quants, discts, prices)
 
     // --- software version
     val conds = Array.tabulate(N){i => dates(i) > MIN_DATE && dates(i) < MAX_DATE  &&
                                        quants(i) < 24 && discts(i) >= MIN_DISC  && discts(i) <= MAX_DISC}
-    printArr(conds, "conds: ")
+    // printArr(conds, "conds: ")
 
     val gold = Array.tabulate(N){i => if (conds(i)) prices(i) * discts(i) else 0.0f.as[FT] }.reduce{_+_}
 
     println("expected " + gold)
     println("result " + result)
 
-    val cksum = gold == result
+    val cksum = (gold < result + margin && gold > result - margin)
     println("PASS: " + cksum + " (TPCHQ6)")
   }
 }
