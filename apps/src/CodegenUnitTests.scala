@@ -832,8 +832,8 @@ trait InOutArgApp extends SpatialApp {
   }
 }
 
-object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteApp // Regression (Unit) // Args: none
-trait MultiplexedWriteApp extends SpatialApp {
+object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteTestApp // Regression (Unit) // Args: none
+trait MultiplexedWriteTestApp extends SpatialApp {
   type Array[SInt] = ForgeArray[SInt]
 
   val tileSize = 96
@@ -896,8 +896,8 @@ trait MultiplexedWriteApp extends SpatialApp {
 
 // TODO: Make this actually check a bubbled NBuf (i.e.- s0 = wr, s2 = wr, s4 =rd, s1s2 = n/a)
 // because I think this will break the NBuf SM since it won't detect drain completion properly
-object BubbledWriteTest extends SpatialAppCompiler with BubbledWriteApp // Regression (Unit) // Args: none
-trait BubbledWriteApp extends SpatialApp {
+object BubbledWriteTest extends SpatialAppCompiler with BubbledWriteTestApp // Regression (Unit) // Args: none
+trait BubbledWriteTestApp extends SpatialApp {
   type Array[SInt] = ForgeArray[SInt]
 
   val tileSize = 96
