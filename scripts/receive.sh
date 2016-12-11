@@ -3,10 +3,23 @@
 # Argument 1 = Test type (maxj, scala, chisel, etc...)
 
 REGRESSION_HOME="/kunle/users/mattfel/regression"
-spacing=25 #25
+spacing=35 #25
 delay=1800
 numpieces=30
 hist=72
+
+## Helper for deleting directories when you still have those nfs files stuck in use
+stubborn_delete() {
+  rm -rf $dirname > /tmp/todelete 2>&1
+  undeletable=(`cat /tmp/todelete | wc -l`)
+  if [[ $undeletable -gt 0 ]]; then
+    while read p; do 
+      f=(`echo $p | sed 's/rm: cannot remove \`//g' | sed "s/': Device or resource busy//g"`)
+      fuser -k $f
+    done </tmp/todelete
+  fi
+  rm -rf $dirname
+}
 
 ## Helper function for checking if git checkouts were successful
 # 1 - repo to check
@@ -38,8 +51,6 @@ clean_exit() {
   # errfile=`echo $packet | sed 's/ack/error/g'`
   rm $ackfile
   rm $lockfile
-  # rm -rf $dirname
-  # rm $packet
   exit 1
 }
 
@@ -56,7 +67,7 @@ git push
 
 mv $log ${dirname}/../${tim}.${type_todo}.log
 rm $lockfile
-rm -rf $dirname
+stubborn_delete
 
 ps aux | grep -ie mattfel | grep -v ssh | grep -v bash | awk '{system("kill -9 " $2)}'
 
@@ -527,7 +538,7 @@ logger() {
 git_things() {
 
   # Make directory for this regression test
-  rm -rf $dirname
+  stubborn_delete
   mkdir $dirname
   cp $ackfile $dirname
   
@@ -691,10 +702,10 @@ git_things
 # Wait for channel to be free
 phase="COORDINATION"
 logger "Looking for locks..."
-locks=`ls $REGRESSION_HOME | grep lock`
+locks=`ls $REGRESSION_HOME | grep "{test_to_run}.lock"`
 while [ ! -z $locks ]; do
   logger "$locks is still running"
-  sleep 20
+  sleep ${RANDOM:0:2}
   locks=`ls $REGRESSION_HOME | grep lock`
 done
 

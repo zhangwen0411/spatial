@@ -1091,7 +1091,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
             }
 
-            val hack = if (Config.degFilename.dropRight(4) == "BFS") {s"1-${quote(writeCtrl)}_offset"} else "1" // TODO: Fix this!!!
+            val hack = if (Config.degFilename.dropRight(4) == "BFS") {s"1-${quote(writeCtrl)}_offset"} else "-1" // TODO: Fix this!!!
             val rstStr = quote(parentOf(reg).get) + "_done /*because _rst_en goes hi on each iter*/"
             writeCtrl match {
               // case p@Def(EatReflect(_:OpForeach | _:UnrolledForeach)) => // Safe to comment this out??
