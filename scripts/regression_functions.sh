@@ -336,11 +336,12 @@ export DELITE_HOME=${HYPER_HOME}/delite
 export LMS_HOME=${HYPER_HOME}/virtualization-lms-core
 export PIR_HOME=${HYPER_HOME}/spatial/published/Spatial
 export PATH=/opt/maxeler/maxcompiler-2014.1/bin:$PATH
+export JAVA_HOME=/usr/
 
 sleep \$((${3}*${spacing})) # Backoff time to prevent those weird file IO errors
 
 cd ${PUB_HOME}
-${PUB_HOME}/bin/spatial --test --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} ${6} 2>&1 | tee -a ${5}/log
+${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} ${6} 2>&1 | tee -a ${5}/log
 
 sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${5}/log
 sed -i \"s/error retrieving current directory/Ignoring getcwd e r r o r/g\" ${5}/log
