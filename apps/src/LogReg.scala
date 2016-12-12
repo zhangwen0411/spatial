@@ -67,8 +67,8 @@ trait LogRegApp extends SpatialApp {
           gradAcc
         }{(b,g) => b+g*A}
 
-        // Flush gradAcc
-        Pipe(D by 1 par P2) { i => gradAcc(i) = 0.as[T]}
+        // // Flush gradAcc
+        // Pipe(D by 1 par P2) { i => gradAcc(i) = 0.as[T]}
       }
       theta(0::D par P2) := btheta // read
     }
