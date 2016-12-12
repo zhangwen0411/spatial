@@ -10,13 +10,13 @@ trait LogRegApp extends SpatialApp {
   val tileSize = 96
   val innerPar = 1
   val outerPar = 1
-  val margin = 200
+  val margin = 500
   val dim = 96
   val D = dim
 
   val A = 1
 
-  def sigmoid(t:Rep[T]) = 1.as[T]/(exp(-t)+1)
+  def sigmoid(t:Rep[T]) = t//1.as[T]/(exp(-t)+1)
 
   def logreg(x_in: Rep[Array[T]], y_in: Rep[Array[T]], tt: Rep[Array[T]], n: Rep[SInt], it: Rep[SInt]) = {
 
