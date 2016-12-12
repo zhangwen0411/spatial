@@ -7,11 +7,11 @@ trait LogRegApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt
 
-  val tileSize = 384
-  val innerPar = 8
+  val tileSize = 96
+  val innerPar = 1
   val outerPar = 1
-  val margin = 5
-  val dim = 288
+  val margin = 200
+  val dim = 96
   val D = dim
 
   val A = 1
@@ -68,7 +68,7 @@ trait LogRegApp extends SpatialApp {
         }{(b,g) => b+g*A}
 
         // Flush gradAcc
-        //Pipe(D by 1 par P2) { i => gradAcc(i) = 0.as[T]}
+        Pipe(D by 1 par P2) { i => gradAcc(i) = 0.as[T]}
       }
       theta(0::D par P2) := btheta // read
     }
