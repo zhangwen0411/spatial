@@ -695,7 +695,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
 
   stream.println(s"""
     // States
-    val COUNT :: SATURATED :: Nil = Enum(UInt(), 2)
+    val s_COUNT :: s_SATURATED :: Nil = Enum(UInt(), 2)
 
     // State IO
     """)
@@ -726,7 +726,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
       """)
   stream.println(s"""
     val strides = s
-    val ff_extensions = new Array.fill[Int](${par.size});
+    val ff_extensions = new Array[Int](${par.size});
     // Gap between the end of one array of count to the start of the next.
     //   This is useful for padding non-powerof2-banked SRAMs to the next highest pwr of 2 banks
     // i.e- gap = 32, stride = 1, par = 96 would do this:
@@ -735,11 +735,11 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
     val gap = UInt(${gap});
 
     // State storage
-    val countFF = Vec.fill(${numCtrs}){Reg(init = UInt(0)}
+    val countFF = Vec.fill(${numCtrs}){Reg(init = UInt(0))}
     """)
   if (numCtrs > 1) {
   stream.println(s"""    val gapBumpFF = Vec.fill(Reg(init = UInt(${par(par.size-1)})))""")}
-  stream.println(s"""    val stateFF = Reg(init = COUNT)
+  stream.println(s"""    val stateFF = Reg(init = s_COUNT)
     """)
 
   stream.println(s"""
@@ -748,7 +748,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
   for (j <- 0 until par.size){
     if (par(j) > 1){
       stream.println(s"""      // Par extension for ${j}
-      ff_extensions(${j}) = ${par(j)-1} * strides[${j}];
+      ff_extensions(${j}) = ${par(j)-1} * strides(${j});
       """)
     } else {
       stream.println(s"""      ff_extensions[${j}] = 0""")
@@ -762,72 +762,72 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
     stream.println(s"""        countFF(${i}) := UInt(0)""")
   }
 
-  stream.println(s"""        io.stateFF := COUNT
-      } .otherwise {
+  stream.println(s"""        stateFF := s_COUNT
+    } .otherwise {
           switch(stateFF) {
-            is(COUNT) {
-              when(en) {
+            is(s_COUNT) {
+              when(io.en) {
                 when (""")
 
   // Generate saturated case
   for(i <- 0 until numCtrs) {
     if(i == numCtrs - 1){
-      stream.println(s"""                  (countFF(${i}) + UInt(ff_extensions[${i}]) >= max${i} - UInt(strides[${i}]))) {""")
+      stream.println(s"""                  (countFF(${i}) + UInt(ff_extensions(${i})) >= io.max${i} - UInt(strides(${i})))) {""")
     } else {
-      stream.println(s"""                  (countFF(${i}) + UInt(ff_extensions[${i}]) >= max${i} - UInt(strides[${i}])) &""")
+      stream.println(s"""                  (countFF(${i}) + UInt(ff_extensions(${i})) >= io.max${i} - UInt(strides(${i}))) &""")
     }
   }
 
-  stream.println(s"""                stateFF := SATURATED""")
+  stream.println(s"""                stateFF := s_SATURATED""")
 
   // Generated wrap cases
   for(i <- 1 to numCtrs-1) {
     stream.println(s"""                }.otherwise{ when (""")
     for(j <- numCtrs-1 to i by -1){
       if (j == i){
-        stream.println(s"""                  (countFF(${j}) + UInt(ff_extensions[${j}]) >= max${j} - UInt(strides[${i}]))) {""")
+        stream.println(s"""                  (countFF(${j}) + UInt(ff_extensions(${j})) >= io.max${j} - UInt(strides(${i})))) {""")
       } else {
-        stream.println(s"""                  (countFF(${j}) + UInt(ff_extensions[${j}]) >= max${j} - UInt(strides[${i}])) &""")
+        stream.println(s"""                  (countFF(${j}) + UInt(ff_extensions(${j})) >= io.max${j} - UInt(strides(${i}))) &""")
       }
     }
     for(j <- numCtrs-1 to i by -1){
       stream.println(s"""                countFF(${j}) := UInt(0);""")
     }
-    stream.println(s"""                when (countFF(${i-1}) + UInt(ff_extensions[${i-1}]) === gapBumpFF[${i-1}] - UInt(strides[${i-1}])) {
-                  countFF(${i-1}) := countFF(${i-1}) + UInt(${par(i-1)} * strides[${i-1}]) + gap
+    stream.println(s"""                when (countFF(${i-1}) + UInt(ff_extensions(${i-1})) === gapBumpFF[${i-1}] - UInt(strides(${i-1}))) {
+                  countFF(${i-1}) := countFF(${i-1}) + UInt(${par(i-1)} * strides(${i-1})) + gap
                   gapBumpFF(${i-1}) := gapBumpFF(${i-1}) + gap + UInt(${par(par.size-1)})
                 } .otherwise {
-                  countFF(${i-1}) := countFF(${i-1}) + UInt(${par(i-1)} * strides[${i-1}])
+                  countFF(${i-1}) := countFF(${i-1}) + UInt(${par(i-1)} * strides(${i-1}))
                 }""")
   }
   stream.println(s"""                } .otherwise { // innermost ctr
-                countFF(${numCtrs-1}) := countFF(${numCtrs-1}) + UInt(${par(numCtrs-1)} * strides[${numCtrs-1}]) + gap;""")
+                countFF(${numCtrs-1}) := countFF(${numCtrs-1}) + UInt(${par(numCtrs-1)} * strides(${numCtrs-1})) + gap;""")
   for(j <- 0 until numCtrs){
     stream.print(s"""}""")
   }
   stream.println(s"""           } .otherwise {
-              stateFF := COUNT
+              stateFF := s_COUNT
             }
           }""")
 
-  stream.println(s"""          is(SATURATED) {
-            stateFF := SATURATED;
+  stream.println(s"""          is(s_SATURATED) {
+            stateFF := s_SATURATED;
           }
         }
       }
-    }
+    
 
         """)
 
   for(i <- 0 until numCtrs) {
-    stream.println(s"""      io.count[${i}] := countFF(${i})""")
+    stream.println(s"""      io.count${i} := countFF(${i})""")
   }
   for (i <- 0 until par.size){
     if (par(i) > 1){
         for(j <- 0 until par(i)-1) {
 
       stream.println(s"""      
-        counter${i}_extension${j} := countFF(${i}) + UInt(strides[${i}] * (${j}+1));
+        io.counter${i}_extension${j} := countFF(${i}) + UInt(strides(${i}) * (${j}+1));
       """)
         }
 
@@ -836,35 +836,34 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
 
 
   stream.println(s"""
-      saturated := UInt(0)
-      done := UInt(0)
+      io.saturated := UInt(0)
+      io.done := UInt(0)
       switch(stateFF){
-        is(COUNT){
-          when(en) {
+        is(s_COUNT){
+          when(io.en) {
 
             when (""")
 
   for(i <- 0 until numCtrs) {
     if(i == numCtrs - 1){
-      stream.println(s"""               (countFF(${i}) + ff_extensions[${i}] >= max[${i}] - strides[${i}])) {""")
+      stream.println(s"""               (countFF(${i}) + UInt(ff_extensions(${i})) >= io.max${i} - UInt(strides(${i})))) {""")
     } else {
-      stream.println(s"""               (countFF(${i}) + ff_extensions[${i}] >= max[${i}] - strides[${i}]) &""")
+      stream.println(s"""               (countFF(${i}) + UInt(ff_extensions(${i})) >= io.max${i} - UInt(strides(${i}))) &""")
     }
   }
 
-  stream.println(s"""             saturated := Bool(true);
-             done := Bool(true);
+  stream.println(s"""             io.saturated := Bool(true);
+             io.done := Bool(true);
             }
           }
         }
-        is(SATURATED){
-          when (en) {
-            done := Bool(true);
+        is(s_SATURATED){
+          when (io.en) {
+           io.done := Bool(true);
           }
-          saturated := Bool(true);
+          io.saturated := Bool(true);
         }
       }
-    }
 }""")
 
 
