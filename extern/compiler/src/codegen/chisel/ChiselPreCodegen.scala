@@ -1243,15 +1243,15 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
 
         for(i <- 0 until numParallel) {
             emit(s"""
-                val s${i}_done = Bool(INPUT)
-                val s${i}_en = Bool(OUTPUT)
+                val io.s${i}_done = Bool(INPUT)
+                val io.s${i}_en = Bool(OUTPUT)
                 """)
         }
 
         emit(s"""
             // State storage
             val stateFF = Reg(init = pipeInit)
-            val bitVector = Bits(0, ${numParallel})
+            val bitVector = Vec.fill(${numParallel}) {Reg(init = Bool(false))}
 
             val numParallel = ${numParallel}
             """)
@@ -1263,10 +1263,10 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
         for(i <- 0 until numParallel) {
             emit(s"""
                 when (io.s${i}_done) {
-                    bitVector($i) := 1
+                    bitVector($i) := Bool(true)
                 """)
             for (i <- 0 until numParallel) {
-                emit(s"""s${i}_en := ~(bitVector(${i}) | s${i}_done)""")
+                emit(s"""io.s${i}_en := ~(bitVector(${i}) | io.s${i}_done)""")
             }
             emit(s"""}""")
                                 
@@ -1284,14 +1284,14 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
                 val condStr = (0 until numParallel).map("bitVector(" + _ + ")").reduce(_ + " & " + _)
                 emit(s"""
                     IF($condStr) {
-                        bitVector := 0
+                        (0 until numParallel) foreach { i => bitVector(i) := Bool(false) }
                         stateFF := pipeDone
                     }
             }
 
             is (pipeDone) {
-                bitVector := 0
-                sm_done := 1
+                (0 until numParallel) foreach { i => bitVector(i) := Bool(false) }
+                io.sm_done := 1
                 stateFF := pipeDone;
             }
             
@@ -1320,7 +1320,8 @@ import com.maxeler.maxcompiler.v2.statemachine.types.DFEsmValueType;""")
     val max = N-1
 
     emit(s"""when($condStr) {
-      bitVector := 0""")
+          (0 until numParallel) foreach { i => bitVector(i) := Bool(false) }
+        }""")
     if (state.size == 1 && state.max == max && !state.contains(0)) {
       emit("  stateFF := pipeDone")
     } else {
