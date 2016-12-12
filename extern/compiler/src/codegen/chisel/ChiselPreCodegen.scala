@@ -751,7 +751,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
       ff_extensions(${j}) = ${par(j)-1} * strides(${j});
       """)
     } else {
-      stream.println(s"""      ff_extensions[${j}] = 0""")
+      stream.println(s"""      ff_extensions(${j}) = 0""")
     }
   }
 
