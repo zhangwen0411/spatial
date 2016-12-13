@@ -16,7 +16,8 @@ def main():
   parser.add_argument('--nolog', dest='no_log', action='store_true', default=False, help='disables logging of compiler')
   parser.add_argument("--cpp", dest="cpp", action="store_true", default=True, help="enables cpp generation")
   parser.add_argument("--dot", dest="dot", action="store_true", default=False, help="enables dot generation")
-  parser.add_argument("--maxj", dest="maxj", action="store_true", default=True, help="enables maxj generation")
+  parser.add_argument("--maxj", dest="maxj", action="store_true", default=False, help="enables maxj generation")
+  parser.add_argument("--chisel", dest="chisel", action="store_true", default=False, help="enables chisel generation")
   parser.add_argument("--outdir", dest="outdir", default="out", help="location of output dir, relative to publish dir")
   parser.add_argument('--test', dest="test", action="store_true", default=False, help="enables Scala testing mode")
 
@@ -71,6 +72,7 @@ def main():
 
   if opts.test == True or opts.cgra == True:
     opts.maxj = False
+    opts.chisel = False
     opts.cpp = False
 
   if opts.dse == True:
@@ -92,6 +94,8 @@ def main():
     java_opts = java_opts + " -Ddelite.generate.dot"
   if opts.maxj == True:
     java_opts = java_opts + " -Ddelite.generate.maxj"
+  if opts.chisel == True:
+    java_opts = java_opts + " -Ddelite.generate.chisel"
   if opts.cpp == True:
     java_opts = java_opts + " -Ddelite.generate.cpp"
 
@@ -130,7 +134,13 @@ def main():
     if opts.outdir == "out":
       os.system(publish + 'bin/delite ' + opts.app + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + os.getenv("HYPER_HOME", "") + '/spatial/published/Spatial/out ' + ' '.join(args) + ' 2>&1 | tee run.log')
     else:
-      os.system(publish + 'bin/delite ' + opts.app + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + opts.outdir + ' ' + ' '.join(args) + ' 2>&1 | tee run.log')
+      os.system(publish + 'bin/delite ' + opts.app + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + opts.outdir + ' ' + ' '.join(args[0:]) + ' 2>&1 | tee run.log')
+  elif opts.chisel and opts.cpp:
+    print 'Running Spatial with arguments: ' + ' '.join(args[0:])
+    if opts.outdir == "out":
+      os.system(publish + 'bin/delite ' + opts.app + ' --no-jvm --no-compile --cpp=1 --chisel=1 --codecache=' + os.getenv("HYPER_HOME", "") + '/spatial/published/Spatial/out ' + ' '.join(args[0:]) + ' 2>&1 | tee run.log')
+    else:
+      os.system(publish + 'bin/delite ' + opts.app + ' --no-jvm --no-compile --cpp=1 --chisel=1 --codecache=' + opts.outdir + ' ' + ' '.join(args[0:]) + ' 2>&1 | tee run.log')
   elif opts.test:
     print 'Running Spatial Scala Test with arguments: ' + ' '.join(args)
     os.system(publish + 'bin/delite ' + opts.app + ' --codecache=' + opts.outdir + ' ' + ' '.join(args) + ' 2>&1 | tee run.log')

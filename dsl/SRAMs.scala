@@ -147,5 +147,8 @@ trait SRAMs {
     // --- MaxJ Backend
     // See MemoryOpsExp in extern/compiler/src/ops
 
+    // --- Chisel Backend
+    // See MemoryOpsExp in extern/compiler/src/ops
+
   }
 }

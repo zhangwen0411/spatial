@@ -464,6 +464,40 @@ trait SpatialMath {
 		// 	@ val pre = maxJPre(sym)
   //   	$pre $sym = ~ ( $0 ^ $1 ) ;
 		// }))
+  
+
+  // --- Chisel Backend
+    impl (neg_fix) (codegen(chisel, ${ -$0 }))
+    impl (add_fix) (codegen(chisel, ${ $0 + $1 }))
+    impl (sub_fix) (codegen(chisel, ${ $0 - $1 }))
+    impl (mul_fix) (codegen(chisel, ${ $0 * $1 }))
+    impl (div_fix) (codegen(chisel, ${ $0 / $1 }))
+    impl (mod_fix) (codegen(chisel, ${ $0 % $1 }))
+    impl (lt_fix)  (codegen(chisel, ${ $0 < $1 }))
+    impl (leq_fix) (codegen(chisel, ${ $0 <= $1 }))
+    impl (neq_fix) (codegen(chisel, ${ $0 != $1 }))
+    impl (eql_fix) (codegen(chisel, ${ $0 == $1 }))
+    impl (and_fix) (codegen(chisel, ${ $0 & $1 }))
+    impl (or_fix)  (codegen(chisel, ${ $0 | $1 }))
+    impl (lsh_fix) (codegen(chisel, ${ $0 << $1 }))
+    impl (rsh_fix) (codegen(chisel, ${ $0 >> $1 }))
+
+    impl (neg_flt) (codegen(chisel, ${ -$0 }))
+    impl (add_flt) (codegen(chisel, ${ $0 + $1 }))
+    impl (sub_flt) (codegen(chisel, ${ $0 - $1 }))
+    impl (mul_flt) (codegen(chisel, ${ $0 * $1 }))
+    impl (div_flt) (codegen(chisel, ${ $0 / $1 }))
+    impl (lt_flt)  (codegen(chisel, ${ $0 < $1 }))
+    impl (leq_flt) (codegen(chisel, ${ $0 <= $1 }))
+    impl (neq_flt) (codegen(chisel, ${ $0 != $1 }))
+    impl (eql_flt) (codegen(chisel, ${ $0 == $1 }))
+
+    impl (not_bit) (codegen(chisel, ${ !$0 }))
+    impl (and_bit) (codegen(chisel, ${ $0 && $1 }))
+    impl (or_bit)  (codegen(chisel, ${ $0 || $1 }))
+    impl (xor_bit) (codegen(chisel, ${ $0 != $1 }))
+    impl (xnor_bit) (codegen(chisel, ${ $0 == $1 }))
+
   }
 
   def importBasicMath() {
@@ -588,6 +622,13 @@ trait SpatialMath {
 
   }
 
+  // --- Chisel Backend
+    //impl (abs_fix) (codegen(chisel, ${ FixedPoint.abs($0) }))
+    //impl (abs_flt) (codegen(chisel, ${ FloatPoint.abs($0) }))
+    //impl (log_flt) (codegen(chisel, ${ FloatPoint.log($0) }))
+    //impl (exp_flt) (codegen(chisel, ${ FloatPoint.exp($0) }))
+    //impl (sqrt_flt) (codegen(chisel, ${ FloatPoint.sqrt($0) }))
+
   // NOTE: Min and Max don't really need to be nodes, but this simplifies maxj codegen a little
   def importBasicControl() {
     val T = tpePar("T")
@@ -629,6 +670,9 @@ trait SpatialMath {
 		// 	@ val pre = maxJPre(sym)
 		// 	$pre $sym = $sel ? $a : $b ;
 		// }))
+
+    // --- Chisel Backend
+    impl (mux) (codegen(chisel, ${ if ($sel) $a else $b }))
 
     // --- C++ Backend
     impl (mux) (codegen(cpp, ${ ($sel) ? $a : $b }))

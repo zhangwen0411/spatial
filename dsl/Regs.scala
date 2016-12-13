@@ -153,5 +153,9 @@ trait Regs {
     //reg_write (extern)
     impl (reg_reset) (codegen(maxj, ${
     }))
+
+    // -- Chisel Backend
+    impl (reg_reset) (codegen(chisel, ${
+    }))
   }
 }

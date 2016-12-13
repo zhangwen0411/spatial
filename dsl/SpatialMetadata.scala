@@ -452,7 +452,81 @@ trait SpatialMetadata {
 			} else {
 				scalart
 			}
-		}
+        }
+                /* Chisel Codegen Helper Functions */
+            val chiselgrp = grp("chiselGrp")
+                /* Not real metadata but need to be globally accessable */
+            val chiselmeta = metadata("chiselMeta")
+            internal.direct (chiselgrp) ("chiselPreG", Nil, SInt :: SString) implements composite ${
+              if ( $0 == 1 ) "var"
+              else "Error (line 461 of spatialMetadata)"
+            }
+            internal.direct (chiselmeta) ("chiselPre", T, T :: SString) implements composite ${
+              chiselPreG(parOf( $0 ))
+            }
+
+            internal.direct (chiselmeta) ("ctpstrb", T, SInt :: SString) implements composite ${
+                ctpstrGb[T]( $0 )
+            }
+            internal.direct (chiselmeta) ("ctpstre", T, SInt :: SString) implements composite ${
+                ctpstrGe[T]( $0 )
+            }
+            internal.direct (chiselgrp) ("ctpstrGb", T, SInt :: SString) implements composite ${
+                val scalart = if (isFixPtType(manifest[T])) {
+                    val s = sign(manifest[T].typeArguments(0))
+                    val d = nbits(manifest[T].typeArguments(1))
+                    val f = nbits(manifest[T].typeArguments(2))
+                    //val d = manifest[T].typeArguments(1)
+                    //val f = nbits(manifest[T].typeArguments(2))
+
+                    if (s) "SInt("
+                    else "dfeFixOffset("+ (d+f) + "," + f + ", SignMode.UNSIGNED)"
+                } else if (isFltPtType(manifest[T])) {
+                    val e = nbits(manifest[T].typeArguments(0))
+                    val m = nbits(manifest[T].typeArguments(1))
+                    "dfeFloat(" + m + "," + e + ")"
+                } else if (isBitType(manifest[T])) {
+                  "dfeFixOffset(1, 0, SignMode.UNSIGNED)"
+              } else if (isCounter(manifest[T])) {
+                "dfeFixOffset(32,0,SignMode.TWOSCOMPLEMENT)"  // TODO: Is this safe?
+                    } else {
+                // Was commented out before, not sure why
+                        throw new Exception("Unknown type " + manifest[T])
+                    }
+                    if ( $0 > 1) {
+                        "new DFEVectorType<DFEVar>(" + scalart + "," + $0 + ")"
+                    } else {
+                        scalart
+                    }
+            }
+            internal.direct (chiselgrp) ("ctpstrGe", T, SInt :: SString) implements composite ${
+                val scalart = if (isFixPtType(manifest[T])) {
+                    val s = sign(manifest[T].typeArguments(0))
+                    val d = nbits(manifest[T].typeArguments(1))
+                    val f = nbits(manifest[T].typeArguments(2))
+                    //val d = manifest[T].typeArguments(1)
+                    //val f = nbits(manifest[T].typeArguments(2))
+
+                    if (s) ", 32)"
+                    else "dfeFixOffset("+ (d+f) + "," + f + ", SignMode.UNSIGNED)"
+                } else if (isFltPtType(manifest[T])) {
+                    val e = nbits(manifest[T].typeArguments(0))
+                    val m = nbits(manifest[T].typeArguments(1))
+                    "dfeFloat(" + m + "," + e + ")"
+                } else if (isBitType(manifest[T])) {
+                  "dfeFixOffset(1, 0, SignMode.UNSIGNED)"
+              } else if (isCounter(manifest[T])) {
+                "dfeFixOffset(32,0,SignMode.TWOSCOMPLEMENT)"  // TODO: Is this safe?
+                    } else {
+                // Was commented out before, not sure why
+                        throw new Exception("Unknown type " + manifest[T])
+                    }
+                    if ( $0 > 1) {
+                        "new DFEVectorType<DFEVar>(" + scalart + "," + $0 + ")"
+                    } else {
+                        scalart
+                    }
+            }
 	}
 }
 
