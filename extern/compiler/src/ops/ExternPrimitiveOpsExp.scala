@@ -570,7 +570,7 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
       x match {
         case _:Const[_] | _:Param[_] =>
           withStream(baseStream) {
-            emit(s"""var ${quote(sym)} = UInt(${quote(x)})""")
+            emit(s"""DFEVar ${quote(sym)} = constant.var($ts, ${quote(x)});""")
           }
         case _ =>
           withStream(baseStream) {
