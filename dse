@@ -6,8 +6,8 @@ apps=("DotProduct" "OuterProduct" "BlackScholes" "GDA" "GEMM" "Kmeans" "LogReg" 
 
 for i in "${apps[@]}"
 do : 
-  echo "spatial --CGRA+ $i"
-  spatial --CGRA+ $i
+  echo "spatial --CGRA* $i"
+  spatial --CGRA* $i
   rm -rf logs/log$i
   mkdir logs/log$i
   mv logs/*.log logs/log$i/

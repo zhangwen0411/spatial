@@ -14,7 +14,7 @@ trait PIRRetiming extends PIRTraversal {
    * For all vector inputs for each CU, if inputs have mismatched delays or come
    * from other stages (and LCA is not a stream controller), put them through a retiming FIFO
    **/
-  def retime(cus: List[CU], others: Iterable[CU]): Unit = if (cus.length > 1) {
+  def retime(cus: List[CU], others: Iterable[CU]): Unit = {
     var producer = Map[GlobalBus, CU]()
     var deps     = Map[CU, List[GlobalBus]]()
 
@@ -23,7 +23,7 @@ trait PIRRetiming extends PIRTraversal {
     compute.foreach{cu =>
       globalOutputs(cu).foreach{bus => producer += bus -> cu}
 
-      // Ignore scalar inputs for cchains, srams (they can't be retimed...)
+      // Ignore inputs for cchains, srams here - SRAM vectors are already retimed, others are scalars which are retimed differently
       val ins = globalInputs(cu.allStages)
       deps += cu -> ins.toList
     }
@@ -35,7 +35,7 @@ trait PIRRetiming extends PIRTraversal {
     //      / \    |
     //     C   D - E
 
-    def getDelay(input: GlobalBus, cur: Int, visit: Set[CU]): Int = producer.get(input) match {
+    /*def getDelay(input: GlobalBus, cur: Int, visit: Set[CU]): Int = producer.get(input) match {
       case Some(cu) if visit.contains(cu) =>
         debug(s"    [CYCLE]")
         -1  // Don't retime cycles
@@ -47,16 +47,58 @@ trait PIRRetiming extends PIRTraversal {
         val delays = deps(cu).map{dep => getDelay(dep,cur+1,visit+cu)}
         if (delays.contains(-1)) -1 else delays.max
       case None => cur
-    }
+    }*/
 
     compute.foreach{cu => if (deps(cu).nonEmpty) {
       debug(s"Retiming inputs to CU ${cu.name}: ")
+
+      val vecIns = deps(cu).iterator.collect{case bus: VectorBus => bus}
+
+      vecIns.foreach{dep =>
+        if (producer.contains(dep) || isInterCU(dep)) { // Inputs from DRAM should already have FIFOs, input args don't need them
+          // Size of FIFO can't be statically predicted here (routing costs) and doesn't matter to config anyway
+          insertFIFO(cu, dep, 4096)
+        }
+        /*else if (isInterCU(dep)) {
+          insertFIFO(cu, dep, 4096)
+        }
+          val produce = others.find{cu => globalOutputs(cu) contains dep }
+          if (produce.isDefined) {
+            lca(cu, produce.get) match {
+              case Some(parent) if parent.style == StreamCU => // No retiming within stream controllers?
+              case None => // What?
+              case _ => insertFIFO(cu, dep, 4096)
+            }
+          }
+        }*/
+      }
+
+      cu.deps ++= deps(cu).flatMap{dep => producer.get(dep) } // Only use dependencies within this virtual CU
+    }}
+
+
+
+
+
+
+    /*    val produce = producer.getOrElse(dep, )
+        if (produce.isDefined) {
+          lca(cu, produce.get) match {
+            case Some(parent) if parent.style == StreamCU => // No action
+            case None => // ???
+            case _ => insertFIFO(cu, dep, 4096)
+          }
+          insertFIFO(cu, dep, 4096 ) // size isn't used anyway
+
+      }
 
       val delays = deps(cu).map{dep =>
         debug(s"  $dep")
         getDelay(dep, 0, Set(cu))
       }
       val criticalPath = delays.max
+
+
 
       deps(cu).zip(delays).foreach{case (dep,dly) =>
         if (dly <= criticalPath && dly > 0) {
@@ -65,17 +107,13 @@ trait PIRRetiming extends PIRTraversal {
         else if (dly == 0) {
           val produce = others.find{cu => globalOutputs(cu) contains dep}
           if (produce.isDefined) {
-            lca(cu, produce.get) match {
-              case Some(parent) if parent.style == StreamCU => // No action
-              case None => // ???
-              case _ => insertFIFO(cu, dep, 4096)
-            }
+
           }
         }
-      }
+      }*/
 
-      cu.deps ++= deps(cu).flatMap{dep => producer.get(dep) }
-    }}
+
+    //}}
   }
 
   def lca(a: CU, b: CU) = {

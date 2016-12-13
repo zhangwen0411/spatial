@@ -22,6 +22,7 @@ trait PIRHacks extends PIRTraversal {
       mappingOut += pipe -> mcHack(pipe, cus)
     }
     streamHack()
+    counterHack()
 
     b
   }
@@ -87,6 +88,25 @@ trait PIRHacks extends PIRTraversal {
           leaf.deps ++= leaves
           leaf.isDummy = true
           mappingOut(cu.pipe) = mappingOut(cu.pipe) ++ List(leaf)
+        }
+      }
+    }
+  }
+
+  // Change strides of last counter in inner, parallelized loops to LANES
+  def counterHack() {
+    val cus = mappingOut.values.flatten.toList
+    for (cu <- cus) {
+      if (!cu.isUnit && (cu.allStages.nonEmpty || cu.isDummy)) {
+        cu.cchains.foreach{
+          case CChainInstance(name, ctrs) =>
+            val innerCtr = ctrs.last
+            if (innerCtr.end != ConstReg("1i")) {
+              assert(innerCtr.stride == ConstReg("1i"))
+              innerCtr.stride = ConstReg(s"${LANES}i")
+            }
+
+          case _ => // Do nothing
         }
       }
     }

@@ -2,10 +2,17 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object MatMult_outer extends SpatialAppCompiler with MatMult_outerApp
+object MatMult_outer extends SpatialAppCompiler with MatMult_outerApp // Regression (Dense) // Args: 4 192 192
 trait MatMult_outerApp extends SpatialApp {
   type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
+
+  val tileSizeM = 4
+  val tileSizeN = 192
+  val tileSizeP = 192
+  val innerPar = 16
+  val midPar = 1
+  val outerPar = 2
 
   def MatMult_outer(A: Rep[Array[T]], B: Rep[Array[T]], C_init: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
     val M = ArgIn[SInt]
@@ -20,34 +27,40 @@ trait MatMult_outerApp extends SpatialApp {
     val c_init = DRAM[T](M, N)
     val c = DRAM[T](M, N)
 
-    val bm        = param(4)
-    val bn        = param(96)
-    val bp        = param(96)
+    val op = outerPar (1 -> 6)
+    val mp = midPar (1 -> 96)
+    val ip = innerPar (1 -> 96)
+
+    val px = 1 (1 -> 1) // Cannot parallelize accum across k blocks
+
+    val bm        = param(tileSizeM)
+    val bn        = param(tileSizeN)
+    val bp        = param(tileSizeP)
 
     setMem(a, A)
     setMem(b, B)
     setMem(c, C_init)
 
     Accel {
-      Sequential(M by bm, N by bn) { (i,j) =>
+      Pipe(M by bm, N by bn par op) { (i,j) =>
         val tileC = SRAM[T](bm, bn)
-        tileC := c(i::i+bm, j::j+bn)
-       	Pipe(P by bp) { k =>
+        Pipe(P by bp par px) { k =>
           val tileA = SRAM[T](bm, bp)
           val tileB = SRAM[T](bp, bn)
           Parallel {
             tileA := a(i::i+bm, k::k+bp)
             tileB := b(k::k+bp, j::j+bn)
           }
-          Fold(bp by 1)(tileC, 0.as[T]) { kk =>
+          // Requires tileC NOT to be reset until next j
+          Fold(bp by 1 par mp)(tileC, 0.as[T]) { kk =>
             val tileC_partial = SRAM[T](bm,bn)
-            Pipe(bm by 1, bn by 1){ (ii,jj) =>
+            Pipe(bm by 1, bn by 1 par ip){ (ii,jj) =>
               tileC_partial(ii,jj) = tileA(ii,kk) * tileB(kk,jj)
             }
             tileC_partial
           }{_+_}
-          c(i::i+bm, j::j+bn) := tileC
      		}
+        c(i::i+bm, j::j+bn) := tileC
      	}
     }
     getMem(c)

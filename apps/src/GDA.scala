@@ -2,16 +2,18 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object GDA extends SpatialAppCompiler with GDA_App
-trait GDA_App extends SpatialApp {
+object GDA extends SpatialAppCompiler with GDAApp // Regression (Dense) // Args: 192
+trait GDAApp extends SpatialApp {
   type T = Flt
   type Array[T] = ForgeArray[T]
 
   val margin = 1
-  val innerPar = 1
-  val outerPar = 1
-  val MAXC = 96
-  val tileSize = 96
+  val innerPar = 8
+  val outerPar = 2
+  val MAXC = 48
+  val aligned_C = 96
+  val C = MAXC
+  val tileSize = 192
   val pLoopPar = 2
 
   def gda(xCPU: Rep[Array[T]], yCPU: Rep[Array[SInt]], mu0CPU: Rep[Array[T]], mu1CPU: Rep[Array[T]]) = {
@@ -19,22 +21,22 @@ trait GDA_App extends SpatialApp {
     val op            = outerPar (1 -> 8)
     val ip            = innerPar (1 -> 12)
     val subLoopPar    = innerPar (1 -> 16)
-    val prodLoopPar   = pLoopPar (1 -> 96)
+    val prodLoopPar   = innerPar (1 -> 96)
     val outerAccumPar = innerPar (1 -> 1)
 
     val rows = yCPU.length;   bound(rows) = 360000
     val cols = mu0CPU.length; bound(cols) = MAXC
 
     val R = ArgIn[SInt]
-    val C = ArgIn[SInt]
+    // val C = ArgIn[SInt]
+    // setArg(C, cols)
     setArg(R, rows)
-    setArg(C, cols)
 
     val x     = DRAM[T](R, C)
     val y     = DRAM[SInt](R)
-    val mu0   = DRAM[T](C)
-    val mu1   = DRAM[T](C)
-    val sigma = DRAM[T](C, C)
+    val mu0   = DRAM[T](aligned_C)
+    val mu1   = DRAM[T](aligned_C)
+    val sigma = DRAM[T](aligned_C, aligned_C)
 
     setMem(x, xCPU)
     setMem(y, yCPU)
@@ -52,30 +54,30 @@ trait GDA_App extends SpatialApp {
       val sigmaOut = SRAM[T](MAXC, MAXC)
 
       Fold(R by rTileSize par op, outerAccumPar)(sigmaOut, 0.as[T]){ r =>
-        val yTile = SRAM[SInt](rTileSize)
-        val xTile = SRAM[T](rTileSize, MAXC)
+        val gdaYtile = SRAM[SInt](rTileSize)
+        val gdaXtile = SRAM[T](rTileSize, MAXC)
         val blk = Reg[SInt]
         Parallel {
-          yTile := y(r::r+rTileSize par subLoopPar)
-          xTile := x(r::r+rTileSize, 0::C par subLoopPar)  // Load tile of x
+          gdaYtile := y(r::r+rTileSize par subLoopPar)
+          gdaXtile := x(r::r+rTileSize, 0::C par subLoopPar)  // Load tile of x
           Pipe { blk := min(R.value - r, rTileSize) }
         }
 
         val sigmaBlk = SRAM[T](MAXC,MAXC)
-        Fold(blk par ip)(sigmaBlk, 0.as[Flt]){rr =>
+        Fold(blk par param(1),ip)(sigmaBlk, 0.as[Flt]){rr =>
           val subTile = SRAM[T](MAXC)
           val sigmaTile = SRAM[T](MAXC, MAXC)
           Pipe(C par subLoopPar){ cc =>
-            subTile(cc) = xTile(rr,cc) - mux(yTile(rr) == 1, mu1Tile(cc), mu0Tile(cc))
+            subTile(cc) = gdaXtile(rr,cc) - mux(gdaYtile(rr) == 1, mu1Tile(cc), mu0Tile(cc))
           }
-          Pipe(C by 1, C par prodLoopPar){ (ii,jj) =>
+          Pipe(C by 1, C par ip){ (ii,jj) =>
             sigmaTile(ii,jj) = subTile(ii) * subTile(jj);
           }
           sigmaTile
         }{_+_}
       }{_+_}
 
-      sigma(0::C, 0::C par prodLoopPar) := sigmaOut
+      sigma(0::C, 0::C par outerAccumPar) := sigmaOut
     }
 
     getMem(sigma)
@@ -90,28 +92,28 @@ trait GDA_App extends SpatialApp {
 
   def main() {
     val R = args(0).to[SInt]
-    val C = args(1).to[SInt] // TODO: Should be selectable up to maximum
+    // val C = args(0).to[SInt] // TODO: Should be selectable up to maximum
 
     val x  = Array.fill(R){ Array.fill(C){ random[T](10) }}
     val ys = Array.fill(R){ random[SInt](1) }
-    val mu0 = Array.fill(C){ random[T](10) }
-    val mu1 = Array.fill(C){ random[T](10) }
+    val mu0 = Array.fill(aligned_C){ random[T](10) }
+    val mu1 = Array.fill(aligned_C){ random[T](10) }
 
     val result = gda(x.flatten, ys, mu0, mu1)
 
-    val gold = x.zip(ys){ (row, y) =>
-      val sub = if (y == 1) row.zip(mu1){_-_} else row.zip(mu0){_-_}
-      Array.tabulate(C){i => Array.tabulate(C){j => sub(i) * sub(j) }}.flatten
-    }.reduce{(a,b) => a.zip(b){_+_}}
+    // val gold = x.zip(ys){ (row, y) =>
+    //   val sub = if (y == 1) row.zip(mu1){_-_} else row.zip(mu0){_-_}
+    //   Array.tabulate(C){i => Array.tabulate(C){j => sub(i) * sub(j) }}.flatten
+    // }.reduce{(a,b) => a.zip(b){_+_}}
 
-    // println("actual: " + gold.mkString(", "))
-    //println("result: " + result.mkString(", "))
-    // println("Sum of differences: " + gold.zip(result){_-_}.reduce{_+_})
-    printArr(gold, "gold: ")
-    printArr(result, "result: ")
+    // // println("actual: " + gold.mkString(", "))
+    // //println("result: " + result.mkString(", "))
+    // // println("Sum of differences: " + gold.zip(result){_-_}.reduce{_+_})
+    // printArr(gold, "gold: ")
+    // printArr(result, "result: ")
 
-    val cksum = gold.zip(result){ case (a,b) => a < b + margin && a > b - margin }.reduce{_&&_}
-    println("PASS: " + cksum  + " (GDA)")
+    // val cksum = gold.zip(result){ case (a,b) => a < b + margin && a > b - margin }.reduce{_&&_}
+    // println("PASS: " + cksum  + " (GDA)")
 
     // assert( result == gold )
   }

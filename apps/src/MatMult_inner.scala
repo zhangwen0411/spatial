@@ -2,16 +2,16 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object MatMult_inner extends SpatialAppCompiler with MatMult_innerApp
+object MatMult_inner extends SpatialAppCompiler with MatMult_innerApp // Regression (Dense) // Args: 4 192 192
 trait MatMult_innerApp extends SpatialApp {
   type T = SInt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
 
-  val tileSizeM = 4
-  val tileSizeN = 96
-  val tileSizeP = 96
-  val innerPar = 2
-  val midPar = 1
+  val tileSizeM = 8
+  val tileSizeN = 192
+  val tileSizeP = 192
+  val innerPar = 4
+  val midPar = 2
   val outerPar = 2
   val storePar = 1
 
@@ -30,32 +30,33 @@ trait MatMult_innerApp extends SpatialApp {
     val bm = tileSizeM (1 -> 1536)
     val bn = tileSizeN (96 -> 96 -> 1536)
     val bp = tileSizeP (96 -> 96 -> 1536)
-    val op = 1 (1 -> 6)
-    val mp = 1 (1 -> 96)
-    val ip = 1 (1 -> 96)
-    val upMidPar = 1 (1 -> 1)
-    val stPar    = 1 (1 -> 1)
+
+    val op = outerPar (1 -> 6)
+    val mp = midPar   (1 -> 96)
+    val ip = innerPar (1 -> 96)
+    val px = 1 (1 -> 1) // Cannot parallelize accum across k blocks
+    val stPar = storePar (1 -> 1)
 
     setMem(a, A)
     setMem(b, B)
 
     Accel {
       Pipe(M by bm, (N by bn) par op){(i,j) =>
-        Pipe((P by bp) par upMidPar){k =>
+        val tileC = SRAM[T](bm, bn)
+        Pipe((P by bp) par px){k =>
           val tileA = SRAM[T](bm, bp)
           val tileB = SRAM[T](bp, bn)
-          val tileC = SRAM[T](bm, bn)
           Parallel {
-            tileA := a(i::i+bm, k::k+bp)
+            tileA := a(i::i+bm, k::k+bp) // Reads M*N*P times
             tileB := b(k::k+bp, j::j+bn)
           }
-          Sequential(bm by 1, (bn by 1) par mp){ (ii,jj) =>    // MetaPipe?
+          Pipe(bm by 1, (bn by 1) par px){ (ii,jj) =>    // MetaPipe?
             val prod = Reduce((bp by 1) par ip)(0.as[T]){ kk => tileA(ii, kk) * tileB(kk, jj) }{_+_}
             val prev = mux(k == 0, 0.as[T], tileC(ii,jj))
             tileC(ii,jj) = prev + prod.value // Is a unit pipe that should be recognized as accum
           }
-          c(i::i+bm, j::j+bn par stPar) := tileC
         }
+        c(i::i+bm, j::j+bn par stPar) := tileC
       }
     }
     getMem(c)

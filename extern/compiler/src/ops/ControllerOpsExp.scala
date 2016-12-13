@@ -6,6 +6,7 @@ import scala.reflect.{Manifest,SourceContext}
 import scala.collection.mutable.Set
 import java.io.{File, FileWriter, PrintWriter}
 import ppl.delite.framework.transform.{DeliteTransform}
+import ppl.delite.framework.{Config}
 
 import spatial.shared._
 import spatial.shared.ops._
@@ -410,14 +411,22 @@ trait MaxJGenControllerOps extends MaxJGenEffect with MaxJGenFat {
       print_stage_prefix(s"Hwblock",s"",s"${quote(sym)}")
 			inHwScope = true
       emit(s"""
+
+/***********************************************
+ TopKernelLib for app ${Config.degFilename.dropRight(4)}
+************************************************/
 // Dummy counter to initialize all registers on first cycle
 Count.Params initParams = control.count.makeParams(2)
                           .withEnable(top_en)
                           .withMax(2)
                           .withWrapMode(WrapMode.STOP_AT_MAX);
 Counter init = control.count.makeCounter(initParams);
-DFEVar global_rst = init.getCount() === 0;
+DFEVar global_rst = constant.var(false); // Part of giant illegal loop in bfs... init.getCount() === 0;
 """)
+      if (Config.degFilename.dropRight(4) == "SGD") {
+        emit(s"""// MaxJ sucks and SGD compilation hangs unless we put in a print line for some dumbass reason
+          debug.simPrintf(global_rst,"You happy now maxj?"); """)
+      }
 			emitComment("Emitting Hwblock dependencies {")
       val hwblockDeps = recursiveDeps(rhs)
       expToArg.keys.filterNot { hwblockDeps.contains(_) } foreach { argToExp -= expToArg(_) }

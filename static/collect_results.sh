@@ -8,12 +8,13 @@
 ##########
 # CONFIG #
 ##########
-test_name="DotProduct2" # Label for data to be scraped
+test_name="GDA" # Label for data to be scraped
+blank_file="maxj2/Summary_GDA_Manual.csv" # Location on remote of blank csv with all runs included (highest # channel)
+buildserver="max" # Tag to look for inside file [max / londonvm]
 testname_as_prefix="false" # Flag indicating if test_name is a prefix (for printing to csv with multiple tests)
-blank_file="maxj8/Summary_DotProduct_Manual.csv" # Location on remote of blank csv with all runs included (highest # channel)
 base_dir="./${test_name}" # Move whatever maxj/ you want to scrape to this dir
 insertion_file="/home/mattfel/characterization/${test_name}.csv" # Specify file that holds current unpopulated table
-server="maxeler" # Specify server
+server="maxeler" # Specify server to grab data from
 # start_channel=1 # Used if mv via script
 # stop_channel=30 # Used if mv via script
 
@@ -74,11 +75,28 @@ done
 echo ""
 
 # Run Matt parser scripts
+# Get tag
+if [ "${buildserver}" = "maxeler" ]; then
+	sserver="max"
+else
+	sserver=$buildserver
+fi
 echo "Parsing..."
 echo -n "  "
 for d in "${directories[@]}"; do
 	# Extract fields from summary file
 	file="/mnt/${server}/scripts/${base_dir}/${d}/${d}.summary"
+	usage=(`cat /mnt/${server}/${test_name}/${d}/Top_MAX4848A_DFE/_build.log | grep "%)"`)
+	usage=(`echo ${usage[@]} | sed 's/\// /g'`)		num=(`echo "$d" | sed 's/maxj//g'`)
+	if [ "$testname_as_prefix" = "true" ]; then
+		if [[ "$buildserver" = "maxeler" ]]; then
+			tag="${test_name}\/max.${num}"
+		fi
+	else
+		tag="${sserver}${num}"
+	fi
+
+	# echo -e "${usage[@]} \n"
 	if [ -f ${file} ]; then 
 		text=(`cat $file`)
 		if [ "$text" != "" ]; then
@@ -159,29 +177,18 @@ for d in "${directories[@]}"; do
 				data+="${val},"
 			done
 
-			# Get tag
-			if [ "${server}" = "maxeler" ]; then
-				sserver="max"
-			else
-				sserver=$server
-			fi
-			num=(`echo "$d" | sed 's/maxj//g'`)
-			if [ "$testname_as_prefix" = "true" ]; then
-				if [[ "$server" = "maxeler" ]]; then
-					tag="${test_name}\/max.${num}"
-				fi
-			else
-				tag="${sserver}${num}"
-			fi
-
 			# Pop in data
-			cmd="sed -i 's/,${tag},/,${data},,,,,,,,,,,,,,,,${tag}/g' ${fname}"
+			cmd="sed -i 's/,${tag},/,${data},,,,,,,,,,,,,,,,${tag},,,,,${usage[@]}/g' ${fname}"
 			# echo $cmd
 			eval ${cmd}
 		else
+			cmd="sed -i 's/,${tag},/,${tag},,,${usage[@]}/g' ${fname}"
+			eval ${cmd}
 			echo -n "x"
 		fi
 	else 
+		cmd="sed -i 's/,${tag},/,${tag},,,${usage[@]}/g' ${fname}"
+		eval ${cmd}
 		echo -n "x"
 	fi
 

@@ -4,15 +4,15 @@
 # CONFIG #
 ##########
 
-testname="CharBramTest"
+testname="CharLoadTest"
 server="max"
 start_channel=1
 file=${SPATIAL_HOME}/apps/src/CharacterizationUnitTests.scala
 
-innerPar=(1 8)
-outerPar=(1 4)
-dim0=(192)
-dim1=(1920 19200)
+innerPar=(2 8)
+outerPar=(2 3)
+dim0=(384)
+dim1=(19200 9600)
 
 i=$start_channel
 

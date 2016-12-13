@@ -359,6 +359,14 @@ trait PIRScheduler extends PIRTraversal {
         val stage = MapStage(op, inputs, List(ctx.refOut(output, n)))
         ctx.addControlStage(stage)
       }
+      // HACK: Skip control logic generation for now...
+      else if (hasControlLogic && op == ALUMux) {
+        val skip = inputRegs.drop(1).find{case _:ConstReg => false; case _ => true}
+        ctx.addReg(out, skip.getOrElse(inputRegs.drop(1).head))
+      }
+      else if (hasControlLogic) {
+        throw new Exception("Cannot skip control logic...")
+      }
       else {
         val inputs = inputRegs.map{reg => ctx.refIn(reg) }
         val output = ctx.cu.getOrElse(out){ TempReg() }

@@ -20,6 +20,10 @@ trait RewriteTransformer extends SinglePassTransformer {
     def unapply[T](x: Exp[T]) = Some(f(x).asInstanceOf[Exp[T]])
   }
 
+  override def run[A:Manifest](b: Block[A]) = {
+    if (SpatialConfig.genCGRA) b else super.run(b)
+  }
+
   override def transform[A:Manifest](lhs: Sym[A], rhs: Def[A])(implicit ctx: SourceContext) = rhs match {
     case EatReflect(Reg_write(Mirrored(reg), Mirrored(value), Mirrored(en))) => value match {
       // Keep the previous value if sel is true, otherwise write 'b'

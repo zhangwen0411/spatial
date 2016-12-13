@@ -6,6 +6,7 @@ import os, sys, datetime
 def main():
   usage = "Usage: %prog <application runner> [staging args] [options]"
   parser = ArgumentParser(description='SPATIAL')
+  parser.add_argument('app', type=str, help='name of application to run')
   parser.add_argument('--DSE', dest='dse', action='store_true',default=False, help='enables design space exploration')
   parser.add_argument('--debug', dest='debug', action='store_true', default=False, help='enables Spatial debugging output')
   parser.add_argument('--debuglast', dest='debuglast', action='store_true', default=False, help='enables Spatial print last IR output')
@@ -22,23 +23,52 @@ def main():
 
   # Plasticine work
   parser.add_argument('--CGRA+', dest='allCGRA', action="store_true", default=False, help="enable ALL PIR features")
+  parser.add_argument('--CGRA*', dest='dseCGRA', action="store_true", default=False, help="enable ALL PIR features")
+
   parser.add_argument('--pdse', dest='pdse', action="store_true", default=False, help="enable CGRA DSE")
-  parser.add_argument('--CGRA', dest='cgra', action='store_true', default=True, help='enables PIR generation')
+  parser.add_argument('--CGRA', dest='cgra', action='store_true', default=False, help='enables PIR generation')
   parser.add_argument('--pdebug', dest='pir_debug', action='store_true', default=False, help='enables PIR debugging output')
   parser.add_argument('--split', dest='split', action="store_true", default=False, help="enable PIR CU splitting")
 
+  parser.add_argument("--sIn", type=int, help="set number of scalar inputs / CU")
+  parser.add_argument("--sbus", type=int, help="set number of scalars / bus")
+  parser.add_argument("--vIn", type=int, help="set number of vector inputs / CU")
+  parser.add_argument("--vOut", type=int, help="set number of vector outputs / CU")
+  parser.add_argument("--comp", type=int, help="set number of compute-only stages / CU")
+  parser.add_argument("--rw", type=int, help="set number of read/write enabled stages / CU")
+  parser.add_argument("--mems", type=int, help="set number of SRAMs / CU")
+
+
   (opts, args) = parser.parse_known_args()
-  if len(args) < 1:
-    parser.error("An application file must be passed to delitec as an argument")
+  #if len(args) < 1:
+  #  parser.error("An application file must be passed to delitec as an argument")
 
   java_opts = os.getenv("JAVA_OPTS", "")
 
-  if opts.allCGRA == True:
-    opts.pdse = True
+  if opts.sIn > 0:
+    java_opts = java_opts + " -Dplasticine.sIn="+str(opts.sIn)
+  if opts.sbus > 0:
+    java_opts = java_opts + " -Dplasticine.sbus="+str(opts.sbus)
+  if opts.vIn > 0:
+    java_opts = java_opts + " -Dplasticine.vIn="+str(opts.vIn)
+  if opts.vOut > 0:
+    java_opts = java_opts + " -Dplasticine.vOut="+str(opts.vOut)
+  if opts.comp > 0:
+    java_opts = java_opts + " -Dplasticine.comp="+str(opts.comp)
+  if opts.rw > 0:
+    java_opts = java_opts + " -Dplasticine.rw="+str(opts.rw)
+  if opts.mems > 0:
+    java_opts = java_opts + " -Dplasticine.mems="+str(opts.mems)
+
+
+  if opts.allCGRA == True or opts.dseCGRA == True:
     opts.cgra = True
     opts.pir_debug = True
     opts.split = True
     opts.debug = True
+
+  if opts.dseCGRA == True:
+    opts.pdse = True
 
   if opts.test == True or opts.cgra == True:
     opts.maxj = False
@@ -93,16 +123,16 @@ def main():
 
   ## TODO: How to determine publish directory?
   publish = SPATIAL_HOME + "/published/Spatial/"
-  os.system(publish + 'bin/delitec ' + deliteArgs + ' --dump_exception 2>&1 | tee compile.log')
+  os.system(publish + 'bin/delitec ' + opts.app + ' ' + deliteArgs + ' --dump_exception 2>&1 | tee compile.log')
 
   if not opts.no_log:
     print 'Parsing log'
     os.system(publish + 'bin/parse-log.py')
 
   if opts.maxj and opts.cpp:
-    print 'Running Spatial with arguments: ' + ' '.join(args[1:])
+    print 'Running Spatial with arguments: ' + ' '.join(args)
     if opts.outdir == "out":
-      os.system(publish + 'bin/delite ' + args[0] + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + os.getenv("HYPER_HOME", "") + '/spatial/published/Spatial/out ' + ' '.join(args[1:]) + ' 2>&1 | tee run.log')
+      os.system(publish + 'bin/delite ' + opts.app + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + os.getenv("HYPER_HOME", "") + '/spatial/published/Spatial/out ' + ' '.join(args) + ' 2>&1 | tee run.log')
     else:
       os.system(publish + 'bin/delite ' + args[0] + ' --no-jvm --no-compile --cpp=1 --maxj=1 --codecache=' + opts.outdir + ' ' + ' '.join(args[1:]) + ' 2>&1 | tee run.log')
   elif opts.chisel and opts.cpp:
@@ -112,8 +142,8 @@ def main():
     else:
       os.system(publish + 'bin/delite ' + args[0] + ' --no-jvm --no-compile --cpp=1 --chisel=1 --codecache=' + opts.outdir + ' ' + ' '.join(args[1:]) + ' 2>&1 | tee run.log')
   elif opts.test:
-    print 'Running Spatial Scala Test with arguments: ' + ' '.join(args[1:])
-    os.system(publish + 'bin/delite ' + args[0] + ' --codecache=' + opts.outdir + ' ' + ' '.join(args[1:]) + ' 2>&1 | tee run.log')
+    print 'Running Spatial Scala Test with arguments: ' + ' '.join(args)
+    os.system(publish + 'bin/delite ' + opts.app + ' --codecache=' + opts.outdir + ' ' + ' '.join(args) + ' 2>&1 | tee run.log')
 
 if __name__ == "__main__":
     main()

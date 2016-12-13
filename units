@@ -8,8 +8,8 @@ tests=( "SimpleSequential" "DeviceMemcpy" "SimpleTileLoadStore" "FifoLoad" "ParF
 
 for i in "${tests[@]}"
 do : 
-  echo "spatial --CGRA+ $i"
-  spatial --CGRA+ $i
+  echo "spatial --CGRA* $i"
+  spatial --CGRA* $i
   rm -rf logs/log$i
   mkdir logs/log$i
   mv logs/*.log logs/log$i/

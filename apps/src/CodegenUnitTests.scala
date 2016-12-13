@@ -2,7 +2,7 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
-object SimpleSequential extends SpatialAppCompiler with SimpleSequentialApp // Args: 5 8
+object SimpleSequential extends SpatialAppCompiler with SimpleSequentialApp // Regression (Unit) // Args: 5 8
 trait SimpleSequentialApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
@@ -43,28 +43,31 @@ trait SimpleSequentialApp extends SpatialApp {
 }
 
 
-object DeviceMemcpy extends SpatialAppCompiler with DeviceMemcpyApp // Args: 5
+object DeviceMemcpy extends SpatialAppCompiler with DeviceMemcpyApp // Regression (Unit) // Args: 288
 trait DeviceMemcpyApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
 
-  val N = 192
-  def memcpyViaFPGA(srcHost: Rep[Array[T]]) = {
+  // val N = 192
+  def memcpyViaFPGA(srcHost: Rep[Array[T]], c: Rep[SInt]) = {
+    val N = ArgIn[SInt]
+    setArg(N, c)
     val fpgamem = DRAM[SInt](N)
     setMem(fpgamem, srcHost)
 
-  	val y = ArgOut[SInt]
-    Accel { Pipe { y := 10 } }
+    val y = ArgOut[SInt]
+    Accel { Pipe { y := N } }
 
     getMem(fpgamem)
   }
 
   def main() {
-    val arraySize = N
+    // val arraySize = N
     val c = args(unit(0)).to[SInt]
+    val arraySize = c
 
     val src = Array.tabulate[SInt](arraySize) { i => i*c }
-    val dst = memcpyViaFPGA(src)
+    val dst = memcpyViaFPGA(src, c)
 
     println("Sent in: ")
     (0 until arraySize) foreach { i => print(src(i) + " ") }
@@ -84,7 +87,7 @@ trait DeviceMemcpyApp extends SpatialApp {
 
 }
 
-object SimpleTileLoadStore extends SpatialAppCompiler with SimpleTileLoadStoreApp // Args: 960 5
+object SimpleTileLoadStore extends SpatialAppCompiler with SimpleTileLoadStoreApp // Regression (Unit) // Args: 960 5
 trait SimpleTileLoadStoreApp extends SpatialApp {
   type T = SInt
   val N = 192
@@ -140,7 +143,7 @@ trait SimpleTileLoadStoreApp extends SpatialApp {
 }
 
 // 5
-object FifoLoad extends SpatialAppCompiler with FifoLoadApp // Args: 960
+object FifoLoad extends SpatialAppCompiler with FifoLoadApp // Regression (Unit) // Args: 960
 trait FifoLoadApp extends SpatialApp {
   type T = SInt
 
@@ -192,7 +195,7 @@ trait FifoLoadApp extends SpatialApp {
 }
 
 // 6
-object ParFifoLoad extends SpatialAppCompiler with ParFifoLoadApp // Args: 960
+object ParFifoLoad extends SpatialAppCompiler with ParFifoLoadApp // Regression (Unit) // Args: 960
 trait ParFifoLoadApp extends SpatialApp {
   type T = SInt
 
@@ -247,7 +250,7 @@ trait ParFifoLoadApp extends SpatialApp {
   }
 }
 
-object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Args: none
+object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Regression (Unit) // Args: none
 trait FifoLoadStoreApp extends SpatialApp {
   type T = SInt
   val N = 192
@@ -298,7 +301,7 @@ trait FifoLoadStoreApp extends SpatialApp {
   }
 }
 
-object SimpleReduce extends SpatialAppCompiler with SimpleReduceApp // Args: 72
+object SimpleReduce extends SpatialAppCompiler with SimpleReduceApp // Regression (Unit) // Args: 72
 trait SimpleReduceApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -387,7 +390,7 @@ trait SimpleReduceApp extends SpatialApp {
 //   }
 // }
 
-object Niter extends SpatialAppCompiler with NiterApp // Args: 9216
+object Niter extends SpatialAppCompiler with NiterApp // Regression (Unit) // Args: 9216
 trait NiterApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -434,7 +437,7 @@ trait NiterApp extends SpatialApp {
   }
 }
 
-object SimpleFold extends SpatialAppCompiler with SimpleFoldApp // Args: 1920
+object SimpleFold extends SpatialAppCompiler with SimpleFoldApp // Regression (Unit) // Args: 1920
 trait SimpleFoldApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -485,7 +488,7 @@ trait SimpleFoldApp extends SpatialApp {
   }
 }
 
-object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Args: none
+object Memcpy2D extends SpatialAppCompiler with Memcpy2DApp // Regression (Unit) // Args: none
 trait Memcpy2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -537,7 +540,7 @@ trait Memcpy2DApp extends SpatialApp {
   }
 }
 
-object BlockReduce1D extends SpatialAppCompiler with BlockReduce1DApp // Args: 1920
+object BlockReduce1D extends SpatialAppCompiler with BlockReduce1DApp // Regression (Unit) // Args: 1920
 trait BlockReduce1DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -592,7 +595,7 @@ trait BlockReduce1DApp extends SpatialApp {
   }
 }
 
-object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Args: 100
+object UnalignedLd extends SpatialAppCompiler with UnalignedLdApp // Regression (Unit) // Args: 100
 trait UnalignedLdApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -646,7 +649,7 @@ trait UnalignedLdApp extends SpatialApp {
   }
 }
 
-object BlockReduce2D extends SpatialAppCompiler with BlockReduce2DApp // Args: 192 384
+object BlockReduce2D extends SpatialAppCompiler with BlockReduce2DApp // Regression (Unit) // Args: 192 384
 trait BlockReduce2DApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -726,7 +729,7 @@ trait BlockReduce2DApp extends SpatialApp {
 }
 
 
-object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Args: none
+object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Regression (Unit) // Args: none
 trait ScatterGatherApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -735,7 +738,7 @@ trait ScatterGatherApp extends SpatialApp {
   val tileSize = 384
   val maxNumAddrs = 1536
   val offchip_dataSize = maxNumAddrs*6
-  val P = parameter(1)
+  val P = parameter(2)
 
   def scattergather(addrs: Rep[ForgeArray[T]], offchip_data: Rep[ForgeArray[T]], size: Rep[SInt], dataSize: Rep[SInt]) = {
 
@@ -797,7 +800,7 @@ trait ScatterGatherApp extends SpatialApp {
 }
 
 
-object InOutArg extends SpatialAppCompiler with InOutArgApp // Args: 7
+object InOutArg extends SpatialAppCompiler with InOutArgApp // Regression (Unit) // Args: 7
 trait InOutArgApp extends SpatialApp {
 
   def main() {
@@ -829,8 +832,8 @@ trait InOutArgApp extends SpatialApp {
   }
 }
 
-object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteApp // Args: none
-trait MultiplexedWriteApp extends SpatialApp {
+object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteTestApp // Regression (Unit) // Args: none
+trait MultiplexedWriteTestApp extends SpatialApp {
   type Array[SInt] = ForgeArray[SInt]
 
   val tileSize = 96
@@ -893,8 +896,8 @@ trait MultiplexedWriteApp extends SpatialApp {
 
 // TODO: Make this actually check a bubbled NBuf (i.e.- s0 = wr, s2 = wr, s4 =rd, s1s2 = n/a)
 // because I think this will break the NBuf SM since it won't detect drain completion properly
-object BubbledWriteTest extends SpatialAppCompiler with BubbledWriteApp // Args: none
-trait BubbledWriteApp extends SpatialApp {
+object BubbledWriteTest extends SpatialAppCompiler with BubbledWriteTestApp // Regression (Unit) // Args: none
+trait BubbledWriteTestApp extends SpatialApp {
   type Array[SInt] = ForgeArray[SInt]
 
   val tileSize = 96
@@ -961,7 +964,7 @@ trait BubbledWriteApp extends SpatialApp {
 }
 
 
-object SequentialWrites extends SpatialAppCompiler with SequentialWritesApp // Args: none
+object SequentialWrites extends SpatialAppCompiler with SequentialWritesApp // Regression (Unit) // Args: none
 trait SequentialWritesApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -1016,7 +1019,7 @@ trait SequentialWritesApp extends SpatialApp {
   }
 }
 
-object ChangingCtrMax extends SpatialAppCompiler with ChangingCtrMaxApp // Args: none
+object ChangingCtrMax extends SpatialAppCompiler with ChangingCtrMaxApp // Regression (Unit) // Args: none
 trait ChangingCtrMaxApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -1061,7 +1064,7 @@ trait ChangingCtrMaxApp extends SpatialApp {
   }
 }
 
-object FifoPushPop extends SpatialAppCompiler with FifoPushPopApp // Args: 384
+object FifoPushPop extends SpatialAppCompiler with FifoPushPopApp // Regression (Unit) // Args: 384
 trait FifoPushPopApp extends SpatialApp {
   type T = SInt
 
