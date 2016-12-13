@@ -13,6 +13,10 @@ build_spatial() {
   logger "Spatial done!"
   logger "Checking if spatial made correctly..."
   exists "$PUB_HOME" 3
+  errs=(`cat /tmp/log | grep error | grep -v errors | wc -l`)
+  if [[ $errs -gt 0 ]]; 
+  	clean_exit 8 "Detected errors in spatial build (/tmp/log)"
+  fi
   logger "Spatial made correctly!"
 
   # Patch bin/spatial
@@ -391,36 +395,33 @@ if [ \"\$wc\" -ne 0 ]; then
   exit 1
 fi
 
-rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
-touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
-cd out
 if grep -q \"PASS: 1\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   fi
 elif grep -q \"PASS: true\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   fi
 elif grep -q \"PASS: 0\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
     echo \"[STATUS] Declaring failure validation\"
   touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
   fi
 elif grep -q \"PASS: false\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
     echo \"[STATUS] Declaring failure validation\"
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
   fi
 else 
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
     echo \"[STATUS] Declaring failure no_validation_check\"
   touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_no_validation_check.${3}_${4}    
   fi
