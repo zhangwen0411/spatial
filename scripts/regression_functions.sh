@@ -24,7 +24,7 @@ build_spatial() {
   if [[ ${test_to_run} = "maxj" ]]; then
     sed -i 's/parser.add_argument("--maxj", dest="maxj", action="store_true", default=False/parser.add_argument("--maxj", dest="maxj", action="store_true", default=True/g' ${PUB_HOME}/bin/spatial
   elif [[ ${test_to_run} = "scala" ]]; then
-    sed -i "s/parser.add_argument('--test', dest="test", action="store_true", default=False/parser.add_argument('--test', dest="test", action="store_true", default=True/g" ${PUB_HOME}/bin/spatial
+    sed -i 's/parser.add_argument('--test', dest="test", action="store_true", default=False/parser.add_argument('--test', dest="test", action="store_true", default=True/g' ${PUB_HOME}/bin/spatial
   fi
   sed -i "s/parser.add_argument('--CGRA', dest='cgra', action='store_true', default=True/parser.add_argument('--CGRA', dest='cgra', action='store_true', default=False/g" ${PUB_HOME}/bin/spatial
   logger "Patch done!"
