@@ -14,7 +14,7 @@ build_spatial() {
   logger "Checking if spatial made correctly..."
   exists "$PUB_HOME" 3
   errs=(`cat /tmp/log | grep error | grep -v errors | wc -l`)
-  if [[ $errs -gt 0 ]]; 
+  if [[ $errs -gt 0 ]]; then
   	clean_exit 8 "Detected errors in spatial build (/tmp/log)"
   fi
   logger "Spatial made correctly!"
