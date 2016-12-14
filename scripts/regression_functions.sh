@@ -48,7 +48,7 @@ git push
 
 mv $log ${dirname}/../${tim}.${type_todo}.log
 rm $packet
-stubborn_delete
+# stubborn_delete ${dirname}
 
 ps aux | grep -ie mattfel | grep -v ssh | grep -v bash | grep -v screen | awk '{system("kill -9 " $2)}'
 
