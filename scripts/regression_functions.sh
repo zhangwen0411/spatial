@@ -4,6 +4,10 @@
 ##   It is called from the receive.sh, which handles path variables
 ##   and git checkouts on a server-specific basis
 
+spacing=40
+delay=2000
+numpieces=30
+hist=72
 
 ## Function for building spatial
 build_spatial() {
@@ -46,7 +50,7 @@ mv $log ${dirname}/../${tim}.${type_todo}.log
 rm $packet
 stubborn_delete
 
-ps aux | grep -ie mattfel | grep -v ssh | grep -v bash | awk '{system("kill -9 " $2)}'
+ps aux | grep -ie mattfel | grep -v ssh | grep -v bash | grep -v screen | awk '{system("kill -9 " $2)}'
 
 exit 1
 
