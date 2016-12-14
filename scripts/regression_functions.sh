@@ -46,7 +46,6 @@ git add -A
 git commit -m "Automated incron update"
 git push
 
-mv $log ${dirname}/../${tim}.${type_todo}.log
 rm $packet
 # stubborn_delete ${dirname}
 
