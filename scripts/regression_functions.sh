@@ -4,8 +4,8 @@
 ##   It is called from the receive.sh, which handles path variables
 ##   and git checkouts on a server-specific basis
 
-spacing=40
-delay=2000
+spacing=45
+delay=2100
 numpieces=30
 hist=72
 
