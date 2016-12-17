@@ -113,7 +113,7 @@ import spatial.shared._
   // }
 
 
-object TRSM_row extends SpatialAppCompiler with TRSM_rowApp
+object TRSM_row extends SpatialAppCompiler with TRSM_rowApp // Regression (Dense) // Args: 192
 trait TRSM_rowApp extends SpatialApp {
   type T = Flt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]
@@ -266,7 +266,7 @@ trait TRSM_rowApp extends SpatialApp {
 
 
 // ~2x faster than row at pars=1
-object TRSM_col extends SpatialAppCompiler with TRSM_colApp
+object TRSM_col extends SpatialAppCompiler with TRSM_colApp // Regression (Dense) // Args: 192
 trait TRSM_colApp extends SpatialApp {
   type T = Flt //FixPt[Signed,B16,B16]
   type Array[T] = ForgeArray[T]

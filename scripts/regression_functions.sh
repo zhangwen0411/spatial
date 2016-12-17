@@ -89,10 +89,16 @@ echo -e "\n\n***\n\n" >> $wiki_file
 echo -e "\n## [Prettier History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${pretty_name}) \n" >> $wiki_file
 # echo -e "\n## [Performance Results](https://www.dropbox.com/s/a91ra3wvdyr3x5b/Performance_Results.xlsx?dl=0) \n" >> $wiki_file
 
+stamp_app_comments
 stamp_commit_msgs
 }
 
-
+stamp_app_comments() {
+  cd ${SPATIAL_HOME}/regression_tests
+  comments=(`find . -type f -maxdepth 3 -exec grep PASS {} \; | grep "^PASS: \(.*\).*\*" | sed "s/PASS:.*(/* (/g" | sed "s/*//g"`)
+  echo -e "\n# COMMENTS:" >> $wiki_file
+  echo -e "\n${comments}" >> $wiki_file
+}
 
 update_log() {
   perf_hist=72
