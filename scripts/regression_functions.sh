@@ -11,7 +11,18 @@ hist=72
 
 ## Function for building spatial
 build_spatial() {
+  logger "Cleaning old regression files..."
+  cd ${REGRESSION_HOME}
+  ls | grep -v $tim | grep -v receive | grep -v regression | xargs rm -rf
+  logger "Cleanup done!"
+  
+  logger "Patching the nsc library thing..."
+  cd $DELITE_HOME
+  find ./ -type f -exec sed -i -e 's/^import tools.nsc/import scala.tools.nsc/g' {} \; # Not sure why we do this suddenly..
   cd $SPATIAL_HOME
+  find ./ -type f -exec sed -i -e 's/^import tools.nsc/import scala.tools.nsc/g' {} \; # Not sure why we do this suddenly..
+  logger "Patch done!"
+
   logger "Making spatial..."
   make > /tmp/log 2>&1
   logger "Spatial done!"
