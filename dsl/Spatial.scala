@@ -333,13 +333,13 @@ trait SpatialDSL extends ForgeApplication
     schedule(DRAMAddrAnalyzer)        // Get addresses for each DRAM object
 
     // External groups
-    extern(grp("Memory"), targets = List($cala, cpp, maxj), withTypes = true)
-    extern(grp("Controller"), targets = List($cala, maxj))
-    extern(grp("Convolution"), targets = List($cala, maxj))
-    extern(grp("Unrolled"), targets = List($cala, maxj))
+    extern(grp("Memory"), targets = List($cala, cpp, maxj, chisel), withTypes = true)
+    extern(grp("Controller"), targets = List($cala, maxj, chisel))
+    extern(grp("Convolution"), targets = List($cala, maxj, chisel))
+    extern(grp("Unrolled"), targets = List($cala, maxj, chisel))
 
-    extern(grp("ExternCounter"), targets = List($cala, cpp, maxj), withTypes = true)
-    extern(metadata("ExternPrimitive"), targets = List($cala, cpp, maxj), withTypes = true)
+    extern(grp("ExternCounter"), targets = List($cala, cpp, maxj, chisel), withTypes = true)
+    extern(metadata("ExternPrimitive"), targets = List($cala, cpp, maxj, chisel), withTypes = true)
     extern(metadata("NodeMetadata"), targets = Nil, withTypes = true)
     extern(metadata("Name"), targets = Nil, withTypes = true)
     extern(metadata("SpatialExceptions"), targets = Nil)
