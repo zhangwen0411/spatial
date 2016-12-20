@@ -1,0 +1,1 @@
+cp -r $SPATIAL_HOME/extern/compiler/src/* $SPATIAL_HOME/published/Spatial/compiler/src/spatial/compiler 

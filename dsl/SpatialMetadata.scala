@@ -28,12 +28,34 @@ trait SpatialMetadata {
     internal.static (aliasObj) ("unapply", Nil, (MAny) :: SOption(MAny)) implements composite ${ Some(aliasOf($0)) }
 
 
+
+    val BankOverrideId = metadata("BankOverrideId", "bankOverride" -> SInt)
+    val bankOverride = metadata("bankOverride")
+    static (bankOverride) ("update", Nil, (MAny, SInt) :: MUnit, effect = simple) implements
+      composite ${ setMetadata($0, BankOverrideId($1)) }
+    static (bankOverride) ("apply", Nil, (MAny) :: SInt) implements
+        composite ${ meta[BankOverrideId]($0).map(_.bankOverride).getOrElse(-1) }
+
+    val HardcodedEnsemble = metadata("HardcodedEnsemble", "hardcodeEnsembles" -> SBoolean)
+    val hardcodeEnsembles = metadata("hardcodeEnsembles")
+    static (hardcodeEnsembles) ("update", Nil, (MAny, SBoolean) :: MUnit, effect = simple) implements
+      composite ${ setMetadata($0, HardcodedEnsemble($1)) }
+    static (hardcodeEnsembles) ("apply", Nil, (MAny) :: SBoolean) implements
+        composite ${ meta[HardcodedEnsemble]($0).map(_.hardcodeEnsembles).getOrElse(false) }
+
     val DummyMem = metadata("DummyMem", "isDummy" -> SBoolean)
     val isDummy = metadata("isDummy")
     static (isDummy) ("update", Nil, (MAny, SBoolean) :: MUnit, effect = simple) implements
       composite ${ setMetadata($0, DummyMem($1)) }
     static (isDummy) ("apply", Nil, (MAny) :: SBoolean) implements
       composite ${ meta[DummyMem]($0).map(_.isDummy).getOrElse(false) }
+
+    val MemLevel = metadata("MemLevel", "levelOf" -> SInt)
+    val levelOf = metadata("levelOf")
+    static (levelOf) ("update", Nil, (MAny, SInt) :: MUnit, effect = simple) implements
+      composite ${ setMetadata($0, MemLevel($1)) }
+    static (levelOf) ("apply", Nil, (MAny) :: SInt) implements
+      composite ${ meta[MemLevel]($0).map(_.levelOf).getOrElse(-1) }
 
     val UserInstanceIndex = metadata("UserInstanceIndex", "idx" -> SInt)
     val userIdxOps = metadata("memoryIndexOf")
@@ -69,7 +91,7 @@ trait SpatialMetadata {
 
     /**
      * Staged N-D memory dimensions
-     * Used for tracking dimensions of OffChipMems, BRAM, FIFO, etc.
+     * Used for tracking dimensions of DRAMs, SRAMs, FIFO, etc.
      * User facing: No
      * Set: dimsOf(Rep[Any]) = List[Rep[Index]]
      * Get: dimsOf(Rep[Any])  // Returns List[Rep[Index]]. Error if undefined
@@ -114,6 +136,14 @@ trait SpatialMetadata {
       composite ${ setMetadata($0, MDelayReg($1)) }
     internal.static (delayRegOps) ("apply", T, T :: SBoolean) implements
       composite ${ meta[MDelayReg]($0).map(_.isDelay).getOrElse(false) }
+
+
+    val MExternalRead = metadata("MExternalReaders", "readers" -> SList(MAny))
+    val externReadOps = metadata("externalReadersOf")
+    internal.static (externReadOps) ("update", Nil, (MAny, SList(MAny)) :: MUnit, effect = simple) implements
+      composite ${ setMetadata($0, MExternalReaders($1)) }
+    internal.static (externReadOps) ("apply", Nil, (MAny) :: SList(MAny)) implements
+      composite ${ meta[MExternalReaders]($0).map(_.readers).getOrElse(Nil) }
 
 
     /**
@@ -290,6 +320,11 @@ trait SpatialMetadata {
      * Fixed(Rep[Any])  // Returns Option[Double]. Defined only for fixed bounds
      **/
     val MBound = metadata("MBound", "bound" -> SDouble, "exact" -> SBoolean, "locked" -> SBoolean)
+    onMeet (MBound, metaAlias) (${
+      MBound(Math.max(this.bound,that.bound), this.exact && that.exact && this.bound == that.bound, this.locked && that.locked && this.bound == that.bound)
+    })
+    isExistential(MBound, false)
+
     val boundOps = metadata("bound")
     static (boundOps) ("update", Nil, (MAny, SDouble) :: MUnit, effect = simple) implements
       composite ${ setMetadata($0, MBound($1, false, false)) }
@@ -377,156 +412,6 @@ trait SpatialMetadata {
       composite ${ setMetadata($0, MContention($1)) }
     internal.static (contentionOps) ("apply", Nil, MAny :: SInt) implements
       composite ${ meta[MContention]($0).map(_.contention).getOrElse(1) }
-
-
-    /**
-     * Controller parent
-     * Defines the controller which controls the reset of the given node.
-     * Currently defined only for control nodes (readers/writers use writtenIn)
-     * User facing: No
-     * Set: parentOf(Rep[Any]) = Rep[Any]
-     * Get: parentOf(Rep[Any])   // Returns Option[Rep[Any]]. None if undefined.
-     * Get: parentOf((Rep[Any], Boolean)) // Returns Option[(Rep[Any], Boolean)]. None if undefined.
-     **/
-        /* TODO: Pipe/Metapipe/Sequential/Parallel: every node (includeing primitive nodes) inside the
-         * controller has the controller as its parent*/ //TODO: is this necessary?
-    val MParent = metadata("MParent", "parent" -> MAny)
-    val parentOps = metadata("parentOf")
-    internal.static (parentOps) ("update", Nil, (MAny, MAny) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MParent($1)) }
-    internal.static (parentOps) ("apply", Nil, MAny :: SOption(MAny)) implements
-      composite ${ meta[MParent]($0).map(_.parent) }
-
-    // Using verbose form here to avoid weird issue with if-statement in library
-    internal.static (parentOps) ("apply", Nil, CTuple2(MAny,SBoolean) :: SOption(CTuple2(MAny,SBoolean))) implements composite ${
-      $0._2 match {
-        case true => Some(($0._1, false))
-        case false => parentOf($0._1) match {
-          case Some(p) => Some((p, false))
-          case None => None
-        }
-      }
-    }
-
-
-    /**
-     * Controller children
-     * A list of control nodes inside given (outer) control node.
-     * ASSUMPTION: Children form a linear sequence of stages (not an arbitrary dataflow graph)
-     * User facing: No
-     * Set: childrenOf(Rep[Any]) = List[Rep[Any]]
-     * Get: childrenOf(Rep[Any])   // Returns List[Rep[Any]]. Nil if undefined.
-     **/
-    val MChildren = metadata("MChildren", "children" -> SList(MAny))
-    val childrenOps = metadata("childrenOf")
-    internal.static (childrenOps) ("update", Nil, (MAny, SList(MAny)) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MChildren($1)) }
-    internal.static (childrenOps) ("apply", Nil, (MAny) :: SList(MAny)) implements
-      composite ${ meta[MChildren]($0).map(_.children).getOrElse(Nil) }
-
-
-        /**
-     * List of memories written by given controller
-     * User facing: No
-     * Set: writtenIn(Rep[Any]) = List[Rep[Any]]
-     * Get: writtenIn(Rep[Any])   // Returns List[Rep[Any]]. Nil if undefined.
-     **/
-    val MWritten = metadata("MWritten", "written" -> SList(MAny))
-    val writtenOps = metadata("writtenIn")
-    internal.static (writtenOps) ("update", Nil, (MAny, SList(MAny)) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MWritten($1)) }
-    internal.static (writtenOps) ("apply", Nil, (MAny) :: SList(MAny)) implements
-      composite ${ meta[MWritten]($0).map(_.written).getOrElse(Nil) }
-
-        /**
-     * List of writers for a given memory and owning controller
-     * Tuple is (Controller, IsReduction, Writer)
-     * IsReduction is only true for nodes within the inner reduction loop of AccumFold
-         * User facing: No
-     * Set: writersOf(Rep[Any]) = (Rep[Any], Rep[Any])  // Single writer, isReduction is false
-     * Set: writersOf(Rep[Any]) = (Rep[Any], Boolean, Rep[Any])
-     * Set: writersOf(Rep[Any]) = List[(Rep[Any], Boolean, Rep[Any])]
-     * Get: writersOf(Rep[Any])   // Returns List[(Rep[Any],Boolean,Rep[Any])]. Nil if undefined
-     **/
-    val MWriter = metadata("MWriters", "writers" -> SList(CTuple3(MAny,SBoolean,MAny)))
-    val writersOps = metadata("writersOf")
-    internal.static (writersOps) ("update", Nil, (MAny, CTuple2(MAny,MAny)) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MWriters( List(($1._1,false,$1._2)) )) }
-    internal.static (writersOps) ("update", Nil, (MAny, CTuple3(MAny,SBoolean,MAny)) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MWriters(List($1))) }
-
-    internal.static (writersOps) ("update", Nil, (MAny, SList(CTuple3(MAny,SBoolean,MAny))) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MWriters($1)) }
-
-    internal.static (writersOps) ("apply", Nil, (MAny) :: SList(CTuple3(MAny,SBoolean,MAny))) implements
-      composite ${ meta[MWriters]($0).map(_.writers).getOrElse(Nil) }
-
-    /**
-     * List of OUTER writers for a given memory
-     * Same as writersOf, but defined as the controller which determines when a write is complete
-     * rather than the controller directly above the write
-     * Used for setting control signals for double+ buffers
-     * User facing: No
-     * Set: topWritersOf(Rep[Any]) = List[(Rep[Any], Boolean, Rep[Any])]
-     * Get: topWritersOf(Rep[Any])   // Returns List[(Rep[Any], Boolean, Rep[Any])]. Nil if undefined.
-     **/
-    val MTopWriters = metadata("MTopWriters", "writers" -> SList(CTuple3(MAny, SBoolean, MAny)))
-    val topWriterOps = metadata("topWritersOf")
-    internal.static (topWriterOps) ("update", Nil, (MAny, SList(CTuple3(MAny, SBoolean, MAny))) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MTopWriters($1)) }
-
-    internal.static (topWriterOps) ("apply", Nil, (MAny) :: SList(CTuple3(MAny,SBoolean,MAny))) implements
-      composite ${ meta[MTopWriters]($0).map(_.writers).getOrElse(Nil) }
-
-    /**
-     * List of readers for a given memory
-     * Tuple is (Controller, IsReduction, Reader)
-     * IsReduction is only true for nodes within the inner reduction loop of AccumFold
-     * User facing: No
-     * Set: readersOf(Rep[Any]) = List[(Rep[Any], Boolean, Rep[Any])]
-     * Get: readersOf(Rep[Any])   // Returns List[(Rep[Any], Boolean, Rep[Any])]. Nil if undefined.
-     **/
-    val MReaders = metadata("MReaders", "readers" -> SList(CTuple3(MAny,SBoolean,MAny)))
-    val readersOps = metadata("readersOf")
-    internal.static (readersOps) ("update", Nil, (MAny, SList(CTuple3(MAny,SBoolean,MAny))) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MReaders($1)) }
-    internal.static (readersOps) ("apply", Nil, (MAny) :: SList(CTuple3(MAny,SBoolean,MAny))) implements
-      composite ${ meta[MReaders]($0).map(_.readers).getOrElse(Nil) }
-
-
-    val MTopReaders = metadata("MTopReaders", "readers" -> SList(CTuple3(MAny, SBoolean, MAny)))
-    val topReaderOps = metadata("topReadersOf")
-    internal.static (topReaderOps) ("update", Nil, (MAny, SList(CTuple3(MAny, SBoolean, MAny))) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MTopReaders($1)) }
-
-    internal.static (topReaderOps) ("apply", Nil, (MAny) :: SList(CTuple3(MAny,SBoolean,MAny))) implements
-      composite ${ meta[MTopReaders]($0).map(_.readers).getOrElse(Nil) }
-
-
-    /**
-     * N-D access indices
-     * Used to track the addresses for each dimension independent of address flattening.
-     * User facing: No
-     * Set: accessIndicesOf(Rep[Any]) = List[Rep[Index]]
-     * Get: accessIndicesOf(Rep[Any])   // Returns List[Rep[Index]]. Nil if undefined.
-     **/
-    val MAccessIndices = metadata("MAccessIndices", "indices" -> SList(Idx))
-    val accessOps = metadata("accessIndicesOf")
-    internal.static (accessOps) ("update", Nil, (MAny, SList(Idx)) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MAccessIndices($1)) }
-    internal.static (accessOps) ("apply", Nil, MAny :: SList(Idx)) implements
-      composite ${ meta[MAccessIndices]($0).map(_.indices).getOrElse(Nil) }
-
-
-    /**
-     * Parallelized N-D access indices
-     **/
-    val MParAccessIndices = metadata("MParAccessIndices", "indices" -> SList(SList(Idx)))
-    val parAccessOps = metadata("parIndicesOf")
-    internal.static (parAccessOps) ("update", Nil, (MAny, SList(SList(Idx))) :: MUnit, effect = simple) implements
-      composite ${ setMetadata($0, MParAccessIndices($1)) }
-    internal.static (parAccessOps) ("apply", Nil, (MAny) :: SList(SList(Idx))) implements
-      composite ${ meta[MParAccessIndices]($0).map(_.indices).getOrElse(Nil) }
 
         /* MaxJ Codegen Helper Functions */
     val maxjgrp = grp("maxjGrp")

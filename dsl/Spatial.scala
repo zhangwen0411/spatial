@@ -115,27 +115,27 @@ trait SpatialDSL extends ForgeApplication
 
     // --- Memory Types
     /**
-     * OffChipMems are pointers to locations in the accelerators main memory to dense multi-dimensional arrays. They are the primary form of communication
+     * DRAMs are pointers to locations in the accelerator's main memory to dense multi-dimensional arrays. They are the primary form of communication
      * of data between the host and the accelerator. Data may be loaded to and from the accelerator in contiguous chunks (Tiles), by random access addresses,
      * or by gather operations (SparseTiles).
      **/
-    val OffChip = tpe("OffChipMem", T)
+    val DRAM = tpe("DRAM", T)
     /**
-     * A Tile describes a continguous slice of an OffChipMem which can be loaded onto the accelerator for processing or which can be updated
+     * A Tile describes a continguous slice of a DRAM memory which can be loaded onto the accelerator for processing or which can be updated
      * with results once computation is complete.
      **/
     val Tile = tpe("Tile", T)
     /**
-     * A SparseTile describes a sparse section of an OffChipMem which can be loaded onto the accelerator using a gather operation, or which can
+     * A SparseTile describes a sparse section of a DRAM memory which can be loaded onto the accelerator using a gather operation, or which can
      * be updated using a scatter operation.
      **/
     val SparseTile = tpe("SparseTile", T)
     /**
-     * BRAMs are on-chip scratchpads with fixed size. BRAMs can be specified as multi-dimensional, but the underlying addressing
-     * in hardware is always flat. The contents of BRAMs are currently persistent across loop iterations, even when they are declared in an inner scope.
-     * BRAMs can have an arbitrary number of readers but only one writer. This writer may be an element-based store or a load from an OffChipMem.
+     * SRAMs are on-chip scratchpads with fixed size. SRAMs can be specified as multi-dimensional, but the underlying addressing
+     * in hardware is always flat. The contents of SRAMs are currently persistent across loop iterations, even when they are declared in an inner scope.
+     * SRAMs can have an arbitrary number of readers but only one writer. This writer may be an element-based store or a load from a DRAM memory.
      **/
-    val BRAM = tpe("BRAM", T)
+    val SRAM = tpe("SRAM", T)
 
     /**
      * FIFOs are on-chip scratchpads with additional control logic for address-less push/pop operations. FIFOs can have an arbitrary number of readers
@@ -169,7 +169,7 @@ trait SpatialDSL extends ForgeApplication
      **/
     val Vector = tpe("Vector", T)
 
-    primitiveStructs :::= List(OffChip, BRAM, FIFO, CAM, Reg, Vector, Cache)
+    primitiveStructs :::= List(DRAM, SRAM, FIFO, CAM, Reg, Vector, Cache)
 
     // --- State Machine Types
     /** Counter is a single hardware counter with an associated minimum, maximum, step size, and parallelization factor.
@@ -220,63 +220,72 @@ trait SpatialDSL extends ForgeApplication
     importSpatialMisc()
     importTupleTypeClassInstances()
 
+    // Traversals: Generic traversal for debugging, etc.
+    val DotPrinter            = traversal("DotIRPrinter", isExtern=true)
+    val Printer               = traversal("SpatialPrinter", isExtern=true)
+    val PrinterLast           = traversal("SpatialPrinterLast", isExtern=true)
+    val StructurePrint        = analyzer("Structure", isExtern=true)
 
-    // --- Traversals
-    val LevelAnalyzer = analyzer("PipeLevel", isExtern=true)
-    val UnitPipeTransformer = transformer("UnitPipe", isExtern=true)
-    val StageAnalyzer = analyzer("Stage", isExtern=true)
-    val GlobalAnalyzer = analyzer("Global")
+    // Analyzers: Set metadata
+    val NameAnalyzer          = traversal("NameAnalyzer", isExtern=true)
+    val DSE                   = traversal("DSE", isExtern=true)
+    val OffChipAnalyzer       = traversal("OffChipAnalyzer", isExtern=true)
+    val LevelAnalyzer         = analyzer("PipeLevel", isExtern=true)
+    val StageAnalyzer         = analyzer("Stage", isExtern=true)
+    val GlobalAnalyzer        = analyzer("Global")
     val ControlSignalAnalyzer = analyzer("ControlSignal", isExtern=true)
-    val UnrolledControlAnalyzer = analyzer("UnrolledControlSignal", isExtern=true)
+    val UnrolledControl       = analyzer("UnrolledControlSignal", isExtern=true)
     val SpatialAffineAnalysis = analyzer("SpatialAffine", isExtern=true)
+    val BoundAnalyzer         = analyzer("Bound", isIterative=false)
+    val MemoryAnalyzer        = analyzer("Memory", isExtern=true)
+    val DRAMAddrAnalyzer      = analyzer("DRAMAddr", isExtern=true)
+    val BufferAnalyzer        = analyzer("Buffer", isExtern=true)
+    val AreaAnalyzer          = analyzer("Area", isExtern=true)
+    val LatencyAnalyzer       = analyzer("Latency", isExtern=true)
+    val OpsAnalyzer           = analyzer("Ops", isExtern=true)
+    val ReductionAnalyzer     = analyzer("Reduction", isExtern=true)
+    val ParameterAnalyzer     = analyzer("Parameter",isExtern=true)
 
-    val BoundAnalyzer = analyzer("Bound", isIterative=false)
-    val DSE = traversal("DSE", isExtern=true)
-    val MemoryAnalyzer = analyzer("Memory", isExtern=true)
-    val AreaAnalyzer = analyzer("Area", isExtern=true)
-    val LatencyAnalyzer = analyzer("Latency", isExtern=true)
-    val OpsAnalyzer = analyzer("Ops", isExtern=true)
-    val ReductionAnalyzer = analyzer("Reduction", isExtern=true)
+    // Transformers: Change or mirror IR
+    val UnitPipeTransformer   = transformer("UnitPipe", isExtern=true)
+    val RegisterCleanup       = transformer("RegisterCleanup", isExtern=true)
+    val Unrolling             = transformer("Unrolling", isExtern=true)
+    val ConstantFolding       = traversal("ConstantFolding", isExtern=true)
+    val RewriteTransformer    = traversal("RewriteTransformer", isExtern=true)
 
-    val ConstantFolding = traversal("ConstantFolding", isExtern=true)
-    val RegisterFolding = traversal("RegisterFolding", isExtern=true)
-
-    val OffChipAnalyzer = traversal("OffChipAnalyzer", isExtern=true)
-
-    val ParameterAnalyzer = analyzer("Parameter",isExtern=true)
-    val MetaPipeRegInsertion = traversal("MetaPipeRegInsertion",isExtern=true)
-
-    val Unrolling = transformer("Unrolling", isExtern=true)
-
-    val DotPrinter = traversal("DotIRPrinter", isExtern=true)
-    val Printer = traversal("SpatialPrinter", isExtern=true)
-    val NameAnalyzer = traversal("NameAnalyzer", isExtern=true)
-
-    val PIRScheduling = analyzer("PIRSchedule", isExtern=true)
-    val PIRGen = traversal("PIRGen", isExtern=true)
-
+    // CGRA stuff
+    val PIRGen            = transformer("PIRGen", isExtern=true) // Technically a codegen
     val PlasticineLatency = traversal("PlasticineLatencyAnalyzer", isExtern=true)
+
+    // --- Transformer ordering notes
+    // Controller metadata doesn't follow dataflow order! Explicitly run control signal analyzer after transformers
 
     importGlobalAnalysis()
     importBoundAnalysis()
 
+    schedule(Printer)
     schedule(NameAnalyzer)          // Symbol names
     schedule(LevelAnalyzer)         // Initial sanity checks and pipe style annotation fixes
-    schedule(BoundAnalyzer)         //
+    schedule(BoundAnalyzer)         // Bound analysis prior to constant folding
     schedule(ConstantFolding)       // Constant folding prior to DSE
     schedule(GlobalAnalyzer)        // Values computed outside of all controllers
 
     // --- Unit Pipe Insertion
-    schedule(UnitPipeTransformer)   // Wrap primitives in outer pipes
-    schedule(GlobalAnalyzer)        // Values computed outside of all controllers (TODO: Needed again?)
     schedule(Printer)
+    schedule(UnitPipeTransformer)   // Wrap primitives in outer pipes
+    schedule(Printer)
+    schedule(GlobalAnalyzer)        // Values computed outside of all controllers (TODO: Needed again?)
 
     // --- Pre-DSE analysis
     schedule(OffChipAnalyzer)       // Check dimensions of offchip memories
     schedule(StageAnalyzer)         // Get number of stages in each control node
-    schedule(ControlSignalAnalyzer) // Variety of control signal related metadata (TODO: Needed here? Run by DSE)
     schedule(SpatialAffineAnalysis) // Access patterns
-    schedule(DotPrinter)            // Graph prior to unrolling
+    schedule(Printer)
+    schedule(MemoryAnalyzer)        // Get used readers/writers of each memory
+    schedule(Printer)
+    schedule(RegisterCleanup)       // Remove unused registers/writes/reads created in unit pipe insertion
+    schedule(Printer)
+    //schedule(DotPrinter)            // Graph prior to unrolling
 
     // --- Design Space Exploration
     schedule(DSE)                   // Design space exploration. Runs a host of other analyses:
@@ -299,36 +308,41 @@ trait SpatialDSL extends ForgeApplication
     schedule(ConstantFolding)       // Constant folding
     schedule(GlobalAnalyzer)        // Add "global" annotations for newly created symbols after folding
 
-    //schedule(RegisterFolding) -- TODO: Not sure if register folding is safe yet
-    //schedule(Printer)
-
     // --- Post-DSE Analysis
     schedule(MemoryAnalyzer)        // Memory analyzer (to finalize banking/buffering)
     schedule(Printer)
     schedule(AreaAnalyzer)          // Area estimation
     schedule(OpsAnalyzer)           // Instructions, FLOPs, etc. Also runs latency estimates
     schedule(PlasticineLatency)     // Plasticine latency
-    schedule(Printer)
-
-// Temporarily disabled until moved to unrolling
-//    schedule(MetaPipeRegInsertion)  // Inserts registers between metapipe stages for counter signals
 
     // --- Design Elaboration
     schedule(ReductionAnalyzer)     // Reduce/accumulator specialization
     schedule(Unrolling)             // Pipeline unrolling
-    schedule(UnrolledControlAnalyzer) // Control signal metadata after unrolling
-    schedule(DotPrinter)             // Graph after unrolling
     schedule(Printer)
+    schedule(UnrolledControl)       // Pre-analysis for external register reads
+    schedule(RegisterCleanup)       // Duplicate register reads for each use
+    schedule(RewriteTransformer)    // Post-unrolling rewrites
+    schedule(Printer)
+
+    // --- Final analysis
+    schedule(BufferAnalyzer)        // Top controllers for n-buffers
+    // schedule(DotPrinter)         // Graph after unrolling
+    schedule(PrinterLast)
+    schedule(StructurePrint)
     schedule(PIRGen)
+    schedule(DRAMAddrAnalyzer)        // Get addresses for each DRAM object
 
     // External groups
-    extern(grp("ControllerTemplate"), targets = List($cala, maxj))
-    extern(grp("ExternCounter"), targets = List($cala, maxj), withTypes = true)
-    extern(grp("MemoryTemplate"), targets = List($cala, cpp, maxj), withTypes = true)
-    extern(metadata("ExternPrimitive"), targets = List($cala, maxj), withTypes = true)
+    extern(grp("Memory"), targets = List($cala, cpp, maxj), withTypes = true)
+    extern(grp("Controller"), targets = List($cala, maxj))
+    extern(grp("Convolution"), targets = List($cala, maxj))
+    extern(grp("Unrolled"), targets = List($cala, maxj))
+
+    extern(grp("ExternCounter"), targets = List($cala, cpp, maxj), withTypes = true)
+    extern(metadata("ExternPrimitive"), targets = List($cala, cpp, maxj), withTypes = true)
     extern(metadata("NodeMetadata"), targets = Nil, withTypes = true)
-    extern(grp("LoweredPipe"), targets = List($cala, maxj))
     extern(metadata("Name"), targets = Nil, withTypes = true)
+    extern(metadata("SpatialExceptions"), targets = Nil)
 		()
 	}
 }

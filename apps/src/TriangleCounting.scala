@@ -22,8 +22,8 @@ trait TriangleCountingApp extends SpatialApp {
     val NV = vl.length/2 // Actual number of vertices in graph
     val NE = el.length/2 // Divided by 2 b/c bi-directional edge
 
-    val vertList = OffChipMem[Index](NV, 2) // [pointer, size]
-    val edgeList = OffChipMem[Index](NE*2) // srcs of edges
+    val vertList = DRAM[Index](NV, 2) // [pointer, size]
+    val edgeList = DRAM[Index](NE*2) // srcs of edges
     val count = ArgOut[Index]
 
     setMem(vertList, vl)
@@ -31,13 +31,13 @@ trait TriangleCountingApp extends SpatialApp {
 
     Accel {
       Pipe.fold(NV by tileSize)(count){ ivt =>
-        val vB = BRAM[Index](tileSize, 2)
+        val vB = SRAM[Index](tileSize, 2)
         vB := vertList(ivt::ivt+tileSize, 0::2)
         val sumTile = Reg[Index]
         Pipe.fold(tileSize by 1)(sumTile){ iv =>
-          val eB = BRAM[Index](maxNumEdge)       // edge list of v
-          val nvIdxB = BRAM[Index](maxNumEdgeX2) // Index to gather vertice list of neighbors of v
-          val nvB = BRAM[Index](maxNumEdgeX2)    // vertice list of v's neighbors
+          val eB = SRAM[Index](maxNumEdge)       // edge list of v
+          val nvIdxB = SRAM[Index](maxNumEdgeX2) // Index to gather vertice list of neighbors of v
+          val nvB = SRAM[Index](maxNumEdgeX2)    // vertice list of v's neighbors
           val vpt = Reg[Index]                   // ptr to v's edgelist
           val vsize = Reg[Index]                 // number of edges of v
           Pipe {
@@ -53,16 +53,15 @@ trait TriangleCountingApp extends SpatialApp {
           nvB := vertList(nvIdxB)
           val sumNbr = Reg[Index]
           Pipe.fold(vsize by 1)(sumNbr){ ie =>
-            val neB = BRAM[Index](maxNumEdgeX2)   // edgeList of v's neighbors
+            val neB = SRAM[Index](maxNumEdgeX2)   // edgeList of v's neighbors
             val nbrpt = Reg[Index]                // ptr to neighbor's edgelist
             val nbrsize = Reg[Index]              // number of edges of neighbor
-            val cntCommon = Reg[Index]
             Pipe {
               nbrpt := nvB(ie*2)
               nbrsize := nvB(ie*2+1)
             }
             neB := edgeList(nbrpt::nbrpt+nbrsize)
-            Pipe.reduce(vsize by 1, nbrsize by 1)(cntCommon){ (ixv, ixn) =>
+            Pipe.reduce(vsize by 1, nbrsize by 1)(0.as[Index]){ (ixv, ixn) =>
               mux(eB(ixv)==neB(ixn), 1.as[Index], 0.as[Index])
             }{_+_} // Sum for one neighbor
           }{_+_} // Sum across all node's neighbors

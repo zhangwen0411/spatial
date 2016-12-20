@@ -60,6 +60,11 @@ trait Sugar {
       range
     }
 
+    infix (Range) ("par", Nil, (Range, MInt) :: Range) implements composite ${
+      tilePar($0) = $1
+      $0
+    }
+
     // Causes scalac to get stuck in implicit lookup?
     /*fimplicit (Range) ("idx_to_range", Nil, Idx :: Range) implements composite ${
       val range = range_new($0, $0 + 1, 1)
@@ -74,7 +79,7 @@ trait Sugar {
     }*/
   }
 
-  // Need LoopRange for syntax like a until by c - need to be able to access start/end (could also use metadata...)
+  // Need LoopRange for syntax like a until b by c - need to be able to access start/end (could also use metadata...)
   def importLoopRanges() {
     val Counter   = lookupTpe("Counter")
     val LoopRange = lookupTpe("LoopRange")

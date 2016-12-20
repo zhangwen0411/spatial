@@ -23,16 +23,30 @@ trait SpatialMisc {
 
     val Idx = lookupAlias("Index")
 
+    direct (Misc) ("parameter", Nil, (SInt) :: Idx) implements composite ${
+      int_to_fix[Signed,B32](param($0))
+    }
+
+    infix (Misc) ("apply", Nil, (SInt, CTuple2(CTuple2(SInt,SInt),SInt)) :: Idx) implements composite ${
+      val p = param($0)
+      domainOf(p) = ($1._1._1, $1._2, $1._1._2) // min, max, step
+      int_to_fix[Signed,B32](p)
+    }
+    infix (Misc) ("apply", Nil, (SInt, CTuple2(SInt,SInt)) :: Idx) implements composite ${
+      val p = param($0)
+      domainOf(p) = ($1._1, $1._2, 1)
+      int_to_fix[Signed,B32](p)
+    }
+
     // --- Staging time warnings and errors
     // TODO: These aren't DSL specific, move elsewhere
     internal (Misc) ("stageWarn", Nil, SAny :: SUnit, effect = simple) implements composite ${
       val ctx = topContext(__pos)
       System.out.println("[\u001B[33mwarn\u001B[0m] " + ctx.fileName + ":" + ctx.line + ": " + $0)
     }
-    internal (Misc) ("stageError", Nil, SAny :: SNothing, effect = simple) implements composite ${
+    internal (Misc) ("stageError", Nil, SAny :: SUnit, effect = simple) implements composite ${
       val ctx = topContext(__pos)
       System.out.println("[\u001B[31merror\u001B[0m] " + ctx.fileName + ":" + ctx.line + ": " + $0)
-      sys.exit(-1)
     }
 
     internal (Misc) ("stageInfo", Nil, SAny :: SUnit, effect = simple) implements composite ${
@@ -127,6 +141,7 @@ trait SpatialMisc {
      **/
     infix (API) ("update", T, (MArray(T), Idx, T) :: MUnit, effect = write(0)) implements composite ${ array_update($0, fix_to_int($1), $2) }
 
+    // infix (API) ("foreach", T, (MArray(T), T ==> MUnit) :: MUnit, effect = simple) implements composite ${ array_foreach($0, $1) }
     infix (API) ("map", (T,R), (MArray(T), T ==> R) :: MArray(R)) implements composite ${ array_map($0, $1) }
     infix (API) ("zip", (T,S,R), CurriedMethodSignature(List(List(MArray(T),MArray(S)), List( (T,S) ==> R)), MArray(R))) implements composite ${
       array_zip($0, $1, $2)
@@ -179,7 +194,7 @@ trait SpatialMisc {
         case mA if isFltPtType(mA) =>
           randomFltPt($0)(manifest[A], mA.typeArguments(0), mA.typeArguments(1), implicitly[SourceContext]).asInstanceOf[Rep[A]]
 
-        case mA => stageError("No random implementation for type " + mA.runtimeClass.getSimpleName)
+        case mA => throw UnsupportedRandomException(mA)
       }
     }
     UnstagedNumerics.foreach{ (T, _) =>
@@ -199,7 +214,7 @@ trait SpatialMisc {
         case mA if isBitType(mA) =>
           rand_bit.asInstanceOf[Rep[A]]
 
-        case mA => stageError("No random implementation for type " + mA.runtimeClass.getSimpleName)
+        case mA => throw UnsupportedRandomException(mA)
       }
     }
 
@@ -251,13 +266,13 @@ trait SpatialMisc {
     val Idx = lookupAlias("Index")
 
     val LoopRange = lookupTpe("LoopRange")
-    val OffChip   = lookupTpe("OffChipMem")
+    val DRAM      = lookupTpe("DRAM")
     val Reg       = lookupTpe("Reg")
-    val BRAM      = lookupTpe("BRAM")
+    val SRAM      = lookupTpe("SRAM")
 
     // --- Nodes
-    val set_mem = internal (Tst) ("set_mem", T, (OffChip(T), MArray(T)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
-    val get_mem = internal (Tst) ("get_mem", T, (OffChip(T), MArray(T)) :: MUnit, effect = write(1), aliasHint = aliases(Nil))
+    val set_mem = internal (Tst) ("set_mem", T, (DRAM(T), MArray(T)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
+    val get_mem = internal (Tst) ("get_mem", T, (DRAM(T), MArray(T)) :: MUnit, effect = write(1), aliasHint = aliases(Nil))
     val set_arg = internal (Tst) ("set_arg", T, (Reg(T), T) :: MUnit, effect = write(0))
     val get_arg = internal (Tst) ("get_arg", T, Reg(T) :: T, effect = simple)
     val hwblock = internal (Tst) ("hwblock", Nil, MThunk(MUnit,cold) :: MUnit, effect = simple)
@@ -268,30 +283,32 @@ trait SpatialMisc {
     val forLoop = internal (Tst) ("forloop", Nil, (("start", Idx), ("end", Idx), ("step", Idx), ("func", Idx ==> MUnit)) :: MUnit)
 
     // --- API
-    val print = direct (Tst) ("print", Nil, MAny :: MUnit, effect = simple)
+    val print    = direct (Tst) ("print", Nil, MAny :: MUnit, effect = simple)
     val println  = direct (Tst) ("println", Nil, MAny :: MUnit, effect = simple)
     val println2 = direct (Tst) ("println", Nil, Nil :: MUnit, effect = simple)
     val assert   = direct (Tst) ("assert", Nil, Bit :: MUnit, effect = simple)
-    /** Set content of BRAM to an array (debugging purpose only)
-     * @param bram
+    val mut      = infix (Tst) ("unsafeMutable", List(T), List(T) :: T, effect = mutable, aliasHint = copies(0))
+
+    /** Set content of SRAM to an array (debugging purpose only)
+     * @param sram
      * @param array
      **/
-    val set_bram = direct (Tst) ("setBram", T, (BRAM(T), MArray(T)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
-    /** Get content of BRAM in an array format (debugging purpose only)
-     * @param bram
+    val set_sram = direct (Tst) ("setSRAM", T, (SRAM(T), MArray(T)) :: MUnit, effect = write(0), aliasHint = aliases(Nil))
+    /** Get content of SRAM in an array format (debugging purpose only)
+     * @param sram
      **/
-    val get_bram = direct (Tst) ("getBram", T, BRAM(T) :: MArray(T), effect = simple, aliasHint = aliases(Nil))
+    val get_sram = direct (Tst) ("getSRAM", T, SRAM(T) :: MArray(T), effect = simple, aliasHint = aliases(Nil))
 
-    /** Print content of a BRAM (debugging purpose only)
-     * @param bram
+    /** Print content of a SRAM (debugging purpose only)
+     * @param sram
      **/
-    direct (Tst) ("printBram", T, BRAM(T) :: MUnit, effect = simple) implements composite ${
-      println(nameOf($0) + ": "+ getBram($0).mkString(","))
+    direct (Tst) ("printSRAM", T, SRAM(T) :: MUnit, effect = simple) implements composite ${
+      println(nameOf($0) + ": "+ getSRAM($0).mkString(","))
     }
-    /** Print content of a OffChip (debugging purpose only)
-     * @param bram
+    /** Print content of a DRAM (debugging purpose only)
+     * @param sram
      **/
-    direct (Tst) ("printMem", T, OffChip(T) :: MUnit, effect = simple) implements composite ${
+    direct (Tst) ("printDRAM", T, DRAM(T) :: MUnit, effect = simple) implements composite ${
       println(nameOf($0) + ": "+ getMem($0).mkString(","))
     }
 
@@ -300,14 +317,14 @@ trait SpatialMisc {
 
 
     // --- Memory transfers
-    direct (Tst) ("setMem", T, (OffChip(T), MArray(T)) :: MUnit, effect = write(0)) implements composite ${ set_mem($0, $1) }
-    direct (Tst) ("getMem", T, OffChip(T) :: MArray(T)) implements composite ${
+    direct (Tst) ("setMem", T, (DRAM(T), MArray(T)) :: MUnit, effect = write(0)) implements composite ${ set_mem($0, $1) }
+    direct (Tst) ("getMem", T, DRAM(T) :: MArray(T)) implements composite ${
       val arr = Array.empty[T](sizeOf($0))
       get_mem($0, arr)
       arr // could call unsafeImmutable here if desired
     }
     direct (Tst) ("setArg", T, (Reg(T), T) :: MUnit, effect = write(0)) implements composite ${
-      if (regType($0) != ArgumentIn) stageError("Can only set value of ArgIn registers")
+      if (regType($0) != ArgumentIn) throw InvalidSetArgRegisterException($0)
       set_arg($0, $1)
     }
     UnstagedNumerics.foreach{(ST,_) =>
@@ -315,12 +332,10 @@ trait SpatialMisc {
     }
 
     direct (Tst) ("getArg", T, Reg(T) :: T) implements composite ${
-      if (regType($0) != ArgumentOut) stageError("Can only get value of ArgOut registers")
+      if (regType($0) != ArgumentOut) throw InvalidGetArgRegisterException($0)
       get_arg($0)
     }
 
-    // TODO: Naming isn't final. Your favorite keyword here :)
-    // TODO: This is a quick hack for scheduling acceleration initialization. Eventually this should act as a true annotation
     direct (Tst) ("Accel", Nil, MThunk(MUnit) :: MUnit) implements composite ${
       val accel = hwblock($0)
       styleOf(accel) = SequentialPipe
@@ -334,6 +349,7 @@ trait SpatialMisc {
     impl (println)  (codegen($cala, ${ println($0) }))
     impl (println2) (codegen($cala, ${ println() }))
     impl (assert)   (codegen($cala, ${ assert($0) }))
+    impl (mut)      (codegen($cala, ${ $0 /* unsafe mutable */ }))
     impl (ifThenElse) (codegen($cala, ${
       if ($0) {
         $b[1]
@@ -354,8 +370,8 @@ trait SpatialMisc {
         i += $step
       }
     }))
-    impl (set_bram) (codegen($cala, ${ System.arraycopy($1, 0, $0, 0, $1.length) }))
-    impl (get_bram) (codegen($cala, ${ val arr = Array.tabulate($0.length) {i => $0(i)}; arr }))
+    impl (set_sram) (codegen($cala, ${ System.arraycopy($1, 0, $0, 0, $1.length) }))
+    impl (get_sram) (codegen($cala, ${ val arr = Array.tabulate($0.length) {i => $0(i)}; arr }))
 
     impl (set_mem)  (codegen($cala, ${ System.arraycopy($1, 0, $0, 0, $1.length) }))
     impl (get_mem)  (codegen($cala, ${ System.arraycopy($0, 0, $1, 0, $0.length) }))
@@ -377,6 +393,7 @@ trait SpatialMisc {
     impl (println)  (codegen(cpp, ${ std::cout << $0 << std::endl }))
     impl (println2) (codegen(cpp, ${ std::cout << std::endl }))
     impl (assert)   (codegen(cpp, ${ assert($0) }))
+    impl (mut)      (codegen(cpp, ${ $0 /* unsafe mutable */ }))
     impl (ifThenElse) (codegen(cpp, ${
       if ($0) {
         $b[1]
@@ -411,9 +428,7 @@ trait SpatialMisc {
     val T = tpePar("T")
     val K = tpePar("K")
     val V = tpePar("V")
-    val OffChip   = lookupTpe("OffChipMem")
     val Idx = lookupAlias("Index")
-    val SArray = tpe("scala.Array", T)
     val SHashMap = tpe("scala.collection.mutable.HashMap", (K,V))
     val SListBuffer = tpe("scala.collection.mutable.ListBuffer", T)
 

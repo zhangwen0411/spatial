@@ -5,93 +5,122 @@ import spatial.shared._
 object LogReg extends SpatialAppCompiler with LogRegApp
 trait LogRegApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
-  type Elem = Flt
   type T = Flt
 
-  val tileSizeH = 192
-  val innerParH = 4
-  val outerParH = 2
-  lazy val tileSize = param(tileSizeH)
-  lazy val outerMpPar = param(outerParH)
-  lazy val innerMpPar = param(1)
-  lazy val innerPar   = param(innerParH)
-  lazy val noPar = param(1)
+  val tileSize = 384
+  val innerPar = 8
+  val outerPar = 1
+  val margin = 5
+  val dim = 288
+  val D = dim
 
   val A = 1
 
-  def sigmoid(t:Rep[Elem]) = 1.as[Elem]/(exp(-t)+1)
+  def sigmoid(t:Rep[T]) = 1.as[T]/(exp(-t)+1)
 
-  def logreg(x_in: Rep[Array[Elem]], y_in: Rep[Array[Elem]], tt: Rep[Array[Elem]]) {
+  def logreg(x_in: Rep[Array[T]], y_in: Rep[Array[T]], tt: Rep[Array[T]], n: Rep[SInt], it: Rep[SInt]) = {
 
+
+    val iters = ArgIn[SInt]
     val N = ArgIn[SInt]
-    val D = 384
+    setArg(iters, it)
+    setArg(N, n)
 
-    setArg(N, y_in.length)
+    val BN = tileSize (96 -> 96 -> 9600)
+    val PX = 1 (1 -> 1)
+    val P1 = innerPar (1 -> 2)
+    val P2 = innerPar (1 -> 96)
+    val P3 = outerPar (1 -> 96)
 
-    val BN = param(tileSizeH); domainOf(BN) = (96,9600,96)
-    val PX = param(1);  domainOf(PX) = (1,1,1)
-    val P0 = param(1);  domainOf(P0) = (1,3,1)
-    val P1 = param(1);  domainOf(P1) = (1,2,1)
-    val P2 = param(innerParH);  domainOf(P2) = (1,96,1)
-    val P3 = param(1);  domainOf(P3) = (1,96,1)
-
-    val x = OffChipMem[Elem](N, D)
-    val y = OffChipMem[Elem](N)
-    val theta = OffChipMem[Elem](D)
+    val x = DRAM[T](N, D)
+    val y = DRAM[T](N)
+    val theta = DRAM[T](D)
 
     setMem(x, x_in)
     setMem(y, y_in)
     setMem(theta, tt)
 
     Accel {
-      val btheta = BRAM[Elem](D)
-      btheta := theta(0::D, P2)
+      val btheta = SRAM[T](D)
+      btheta := theta(0::D par P2)
 
-      val gradAcc = BRAM[Elem](D)
-      Fold(N by BN par P0, P1)(gradAcc, 0.as[T]){ i =>
-        val xB = BRAM[Elem](BN, D)
-        val yB = BRAM[Elem](BN)
-        Parallel {
-          xB := x(i::i+BN, 0::D, P2)
-          yB := y(i::i+BN, P3)
+      Sequential(iters by 1) { epoch => 
+        val gradAcc = SRAM[T](D)
+        Pipe(N by BN){ i =>
+          val logregX = SRAM[T](BN, D)
+          val logregY = SRAM[T](BN)
+          Parallel {
+            logregX := x(i::i+BN, 0::D par P2)
+            logregY := y(i::i+BN par P2)
+          }
+          Fold(BN par P3, P2)(gradAcc, 0.as[T]){ ii =>
+            val pipe2Res = Reg[T]
+            val subRam   = SRAM[T](D)
+
+            val dotAccum = Reduce(D par P2)(0.as[T]){ j => logregX(ii,j) * btheta(j) }{_+_}  // read
+            Pipe { pipe2Res := (logregY(ii) - sigmoid(dotAccum.value)) }
+            Pipe(D par P2) {j => subRam(j) = logregX(ii,j) - pipe2Res.value }
+            subRam
+          }{_+_}
         }
-        val gradient = BRAM[Elem](D)
-        Fold(BN par P3, P2)(gradient, 0.as[T]){ ii =>
-          val pipe2Res = Reg[Elem]
-          val subRam   = BRAM[Elem](D)
 
-          val dotAccum = Reduce(D par P2)(0.as[T]){ j => xB(ii,j) * btheta(j) }{_+_}
-          Pipe { pipe2Res := (yB(ii) - sigmoid(dotAccum.value)) }
-          Pipe(D par P2) {j => subRam(j) = xB(ii,j) - pipe2Res.value }
-          subRam
-        }{_+_}
-      }{_+_}
+        Fold (1 by 1 par param(1),P2) (btheta, 0.as[T]){ j =>
+          gradAcc
+        }{case (b,g) => b+g*A}
 
-      val newTheta = BRAM[Elem](D)
-      Pipe (D par P2) { j => newTheta(j) = gradAcc(j)*A + btheta(j) }
-      theta(0::D, P2) := newTheta
+        // Flush gradAcc
+        Pipe(D by 1 par P2) { i => gradAcc(i) = 0.as[T]}
+      }
+      theta(0::D par P2) := btheta // read
     }
     getMem(theta)
   }
 
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
   def main() {
-    val N = args(0).to[SInt]
-    val D = 384
-    /*domainOf(tileSize) = (96,9600,96)
-    domainOf(outerMpPar) = (1,3,1)
-    domainOf(innerMpPar) = (1,1,1)
-    domainOf(innerPar) = (1,192,1)
-    domainOf(noPar) = (1,1,1)*/
+    val iters = args(0).to[SInt]
+    val N = args(1).to[SInt]
 
+    val sX = Array.fill(N){ Array.fill(D){ random[T](10.0)} }
+    val sY = Array.tabulate(N){ i => i.to[T]}//fill(N)( random[T](10.0) )
+    val theta = Array.fill(D) {random[T](1.0) }
 
-    val sX = Array.fill(N){ Array.fill(D){ random[Elem](10.0)} }
-    val sY = Array.fill(N)( random[Elem](10.0) )
-    val theta = Array.fill(D) {random[Elem](1.0) }
+    val result = logreg(sX.flatten,sY, theta, N, iters)
 
-    val result = logreg(sX.flatten,sY, theta)
+    val gold = Array.empty[T](D)
+    val ids = Array.tabulate(D){i => i}
+    for (i <- 0 until D) {
+      gold(i) = theta(i)
+    }
+    for (i <- 0 until iters) {
+      val next = sX.zip(sY) {case (row, y) => 
+        // println("sigmoid for " + y + " is " + sigmoid(row.zip(gold){_*_}.reduce{_+_}))
+        val sub = y - sigmoid(row.zip(gold){(a,b) => 
+          // println("doing " + a + " * " + b + " on row " + y)
+          a*b}.reduce{_+_})
+        row.map{a => 
+          // println("subtraction for " + y + " is " + (a - sub))
+          a - sub}
+      }.reduce{(a,b) => a.zip(b){_+_}}  
+      for (i <- 0 until D) {
+        gold(i) = gold(i) + next(i)
+      }
+      // printArr(gold, "gold now")
+    }
+    
 
-    // println("x: " + sX.mkString(", "))
-    // println("y: " + sY.mkString(", "))
+    printArr(gold, "gold: ")
+    printArr(result, "result: ")
+
+    val cksum = result.zip(gold){ (a,b) => a > b-margin && a < b+margin}.reduce{_&&_}
+    // println("max err: " + result.zip(gold){(a,b) => (a-b)*(a-b)}.reduce{Math.max(_,_)})
+    // println("mean err: " + result.zip(gold){(a,b) => (a-b)*(a-b)}.reduce{_+_} / D)
+    println("PASS: " + cksum  + " (LogReg)")
 
 
 

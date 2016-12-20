@@ -52,7 +52,7 @@ trait BoundAnalysis {
           bound($0) = boundOf($1)
       }
 
-      // TODO: assumes values are non-negative (i.e. max(x * y) could actually be min(x) * min(y) for neg. values )
+      // NOTE: Assumes values are non-negative (i.e. max(x * y) could actually be min(x) * min(y) for neg. values)
       // Only for use with index calculation right now
       analyze(FixPt, "add") using pattern((${Fixed(x)},${Fixed(y)}) -> ${ bound(lhs) = fixed(x + y) })
       analyze(FixPt, "add") using pattern((${Fixed(x)},${Exact(y)}) -> ${ bound(lhs) = exact(x + y) })

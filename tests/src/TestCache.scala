@@ -10,9 +10,9 @@ trait TestCache extends SpatialApp {
     type Q16 = FixPt[Signed, B16, B16]
     val N = 10
 
-    val v1    = OffChipMem[Q16](N)
-    val v2    = OffChipMem[Q16](N)
-    val v3    = OffChipMem[Q16](N)
+    val v1    = DRAM[Q16](N)
+    val v2    = DRAM[Q16](N)
+    val v3    = DRAM[Q16](N)
     val outer = ArgOut[Q16]
 
     val vec1 = Array.fill(N)(random[Q16](N))

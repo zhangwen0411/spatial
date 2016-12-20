@@ -18,7 +18,7 @@ trait SimpleSequential extends SpatialApp {
     setArg(y, yin)
 
     Accel {
-      val b1 = BRAM[SInt](tileSize)
+      val b1 = SRAM[SInt](tileSize)
       Pipe(tileSize par innerPar){ ii =>
         b1(ii) = x.value * ii
       }
@@ -66,7 +66,7 @@ trait DeviceMemcpy extends SpatialApp {
 
   val N = 192
   def memcpyViaFPGA(srcHost: Rep[Array[T]]) = {
-    val fpgamem = OffChipMem[SInt](N)
+    val fpgamem = DRAM[SInt](N)
     setMem(fpgamem, srcHost)
 
   	val y = ArgOut[SInt]
@@ -104,8 +104,8 @@ trait SimpleTileLoadStore extends SpatialApp {
     val storePar = param("storePar", 1); domainOf(storePar) = (1, 1, 1)
     val tileSize = param("tileSize", 96); domainOf(tileSize) = (96, 96, 96)
 
-    val srcFPGA = OffChipMem[SInt](N)
-    val dstFPGA = OffChipMem[SInt](N)
+    val srcFPGA = DRAM[SInt](N)
+    val dstFPGA = DRAM[SInt](N)
     setMem(srcFPGA, srcHost)
 
   	val size = ArgIn[SInt]
@@ -113,11 +113,11 @@ trait SimpleTileLoadStore extends SpatialApp {
     setArg(x, value)
     setArg(size, N)
     Accel {
-      val b1 = BRAM[SInt](tileSize)
+      val b1 = SRAM[SInt](tileSize)
       Sequential(size by tileSize) { i =>
         b1 := srcFPGA(i::i+tileSize)
 
-        val b2 = BRAM[SInt](tileSize)
+        val b2 = SRAM[SInt](tileSize)
         Pipe (tileSize by 1) { ii =>
           b2(ii) = b1(ii) * x
         }
@@ -156,15 +156,15 @@ trait FifoLoad extends SpatialApp {
   def fifoLoad(srcHost: Rep[Array[T]]) = {
     val tileSize = param("tileSize", 96); domainOf(tileSize) = (96, 96, 96)
 
-    val srcFPGA = OffChipMem[SInt](N)
-    val dstFPGA = OffChipMem[SInt](N)
+    val srcFPGA = DRAM[SInt](N)
+    val dstFPGA = DRAM[SInt](N)
     setMem(srcFPGA, srcHost)
 
     Accel {
       val f1 = FIFO[SInt](tileSize)
       Sequential {
         f1 := srcFPGA(0::tileSize)
-        val b1 = BRAM[SInt](tileSize)
+        val b1 = SRAM[SInt](tileSize)
         Pipe(tileSize by 1) { i =>
           b1(i) = f1.pop
         }
@@ -201,8 +201,8 @@ trait ParFifoLoad extends SpatialApp {
   def parFifoLoad(src1: Rep[Array[T]], src2: Rep[Array[T]]) = {
     val tileSize = param("tileSize", 96); domainOf(tileSize) = (96, 96, 96)
 
-    val src1FPGA = OffChipMem[T](N)
-    val src2FPGA = OffChipMem[T](N)
+    val src1FPGA = DRAM[T](N)
+    val src2FPGA = DRAM[T](N)
     val in = ArgIn[T]
     val out = ArgOut[T]
     setArg(in, N)
@@ -252,8 +252,8 @@ trait FifoLoadStore extends SpatialApp {
   def fifoLoadStore(srcHost: Rep[Array[T]]) = {
     val tileSize = param("tileSize", 96); domainOf(tileSize) = (96, 96, 96)
 
-    val srcFPGA = OffChipMem[SInt](N)
-    val dstFPGA = OffChipMem[SInt](N)
+    val srcFPGA = DRAM[SInt](N)
+    val dstFPGA = DRAM[SInt](N)
     setMem(srcFPGA, srcHost)
 
     Accel {
@@ -438,14 +438,14 @@ trait SimpleFold extends SpatialApp {
     val out = ArgOut[T]
     setArg(N, len)
 
-    val v1 = OffChipMem[T](N)
+    val v1 = DRAM[T](N)
     setMem(v1, src)
 
     Accel {
       Sequential {
         val accum = Reg[T]
         Fold (N by tileSize)(accum, 0.as[T]) { i =>
-          val b1 = BRAM[T](tileSize)
+          val b1 = SRAM[T](tileSize)
           b1 := v1(i::i+tileSize)
           Reduce (tileSize par innerPar)(0.as[T]) { ii =>
             b1(ii)
@@ -487,15 +487,15 @@ trait Memcpy2D extends SpatialApp {
     val rowsIn = rows
     val colsIn = cols
 
-    val srcFPGA = OffChipMem[T](rows, cols)
-    val dstFPGA = OffChipMem[T](rows, cols)
+    val srcFPGA = DRAM[T](rows, cols)
+    val dstFPGA = DRAM[T](rows, cols)
 
     // Transfer data and start accelerator
     setMem(srcFPGA, src)
 
     Accel {
       Sequential(rowsIn by tileDim1, colsIn by tileDim2) { (i,j) =>
-        val tile = BRAM[T](tileDim1, tileDim2)
+        val tile = SRAM[T](tileDim1, tileDim2)
         tile := srcFPGA(i::i+tileDim1, j::j+tileDim2)
         dstFPGA (i::i+tileDim1, j::j+tileDim2) := tile
       }
@@ -535,15 +535,15 @@ trait BlockReduce1D extends SpatialApp {
 
     val sizeIn = ArgIn[SInt]; setArg(sizeIn, size)
 
-    val srcFPGA = OffChipMem[T](size)
-    val dstFPGA = OffChipMem[T](tileSize)
+    val srcFPGA = DRAM[T](size)
+    val dstFPGA = DRAM[T](tileSize)
 
     setMem(srcFPGA, src)
 
     Accel {
-      val accum = BRAM[T](tileSize)
+      val accum = SRAM[T](tileSize)
       Fold (sizeIn by tileSize)(accum, 0.as[T]) { i  =>
-        val tile = BRAM[T](tileSize)
+        val tile = SRAM[T](tileSize)
         tile := srcFPGA(i::i+tileSize)
         tile
       }{_+_}

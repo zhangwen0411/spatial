@@ -11,13 +11,13 @@ trait TileLoadTest extends SpatialApp {
   def main() {
     val NE = args(0).to[SInt]
 
-    val edgeList = OffChipMem[Index](NE*2) // srcs of edges
+    val edgeList = DRAM[Index](NE*2) // srcs of edges
 
     Accel {
-      val vB = BRAM[Index](T, 2)
+      val vB = SRAM[Index](T, 2)
       Pipe (T by 1) {iv =>
         val vpt = Reg[Index] // ptr to v's edgelist
-        val eB = BRAM[Index](MaxNumEdges) // edge list of v
+        val eB = SRAM[Index](MaxNumEdges) // edge list of v
         Pipe {
           vpt := vB(iv,0)
         }

@@ -72,8 +72,7 @@ trait PrimitiveTypes {
         case mR if isFltPtType(mR) =>
           fltPt($0)(manifest[T], mR.typeArguments(0),mR.typeArguments(1),implicitly[SourceContext],implicitly[Numeric[T]]).asInstanceOf[Rep[R]]
 
-        case mR =>
-          stageError("Don't know how to cast type " + manifest[T].runtimeClass.getSimpleName + " to " + mR.runtimeClass.getSimpleName)
+        case mR => throw UnsupportedCastException(manifest[T], mR)
       }
     }
 
@@ -86,8 +85,7 @@ trait PrimitiveTypes {
         case mR if isFltPtType(mR) =>
           fixpt_to_fltpt($0)(manifest[S],manifest[I],manifest[F],mR.typeArguments(0),mR.typeArguments(1), implicitly[SourceContext]).asInstanceOf[Rep[R]]
 
-        case mR =>
-          stageError("Don't know how to cast fixed point value to " + mR.runtimeClass.getSimpleName + ".")
+        case mR => throw UnsupportedCastException(manifest[FixPt[S,I,F]], mR)
       }
     }
 
@@ -100,8 +98,7 @@ trait PrimitiveTypes {
         case mR if isFixPtType(mR) =>
           fltpt_to_fixpt($0)(manifest[G],manifest[E],mR.typeArguments(0),mR.typeArguments(1),mR.typeArguments(2), implicitly[SourceContext]).asInstanceOf[Rep[R]]
 
-        case mR =>
-          stageError("Don't know how to cast floating point value to " + mR.runtimeClass.getSimpleName + ".")
+        case mR => throw UnsupportedCastException(manifest[FltPt[G,E]], mR)
       }
     }
 
@@ -112,8 +109,8 @@ trait PrimitiveTypes {
           string_to_fltpt($0)(mR.typeArguments(0),mR.typeArguments(1),implicitly[SourceContext]).asInstanceOf[Rep[R]]
         case mR if isFixPtType(mR) =>
           string_to_fixpt($0)(mR.typeArguments(0),mR.typeArguments(1),mR.typeArguments(2),implicitly[SourceContext]).asInstanceOf[Rep[R]]
-        case mR =>
-          stageError("Don't know how to cast string to " + mR.runtimeClass.getSimpleName + ".")
+
+        case mR => throw UnsupportedCastException(manifest[String], mR)
       }
     }
 
@@ -174,6 +171,8 @@ trait PrimitiveTypes {
     fimplicit (Tpes) ("scala_int_to_fixpt", Nil, SInt :: SInt32) implements redirect ${ fixPt[Int,Signed,B32,B0]($0) }
     /** @nodoc **/
     fimplicit (Tpes) ("stage_int_to_fixpt", Nil, MInt :: SInt32) implements redirect ${ int_to_fix[Signed,B32]($0) }  // Needed for params
+    /** @nodoc **/
+    fimplicit (Tpes) ("fixpt_to_stage_int", Nil, SInt32 :: MInt) implements redirect ${ fix_to_int[Signed,B32]($0) }
     /** @nodoc **/
     fimplicit (Tpes) ("scala_float_to_fltpt", Nil, SFloat :: Flt) implements redirect ${ fltPt[Float,B24,B8]($0) }
 

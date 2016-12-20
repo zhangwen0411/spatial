@@ -16,6 +16,7 @@ trait ExternPrimitiveTypes {
   def isFixPtType[T:Manifest]: Boolean
   def isFltPtType[T:Manifest]: Boolean
   def isBitType[T:Manifest]: Boolean
+  def isTupleType[T:Manifest]: Boolean
 
   implicit def fixManifest[S:Manifest,I:Manifest,F:Manifest]: Manifest[FixPt[S,I,F]]
   implicit def fltManifest[G:Manifest,E:Manifest]: Manifest[FltPt[G,E]]
@@ -28,10 +29,11 @@ trait ExternPrimitiveOps extends ExternPrimitiveTypes with NumOps with OrderOps 
   def min2[T:Manifest:Order:Num](a: Rep[T], b: Rep[T])(implicit ctx: SourceContext): Rep[T]
   def max2[T:Manifest:Order:Num](a: Rep[T], b: Rep[T])(implicit ctx: SourceContext): Rep[T]
 }
-trait ExternPrimitiveCompilerOps extends ExternPrimitiveTypes with MemoryTemplateTypes {
+trait ExternPrimitiveCompilerOps extends ExternPrimitiveTypes with MemoryTypes {
   this: SpatialIdentifiers =>
 
   lazy val bx = "B([0-9]+)".r
+  lazy val tupx = "Tupl?e?([0-9]+)".r
   object BXX {
     // HACK: Given Manifest, match using regex bx, return * (where * must be numeric)
     def unapply[T](x: Manifest[T]): Option[Int] = x.runtimeClass.getSimpleName match {
@@ -39,6 +41,33 @@ trait ExternPrimitiveCompilerOps extends ExternPrimitiveTypes with MemoryTemplat
       case _ => None
     }
   }
+  object TupX {
+    def unapply[T](x: Manifest[T]): Option[Int] = x.runtimeClass.getSimpleName match {
+      case tupx(n) => Some(n.toInt)
+      case _ => None
+    }
+  }
+
+  object FixPtType {
+    def unapply[T](x: Manifest[T]): Option[(Manifest[_],Manifest[_],Manifest[_])] = x match {
+      case mT if isFixPtType(x) => Some((x.typeArguments(0),x.typeArguments(1),x.typeArguments(2)))
+      case _ => None
+    }
+  }
+  object FltPtType {
+    def unapply[T](x: Manifest[T]): Option[(Manifest[_], Manifest[_])] = x match {
+      case mT if isFltPtType(x) => Some((x.typeArguments(0), x.typeArguments(1)))
+      case _ => None
+    }
+  }
+  object TupNType {
+    def unapply[T](x: Manifest[T]): Option[(Int,List[Manifest[_]])] = x match {
+      case TupX(n) => Some((n, x.typeArguments.take(n)))
+      case _ => None
+    }
+  }
+
+  def isTupleType[T:Manifest]: Boolean = manifest[T] match {case TupX(n) => true; case _ => false}
 
   def sign[T:Manifest]: Boolean = manifest[T] match {
     case mA if isFixPtType(mA) => sign(mA.typeArguments(0))
@@ -50,8 +79,8 @@ trait ExternPrimitiveCompilerOps extends ExternPrimitiveTypes with MemoryTemplat
   def nbits[T:Manifest]: Int = manifest[T] match {
     case mA if isFixPtType(mA) => nbits(mA.typeArguments(1)) + nbits(mA.typeArguments(2))
     case mA if isFltPtType(mA) => nbits(mA.typeArguments(0)) + nbits(mA.typeArguments(1))
-    case mA if isBitType(mA) => 1
-    case mA if isRegister(mA) => nbits(mA.typeArguments(0))
+    case mA if isBitType(mA)   => 1
+    case mA if isReg(mA)       => nbits(mA.typeArguments(0))
     case BXX(bits) => bits
     case mA => throw new Exception("Unknown type in nbits: " + mA.runtimeClass.getSimpleName)
   }

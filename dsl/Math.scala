@@ -350,120 +350,120 @@ trait SpatialMath {
 			@ val pre = maxJPre(sym)
     	$pre $sym = -$0 ;
 		}))
-    impl (add_fix) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 + $1 ;
-		}))
-    impl (sub_fix) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 - $1 ;
-		}))
-    impl (mul_fix) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 * $1 ;
-		}))
+    // impl (add_fix) (codegen(maxj, ${
+    //         @ val pre = maxJPre(sym)
+    //     $pre $sym = $0 + $1 ;
+    //     }))
+    // impl (sub_fix) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 - $1 ;
+    // }))
+    // impl (mul_fix) (codegen(maxj, ${
+    //         @ val pre = maxJPre(sym)
+    //     $pre $sym = $0 * $1 ;
+    //     }))
     impl (div_fix) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 / $1 ;
-		}))
-    impl (lt_fix)  (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-			$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
-    	$sym <== $0 < $1 ;
-		}))
-    impl (leq_fix) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-			$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
-    	$sym <== $0 <= $1 ;
-		}))
-    impl (neq_fix) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-			$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
-    	$sym <== ( $0 !== $1 );
-		}))
-    impl (eql_fix) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-			$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
-			$sym <== ( $0 === $1) ;
-		}))
-    impl (and_fix) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 & $1 ;
-		}))
-    impl (or_fix)  (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 | $1 ;
-		}))
-    impl (lsh_fix) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 << $1 ;
-		}))
-    impl (rsh_fix) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-			$pre $sym = $0 >> $1 ;
-		}))
+      @ val pre = maxJPre(sym)
+      $pre $sym = $0 / $1 ;
+    }))
+  //   impl (lt_fix)  (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+		// 	$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //   	$sym <== $0 < $1 ;
+		// }))
+  //   impl (leq_fix) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+		// 	$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //   	$sym <== $0 <= $1 ;
+		// }))
+  //   impl (neq_fix) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+		// 	$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //   	$sym <== ( $0 !== $1 );
+		// }))
+  //   impl (eql_fix) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+		// 	$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+		// 	$sym <== ( $0 === $1) ;
+		// }))
+  //   impl (and_fix) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+  //   	$pre $sym = $0 & $1 ;
+		// }))
+  //   impl (or_fix)  (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+  //   	$pre $sym = $0 | $1 ;
+		// }))
+  //   impl (lsh_fix) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+  //   	$pre $sym = $0 << $1 ;
+		// }))
+  //   impl (rsh_fix) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+		// 	$pre $sym = $0 >> $1 ;
+		// }))
 
     impl (neg_flt) (codegen(maxj, ${
 			@ val pre = maxJPre(sym)
     	$pre $sym = -$0 ;
 		}))
-    impl (add_flt) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 + $1 ;
-		}))
-    impl (sub_flt) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 - $1 ;
-		}))
-    impl (mul_flt) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 * $1 ;
-		}))
-    impl (div_flt) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 / $1 ;
-		}))
-    impl (lt_flt)  (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-			$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
-    	$sym <== $0 < $1 ;
-		}))
-    impl (leq_flt) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-			$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
-    	$sym <== $0 <= $1 ;
-		}))
-    impl (neq_flt) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-			$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
-    	$sym <== ( $0 !== $1 );
-		}))
-    impl (eql_flt) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-			$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
-			$sym <== $0 === $1 ;
-		}))
+    // impl (sub_flt) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 - $1 ;
+    // }))
+    // impl (div_flt) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 / $1 ;
+    // }))
+    // impl (add_flt) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 + $1 ;
+    // }))
+    // impl (mul_flt) (codegen(maxj, ${
+    //   @ val pre = maxJPre(sym)
+    //   $pre $sym = $0 * $1 ;
+    // }))
+  //   impl (lt_flt)  (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+		// 	$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //   	$sym <== $0 < $1 ;
+		// }))
+  //   impl (leq_flt) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+		// 	$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //   	$sym <== $0 <= $1 ;
+		// }))
+  //   impl (neq_flt) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+		// 	$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+  //   	$sym <== ( $0 !== $1 );
+		// }))
+  //   impl (eql_flt) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+		// 	$pre $sym = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);
+		// 	$sym <== $0 === $1 ;
+		// }))
 
-    impl (not_bit) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = ~( $0 );
-		}))
-    impl (and_bit) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 & $1 ;
-		}))
-    impl (or_bit)  (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 | $1 ;
-		}))
-    impl (xor_bit) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = $0 ^ $1 ;
-		}))
-    impl (xnor_bit) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-    	$pre $sym = ~ ( $0 ^ $1 ) ;
-		}))
+  //   impl (not_bit) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+  //   	$pre $sym = ~( $0 );
+		// }))
+  //   impl (and_bit) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+  //   	$pre $sym = $0 & $1 ;
+		// }))
+  //   impl (or_bit)  (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+  //   	$pre $sym = $0 | $1 ;
+		// }))
+  //   impl (xor_bit) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+  //   	$pre $sym = $0 ^ $1 ;
+		// }))
+  //   impl (xnor_bit) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+  //   	$pre $sym = ~ ( $0 ^ $1 ) ;
+		// }))
   }
 
   def importBasicMath() {
@@ -498,7 +498,7 @@ trait SpatialMath {
     // Scala's fold and reduce don't produce a binary tree - use these functions instead
     internal (Math) ("reduceTreeLevel", T, (SList(T), ((T,T) ==> T)) :: SList(T)) implements composite ${
       $0.length match {
-        case len if len < 1 => stageError("Cannot reduce empty list!")
+        case len if len < 1 => throw EmptyReductionTreeException()
         case 1 => $0
         case len if len % 2 == 0 => reduceTreeLevel(List.tabulate(len/2){i => $1( $0(2*i), $0(2*i+1)) }, $1)
         case len => reduceTreeLevel(List.tabulate(len/2){i => $1( $0(2*i), $0(2*i+1)) } :+ $0.last, $1)
@@ -529,7 +529,7 @@ trait SpatialMath {
      * @param n: exponent, currently must be an integer greater than zero
      **/
     direct (Math) ("pow", T, (T, SInt) :: T, TArith(T)) implements composite ${
-      if ($1 < 1) stageError("Power less than 1 is currently unsupported.")
+      if ($1 < 1) throw UnsupportedPowException($1)
       productTree( List.fill($1){$0} )
     }
 
@@ -551,6 +551,14 @@ trait SpatialMath {
     impl (log_flt) (codegen($cala, ${ FloatPoint.log($0) }))
     impl (exp_flt) (codegen($cala, ${ FloatPoint.exp($0) }))
     impl (sqrt_flt) (codegen($cala, ${ FloatPoint.sqrt($0) }))
+
+    // --- C++ Backend
+    impl (abs_fix) (codegen(cpp, ${ abs($0) }))
+    impl (abs_flt) (codegen(cpp, ${ abs($0) }))
+    impl (log_flt) (codegen(cpp, ${ log($0) }))  
+    impl (exp_flt) (codegen(cpp, ${ exp($0) }))
+    impl (sqrt_flt) (codegen(cpp, ${ sqrt($0) }))
+
 
     // --- MaxJ Backend
     impl (abs_fix) (codegen(maxj,  ${
@@ -617,10 +625,13 @@ trait SpatialMath {
     impl (mux) (codegen($cala, ${ if ($sel) $a else $b }))
 
     // --- MaxJ Backend
-    impl (mux) (codegen(maxj, ${
-			@ val pre = maxJPre(sym)
-			$pre $sym = $sel ? $a : $b ;
-		}))
+  //   impl (mux) (codegen(maxj, ${
+		// 	@ val pre = maxJPre(sym)
+		// 	$pre $sym = $sel ? $a : $b ;
+		// }))
+
+    // --- C++ Backend
+    impl (mux) (codegen(cpp, ${ ($sel) ? $a : $b }))
 	}
 
   // Infix operations with a Scala type on the LHS or RHS
