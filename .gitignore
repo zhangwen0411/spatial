@@ -19,6 +19,11 @@ src_managed/
 project/boot/
 project/plugins/project/
 
+# chisel specific
+chisel/target
+chisel/test_run_dir
+chisel/project/target
+
 # Scala-IDE specific
 .scala_dependencies
 .worksheet
