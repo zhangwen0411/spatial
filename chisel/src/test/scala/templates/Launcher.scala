@@ -2,7 +2,7 @@
 package templates
 
 import chisel3.iotesters.{PeekPokeTester, Driver, ChiselFlatSpec}
-import utils.TutorialRunner
+import utils.TemplateRunner
 
 object Launcher {
   val templates = Map(
@@ -21,19 +21,24 @@ object Launcher {
           (c) => new TFFTests(c)
         }
       },
+      "Counter" -> { (backendName: String) =>
+        Driver(() => new Counter(2), "verilator") {
+          (c) => new CounterTests(c)
+        }
+      },
+      // "Sequential" -> { (backendName: String) =>
+      //   Driver(() => new Sequential(8), "verilator") {
+      //     (c) => new SequentialTests(c)
+      //   }
+      // },
       "Parallel" -> { (backendName: String) =>
         Driver(() => new Parallel(3), "verilator") {
           (c) => new ParallelTests(c)
         }
-      },
-      "Sequential" -> { (backendName: String) =>
-        Driver(() => new Sequential(8), "verilator") {
-          (c) => new SequentialTests(c)
-        }
       }
   )
   def main(args: Array[String]): Unit = {
-    TutorialRunner(templates, args)
+    TemplateRunner(templates, args)
   }
 }
 
