@@ -28,9 +28,9 @@ class Counter(val par: Int) extends Module {
 
   val count = base.io.out
   val newval = count + (io.stride * UInt(par)) + io.gap
-  val isMax = newval + (io.stride * UInt(par-1)) + io.gap >= io.max
+  val isMax = newval >= io.max
   val next = Mux(isMax, Mux(io.saturate, count, init), newval)
-  io.debug := io.max
+  io.debug := newval + (io.stride * UInt(par-1)) + io.gap
   base.io.in := Mux(io.reset, init, next)
 
   (0 until par).foreach { i => io.out(i) := count + UInt(i)*io.stride }
