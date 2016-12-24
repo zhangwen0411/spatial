@@ -55,14 +55,17 @@ class CounterTests(c: Counter) extends PeekPokeTester(c) {
 
             count
         }
-        val done = if (count + c.par*stride + gap >= max) 1 else 0
+        val done = if ( (count + c.par*stride + gap >= max) & (enable == 1) ) 1 else 0
         // val a = peek(c.io.out(0))
         // val b = peek(c.io.out(1))
         // val cc = peek(c.io.done)
-        // println("counters at " + a + ", " + b + " and max " + max + " done? " + cc + " expected? " + done + " because " + (count + c.par*stride + gap))
+        // println("counters at " + a + ", " + b + " and max " + max + " done? " + cc + " expected? " + done + " because " + (count + c.par*stride + gap) + "satmode " + saturate)
+        // if (cc != done) println("           ERROR!!!!!!!!!!!!!! \n\n")
 
+        // Check signal values
         (0 until c.par).foreach { i => expect(c.io.out(i), count + (i * stride)) }
         expect(c.io.done, done)
+
         expectedCount = count
         expectedDone = done
       }
@@ -128,7 +131,7 @@ class CounterTester extends ChiselFlatSpec {
   behavior of "Counter"
   backends foreach {backend =>
     it should s"correctly add randomly generated numbers $backend" in {
-      Driver(() => new Counter(2))(c => new CounterTests(c)) should be (true)
+      Driver(() => new Counter(3))(c => new CounterTests(c)) should be (true)
     }
   }
 }
