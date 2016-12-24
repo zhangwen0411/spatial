@@ -9,19 +9,19 @@ import chisel3.iotesters.{PeekPokeTester, Driver, ChiselFlatSpec}
  */
 class FFTests(c: FF) extends PeekPokeTester(c) {
   val initval = 10
-  poke(c.io.init, initval)
+  poke(c.io.input.init, initval)
   step(1)
   reset(1)
-  expect(c.io.out, initval)
+  expect(c.io.output.data, initval)
 
   val numCycles = 15
   for (i <- 0 until numCycles) {
     val newenable = rnd.nextInt(2)
-    val oldout = peek(c.io.out)
-    poke(c.io.in, i)
-    poke(c.io.enable, newenable)
+    val oldout = peek(c.io.output.data)
+    poke(c.io.input.data, i)
+    poke(c.io.input.enable, newenable)
     step(1)
-    if (newenable == 1) expect(c.io.out, i) else expect(c.io.out, oldout)
+    if (newenable == 1) expect(c.io.output.data, i) else expect(c.io.output.data, oldout)
   }
 }
 
@@ -32,33 +32,33 @@ class FFNoInitTests(c: FFNoInit) extends PeekPokeTester(c) {
   val numCycles = 15
   for (i <- 0 until numCycles) {
     val newenable = rnd.nextInt(2)
-    val oldout = peek(c.io.out)
-    poke(c.io.in, i)
-    poke(c.io.enable, newenable)
+    val oldout = peek(c.io.output.data)
+    poke(c.io.input.data, i)
+    poke(c.io.input.enable, newenable)
     step(1)
-    if (newenable == 1) expect(c.io.out, i) else expect(c.io.out, oldout)
+    if (newenable == 1) expect(c.io.output.data, i) else expect(c.io.output.data, oldout)
   }
 }
 
 class TFFTests(c: TFF) extends PeekPokeTester(c) {
   step(1)
   reset(1)
-  expect(c.io.out, 0)
+  expect(c.io.output.data, 0)
   val numCycles = 20
   for (i <- 0 until numCycles) {
     val newenable = rnd.nextInt(2)
-    val oldout = peek(c.io.out)
-    poke(c.io.enable, newenable)
+    val oldout = peek(c.io.output.data)
+    poke(c.io.input.enable, newenable)
     step(1)
-    val now = peek(c.io.out)
+    val now = peek(c.io.output.data)
     // Stupid hack because peeking a boolean returns a BigInt which cannot be sliced
     //  and ~0 = -1 and ~1 = -2
     if (newenable == 1 & oldout == 1) {
-      expect(c.io.out, 0)
+      expect(c.io.output.data, 0)
     } else if (newenable == 1 & oldout == 0) {
-      expect(c.io.out, 1)      
+      expect(c.io.output.data, 1)      
     } else {
-      expect(c.io.out, oldout)
+      expect(c.io.output.data, oldout)
     }
   }
 }

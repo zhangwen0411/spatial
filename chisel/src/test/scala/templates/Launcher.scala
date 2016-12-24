@@ -26,11 +26,11 @@ object Launcher {
           (c) => new CounterTests(c)
         }
       },
-      // "Sequential" -> { (backendName: String) =>
-      //   Driver(() => new Sequential(8), "verilator") {
-      //     (c) => new SequentialTests(c)
-      //   }
-      // },
+      "Sequential" -> { (backendName: String) =>
+        Driver(() => new Sequential(5), "verilator") {
+          (c) => new SequentialTests(c)
+        }
+      },
       "Parallel" -> { (backendName: String) =>
         Driver(() => new Parallel(3), "verilator") {
           (c) => new ParallelTests(c)

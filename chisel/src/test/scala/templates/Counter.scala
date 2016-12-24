@@ -58,25 +58,25 @@ class CounterTests(c: Counter) extends PeekPokeTester(c) {
         val done = if ( (count + c.par*stride + gap >= max) & (enable == 1) ) 1 else 0
         // val a = peek(c.io.out(0))
         // val b = peek(c.io.out(1))
-        // val cc = peek(c.io.done)
+        // val cc = peek(c.io.output.done)
         // println("counters at " + a + ", " + b + " and max " + max + " done? " + cc + " expected? " + done + " because " + (count + c.par*stride + gap) + "satmode " + saturate)
         // if (cc != done) println("           ERROR!!!!!!!!!!!!!! \n\n")
 
         // Check signal values
-        (0 until c.par).foreach { i => expect(c.io.out(i), count + (i * stride)) }
-        expect(c.io.done, done)
+        (0 until c.par).foreach { i => expect(c.io.output.count(i), count + (i * stride)) }
+        expect(c.io.output.done, done)
 
         expectedCount = count
         expectedDone = done
       }
 
 
-      poke(c.io.max, max)
-      poke(c.io.gap, gap)
-      poke(c.io.stride, stride)
-      poke(c.io.enable, enable)
-      poke(c.io.saturate, saturate)
-      poke(c.io.reset, 0)
+      poke(c.io.input.max, max)
+      poke(c.io.input.gap, gap)
+      poke(c.io.input.stride, stride)
+      poke(c.io.input.enable, enable)
+      poke(c.io.input.saturate, saturate)
+      poke(c.io.input.reset, 0)
 
 
       for (i <- 1 until 5) {
@@ -85,42 +85,42 @@ class CounterTests(c: Counter) extends PeekPokeTester(c) {
 
       // Test stall
       enable = 0
-      poke(c.io.enable, enable)
+      poke(c.io.input.enable, enable)
       for (i <- 1 until 5) {
         testOneStep()
       }
 
       // Continue
       enable = 1
-      poke(c.io.enable, enable)
+      poke(c.io.input.enable, enable)
       for (i <- 1 until max) {
         testOneStep()
       }
 
       // Reset and go again
       numEnabledCycles = 0
-      poke(c.io.reset, 1)
+      poke(c.io.input.reset, 1)
       step(1)
-      poke(c.io.reset, 0)
+      poke(c.io.input.reset, 0)
       for (i <- 1 until max+2) {
         testOneStep()
       }
 
       // Reset and test non-saturating mode
       saturate = 0
-      poke(c.io.saturate, saturate)
+      poke(c.io.input.saturate, saturate)
       numEnabledCycles = 0
-      poke(c.io.reset, 1)
+      poke(c.io.input.reset, 1)
       step(1)
-      poke(c.io.reset, 0)
+      poke(c.io.input.reset, 0)
       for (i <- 1 until max+2) {
         testOneStep()
       }
 
-      poke(c.io.reset, 1)
+      poke(c.io.input.reset, 1)
       step(1)
       reset(1)
-      poke(c.io.reset, 0)
+      poke(c.io.input.reset, 0)
 
     }
   }

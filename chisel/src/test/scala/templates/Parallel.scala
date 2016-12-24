@@ -9,34 +9,34 @@ class ParallelTests(c: Parallel) extends PeekPokeTester(c) {
   val maxCycles = latencies.reduce{(a,b) => if (a > b) a else b} + 20
   step(1)
   reset(1)
-  poke(c.io.enable, 1)
+  poke(c.io.input.enable, 1)
   for (t <- 0 until maxCycles) {
     val stagesDone = latencies.map { _ > t }
-    (0 until c.n).foreach {i => poke(c.io.stageDone(i), t - latencies(i) == 1) }
+    (0 until c.n).foreach {i => poke(c.io.input.stageDone(i), t - latencies(i) == 1) }
 
     step(1)
-    val stagesEnabled = (0 until c.n).map {i => peek(c.io.stageEnable(i)) }
+    val stagesEnabled = (0 until c.n).map {i => peek(c.io.output.stageEnable(i)) }
 
-    (0 until c.n).foreach {i => expect(c.io.stageEnable(i), t <= latencies(i))}
+    (0 until c.n).foreach {i => expect(c.io.output.stageEnable(i), t <= latencies(i))}
 
-    val isDone = peek(c.io.done)
-    if (isDone == 1) poke(c.io.enable, 0)
+    val isDone = peek(c.io.output.done)
+    if (isDone == 1) poke(c.io.input.enable, 0)
 
   }
 
   // Do it again
-  poke(c.io.enable, 1)
+  poke(c.io.input.enable, 1)
   for (t <- 0 until maxCycles) {
     val stagesDone = latencies.map { _ > t }
-    (0 until c.n).foreach {i => poke(c.io.stageDone(i), t - latencies(i) == 1) }
+    (0 until c.n).foreach {i => poke(c.io.input.stageDone(i), t - latencies(i) == 1) }
 
     step(1)
-    val stagesEnabled = (0 until c.n).map {i => peek(c.io.stageEnable(i)) }
+    val stagesEnabled = (0 until c.n).map {i => peek(c.io.output.stageEnable(i)) }
 
-    (0 until c.n).foreach {i => expect(c.io.stageEnable(i), t <= latencies(i))}
+    (0 until c.n).foreach {i => expect(c.io.output.stageEnable(i), t <= latencies(i))}
 
-    val isDone = peek(c.io.done)
-    if (isDone == 1) poke(c.io.enable, 0)
+    val isDone = peek(c.io.output.done)
+    if (isDone == 1) poke(c.io.input.enable, 0)
 
   }
 }

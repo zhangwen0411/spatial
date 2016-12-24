@@ -6,10 +6,14 @@ import chisel3._
 //A n-stage Parallel controller
 class Parallel(val n: Int) extends Module {
   val io = IO(new Bundle {
-    val enable = Bool().asInput
-    val done = Bool().asOutput
-    val stageEnable = Vec(n, Bool().asOutput)
-    val stageDone = Vec(n, Bool().asInput)
+    val input = new Bundle {
+      val enable = Bool().asInput
+      val stageDone = Vec(n, Bool().asInput)
+    }
+    val output = new Bundle {
+      val done = Bool().asOutput
+      val stageEnable = Vec(n, Bool().asOutput)
+    }
   })
 
   // 0: INIT, 1: RESET, 2 stages enabled, 3: DONE
@@ -20,48 +24,48 @@ class Parallel(val n: Int) extends Module {
 
   // Create FF for holding state
   val stateFF = Module(new FF(2))
-  stateFF.io.enable := Bool(true)
-  stateFF.io.init := UInt(0)
-  val state = stateFF.io.out
+  stateFF.io.input.enable := Bool(true)
+  stateFF.io.input.init := UInt(0)
+  val state = stateFF.io.output.data
 
   // Create vector of registers for holding stage dones
   val doneFF = List.tabulate(n) { i =>
     val ff = Module(new FF(1))
-    ff.io.enable := io.stageDone(i) | (state === UInt(doneState))
-    ff.io.init := UInt(0)
-    ff.io.in := Mux(io.stageDone(i), io.stageDone(i), UInt(0))
+    ff.io.input.enable := io.input.stageDone(i) | (state === UInt(doneState))
+    ff.io.input.init := UInt(0)
+    ff.io.input.data := Mux(io.input.stageDone(i), io.input.stageDone(i), UInt(0))
     ff
   }
-  val doneMask = doneFF.map { _.io.out }
+  val doneMask = doneFF.map { _.io.output.data }
 
   // // Provide default value for enable and doneClear
-  // io.stageEnable.foreach { _ := Bool(false) }
+  // io.output.stageEnable.foreach { _ := Bool(false) }
 
   // State Machine
-  when(io.enable) {
+  when(io.input.enable) {
     when(state === UInt(initState)) {   // INIT -> RESET
-      stateFF.io.in := UInt(runningState)
+      stateFF.io.input.data := UInt(runningState)
     }.elsewhen (state === UInt(runningState)) {  // STEADY
-      (0 until n).foreach { i => io.stageEnable(i) := ~doneMask(i) }
+      (0 until n).foreach { i => io.output.stageEnable(i) := ~doneMask(i) }
 
       val doneTree = doneMask.reduce { _ & _ }
       when(doneTree === 1.U) {
-        stateFF.io.in := UInt(doneState)
+        stateFF.io.input.data := UInt(doneState)
       }.otherwise {
-        stateFF.io.in := state
+        stateFF.io.input.data := state
       }
     }.elsewhen (state === UInt(doneState)) {  // DONE
-      stateFF.io.in := UInt(initState)
+      stateFF.io.input.data := UInt(initState)
     }.otherwise {
-      stateFF.io.in := state
+      stateFF.io.input.data := state
     }
   }.otherwise {
-    stateFF.io.in := UInt(initState)
-    (0 until n).foreach { i => io.stageEnable(i) := Bool(false) }
+    stateFF.io.input.data := UInt(initState)
+    (0 until n).foreach { i => io.output.stageEnable(i) := Bool(false) }
   }
 
   // Output logic
-  io.done := state === UInt(doneState)
+  io.output.done := state === UInt(doneState)
 
 }
 
@@ -83,28 +87,28 @@ class Parallel(val n: Int) extends Module {
 //     var elapsed = 0
 //     var done: Int = 0
 //     while (done != s.size) {
-//       c.io.stageDone.foreach { poke(_, 0) }
+//       c.io.input.stageDone.foreach { poke(_, 0) }
 //       step(1)
 //       elapsed += 1
 //       for (i <- 0 until s.size) {
 //         if (numCycles(i) == elapsed) {
 //           println(s"[Stage ${s(i)} Finished execution at $elapsed")
-//           poke(c.io.stageDone(s(i)), 1)
+//           poke(c.io.input.stageDone(s(i)), 1)
 //           done += 1
 //         }
 //       }
 //     }
-//     c.io.stageDone.foreach { poke(_, 1) }
+//     c.io.input.stageDone.foreach { poke(_, 1) }
 //   }
 
 //   def handleStageEnables = {
-//     val stageEnables = c.io.stageEnable.map { peek(_).toInt }
+//     val stageEnables = c.io.output.stageEnable.map { peek(_).toInt }
 //     val activeStage = stageEnables.zipWithIndex.filter { _._1 == 1 }.map { _._2 }
 //     executeStages(activeStage.toList)
 //   }
 
 //   // Start
-//   poke(c.io.enable, 1)
+//   poke(c.io.input.enable, 1)
 
 //   var done = peek(c.io.done).toInt
 //   var numCycles = 0

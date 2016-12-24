@@ -1,106 +1,110 @@
-// // See LICENSE.txt for license details.
-// package templates
+// See LICENSE.txt for license details.
+package templates
 
-// import chisel3._
+import chisel3._
 
-// import scala.collection.mutable.HashMap
+import scala.collection.mutable.HashMap
 
-// class Sequential(val n: Int) extends Module {
-//   val io = IO(new Bundle {
-//     val enable = Bool(INPUT)
-//     val done = Bool(OUTPUT)
-//     val numIter = UInt(INPUT, width=32)
-//     val stageEnable = Vec(n, Bool().asOutput)
-//     val stageDone = Vec(n, Bool().asInput)
-//   }
+class Sequential(val n: Int) extends Module {
+  val io = IO(new Bundle {
+    val input = new Bundle {
+      val enable = Bool().asInput
+      val numIter = UInt(32).asInput
+      val stageDone = Vec(n, Bool().asInput)
+    }
+    val output = new Bundle {
+      val done = Bool().asOutput
+      val stageEnable = Vec(n, Bool().asOutput)
+    }
+  })
 
-//   // 0: INIT, 1: RESET, 2..2+n-1: stages, n: DONE
-//   val initState = 0
-//   val resetState = 1
-//   val firstState = resetState + 1
-//   val doneState = firstState + n
-//   val lastState = doneState - 1
+  // 0: INIT, 1: RESET, 2..2+n-1: stages, n: DONE
+  val initState = 0
+  val resetState = 1
+  val firstState = resetState + 1
+  val doneState = firstState + n
+  val lastState = doneState - 1
 
-//   val stateFF = Module(new FF(32))
-//   stateFF.io.enable := Bool(true) // TODO: Do we need this line?
-//   stateFF.io.init := UInt(0)
-//   val state = stateFF.io.out
+  val stateFF = Module(new FF(32))
+  stateFF.io.input.enable := Bool(true) // TODO: Do we need this line?
+  stateFF.io.input.init := UInt(0)
+  val state = stateFF.io.output.data
 
-//   // Counter for num iterations
-//   val maxFF = Module(new FF(32))
-//   maxFF.io.enable := io.enable
-//   maxFF.io.in := io.numIter
-//   val max = maxFF.io.out
+  // Counter for num iterations
+  val maxFF = Module(new FF(32))
+  maxFF.io.input.enable := io.input.enable
+  maxFF.io.input.data := io.input.numIter
+  val max = maxFF.io.output.data
 
-//   val ctr = Module(new Counter(32))
-//   ctr.io.enable := io.enable & io.stageDone(lastState-2)
-//   ctr.io.reset := (state === UInt(doneState))
-//   ctr.io.saturate := Bool(false)
-//   ctr.io.max := max
-//   ctr.io.stride := UInt(1)
-//   val iter = ctr.io.out
+  val ctr = Module(new Counter(1))
+  ctr.io.input.enable := io.input.enable & io.input.stageDone(lastState-2)
+  ctr.io.input.reset := (state === UInt(doneState))
+  ctr.io.input.saturate := Bool(false)
+  ctr.io.input.max := max
+  ctr.io.input.stride := UInt(1)
+  val iter = ctr.io.output.count
 
-//   // Next state logic
-// //  val nextStateMux = Module(new MuxNOH(n+3, 1))
-// //  val states = Vec.tabulate(n+3) { i => UInt(i) }
-// //  val muxSel = Vec.tabulate(n+3) { i =>
-// //    if (i == initState) {  // INIT enable logic
-// //     ~io.enable | (io.enable & (state === UInt(doneState)))
-// //    } else if (i == resetState) { // RESET logic
-// //      io.enable & (state === UInt(initState))
-// //    } else if (i == firstState) { // First state
-// //      io.enable &
-// //          ((state === UInt(resetState)) |
-// //           ((state === UInt(lastState)) & io.stageDone.last & ~ctr.io.done))
-// //    } else if (i < 2+n) { // Worker state logic
-// //      io.enable & (state === UInt(i-2-1)) & io.stageDone(i-2-1)
-// //    } else { // Done state logic
-// //      io.enable & (state === UInt(lastState)) & ctr.io.done
-// //    }
-// //  }
-// //  nextStateMux.io.ins := states
-// //  nextStateMux.io.sel := muxSel
-//   when(io.enable) {
-//     when(state === UInt(initState)) {
-//       stateFF.io.in := UInt(resetState)
-//     }.elsewhen (state === UInt(resetState)) {
-//       stateFF.io.in := UInt(firstState)
-//     }.elsewhen (state < UInt(lastState)) {
-//       when((state === UInt(2)) & io.stageDone(0)) {
-//         stateFF.io.in := UInt(3)
-//       }.elsewhen((state === UInt(3)) & io.stageDone(1)) {
-//         stateFF.io.in := UInt(4)
-//       }.elsewhen((state === UInt(4)) & io.stageDone(2)) {
-//         stateFF.io.in := UInt(5)
-//       }.elsewhen((state === UInt(5)) & io.stageDone(3)) {
-//         stateFF.io.in := UInt(6)
-//       }.elsewhen((state === UInt(6)) & io.stageDone(4)) {
-//         stateFF.io.in := UInt(7)
-//       }.otherwise {
-//         stateFF.io.in := state
-//       }
-//     }.elsewhen (state === UInt(lastState)) {
-//       when(io.stageDone(lastState-2)) {
-//         when(ctr.io.done) {
-//           stateFF.io.in := UInt(doneState)
-//         }.otherwise {
-//           stateFF.io.in := UInt(firstState)
-//         }
-//       }.otherwise {
-//         stateFF.io.in := state
-//       }
+  // Next state logic
+//  val nextStateMux = Module(new MuxNOH(n+3, 1))
+//  val states = Vec.tabulate(n+3) { i => UInt(i) }
+//  val muxSel = Vec.tabulate(n+3) { i =>
+//    if (i == initState) {  // INIT enable logic
+//     ~io.enable | (io.enable & (state === UInt(doneState)))
+//    } else if (i == resetState) { // RESET logic
+//      io.enable & (state === UInt(initState))
+//    } else if (i == firstState) { // First state
+//      io.enable &
+//          ((state === UInt(resetState)) |
+//           ((state === UInt(lastState)) & io.input.stageDone.last & ~ctr.io.done))
+//    } else if (i < 2+n) { // Worker state logic
+//      io.enable & (state === UInt(i-2-1)) & io.input.stageDone(i-2-1)
+//    } else { // Done state logic
+//      io.enable & (state === UInt(lastState)) & ctr.io.done
+//    }
+//  }
+//  nextStateMux.io.ins := states
+//  nextStateMux.io.sel := muxSel
+  when(io.input.enable) {
+    when(state === UInt(initState)) {
+      stateFF.io.input.data := UInt(resetState)
+    }.elsewhen (state === UInt(resetState)) {
+      stateFF.io.input.data := UInt(firstState)
+    }.elsewhen (state < UInt(lastState)) {
+      when((state === UInt(2)) & io.input.stageDone(0)) {
+        stateFF.io.input.data := UInt(3)
+      }.elsewhen((state === UInt(3)) & io.input.stageDone(1)) {
+        stateFF.io.input.data := UInt(4)
+      }.elsewhen((state === UInt(4)) & io.input.stageDone(2)) {
+        stateFF.io.input.data := UInt(5)
+      }.elsewhen((state === UInt(5)) & io.input.stageDone(3)) {
+        stateFF.io.input.data := UInt(6)
+      }.elsewhen((state === UInt(6)) & io.input.stageDone(4)) {
+        stateFF.io.input.data := UInt(7)
+      }.otherwise {
+        stateFF.io.input.data := state
+      }
+    }.elsewhen (state === UInt(lastState)) {
+      when(io.input.stageDone(lastState-2)) {
+        when(ctr.io.output.done) {
+          stateFF.io.input.data := UInt(doneState)
+        }.otherwise {
+          stateFF.io.input.data := UInt(firstState)
+        }
+      }.otherwise {
+        stateFF.io.input.data := state
+      }
 
-//     }.elsewhen (state === UInt(doneState)) {
-//       stateFF.io.in := UInt(initState)
-//     }.otherwise {
-//       stateFF.io.in := state
-//     }
-//   }.otherwise {
-//     stateFF.io.in := UInt(initState)
-//   }
-// //  stateFF.io.in := nextStateMux.io.out
+    }.elsewhen (state === UInt(doneState)) {
+      stateFF.io.input.data := UInt(initState)
+    }.otherwise {
+      stateFF.io.input.data := state
+    }
+  }.otherwise {
+    stateFF.io.input.data := UInt(initState)
+  }
+//  stateFF.io.input.data := nextStateMux.io.out
 
-//   // Output logic
-//   io.done := state === UInt(doneState)
-//   io.stageEnable.zipWithIndex.foreach { case (en, i) => en := (state === UInt(i+2)) }
-// }
+  // Output logic
+  io.output.done := state === UInt(doneState)
+  io.output.stageEnable.zipWithIndex.foreach { case (en, i) => en := (state === UInt(i+2)) }
+}

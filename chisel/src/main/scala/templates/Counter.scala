@@ -10,31 +10,35 @@ import chisel3._
  */
 class Counter(val par: Int) extends Module {
   val io = IO(new Bundle {
-    val max      = UInt(32.W).asInput
-    val stride   = UInt(32.W).asInput
-    val gap      = UInt(32).asInput
-    val out      = Vec(par, UInt(32.W).asOutput)
-    val reset  = Bool().asInput
-    val enable = Bool().asInput
-    val saturate = Bool().asInput
-    val done   = Bool().asOutput
-    val debug  = UInt(32.W).asOutput
+    val input = new Bundle {
+      val max      = UInt(32.W).asInput
+      val stride   = UInt(32.W).asInput
+      val gap      = UInt(32).asInput
+      val reset  = Bool().asInput
+      val enable = Bool().asInput
+      val saturate = Bool().asInput
+    }
+    val output = new Bundle {
+      val count      = Vec(par, UInt(32.W).asOutput)
+      val done   = Bool().asOutput
+      val debug  = UInt(32.W).asOutput      
+    }
   })
 
   val base = Module(new FF(32))
   val init = UInt(0)
-  base.io.init := init
-  base.io.enable := io.reset | io.enable
+  base.io.input.init := init
+  base.io.input.enable := io.input.reset | io.input.enable
 
-  val count = base.io.out
-  val newval = count + (io.stride * UInt(par)) + io.gap
-  val isMax = newval >= io.max
-  val next = Mux(isMax, Mux(io.saturate, count, init), newval)
-  io.debug := newval + (io.stride * UInt(par-1)) + io.gap
-  base.io.in := Mux(io.reset, init, next)
+  val count = base.io.output.data
+  val newval = count + (io.input.stride * UInt(par)) + io.input.gap
+  val isMax = newval >= io.input.max
+  val next = Mux(isMax, Mux(io.input.saturate, count, init), newval)
+  io.output.debug := newval + (io.input.stride * UInt(par-1)) + io.input.gap
+  base.io.input.data := Mux(io.input.reset, init, next)
 
-  (0 until par).foreach { i => io.out(i) := count + UInt(i)*io.stride }
-  io.done := io.enable & isMax
+  (0 until par).foreach { i => io.output.count(i) := count + UInt(i)*io.input.stride }
+  io.output.done := io.input.enable & isMax
 }
 
 // class CounterReg(val w: Int) extends Module {
@@ -42,10 +46,10 @@ class Counter(val par: Int) extends Module {
 //     val data = new Bundle {
 //       val max      = UInt(INPUT,  w)
 //       val stride   = UInt(INPUT,  w)
-//       val out      = UInt(OUTPUT, w)
+//       val output.count      = UInt(OUTPUT, w)
 //     }
 //     val control = new Bundle {
-//       val reset = Bool(INPUT)
+//       vinput.al reset = Bool(INPUT)
 //       val enable = Bool(INPUT)
 //       val saturate = Bool(INPUT)
 //       val done   = Bool(OUTPUT)
@@ -56,45 +60,45 @@ class Counter(val par: Int) extends Module {
 //   val maxReg = Module(new FF(w))
 //   maxReg.io.control.enable := Bool(true)
 //   maxReg.io.data.in := io.data.max
-//   val max = maxReg.io.data.out
+//   val max = maxReg.io.data.output.count
 
 //   val strideReg = Module(new FF(w))
 //   strideReg.io.control.enable := Bool(true)
 //   strideReg.io.data.in := io.data.stride
-//   val stride = strideReg.io.data.out
+//   val stride = strideReg.io.data.output.count
 
 //   val rstReg = Module(new FF(1))
 //   rstReg.io.control.enable := Bool(true)
-//   rstReg.io.data.in := io.control.reset
-//   val rst = rstReg.io.data.out
+//   rstReg.io.data.in := io.control.input.reset
+//   val rst = rstReg.io.data.output.count
 
 //   val enableReg = Module(new FF(1))
 //   enableReg.io.control.enable := Bool(true)
 //   enableReg.io.data.in := io.control.enable
-//   val enable = enableReg.io.data.out
+//   val enable = enableReg.io.data.output.count
 
 //   val saturateReg = Module(new FF(1))
 //   saturateReg.io.control.enable := Bool(true)
 //   saturateReg.io.data.in := io.control.saturate
-//   val saturate = saturateReg.io.data.out
+//   val saturate = saturateReg.io.data.output.count
 
 //   // Instantiate counter
 //   val counter = Module(new Counter(w))
 //   counter.io.data.max := max
 //   counter.io.data.stride := stride
 //   counter.io.control.enable := enable
-//   counter.io.control.reset := rst
+//   counter.io.control.input.reset := rst
 //   counter.io.control.enable := enable
 //   counter.io.control.saturate := saturate
 
 //   // Register outputs
 //   val outReg = Module(new FF(w))
 //   outReg.io.control.enable := Bool(true)
-//   outReg.io.data.in := counter.io.data.out
-//   io.data.out := outReg.io.data.out
+//   outReg.io.data.in := counter.io.data.output.count
+//   io.data.output.count := outReg.io.data.output.count
 //   val doneReg = Module(new FF(1))
 //   doneReg.io.control.enable := Bool(true)
 //   doneReg.io.data.in := counter.io.control.done
-//   io.control.done := doneReg.io.data.out
+//   io.control.done := doneReg.io.data.output.count
 // }
 
