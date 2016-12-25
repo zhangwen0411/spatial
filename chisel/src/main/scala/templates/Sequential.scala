@@ -27,7 +27,7 @@ class Sequential(val n: Int) extends Module {
 
   val stateFF = Module(new FF(32))
   stateFF.io.input.enable := Bool(true) // TODO: Do we need this line?
-  stateFF.io.input.init := UInt(0)
+  stateFF.io.input.init := 0.U
   val state = stateFF.io.output.data
 
   // Counter for num iterations
@@ -38,10 +38,9 @@ class Sequential(val n: Int) extends Module {
 
   val ctr = Module(new Counter(1))
   ctr.io.input.enable := io.input.enable & io.input.stageDone(lastState-2) // TODO: Is this wrong? It still works...  
-  ctr.io.input.reset := (state === UInt(doneState))
-  ctr.io.input.saturate := Bool(false)
+  ctr.io.input.reset := (state === doneState.U.U  ctr.io.input.saturate := false.B
   ctr.io.input.max := max
-  ctr.io.input.stride := UInt(1)
+  ctr.io.input.stride := 1.U
   val iter = ctr.io.output.count(0)
 
   // Next state logic
@@ -51,7 +50,7 @@ class Sequential(val n: Int) extends Module {
 //    if (i == initState) {  // INIT enable logic
 //     ~io.enable | (io.enable & (state === UInt(doneState)))
 //    } else if (i == resetState) { // RESET logic
-//      io.enable & (state === UInt(initState))
+//      io.enable & (state === initState.U)
 //    } else if (i == firstState) { // First state
 //      io.enable &
 //          ((state === UInt(resetState)) |
@@ -65,15 +64,15 @@ class Sequential(val n: Int) extends Module {
 //  nextStateMux.io.ins := states
 //  nextStateMux.io.sel := muxSel
   when(io.input.enable) {
-    when(state === UInt(initState)) {
+    when(state === initState.U) {
       stateFF.io.input.data := UInt(resetState)
     }.elsewhen (state === UInt(resetState)) {
-      stateFF.io.input.data := UInt(firstState)
+      stateFF.io.input.data := Mux(io.input.numIter === 0.U, doneState.U, firstState.U)
     }.elsewhen (state < UInt(lastState)) {
 
       // // Safe but expensive way
       // val doneStageId = (0 until n).map { i => // Find which stage got done signal
-      //   Mux(io.input.stageDone(i), UInt(i+1), UInt(0)) 
+      //   Mux(io.input.stageDone(i), UInt(i+1), 0.U) 
       // }.reduce {_+_}
       // when(state === (doneStageId + 1.U)) {
       //   stateFF.io.input.data := doneStageId + 2.U
@@ -88,29 +87,29 @@ class Sequential(val n: Int) extends Module {
       }.otherwise {
         stateFF.io.input.data := state
       }
-      
+
     }.elsewhen (state === UInt(lastState)) {
       when(io.input.stageDone(lastState-2)) {
         when(ctr.io.output.done) {
-          stateFF.io.input.data := UInt(doneState)
+          stateFF.io.input.data := doneStat.U)
         }.otherwise {
-          stateFF.io.input.data := UInt(firstState)
+          stateFF.io.input.data := firstStat.U)
         }
       }.otherwise {
         stateFF.io.input.data := state
       }
 
-    }.elsewhen (state === UInt(doneState)) {
-      stateFF.io.input.data := UInt(initState)
+    }.elsewhen (state === doneStat.U)) {
+      stateFF.io.input.data := initState.U
     }.otherwise {
       stateFF.io.input.data := state
     }
   }.otherwise {
-    stateFF.io.input.data := UInt(initState)
+    stateFF.io.input.data := initState.U
   }
 //  stateFF.io.input.data := nextStateMux.io.out
 
   // Output logic
-  io.output.done := state === UInt(doneState)
+  io.output.done := state === doneStat.U)
   io.output.stageEnable.zipWithIndex.foreach { case (en, i) => en := (state === UInt(i+2)) }
 }

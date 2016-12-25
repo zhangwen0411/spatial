@@ -5,49 +5,63 @@ import chisel3.iotesters.{PeekPokeTester, Driver, ChiselFlatSpec}
 import org.scalatest.Assertions._
 
 class MetapipeTests(c: Metapipe) extends PeekPokeTester(c) {
-  val numIter = 2
+  val numIters = List(0,3,4,5,6,7,8)
   val latencies = (0 until c.n).map { i => math.abs(rnd.nextInt(10)) + 2 } 
   var stageCounts = Array.tabulate(c.n) { i => 0 }
+  var stageDones = Array.tabulate(c.n) { i => 0 }
   latencies.map { a => println("latency of stage = " + a)}
   val timeout = 500
+  numIters.foreach{ numIter => 
+    step(50)
+    poke(c.io.input.numIter, numIter)
+    poke(c.io.input.enable, 1)
 
-  def executeStage(s: Int) {
-    val numCycles = latencies(s)
-    stageCounts(s) += 1
-    if (stageCounts(s) > latencies(s)) {
-      poke(c.io.input.stageDone(s), 1)
-      stageCounts(s) = 0
-    } else {
-      poke(c.io.input.stageDone(s), 0)
-    }
-  }
-
-  def handleStageEnables = {
-    (0 until c.n).foreach { i => 
-      val stageEn = peek(c.io.output.stageEnable(i)).toInt
-      if (stageEn == 1) {
-        executeStage(i)
+    def executeStage(s: Int) {
+      val numCycles = latencies(s)
+      stageCounts(s) += 1
+      if (stageCounts(s) > latencies(s)) {
+        poke(c.io.input.stageDone(s), 1)
+        stageCounts(s) = 0
+        stageDones(s) += 1
+      } else {
+        poke(c.io.input.stageDone(s), 0)
       }
     }
-  }
 
-  // Start
-  poke(c.io.input.numIter, numIter)
-  poke(c.io.input.enable, 1)
+    def handleStageEnables = {
+      (0 until c.n).foreach { i => 
+        val stageEn = peek(c.io.output.stageEnable(i)).toInt
+        if (stageEn == 1) {
+          executeStage(i)
+        }
+      }
+    }
 
-  var done = peek(c.io.output.done).toInt
-  var numCycles = 0
-  while ((done != 1) & (numCycles < timeout)) {
-    handleStageEnables
-    done = peek(c.io.output.done).toInt
-    step(1)
-    (0 until c.n).foreach { i => poke(c.io.input.stageDone(i), 0) }
-    numCycles += 1
+    // Start
+
+    var done = peek(c.io.output.done).toInt
+    var numCycles = 0
+    while ((done != 1) & (numCycles < timeout)) {
+      handleStageEnables
+      done = peek(c.io.output.done).toInt
+      step(1)
+      (0 until c.n).foreach { i => poke(c.io.input.stageDone(i), 0) }
+      numCycles += 1
+    }
+    if ( (numCycles > timeout) | (numCycles < 2) ) {
+      expect(c.io.output.done, 999) // TODO: Figure out how to "expect" signals that are not hw IO
+    }
+    expect(c.io.output.done, 0)
+    poke(c.io.input.enable, 0)
+    (0 until c.n).foreach { i => 
+      if (stageDones(i) != numIter) {
+        println(s"expect stage $i to have $numIter, but it has ${stageDones(i)}")
+        expect(c.io.output.done, 999) // TODO: Figure out how to "expect" signals that are not hw IO
+      }
+      stageDones(i) = 0
+    }
+
   }
-  if ( (numCycles > timeout) | (numCycles < 2) ) {
-    expect(c.io.output.done, 999) // TODO: Figure out how to "expect" signals that are not hw IO
-  }
-  expect(c.io.output.done, 0)
 
 
 }
