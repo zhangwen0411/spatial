@@ -30,10 +30,9 @@ class Parallel(val n: Int) extends Module {
 
   // Create vector of registers for holding stage dones
   val doneFF = List.tabulate(n) { i =>
-    val ff = Module(new FF(1))
-    ff.io.input.enable := io.input.stageDone(i) | (state === UInt(doneState))
-    ff.io.input.init := UInt(0)
-    ff.io.input.data := Mux(io.input.stageDone(i), io.input.stageDone(i), UInt(0))
+    val ff = Module(new SRFF())
+    ff.io.input.set := io.input.stageDone(i)
+    ff.io.input.reset := state === UInt(doneState)
     ff
   }
   val doneMask = doneFF.map { _.io.output.data }

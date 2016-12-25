@@ -37,12 +37,12 @@ class Sequential(val n: Int) extends Module {
   val max = maxFF.io.output.data
 
   val ctr = Module(new Counter(1))
-  ctr.io.input.enable := io.input.enable & io.input.stageDone(lastState-2)
+  ctr.io.input.enable := io.input.enable & io.input.stageDone(lastState-2) // TODO: Is this wrong? It still works...  
   ctr.io.input.reset := (state === UInt(doneState))
   ctr.io.input.saturate := Bool(false)
   ctr.io.input.max := max
   ctr.io.input.stride := UInt(1)
-  val iter = ctr.io.output.count
+  val iter = ctr.io.output.count(0)
 
   // Next state logic
 //  val nextStateMux = Module(new MuxNOH(n+3, 1))
@@ -70,19 +70,25 @@ class Sequential(val n: Int) extends Module {
     }.elsewhen (state === UInt(resetState)) {
       stateFF.io.input.data := UInt(firstState)
     }.elsewhen (state < UInt(lastState)) {
-      when((state === UInt(2)) & io.input.stageDone(0)) {
-        stateFF.io.input.data := UInt(3)
-      }.elsewhen((state === UInt(3)) & io.input.stageDone(1)) {
-        stateFF.io.input.data := UInt(4)
-      }.elsewhen((state === UInt(4)) & io.input.stageDone(2)) {
-        stateFF.io.input.data := UInt(5)
-      }.elsewhen((state === UInt(5)) & io.input.stageDone(3)) {
-        stateFF.io.input.data := UInt(6)
-      }.elsewhen((state === UInt(6)) & io.input.stageDone(4)) {
-        stateFF.io.input.data := UInt(7)
+
+      // // Safe but expensive way
+      // val doneStageId = (0 until n).map { i => // Find which stage got done signal
+      //   Mux(io.input.stageDone(i), UInt(i+1), UInt(0)) 
+      // }.reduce {_+_}
+      // when(state === (doneStageId + 1.U)) {
+      //   stateFF.io.input.data := doneStageId + 2.U
+      // }.otherwise {
+      //   stateFF.io.input.data := state
+      // }
+
+      // Less safe but cheap way
+      val aStageIsDone = io.input.stageDone.reduce { _ | _ } // TODO: Is it safe to assume children behave properly?
+      when(aStageIsDone) {
+        stateFF.io.input.data := state + 1.U
       }.otherwise {
         stateFF.io.input.data := state
       }
+      
     }.elsewhen (state === UInt(lastState)) {
       when(io.input.stageDone(lastState-2)) {
         when(ctr.io.output.done) {

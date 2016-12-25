@@ -16,9 +16,24 @@ object Launcher {
           (c) => new FFNoInitTests(c)
         }
       },
+      "FFNoInitNoReset" -> { (backendName: String) =>
+        Driver(() => new FFNoInit(32), "verilator") {
+          (c) => new FFNoInitTests(c)
+        }
+      },
+      "FFNoReset" -> { (backendName: String) =>
+        Driver(() => new FFNoInit(32), "verilator") {
+          (c) => new FFNoInitTests(c)
+        }
+      },
       "TFF" -> { (backendName: String) =>
         Driver(() => new TFF(), "verilator") {
           (c) => new TFFTests(c)
+        }
+      },
+      "SRFF" -> { (backendName: String) =>
+        Driver(() => new SRFF(), "verilator") {
+          (c) => new SRFFTests(c)
         }
       },
       "Counter" -> { (backendName: String) =>
@@ -27,8 +42,18 @@ object Launcher {
         }
       },
       "Sequential" -> { (backendName: String) =>
-        Driver(() => new Sequential(5), "verilator") {
+        Driver(() => new Sequential(10), "verilator") {
           (c) => new SequentialTests(c)
+        }
+      },
+      "Metapipe" -> { (backendName: String) =>
+        Driver(() => new Metapipe(5), "verilator") {
+          (c) => new MetapipeTests(c)
+        }
+      },
+      "Delay" -> { (backendName: String) =>
+        Driver(() => new Delay(10), "verilator") {
+          (c) => new DelayTests(c)
         }
       },
       "Parallel" -> { (backendName: String) =>

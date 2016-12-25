@@ -23,9 +23,46 @@ class FFTests(c: FF) extends PeekPokeTester(c) {
     step(1)
     if (newenable == 1) expect(c.io.output.data, i) else expect(c.io.output.data, oldout)
   }
+  poke(c.io.input.reset, 1)
+  expect(c.io.output.data, initval)
+  step(1)
+  expect(c.io.output.data, initval)
+  poke(c.io.input.reset, 0)
+  step(1)
+  expect(c.io.output.data, initval)
 }
 
 class FFNoInitTests(c: FFNoInit) extends PeekPokeTester(c) {
+  step(1)
+  reset(1)
+
+  val numCycles = 15
+  for (i <- 0 until numCycles) {
+    val newenable = rnd.nextInt(2)
+    val oldout = peek(c.io.output.data)
+    poke(c.io.input.data, i)
+    poke(c.io.input.enable, newenable)
+    step(1)
+    if (newenable == 1) expect(c.io.output.data, i) else expect(c.io.output.data, oldout)
+  }
+}
+
+class FFNoInitNoResetTests(c: FFNoInit) extends PeekPokeTester(c) {
+  step(1)
+  reset(1)
+
+  val numCycles = 15
+  for (i <- 0 until numCycles) {
+    val newenable = rnd.nextInt(2)
+    val oldout = peek(c.io.output.data)
+    poke(c.io.input.data, i)
+    poke(c.io.input.enable, newenable)
+    step(1)
+    if (newenable == 1) expect(c.io.output.data, i) else expect(c.io.output.data, oldout)
+  }
+}
+
+class FFNoResetTests(c: FFNoInit) extends PeekPokeTester(c) {
   step(1)
   reset(1)
 
@@ -63,6 +100,55 @@ class TFFTests(c: TFF) extends PeekPokeTester(c) {
   }
 }
 
+class SRFFTests(c: SRFF) extends PeekPokeTester(c) {
+  step(1)
+  reset(1)
+  poke(c.io.input.asyn_reset, 1)
+  expect(c.io.output.data, 0)
+  step(1)
+  expect(c.io.output.data, 0)
+  poke(c.io.input.asyn_reset, 0)
+  step(1)
+  expect(c.io.output.data, 0)
+
+  val numCycles = 20
+  for (i <- 0 until numCycles) {
+    val newenable = rnd.nextInt(3)
+    val oldout = peek(c.io.output.data)
+    newenable match {
+      case 0 => 
+        poke(c.io.input.reset, 1)
+        poke(c.io.input.set, 0)
+      case 1 => 
+        poke(c.io.input.reset, 0)
+        poke(c.io.input.set, 1)      
+      case 2 =>
+        poke(c.io.input.reset, 0)
+        poke(c.io.input.set, 0)
+    }
+
+    step(1)
+
+    newenable match {
+      case 0 => 
+        expect(c.io.output.data, 0)
+      case 1 => 
+        expect(c.io.output.data, 1)
+      case 2 =>
+        expect(c.io.output.data, oldout)
+    }
+  }
+
+  poke(c.io.input.asyn_reset, 1)
+  expect(c.io.output.data, 0)
+  step(1)
+  expect(c.io.output.data, 0)
+  poke(c.io.input.asyn_reset, 0)
+  step(1)
+  expect(c.io.output.data, 0)
+
+}
+
 class FFTester extends ChiselFlatSpec {
   behavior of "FF"
   backends foreach {backend =>
@@ -81,11 +167,38 @@ class FFNoInitTester extends ChiselFlatSpec {
   }
 }
 
+class FFNoInitNoResetTester extends ChiselFlatSpec {
+  behavior of "FFNoInit"
+  backends foreach {backend =>
+    it should s"correctly add randomly generated numbers $backend" in {
+      Driver(() => new FFNoInit(32))(c => new FFNoInitTests(c)) should be (true)
+    }
+  }
+}
+
+class FFNoResetTester extends ChiselFlatSpec {
+  behavior of "FFNoInit"
+  backends foreach {backend =>
+    it should s"correctly add randomly generated numbers $backend" in {
+      Driver(() => new FFNoInit(32))(c => new FFNoInitTests(c)) should be (true)
+    }
+  }
+}
+
 class TFFTester extends ChiselFlatSpec {
   behavior of "TFF"
   backends foreach {backend =>
     it should s"correctly add randomly generated numbers $backend" in {
       Driver(() => new TFF())(c => new TFFTests(c)) should be (true)
+    }
+  }
+}
+
+class SRFFTester extends ChiselFlatSpec {
+  behavior of "SRFF"
+  backends foreach {backend =>
+    it should s"correctly add randomly generated numbers $backend" in {
+      Driver(() => new SRFF())(c => new SRFFTests(c)) should be (true)
     }
   }
 }

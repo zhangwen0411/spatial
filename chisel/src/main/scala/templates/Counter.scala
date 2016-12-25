@@ -21,7 +21,8 @@ class Counter(val par: Int) extends Module {
     val output = new Bundle {
       val count      = Vec(par, UInt(32.W).asOutput)
       val done   = Bool().asOutput
-      val debug  = UInt(32.W).asOutput      
+      val extendedDone = Bool().asOutput
+      val saturated = Bool().asOutput
     }
   })
 
@@ -33,12 +34,15 @@ class Counter(val par: Int) extends Module {
   val count = base.io.output.data
   val newval = count + (io.input.stride * UInt(par)) + io.input.gap
   val isMax = newval >= io.input.max
+  val wasMax = Reg(next = isMax, init = Bool(false))
+  val wasEnabled = Reg(next = io.input.enable, init = Bool(false))
   val next = Mux(isMax, Mux(io.input.saturate, count, init), newval)
-  io.output.debug := newval + (io.input.stride * UInt(par-1)) + io.input.gap
   base.io.input.data := Mux(io.input.reset, init, next)
 
   (0 until par).foreach { i => io.output.count(i) := count + UInt(i)*io.input.stride }
   io.output.done := io.input.enable & isMax
+  io.output.saturated := io.input.saturate & isMax
+  io.output.extendedDone := (io.input.enable | wasEnabled) & (isMax | wasMax)
 }
 
 // class CounterReg(val w: Int) extends Module {

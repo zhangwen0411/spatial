@@ -44,8 +44,10 @@ class SequentialTests(c: Sequential) extends PeekPokeTester(c) {
   }
   expect(c.io.output.done, 0)
 
+  poke(c.io.input.enable, 0)
   step(5)
   done = peek(c.io.output.done).toInt
+  poke(c.io.input.enable, 1)
   numCycles = 0
   while ((done != 1) & (numCycles < timeout)) {
     handleStageEnables
@@ -64,7 +66,7 @@ class SequentialTester extends ChiselFlatSpec {
   behavior of "Sequential"
   backends foreach {backend =>
     it should s"correctly add randomly generated numbers $backend" in {
-      Driver(() => new Sequential(5))(c => new SequentialTests(c)) should be (true)
+      Driver(() => new Sequential(10))(c => new SequentialTests(c)) should be (true)
     }
   }
 }
