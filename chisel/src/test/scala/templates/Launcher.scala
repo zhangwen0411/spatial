@@ -56,6 +56,11 @@ object Launcher {
           (c) => new DelayTests(c)
         }
       },
+      "Pipe" -> { (backendName: String) =>
+        Driver(() => new Pipe(2), "verilator") {
+          (c) => new PipeTests(c)
+        }
+      },
       "Parallel" -> { (backendName: String) =>
         Driver(() => new Parallel(3), "verilator") {
           (c) => new ParallelTests(c)

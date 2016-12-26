@@ -38,7 +38,8 @@ class Sequential(val n: Int) extends Module {
 
   val ctr = Module(new Counter(1))
   ctr.io.input.enable := io.input.enable & io.input.stageDone(lastState-2) // TODO: Is this wrong? It still works...  
-  ctr.io.input.reset := (state === doneState.U.U  ctr.io.input.saturate := false.B
+  ctr.io.input.reset := (state === doneState.U)
+  ctr.io.input.saturate := false.B
   ctr.io.input.max := max
   ctr.io.input.stride := 1.U
   val iter = ctr.io.output.count(0)
@@ -65,10 +66,10 @@ class Sequential(val n: Int) extends Module {
 //  nextStateMux.io.sel := muxSel
   when(io.input.enable) {
     when(state === initState.U) {
-      stateFF.io.input.data := UInt(resetState)
-    }.elsewhen (state === UInt(resetState)) {
+      stateFF.io.input.data := resetState.U
+    }.elsewhen (state === resetState.U) {
       stateFF.io.input.data := Mux(io.input.numIter === 0.U, doneState.U, firstState.U)
-    }.elsewhen (state < UInt(lastState)) {
+    }.elsewhen (state < lastState.U) {
 
       // // Safe but expensive way
       // val doneStageId = (0 until n).map { i => // Find which stage got done signal
@@ -88,18 +89,18 @@ class Sequential(val n: Int) extends Module {
         stateFF.io.input.data := state
       }
 
-    }.elsewhen (state === UInt(lastState)) {
+    }.elsewhen (state === lastState.U) {
       when(io.input.stageDone(lastState-2)) {
         when(ctr.io.output.done) {
-          stateFF.io.input.data := doneStat.U)
+          stateFF.io.input.data := doneState.U
         }.otherwise {
-          stateFF.io.input.data := firstStat.U)
+          stateFF.io.input.data := firstState.U
         }
       }.otherwise {
         stateFF.io.input.data := state
       }
 
-    }.elsewhen (state === doneStat.U)) {
+    }.elsewhen (state === doneState.U) {
       stateFF.io.input.data := initState.U
     }.otherwise {
       stateFF.io.input.data := state
@@ -110,6 +111,6 @@ class Sequential(val n: Int) extends Module {
 //  stateFF.io.input.data := nextStateMux.io.out
 
   // Output logic
-  io.output.done := state === doneStat.U)
+  io.output.done := state === doneState.U
   io.output.stageEnable.zipWithIndex.foreach { case (en, i) => en := (state === UInt(i+2)) }
 }
