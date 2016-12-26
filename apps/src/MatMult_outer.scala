@@ -10,9 +10,9 @@ trait MatMult_outerApp extends SpatialApp {
   val tileSizeM = 4
   val tileSizeN = 192
   val tileSizeP = 192
-  val innerPar = 16
+  val innerPar = 2
   val midPar = 1
-  val outerPar = 2
+  val outerPar = 1
 
   def MatMult_outer(A: Rep[Array[T]], B: Rep[Array[T]], C_init: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
     val M = ArgIn[SInt]

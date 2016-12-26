@@ -35,8 +35,8 @@ WHERE
 
 */
 
-object TPCHQ6 extends SpatialAppCompiler with TPCHQ6_App
-trait TPCHQ6_App extends SpatialApp {
+object TPCHQ6 extends SpatialAppCompiler with TPCHQ6App // Regression (Dense) // Args: 384
+trait TPCHQ6App extends SpatialApp {
   type FT = SInt
   type Array[T] = ForgeArray[T]
 

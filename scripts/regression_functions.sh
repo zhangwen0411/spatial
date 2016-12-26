@@ -4,15 +4,34 @@
 ##   It is called from the receive.sh, which handles path variables
 ##   and git checkouts on a server-specific basis
 
+spacing=45
+delay=2100
+numpieces=30
+hist=72
 
 ## Function for building spatial
 build_spatial() {
+  logger "Cleaning old regression files..."
+  cd ${REGRESSION_HOME}
+  ls | grep -v $tim | grep -v receive | grep -v regression | xargs rm -rf
+  logger "Cleanup done!"
+  
+  logger "Patching the nsc library thing..."
+  cd $DELITE_HOME
+  find ./ -type f -exec sed -i -e 's/^import tools.nsc/import scala.tools.nsc/g' {} \; # Not sure why we do this suddenly..
   cd $SPATIAL_HOME
+  find ./ -type f -exec sed -i -e 's/^import tools.nsc/import scala.tools.nsc/g' {} \; # Not sure why we do this suddenly..
+  logger "Patch done!"
+
   logger "Making spatial..."
   make > /tmp/log 2>&1
   logger "Spatial done!"
   logger "Checking if spatial made correctly..."
   exists "$PUB_HOME" 3
+  errs=(`cat /tmp/log | grep error | grep -v errors | wc -l`)
+  if [[ $errs -gt 0 ]]; then
+  	clean_exit 8 "Detected errors in spatial build (/tmp/log)"
+  fi
   logger "Spatial made correctly!"
 
   # Patch bin/spatial
@@ -20,7 +39,7 @@ build_spatial() {
   if [[ ${test_to_run} = "maxj" ]]; then
     sed -i 's/parser.add_argument("--maxj", dest="maxj", action="store_true", default=False/parser.add_argument("--maxj", dest="maxj", action="store_true", default=True/g' ${PUB_HOME}/bin/spatial
   elif [[ ${test_to_run} = "scala" ]]; then
-    sed -i "s/parser.add_argument('--test', dest="test", action="store_true", default=False/parser.add_argument('--test', dest="test", action="store_true", default=True/g" ${PUB_HOME}/bin/spatial
+    sed -i 's/dest="test", action="store_true", default=False/dest="test", action="store_true", default=True/g' ${PUB_HOME}/bin/spatial
   fi
   sed -i "s/parser.add_argument('--CGRA', dest='cgra', action='store_true', default=True/parser.add_argument('--CGRA', dest='cgra', action='store_true', default=False/g" ${PUB_HOME}/bin/spatial
   logger "Patch done!"
@@ -38,11 +57,10 @@ git add -A
 git commit -m "Automated incron update"
 git push
 
-mv $log ${dirname}/../${tim}.${type_todo}.log
 rm $packet
-stubborn_delete
+# stubborn_delete ${dirname}
 
-ps aux | grep -ie mattfel | grep -v ssh | grep -v bash | awk '{system("kill -9 " $2)}'
+ps aux | grep -ie mattfel | grep -v ssh | grep -v bash | grep -iv screen | awk '{system("kill -9 " $2)}'
 
 exit 1
 
@@ -82,10 +100,16 @@ echo -e "\n\n***\n\n" >> $wiki_file
 echo -e "\n## [Prettier History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${pretty_name}) \n" >> $wiki_file
 # echo -e "\n## [Performance Results](https://www.dropbox.com/s/a91ra3wvdyr3x5b/Performance_Results.xlsx?dl=0) \n" >> $wiki_file
 
+stamp_app_comments
 stamp_commit_msgs
 }
 
-
+stamp_app_comments() {
+  cd ${SPATIAL_HOME}/regression_tests
+  comments=(`find . -type f -maxdepth 3 -exec grep PASS {} \; | grep "^PASS: \(.*\).*\*" | sed "s/PASS:.*(/* (/g" | sed "s/*//g"`)
+  echo -e "\n# COMMENTS:" >> $wiki_file
+  echo -e "\n${comments}" >> $wiki_file
+}
 
 update_log() {
   perf_hist=72
@@ -244,6 +268,11 @@ mv ${pretty_file}.tmp ${pretty_file}
 ## 5 - directory for this script
 ## 6 - args
 create_script() {
+  if [[ $6 = "none" ]]; then
+  	args=""
+  else
+  	args=$6
+  fi
   if [[ ${type_todo} = "maxj" ]]; then
   echo "
 #!/bin/bash
@@ -312,7 +341,7 @@ fi
 rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
 touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
 cd out
-bash ${5}/out/run.sh $6 2>&1 | tee -a ${5}/log
+bash ${5}/out/run.sh ${args} 2>&1 | tee -a ${5}/log
 if grep -q \"PASS: 1\" ${5}/log; then
   if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
     rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
@@ -362,7 +391,7 @@ export JAVA_HOME=/usr/
 sleep \$((${3}*${spacing})) # Backoff time to prevent those weird file IO errors
 
 cd ${PUB_HOME}
-${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} ${6} 2>&1 | tee -a ${5}/log
+${PUB_HOME}/bin/spatial --test --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} ${args} 2>&1 | tee -a ${5}/log
 
 sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${5}/log
 sed -i \"s/error retrieving current directory/Ignoring getcwd e r r o r/g\" ${5}/log
@@ -391,36 +420,33 @@ if [ \"\$wc\" -ne 0 ]; then
   exit 1
 fi
 
-rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
-touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
-cd out
 if grep -q \"PASS: 1\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   fi
 elif grep -q \"PASS: true\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   fi
 elif grep -q \"PASS: 0\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
     echo \"[STATUS] Declaring failure validation\"
   touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
   fi
 elif grep -q \"PASS: false\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
     echo \"[STATUS] Declaring failure validation\"
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
   fi
 else 
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
     echo \"[STATUS] Declaring failure no_validation_check\"
   touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_no_validation_check.${3}_${4}    
   fi

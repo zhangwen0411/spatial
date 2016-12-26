@@ -8,13 +8,13 @@ trait GDAApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   val margin = 1
-  val innerPar = 8
-  val outerPar = 2
-  val MAXC = 48
+  val innerPar = 2
+  val outerPar = 1
+  val MAXC = 96
   val aligned_C = 96
   val C = MAXC
   val tileSize = 192
-  val pLoopPar = 2
+  val pLoopPar = 1
 
   def gda(xCPU: Rep[Array[T]], yCPU: Rep[Array[SInt]], mu0CPU: Rep[Array[T]], mu1CPU: Rep[Array[T]]) = {
     val rTileSize     = tileSize (96 -> 19200)
@@ -101,20 +101,20 @@ trait GDAApp extends SpatialApp {
 
     val result = gda(x.flatten, ys, mu0, mu1)
 
-    // val gold = x.zip(ys){ (row, y) =>
-    //   val sub = if (y == 1) row.zip(mu1){_-_} else row.zip(mu0){_-_}
-    //   Array.tabulate(C){i => Array.tabulate(C){j => sub(i) * sub(j) }}.flatten
-    // }.reduce{(a,b) => a.zip(b){_+_}}
+    val gold = x.zip(ys){ (row, y) =>
+      val sub = if (y == 1) row.zip(mu1){_-_} else row.zip(mu0){_-_}
+      Array.tabulate(C){i => Array.tabulate(C){j => sub(i) * sub(j) }}.flatten
+    }.reduce{(a,b) => a.zip(b){_+_}}
 
-    // // println("actual: " + gold.mkString(", "))
-    // //println("result: " + result.mkString(", "))
-    // // println("Sum of differences: " + gold.zip(result){_-_}.reduce{_+_})
-    // printArr(gold, "gold: ")
-    // printArr(result, "result: ")
+    // println("actual: " + gold.mkString(", "))
+    //println("result: " + result.mkString(", "))
+    // println("Sum of differences: " + gold.zip(result){_-_}.reduce{_+_})
+    printArr(gold, "gold: ")
+    printArr(result, "result: ")
 
-    // val cksum = gold.zip(result){ case (a,b) => a < b + margin && a > b - margin }.reduce{_&&_}
-    // println("PASS: " + cksum  + " (GDA)")
+    val cksum = gold.zip(result){ case (a,b) => a < b + margin && a > b - margin }.reduce{_&&_}
+    println("PASS: " + cksum  + " (GDA)")
 
-    // assert( result == gold )
+    assert( result == gold )
   }
 }

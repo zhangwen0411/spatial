@@ -42,9 +42,9 @@ object SGD extends SpatialAppCompiler with SGDApp // Regression (Dense) // Args:
 trait SGDApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
   type T = Flt
-  val modelSize = 768
-  val tileSize = 192
-  val innerPar = 48
+  val modelSize = 192
+  val tileSize = 96
+  val innerPar = 2
   val outerPar = 1
   val margin = 1
 
