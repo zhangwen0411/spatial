@@ -78,10 +78,8 @@ trait ChiselPreCodegen extends Traversal  {
         b
     }
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
-    withStream(newStream("ArgInBundle")) {
+    withStream(newStream("IOBundle")) {
       emitArgInBundle(argIns)
-    }
-    withStream(newStream("ArgOutBundle")) {
       emitArgOutBundle(argOuts)
     }
 		/*withStream(newStream("ChiselManager")) {
@@ -941,9 +939,7 @@ emit(s"""
   }
 
   private def emitArgOutBundle(ports: Set[Sym[Reg[_]]]) {
-    emit(s"""package interfaces
-import chisel3._
-
+    emit(s"""
 class ArgOutBundle() extends Bundle{
 """)
     ports.map { p => emit(s"  val ${quote(p)} = Output(UInt(32.W))")}

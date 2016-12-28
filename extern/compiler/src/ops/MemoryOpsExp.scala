@@ -478,13 +478,13 @@ trait MaxJGenMemoryOps extends MaxJGenExternPrimitiveOps with MaxJGenFat with Ma
 
   override def emitFileFooter() = {
     emitBufferControlSignals()
-    withStream(baseStream) {
-      emit(s"""// Emit argin reads""")
-      emitted_argins.toList.foreach {
-        case (sym, regStr) =>
-          emit(s"""${maxJPre(sym)} ${quote(sym)} = $regStr; // reg read""")
-      }
-    }
+    // withStream(baseStream) {
+    //   emit(s"""// Emit argin reads""")
+    //   emitted_argins.toList.foreach {
+    //     case (sym, regStr) =>
+    //       emit(s"""${maxJPre(sym)} ${quote(sym)} = $regStr; // reg read""")
+    //   }
+    // }
     super.emitFileFooter()
   }
 
@@ -1478,14 +1478,14 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
 
   override def emitFileFooter() = {
     emitBufferControlSignals()
-    withStream(baseStream) {
-        emit("}")
-      emit(s"""// Emit argin reads""")
-      emitted_argins.toList.foreach {
-        case (sym, regStr) =>
-          emit(s"""${chiselPre(sym)} ${quote(sym)} = io.$regStr; // reg read""")
-      }
-    }
+    // withStream(baseStream) {
+    //     emit("}")
+    //   emit(s"""// Emit argin reads""")
+    //   emitted_argins.toList.foreach {
+    //     case (sym, regStr) =>
+    //       emit(s"""${chiselPre(sym)} ${quote(sym)} = io.$regStr; // reg read""")
+    //   }
+    // }
     super.emitFileFooter()
   }
 
@@ -1882,46 +1882,46 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       print_stage_suffix(quote(sym),false)
 
     case BurstLoad(mem, fifo, ofs, len, par) =>
-      print_stage_prefix(s"Offchip Load",s"",s"${quote(sym)}", false)
-      withStream(baseStream) {
-        emit(s"""DFEVar ${quote(fifo)}_trashEn = dfeBool().newInstance(this); // Send stream to trash for when read is not burst-aligned""")
-      }
-      len match {
-        case ConstFix(length) =>
-          emit(s"""MemoryCmdGenLib ${quote(sym)} = new MemoryCmdGenLib(
-              this,
-              ${quote(sym)}_en, ${quote(sym)}_done,
-              ${quote(mem)}, ${quote(ofs)},
-              "${quote(mem)}_${quote(sym)}_in",
-              ${length},
-              ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
-        case _ =>
-          emit(s"""MemoryCmdGenLib ${quote(sym)} = new MemoryCmdGenLib(
-              this,
-              ${quote(sym)}_en, ${quote(sym)}_done,
-              ${quote(mem)}, ${quote(ofs)},
-              "${quote(mem)}_${quote(sym)}_in",
-              ${quote(len)},
-              ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
-      }
-      emit(s"""${quote(fifo)}_writeEn <== ${quote(sym)}_en;""")
-      emit(s"""${quote(fifo)}_wdata <== ${quote(fifo)}_rdata;""")
-      print_stage_suffix(quote(sym), false)
+      // print_stage_prefix(s"Offchip Load",s"",s"${quote(sym)}", false)
+      // withStream(baseStream) {
+      //   emit(s"""DFEVar ${quote(fifo)}_trashEn = dfeBool().newInstance(this); // Send stream to trash for when read is not burst-aligned""")
+      // }
+      // len match {
+      //   case ConstFix(length) =>
+      //     emit(s"""MemoryCmdGenLib ${quote(sym)} = new MemoryCmdGenLib(
+      //         this,
+      //         ${quote(sym)}_en, ${quote(sym)}_done,
+      //         ${quote(mem)}, ${quote(ofs)},
+      //         "${quote(mem)}_${quote(sym)}_in",
+      //         ${length},
+      //         ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
+      //   case _ =>
+      //     emit(s"""MemoryCmdGenLib ${quote(sym)} = new MemoryCmdGenLib(
+      //         this,
+      //         ${quote(sym)}_en, ${quote(sym)}_done,
+      //         ${quote(mem)}, ${quote(ofs)},
+      //         "${quote(mem)}_${quote(sym)}_in",
+      //         ${quote(len)},
+      //         ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
+      // }
+      // emit(s"""${quote(fifo)}_writeEn <== ${quote(sym)}_en;""")
+      // emit(s"""${quote(fifo)}_wdata <== ${quote(fifo)}_rdata;""")
+      // print_stage_suffix(quote(sym), false)
 
     case BurstStore(mem, fifo, ofs, len, par) =>
-      // TODO: Offchip stores with burst not aligned
-      print_stage_prefix(s"Offchip Store",s"",s"${quote(sym)}", false)
-      emit(s"""// ${quote(sym)}: BurstStore(${quote(mem)},${quote(fifo)}, ${quote(ofs)}, ${quote(len)}, ${quote(par)})""")
-      emit(s"""MemoryCmdStLib ${quote(sym)} = new MemoryCmdStLib(
-          this,
-          ${quote(sym)}_en, ${quote(sym)}_done,
-          ${quote(mem)}, ${quote(ofs)},
-          "${quote(mem)}_${quote(sym)}_out",
-          ${quote(len)},
-          ${quote(fifo)}_writeEn, ${quote(fifo)}_wdata);""")
-      emit(s"""${quote(fifo)}_readEn <== ${quote(sym)}_en;""")
-      print_stage_suffix(quote(sym), false)
-//      emitComment("Offchip store from fifo")
+//       // TODO: Offchip stores with burst not aligned
+//       print_stage_prefix(s"Offchip Store",s"",s"${quote(sym)}", false)
+//       emit(s"""// ${quote(sym)}: BurstStore(${quote(mem)},${quote(fifo)}, ${quote(ofs)}, ${quote(len)}, ${quote(par)})""")
+//       emit(s"""MemoryCmdStLib ${quote(sym)} = new MemoryCmdStLib(
+//           this,
+//           ${quote(sym)}_en, ${quote(sym)}_done,
+//           ${quote(mem)}, ${quote(ofs)},
+//           "${quote(mem)}_${quote(sym)}_out",
+//           ${quote(len)},
+//           ${quote(fifo)}_writeEn, ${quote(fifo)}_wdata);""")
+//       emit(s"""${quote(fifo)}_readEn <== ${quote(sym)}_en;""")
+//       print_stage_suffix(quote(sym), false)
+// //      emitComment("Offchip store from fifo")
 
     case Reg_new(init) =>
       val tp = sym.tp.typeArguments(0)
@@ -1975,15 +1975,15 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       }
 
     case Argin_new(init) =>
-      withStream(baseStream) {
-        val tsb = ctpstrb(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-        val tse = ctpstre(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-        emit(s"""var ${quote(sym)} = $tsb INPUT  $tse""")
-      }
-      if (argToExp.contains(sym.asInstanceOf[Sym[Reg[Any]]])) {
-        emit(s"""${quote(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))} <== ${quote(sym)};""")
-      }
-
+      // withStream(baseStream) {
+      //   val tsb = ctpstrb(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+      //   val tse = ctpstre(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+      //   emit(s"""var ${quote(sym)} = $tsb INPUT  $tse""")
+      // }
+      // if (argToExp.contains(sym.asInstanceOf[Sym[Reg[Any]]])) {
+      //   emit(s"""${quote(argToExp(sym.asInstanceOf[Sym[Reg[Any]]]))} <== ${quote(sym)};""")
+      // }
+      emit(s"""val ${quote(sym)} = Wire(io.ArgIn.${quote(sym)})""")
 
     case Argout_new(init) => //emitted in reg_write
 
@@ -2059,7 +2059,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           if (isAccum(reg)) throw new Exception(s"""ArgOut (${quote(reg)}) cannot be used as an accumulator!""")
 
           val controlStr = if (parentOf(reg).isEmpty) s"top_done" else quote(parentOf(reg).get) + "_done"
-          emitGlobal(s"""var ${quote(reg)} =  $tsb OUTPUT $tse;""")
+          // emitGlobal(s"""var ${quote(reg)} =  $tsb OUTPUT $tse;""")
           emit(s"""io.${quote(reg)} := ${quote(value)}""")
 
 

@@ -589,14 +589,10 @@ trait MaxJGenExternPrimitiveOps extends MaxJGenEffect {
         d match {
           case ConstFixPt(x,_,_,_) =>
             val ts = tpstr(parOf(s)) (s.tp, implicitly[SourceContext])
-            withStream(baseStream) {
-              emit(s"""DFEVar ${quote(s)} = constant.var( $ts, $x ); """)
-            }
+            emit(s"""DFEVar ${quote(s)} = constant.var( $ts, $x ); // Emit const""")
           case ConstFltPt(x,_,_) =>
             val ts = tpstr(parOf(s)) (s.tp, implicitly[SourceContext])
-            withStream(baseStream) {
-              emit(s"""DFEVar ${quote(s)} = constant.var( $ts, $x ); """)
-            }
+            emit(s"""DFEVar ${quote(s)} = constant.var( $ts, $x ); // Emit const""")
           case _ =>
             withStream(baseStream) {
               emit(s"""// Can't emit ${quote(s)}""")
@@ -907,13 +903,9 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
       x match {
         case _:Const[_] | _:Param[_] =>
-          withStream(baseStream) {
-            emit(s"""var ${quote(sym)} = UInt(${quote(x)})""")
-          }
+          emit(s"""var ${quote(sym)} = UInt(${quote(x)}) // emit const""")
         case _ =>
-          withStream(baseStream) {
-            emit(s"""// var $sym = ${quote(x)}.cast($ts)""")
-          }
+          emit(s"""// var $sym = ${quote(x)}.cast($ts) // emit const""")
         }
 
     case _ => super.emitNode(sym, rhs)
@@ -928,15 +920,11 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
           case ConstFixPt(x,_,_,_) =>
             val tsb = ctpstrb(parOf(s)) (s.tp, implicitly[SourceContext])
             val tse = ctpstre(parOf(s)) (s.tp, implicitly[SourceContext])
-            withStream(baseStream) {
-              emit(s"""val ${quote(s)} =  $tsb $x $tse """)
-            }
+            emit(s"""val ${quote(s)} =  $tsb $x $tse  // emit const""")
           case ConstFltPt(x,_,_) =>
             val tsb = ctpstrb(parOf(s)) (s.tp, implicitly[SourceContext])
             val tse = ctpstre(parOf(s)) (s.tp, implicitly[SourceContext])
-            withStream(baseStream) {
-              emit(s"""val ${quote(s)} =  $tsb $x $tse """)
-            }
+            emit(s"""val ${quote(s)} =  $tsb $x $tse  // emit const""")
           case _ =>
             withStream(baseStream) {
               emit(s"""// Can't emit ${quote(s)}""")
