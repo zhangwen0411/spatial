@@ -832,6 +832,106 @@ trait InOutArgApp extends SpatialApp {
   }
 }
 
+object ScalarMath extends SpatialAppCompiler with ScalarMathApp // Regression (Unit) // Args: 7
+trait ScalarMathApp extends SpatialApp {
+
+  def main() {
+
+    // Declare SW-HW interface vals
+    val x = ArgIn[SInt]
+    val y = ArgOut[SInt]
+    val N = args(0).to[SInt]
+
+    // Connect SW vals to HW vals
+    setArg(x, N)
+
+    // Create HW accelerator
+    Accel {
+      Pipe { y := ((2.as[SInt]*x + 4)-1.as[SInt]) }
+    }
+
+
+    // Extract results from accelerator
+    val result = getArg(y)
+
+    // Create validation checks and debug code
+    val gold = ((N*2 + 4)-1)
+    println("expected: " + gold)
+    println("result: " + result)
+
+    val cksum = gold == result
+    println("PASS: " + cksum + " (ScalarMath)")
+  }
+}
+
+object MemTest1D extends SpatialAppCompiler with MemTest1DApp // Regression (Unit) // Args: 7
+trait MemTest1DApp extends SpatialApp {
+
+  def main() {
+
+    // Declare SW-HW interface vals
+    val x = ArgIn[UInt]
+    val y = ArgOut[UInt]
+    val N = args(0).to[UInt]
+
+    // Connect SW vals to HW vals
+    setArg(x, N)
+
+    // Create HW accelerator
+    Accel {
+      val mem = SRAM[UInt](384)
+      Pipe(384 by 1) { i =>
+        mem(i) = x + i.to[UInt]
+      }
+      Pipe { y := mem(383) }
+    }
+
+
+    // Extract results from accelerator
+    val result = getArg(y)
+
+    // Create validation checks and debug code
+    val gold = ((N*2 + 4)-1)
+    println("expected: " + gold)
+    println("result: " + result)
+
+    val cksum = gold == result
+    println("PASS: " + cksum + " (MemTest1D)")
+  }
+}
+
+object MemTest2D extends SpatialAppCompiler with MemTest2DApp // Regression (Unit) // Args: 7
+trait MemTest2DApp extends SpatialApp {
+
+  def main() {
+
+    // Declare SW-HW interface vals
+    val x = ArgIn[SInt]
+    val y = ArgOut[SInt]
+    val N = args(0).to[SInt]
+
+    // Connect SW vals to HW vals
+    setArg(x, N)
+
+    // Create HW accelerator
+    Accel {
+      Pipe { y := ((2.as[SInt]*x + 4)-1.as[SInt]) }
+    }
+
+
+    // Extract results from accelerator
+    val result = getArg(y)
+
+    // Create validation checks and debug code
+    val gold = ((N*2 + 4)-1)
+    println("expected: " + gold)
+    println("result: " + result)
+
+    val cksum = gold == result
+    println("PASS: " + cksum + " (MemTest2D)")
+  }
+}
+
 object MultiplexedWriteTest extends SpatialAppCompiler with MultiplexedWriteTestApp // Regression (Unit) // Args: none
 trait MultiplexedWriteTestApp extends SpatialApp {
   type Array[SInt] = ForgeArray[SInt]
