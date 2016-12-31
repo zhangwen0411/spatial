@@ -891,7 +891,7 @@ trait MemTest1DApp extends SpatialApp {
     val result = getArg(y)
 
     // Create validation checks and debug code
-    val gold = ((N*2 + 4)-1)
+    val gold = N+383
     println("expected: " + gold)
     println("result: " + result)
 

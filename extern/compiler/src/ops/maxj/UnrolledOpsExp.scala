@@ -26,8 +26,8 @@ trait UnrolledOpsExp extends ExternPrimitiveTypesExp with MemoryOpsExp {
       <h4> </h4>${table_init}""")
     }
   }
-  def print_stage_suffix(name: String, hadThingsInside: Boolean = true) {
-    if (hadThingsInside) {
+  def print_stage_suffix(name: String, inner: Boolean = true) {
+    if (inner) {
       controller_tree.write("""</TABLE></div>""")
     }
     controller_tree.write(s"</TD><!-- Close $name -->")

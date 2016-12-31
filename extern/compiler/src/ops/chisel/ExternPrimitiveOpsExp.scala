@@ -75,25 +75,13 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Add(a,b) =>
-      val pre = chiselPre(sym)
-      emit(s"""$pre ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
+      emit(s"""val ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
 
     case FixPt_Sub(a,b) =>
-      val pre = chiselPre(sym)
-      emit(s"""$pre ${quote(sym)} = ${quote(a)} - ${quote(b)};""")
+      emit(s"""val ${quote(sym)} = ${quote(a)} - ${quote(b)};""")
 
     case FltPt_Add(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          if (!isReduceResult(sym)) {
-            emit(s"""$pre ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
-          } else {
-            emit(s"""$pre ${quote(sym)} = ${quote(a)}; // ignore ${quote(b)} b/c accumulator""")
-          }
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} + ${quote(b)};""")
 
     case FixPt_Div(a,b) =>
       val pre = chiselPre(sym)

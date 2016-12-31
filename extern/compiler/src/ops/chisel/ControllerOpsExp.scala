@@ -263,11 +263,11 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
            case _ => emitNode(s, d)
          }
       }
-			emitComment(" End Hwblock dependencies }")
-      emitComment("\n//Setup Top Level IO")
+			// emitComment(" End Hwblock dependencies }")
+      // emitComment("\n//Setup Top Level IO")
       // emitComment(s"quoteSuffix = $quoteSuffix")
       emit(s"""val ${quote(sym)}_en = io.top_en;""")
-      emit(s"""val ${quote(sym)}_done = Wire(Bool())""")
+      emitGlobalWire(s"""${quote(sym)}_done""")
       // emit(s"""io.top_done := ${quote(sym)}_done;""")
       // emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")
       emitController(sym, None)
@@ -432,91 +432,55 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
     /* State Machine Instatiation */
     // IO
-    // TODO: Do we need to branch here?
-    styleOf(sym) match {
-      case InnerPipe =>
-        val numCounters = if (cchain.isDefined) {
-          val Def(EatReflect(Counterchain_new(counters))) = cchain.get
-          counters.size
-        } else {
-          1
+    val (numCounters, numIter) = if (cchain.isDefined) {
+      val Def(EatReflect(Counterchain_new(counters))) = cchain.get
+      var niter_str = s""
+      counters.zipWithIndex.map {case (ctr,i) =>
+        val Def(EatReflect(Counter_new(start, end, step, par))) = ctr
+        if (i > 0) {
+          niter_str += " * "
         }
-        emit(s"""val ${quote(sym)}_sm = Module(new ${smStr}(${numCounters})) // TODO: Get num stages""")
-        emit(s"""  ${quote(sym)}_sm.io.input.enable := ${quote(sym)}_en;""")
-        emit(s"""  ${quote(sym)}_done := ${quote(sym)}_sm.io.output.done""")
-        //emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done;""")
-        // emit(s"""${quote(sym)}_sm_offset.io.input.data := ${quote(sym)}_sm.io.output.done // TODO: Does this make sense?""")
-        emit(s"""val ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.output.rst_en""")
-
-        // emit(s"""${quote(sym)}_sm.io.output.reset := ${quote(sym)}_sm.io.output.rst_en // TODO: Doesn't make sense""")
-        if (!cchain.isDefined) {
-          // Unit pipe, emit constant 1's wherever required
-          emit(s"""${quote(sym)}_sm.io.input.sm_maxIn(0) := UInt(1)""")
-          //emit(s"""${quote(sym)}_sm.io.ctr_done := ${quote(sym)}_sm.io.ctr_en;""")
-          // emit(s"""val ${quote(sym)}_sm_out_offset = Module(new Offset(1))""")
-          // emit(s"""${quote(sym)}_sm_out_offset.io.signal_in := ${quote(sym)}_sm.io.ctr_en;""")
-          emit(s"""val ${quote(sym)}_unit_delay = Reg(next = ${quote(sym)}_sm.io.output.ctr_en, init = 0.U)""")
-          emit(s"""${quote(sym)}_sm.io.input.ctr_done := ${quote(sym)}_unit_delay""")
-        } else {
-          emit(s"""//TODO: Don't we need to connect a ctr_done signal to the pipe?""")
-        }
-      case CoarsePipe =>
-        emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this));""")
-        emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
-        emit(s"""    ${quote(sym)}_done <== stream.offset(${quote(sym)}_sm.getOutput("sm_done"),-1);""")
-        if (cchain.isDefined) {
-          val Def(EatReflect(Counterchain_new(counters))) = cchain.get
-          var niter_str = s""
-          counters.zipWithIndex.map {case (ctr,i) =>
-            val Def(EatReflect(Counter_new(start, end, step, par))) = ctr
-            if (i > 0) {
-              niter_str += " * "
-            }
-            niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}))"
-          }
-          emit(s"""var ${quote(sym)}_niter = ${quote(niter_str)};""")
-          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", ${quote(sym)}_niter.cast(dfeUInt(32)));""")
-        } else {
-          emit(s"""${quote(sym)}_sm.connectInput("sm_numIter", constant.var(dfeUInt(32), 1));""")
-        }
-        emit(s"""var ${quote(sym)}_rst_en = ${quote(sym)}_sm.getOutput("rst_en");""")
-      case SequentialPipe =>
-        val (numCounters, numIter) = if (cchain.isDefined) {
-          val Def(EatReflect(Counterchain_new(counters))) = cchain.get
-          var niter_str = s""
-          counters.zipWithIndex.map {case (ctr,i) =>
-            val Def(EatReflect(Counter_new(start, end, step, par))) = ctr
-            if (i > 0) {
-              niter_str += " * "
-            }
-            niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}))"
-          }
-          (counters.size, niter_str)
-        } else { 
-          (1, 1)
-        }
-        emit(s"""val ${quote(sym)}_sm_offset = Module(new Delay(3)) // TODO: Compute real delays""")
-        emit(s"""val ${quote(sym)}_sm = Module(new ${smStr}(${numCounters})) // TODO: Get num stages""")
-        emit(s"""  ${quote(sym)}_sm.io.input.enable := ${quote(sym)}_en;""")
-        emit(s"""  ${quote(sym)}_sm.io.input.numIter := (${quote(numIter)}).U""")
-        emit(s"""  ${quote(sym)}_done := ${quote(sym)}_sm_offset.io.output.data""")
-        //emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done;""")
-        emit(s"""${quote(sym)}_sm_offset.io.input.data := ${quote(sym)}_sm.io.output.done // TODO: Does this make sense?""")
-        emit(s"""val ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.output.rst_en""")
-      case ForkJoin =>
-        emit(s"""SMIO ${quote(sym)}_sm = addStateMachine("${quote(sym)}_sm", new ${smStr}(this));""")
-        emit(s"""    ${quote(sym)}_sm.connectInput("sm_en", ${quote(sym)}_en);""")
-        emit(s"""    ${quote(sym)}_done <== stream.offset(${quote(sym)}_sm.getOutput("sm_done"),-1);""")
-
+        niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}))"
+      }
+      (counters.size, niter_str)
+    } else { 
+      (1, 1)
     }
 
-    val childrenSet = Set[String]()
-    val percentDSet = Set[String]()
+    val constrArg = smStr match {
+      case "Pipe" => s"numCounters /*probably don't need*/"
+      case "Parallel" => ""
+      case _ => childrenOf(sym).length
+    }
+
+    emit(s"""val ${quote(sym)}_sm_offset = Module(new Delay(3)) // TODO: Compute real delays""")
+    emit(s"""val ${quote(sym)}_sm = Module(new ${smStr}(${constrArg})) // TODO: Get num stages""")
+    emit(s"""  ${quote(sym)}_sm.io.input.enable := ${quote(sym)}_en;""")
+    emit(s"""  ${quote(sym)}_done := ${quote(sym)}_sm.io.output.done""")
+    emit(s"""val ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.output.rst_en""")
+
+    styleOf(sym) match {
+      case InnerPipe =>
+        //emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done;""")
+        // emit(s"""${quote(sym)}_sm_offset.io.input.data := ${quote(sym)}_sm.io.output.done // TODO: Does this make sense?""")
+        // emit(s"""${quote(sym)}_sm.io.output.reset := ${quote(sym)}_sm.io.output.rst_en // TODO: Doesn't make sense""")
+      case CoarsePipe =>
+        emit(s"""  ${quote(sym)}_sm.io.input.numIter := (${quote(numIter)}).U""")
+      case SequentialPipe =>
+        emit(s"""  ${quote(sym)}_sm.io.input.numIter := (${quote(numIter)}).U""")
+        // emit(s"""  ${quote(sym)}_done := ${quote(sym)}_sm_offset.io.output.data""")
+        //emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done;""")
+        // emit(s"""${quote(sym)}_sm_offset.io.input.data := ${quote(sym)}_sm.io.output.done // TODO: Does this make sense?""")
+      case ForkJoin =>
+    }
+
+    // val childrenSet = Set[String]()
+    // val percentDSet = Set[String]()
     /* Control Signals to Children Controllers */
     if (!isInnerPipe(sym)) {
       emit(s"""//      ---- Begin $smStr ${quote(sym)} Children Signals ----""")
 		  childrenOf(sym).zipWithIndex.foreach { case (c, idx) =>
-		  	emit(s"""    val ${quote(c)}_done = Wire(Bool())""")
+		  	emitGlobalWire(s"""${quote(c)}_done""")
 		  	emit(s"""    ${quote(sym)}_sm.io.input.stageDone(${idx}) := ${quote(c)}_done;""")
         emit(s"""    val ${quote(c)}_en = ${quote(sym)}_sm.io.output.stageEnable(${quote(idx)})""")
         // childrenSet += (s"${quote(c)}_en, ${quote(c)}_done")
@@ -525,7 +489,6 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 		  	doneDeclaredSet += c
 		  }
     }
-    emit("")
 
     // emit(s"""// debug.simPrintf(${quote(sym)}_en, "pipe ${quote(sym)}: ${percentDSet.toList.mkString(",   ")}\\n", ${childrenSet.toList.mkString(",")});""")
 
@@ -537,43 +500,40 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en;""")
       }
     }
-
-    emit("")
   }
 
   def emitCChainCtrl(sym: Sym[Any], cchain: Exp[CounterChain]) {
 		val Deff(Counterchain_new(counters)) = cchain
 
+    emit(s"""//      ---- Begin counter for ${quote(sym)} ----""")
     /* Reset CounterChain */
     //TODO: support reset of counterchain to sequential and metapipe in templete
-    counters.zipWithIndex.map {case (ctr,i) =>
+    val maxes = counters.map {case ctr =>
       val Def(EatReflect(Counter_new(start, end, step, par))) = ctr
       styleOf(sym) match {
-        case InnerPipe =>
-          emit(s"""${quote(sym)}_sm.connectInput("sm_maxIn_$i", ${quote(end)});""")
-          // emit(s"""${quote(sym)}_sm.connectInput("sm_trashCnt", constant.var(dfeUInt(32), ${trashCount(bound(end).get.toInt, sym)}));""")
-          // emit(s"""DFEVar ${quote(sym)}_trash_en = ${quote(sym)}_sm.getOutput("trashEn");""")
-          emit(s"""var ${quote(ctr)}_max_$i = ${quote(sym)}_sm.getOutput("ctr_maxOut_$i");""")
-        case ForkJoin => throw new Exception("Cannot have counter chain control logic for fork-join (parallel) controller!")
+        // case InnerPipe =>
+        //   emit(s"""${quote(sym)}_sm.connectInput("sm_maxIn_$i", ${quote(end)});""")
+        //   // emit(s"""${quote(sym)}_sm.connectInput("sm_trashCnt", constant.var(dfeUInt(32), ${trashCount(bound(end).get.toInt, sym)}));""")
+        //   emit(s"""DFEVar ${quote(sym)}_trash_en = ${quote(sym)}_sm.getOutput("trashEn");""")
+        //   emit(s"""val ${quote(ctr)}_max_$i = ${quote(sym)}_sm.getOutput("ctr_maxOut_$i");""")
+        case ForkJoin => 
+          throw new Exception("Cannot have counter chain control logic for fork-join (parallel) controller!")
+          "error"
         case _ =>
-          emit(s"""var ${quote(ctr)}_max_$i = ${quote(end)};""")
+          quote(end)
       }
     }
+
+    // emit(s"""val ${quote(sym)}_maxes = List(${maxes.map(quote).mkString(",")}) // TODO: Is this variable ever used??""")
 
     styleOf(sym) match {
       case InnerPipe =>
         emitGlobalWire(s"""${quote(cchain)}_done""")
         doneDeclaredSet += cchain
-        emit(s"""${quote(sym)}_sm.connectInput("ctr_done", ${quote(cchain)}_done);""")
-        if (consumesMemFifo(sym)) {
-          emit(s"""var ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
-        } else {
-          emit(s"""var ${quote(sym)}_datapath_en = ${quote(sym)}_sm.getOutput("ctr_en");""")
-        }
-
+        emit(s"""${quote(sym)}_sm.io.input.ctr_done := ${quote(cchain)}_done;""")
+        emit(s"""val ${quote(sym)}_datapath_en = ${quote(sym)}_sm.io.output.ctr_en;""")
       case ForkJoin => throw new Exception("Cannot have counter chain control logic for fork-join (parallel) controller!")
-      case _ =>
-        emit(s"""var ${quote(sym)}_datapath_en = ${quote(sym)}_en;""")
+      case _ => emit(s"""val ${quote(sym)}_datapath_en = ${quote(sym)}_en;""")
     }
 
 
@@ -590,13 +550,13 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
             if (writesToAccumRam) {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym,
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
@@ -610,13 +570,13 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
             }
             if (writesToAccumRam) {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym,
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
@@ -628,7 +588,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
             emit(s"""var ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
             emit(s"""var ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
             val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
-            emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
+            emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
             val rstStr = s"${quote(sym)}_done"
             emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
 
@@ -647,7 +607,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 			      val specializeReduce = true;
             if (specializeReduce) {
               val ctrEn = s"${quote(sym)}_datapath_en"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             } else {
@@ -658,7 +618,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
               emit(s"""var ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
               emit(s"""var ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
               val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn;""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
@@ -679,9 +639,8 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
   def emitCustomCounterChain(cchain: Exp[CounterChain], en: Option[String], rstStr: Option[String], parent: Exp[Any], done: Option[String]=None) = {
     val sym = cchain
-    emitComment("CustomCounterChain {")
     if (!enDeclaredSet.contains(sym)) {
-      emit(s"""var ${quote(sym)}_en = ${en.get};""")
+      emit(s"""val ${quote(sym)}_en = ${en.get};""")
       enDeclaredSet += sym
     }
 
@@ -711,7 +670,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     //   val c = trashCount(bound(end).get.toInt, sym)
     //   s" + ${c}"
     // } else {""}
-    emit(s"""var[] ${quote(sym)}_max = {${maxes.map(m=>s"${quote(m)}").mkString(",")}};""")
+    emit(s"""val ${quote(sym)}_maxes = List(${maxes.map(m=>s"${quote(m)}").mkString(",")});""")
 
     // Connect strides
     val strides = counters.zipWithIndex.map { case (ctr, i) =>
@@ -727,127 +686,35 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         case _ => throw new Exception(s"""Step is of unhandled node $d""")
       }
     }
-    emit(s"""int[] ${quote(sym)}_strides = {${strides.map(s=>s"${quote(s)}").mkString(",")}};""")
+    emit(s"""val ${quote(sym)}_strides = List(${strides.map(s=>s"${quote(s)}").mkString(",")})""")
 
     val gap = 0 // Power-of-2 upcasting not supported yet
-
-    emit(s"""OffsetExpr ${quote(sym)}_offset = stream.makeOffsetAutoLoop(\"${quote(sym)}_offset\");""")
-    emit(s"""SMIO ${quote(sym)} = addStateMachine("${quote(sym)}_sm", new ${quote(sym)}_CtrSM(owner, ${quote(sym)}_strides)); // gap = ${gap}""")
-    emit(s"""${quote(sym)}.connectInput("en", ${quote(sym)}_en);
-${quote(sym)}.connectInput("reset", ${rstStr.get});
-var ${quote(sym)}_maxed = ${quote(sym)}.getOutput("saturated");""")
-
-    val doneStr = if (!done.isDefined) {
-      s"""stream.offset(${quote(sym)}.getOutput("done"), -1)"""
-    } else {
-      done.get
-    }
+    val pars = counters.map{parOf(_)}
+    val parsList = s"""List(${pars.mkString(",")})"""
+    // emit(s"""OffsetExpr ${quote(sym)}_offset = stream.makeOffsetAutoLoop(\"${quote(sym)}_offset\");""")
+    emit(s"""val ${quote(sym)} = Module(new Counter(${parsList}))""")
+    emit(s"""${quote(sym)}.io.input.enable := ${quote(sym)}_en
+${quote(sym)}.io.input.reset := ${rstStr.get}
+val ${quote(sym)}_maxed = ${quote(sym)}.io.output.saturated""")
 
     if (!doneDeclaredSet.contains(sym)) {
-      emit(s"""var ${quote(sym)}_done = $doneStr;""")
+      emit(s"""val ${quote(sym)}_done := ${quote(sym)}.io.output.done""")
       doneDeclaredSet += sym
     } else {
-      emit(s"""${quote(sym)}_done <== $doneStr;""")
+      emit(s"""${quote(sym)}_done := ${quote(sym)}.io.output.done""")
     }
 
-    emit(s"""OffsetExpr ${quote(sym)}_additionalOffset = new OffsetExpr();""")
+    emit(s"""  ${quote(sym)}.io.input.maxes.zip(${quote(sym)}_maxes).foreach { case (port,max) => port := max }""")
+    emit(s"""  ${quote(sym)}.io.input.strides.zip(${quote(sym)}_maxes).foreach { case (port,stride) => port := stride }""")
+    // emit(s"""  ${quote(sym)}.io.input.starts.zip(${quote(sym)}_starts).foreach { (port,start) => port := start }""")
     counters.zipWithIndex.map { case (ctr, i) =>
-      emit(s"""${quote(sym)}.connectInput("max${i}", ${quote(sym)}_max[${i}]);""")
-      if (parOf(ctr) == 1) {
-        emit(s"""var ${quote(ctr)} = ${quote(sym)}.getOutput("counter${i}");""")
-        // cast(n.ctrs(i)) // Cast if necessary
-      } else {
-        emit(s"""DFEVector<DFEVar> ${quote(ctr)} = new DFEVectorType<DFEVar>(dfeInt(32), ${parOf(ctr)}).newInstance(this);
-${quote(ctr)}[0] <== ${quote(sym)}.getOutput("counter${i}");
-for (int i = 0; i < ${parOf(ctr)-1}; i++) {
-  ${quote(ctr)}[i+1] <== ${quote(sym)}.getOutput("counter${i}_extension" + i);
-}""")
-        // (0 until n.par(i)) map {k =>
-        //     cast(n.ctrs(i)) // Cast if necessary
-        // }
-      }
+      val drop = pars.take(i+1).reduce{_+_} - pars(i)
+      val take = pars(i)
+      emit(s"""val ${quote(ctr)}_${i} = ${quote(sym)}.io.output.counts.drop(${drop}).take(${take})""")
     }
-    emitComment("} CustomCounterChain")
 
   }
 
-	def emitChiselCounterChain(cchain: Exp[CounterChain], en: Option[String], done: Option[String]=None) = {
-		val sym = cchain
-    // 'En' and 'done' signal contract: Enable signal is declared here, done signal must be
-    // declared before this method is called.
-    // Both signals are defined here.
-    emitComment("ChiselCounterChain {")
-    if (!enDeclaredSet.contains(sym)) {
-      emit(s"""var ${quote(sym)}_en = ${en.get};""")
-      enDeclaredSet += sym
-    }
-    emit(s"""CounterChain ${quote(sym)} = control.count.makeCounterChain(${quote(sym)}_en);""")
-
-    // For Pipes, max must be derived from PipeSM
-    // For everyone else, max is as mentioned in the ctr
-		val Deff(Counterchain_new(counters)) = cchain
-		counters.zipWithIndex.map {case (ctr,i) =>
-			val Def(EatReflect(Counter_new(start, end, step, _))) = ctr
-			val max = parentOf(cchain.asInstanceOf[Rep[CounterChain]]) match {
-				case Some(s) =>
-          s.tp.erasure.getSimpleName match {  // <- There's got to be a better way
-					case "Pipeline" => s"${quote(ctr)}_max_$i"
-					case "SpatialPipeline" => s"${quote(ctr)}_max_$i"
-					case _ => quote(end)
-				}
-				case None => quote(end)
-			}
-
-      // Scala - MaxJ Types: A short story
-      // MaxJ's counter library expects 'counter max' values for each counter to be of
-      // type "dfeUInt()". The output counter object created from both addCounter() and
-      // addCountervect() returns a counter of type dfeUInt().
-      // Scala treats all fixed point numbers as signed numbers by default. This means that
-      // all lifted constants, default types for ArgIns etc are signed numbers. Counter values,
-      // therefore, are treated as signed numbers.
-      // Temporary fix: The following logic adds typecasts to satisfy both Scala and MaxJ.
-      // [TODO] Real fix: Replace MaxJ's counter chain library with our home-grown state machine
-      // which offers more flexibility.
-      // [TODO]: The following typecasts (and state machines like PipeSM) assume that counters
-      // are always 32-bit. This is almost always overkill, and must be fixed.
-      val maxType = "dfeUInt(32)"
-      val maxWithCast = s"""${max}.cast($maxType)"""
-      val counterType = tpstr(parOf(ctr))(ctr.tp, implicitly[SourceContext])
-      val counterObject = s"""${quote(ctr)}_obj"""
-      val Def(d) = step
-      val constStep = d match {
-        case n@ConstFix(value) => value
-        case n@Tpes_Int_to_fix(v) => v match {
-          case c@Const(value) => value
-          case c@Param(value) => value
-          case _ => throw new Exception(s"""Step is of unhandled node $n, $v""")
-        }
-        case _ => throw new Exception(s"""Step is of unhandled node $d""")
-      }
-
-      if (parOf(ctr) == 1) {
-        emit(s"""${maxJPre(ctr)} $counterObject = ${quote(cchain)}.addCounter(${quote(maxWithCast)}, ${quote(constStep)});""")
-      } else {
-        emit(s"""${maxJPre(ctr)} $counterObject = ${quote(cchain)}.addCounterVect(${quote(parOf(ctr))}, ${quote(maxWithCast)}, ${quote(constStep)});""")
-      }
-      emit(s"""${maxJPre(ctr)} ${quote(ctr)} = $counterObject.cast($counterType);""")
-    }
-
-    val doneStr = if (!done.isDefined) {
-        s"stream.offset(${quote(cchain)}.getCounterWrap(${quote(counters(0))}_obj),-1)"
-    } else {
-      done.get
-    }
-
-    if (!doneDeclaredSet.contains(sym)) {
-      emit(s"""DFEVar ${quote(sym)}_done = $doneStr;""")
-      doneDeclaredSet += sym
-    } else {
-      emit(s"""${quote(sym)}_done <== $doneStr;""")
-  	}
-
-    emitComment("} ChiselCounterChain")
-  }
 
 
 }

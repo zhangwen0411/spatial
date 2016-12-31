@@ -519,7 +519,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         ${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
       val wType = if ((par == 1)) {"connectWport("} else {s"connectDirectWport($worker,"}
       duplicatesOf(local).zipWithIndex.foreach { case (m,i) =>
-        emit(s"""${quote(local)}_$i.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
+        // emit(s"""${quote(local)}_$i.${wType}${quote(sym)}_waddr, ${quote(sym)}_wdata, ${quote(sym)}_wen);""")
       }
       emit("}")
       print_stage_suffix(quote(sym),false)
@@ -661,11 +661,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
     case e@Reg_read(EatAlias(reg)) =>
       val readers = readersOf(reg).filter(_.node == sym) // There can be more than one!
       readers.foreach{reader =>
-        if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
-          rTreeMap(sym) match {
-            case Nil =>
-            case m => Console.println(s"LOAD METADATA on $sym -> $m")
-          }
+        // if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
 
           val pre = maxJPre(sym)
           val inst = instanceIndicesOf(reader, reg).head // Reads should only have one index
@@ -694,19 +690,20 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           regType(reg) match {
             case ArgumentIn => // emit in baselib suffix
               if (!emitted_argins.contains((sym, regStr))) {
+                emit(s"""// Placing regread ${quote(sym)} in BaseModule""")
                 emitted_argins += ((sym,regStr))
               }
             case _ => // Otherwise emit here
               if (!emitted_reglibreads.contains((sym, regStr))) {
-                emit(s"""$pre ${quote(sym)} = $regStr; // reg read ${nameOf(reg).getOrElse("")}""")
+                emit(s"""val ${quote(sym)} = $regStr; // reg read ${nameOf(reg).getOrElse("")}""")
                 emitted_reglibreads += ((sym, regStr))
               }
           }
 
-        }
-        else {
-          emit(s"""// ${quote(sym)} is just a register read""")
-        }
+        // }
+        // else {
+        //   emit(s"""// ${quote(sym)} is just a register read""")
+        // }
       }
 
     case e@Reg_write(EatAlias(reg), value, en) =>
@@ -799,68 +796,63 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       emitComment(s"} Reg_write // regType ${regType(reg)}, numDuplicates = ${allDups.length}")
 
     case Sram_new(size, zero) =>
-      if (!isBoundSym(sym)) { // TODO: I don't think I need this anymore
-        srams += sym.asInstanceOf[Sym[SRAM[Any]]]
+      srams += sym.asInstanceOf[Sym[SRAM[Any]]]
 
-        val distinctParents = writersOf(sym).map{writer => parentOf(writer.controlNode)}.distinct
-        val allParents = writersOf(sym).map{writer => parentOf(writer.controlNode)}
+      val numDistinctWriters = writersOf(sym).map{writer => parentOf(writer.controlNode)}.distinct.length
 
-        withStream(baseStream) {
-          emitComment("Sram_new {")
-          val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
-          //TODO: does templete assume sram has 2 dimension?
-          val dims = dimsOf(sym)
-          val sizes = dims.map{dim => bound(dim).get.toInt}
-          val size0 = sizes(0)
-          val size1 = sizes.size match {
-            case 1 => 1
-            case 2 => sizes(1)
-            case _ => throw new Exception("MaxJ generation does not yet support SRAMs with more than 2 dimensions.")
+      withStream(baseStream) {
+        emitComment("Sram_new {")
+        val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
+        //TODO: does templete assume sram has 2 dimension?
+        val dims = dimsOf(sym)
+        val sizes = dims.map{dim => bound(dim).get.toInt}
+        // val size0 = sizes(0)
+        // val size1 = sizes.size match {
+        //   case 1 => 1
+        //   case 2 => sizes(1)
+        //   case _ => throw new Exception("MaxJ generation does not yet support SRAMs with more than 2 dimensions.")
+        // }
+        val dups = duplicatesOf(sym)
+        dups.zipWithIndex.foreach { case (r, i) =>
+          val banks = getBanking(r)
+          val strides = getStride(r)
+          if (isDummy(sym)) {
+            emit(s"""DummyMemLib ${quote(sym)}_${i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""")
+          } else {
+            // if (r.depth == 1) {
+              emit(s"""val ${quote(sym)}_${i} = Module(new SRAM(${r.depth} /*bufs*/, List(${sizes.map(quote).mkString(",")}) /*dims*/, ${ts}, ${banks} /*banks*/, ${strides} /*strides*/, $numDistinctWriters /*numWriters*/)) // ${nameOf(sym).getOrElse("")}""")
+            // } else if (r.depth == 2) {
+            //   val numReaders_for_this_duplicate = readersOf(sym).filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
+            //   emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
+            //   emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
+            //     ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
+            // } else {
+            //   def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
+            //   val row_majors = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
+            //   val all_same = (row_majors.reduce{_&_} == row_majors.reduce{_|_})
+            //   // {
+            //   //   throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
+            //   // }
+            //   val read_pars = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.length}
+            //   val read_head = read_pars.head
+            //   if (!(read_pars.map{a => a == read_head}.reduce{_&_})) {
+            //     throw new Exception(s"""Cannot handle multiple NBuf readers on ${nameOf(sym).getOrElse("")} if they do not have the same access par! ($read_pars)""")
+            //   }
+            //   val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
+            //   val write_head = write_pars.head
+            //   if (!(write_pars.map{a => a == write_head}.reduce{_&_})) {
+            //     throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")
+            //   }
+            //   emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}",
+            //     ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
+            //     $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
+            //     ${all_same}, /*all_same access (row_major or col_major)*/
+            //     new boolean[] {${row_majors.map{a => a | size1==1}.mkString(",")}}, /*rowmajor read?*/
+            //     ${write_head}, ${read_head} /*writepar, readpar*/); // ${nameOf(sym).getOrElse("")}""")
+            // }
           }
-          val dups = duplicatesOf(sym)
-          dups.zipWithIndex.foreach { case (r, i) =>
-            val banks = getBanking(r)
-            val strides = getStride(r)
-            if (isDummy(sym)) {
-              emit(s"""DummyMemLib ${quote(sym)}_${i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""")
-            } else {
-              if (r.depth == 1) {
-                emit(s"""BramLib ${quote(sym)}_${i} = new BramLib(this, ${quote(size0)}, ${quote(size1)}, ${ts}, /*banks*/ ${banks}, /* stride */ ${strides}, ${distinctParents.length}); // ${nameOf(sym).getOrElse("")}""")
-              // } else if (r.depth == 2) {
-              //   val numReaders_for_this_duplicate = readersOf(sym).filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
-              //   emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
-              //   emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
-              //     ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
-              } else {
-                def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
-                val row_majors = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
-                val all_same = (row_majors.reduce{_&_} == row_majors.reduce{_|_})
-                // {
-                //   throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
-                // }
-                val read_pars = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.length}
-                val read_head = read_pars.head
-                if (!(read_pars.map{a => a == read_head}.reduce{_&_})) {
-                  throw new Exception(s"""Cannot handle multiple NBuf readers on ${nameOf(sym).getOrElse("")} if they do not have the same access par! ($read_pars)""")
-                }
-                val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
-                val write_head = write_pars.head
-                if (!(write_pars.map{a => a == write_head}.reduce{_&_})) {
-                  throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")
-                }
-                emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}",
-                  ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
-                  $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
-                  ${all_same}, /*all_same access (row_major or col_major)*/
-                  new boolean[] {${row_majors.map{a => a | size1==1}.mkString(",")}}, /*rowmajor read?*/
-                  ${write_head}, ${read_head} /*writepar, readpar*/); // ${nameOf(sym).getOrElse("")}""")
-              }
-            }
-          }
-          emitComment("} Sram_new")
         }
-      } else {
-        Console.println(s"$sym is a bound sym!")
+        emitComment("} Sram_new")
       }
 
     case Sram_load(EatAlias(sram), addr) =>
@@ -916,8 +908,17 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       }
 
     case ListVector(elems) =>
-      val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])
-      emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map(quote).mkString(",")}));""")
+      // val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])
+      elems(0).tp.erasure.getSimpleName match {
+        case "FixedPoint" => 
+          emit(s"""val ${quote(sym)} = ${elems.map(quote)} // TODO: Probably incorrect codegen""")
+        case "SpatialVector" => 
+          emit(s"""val ${quote(sym)} = ${quote(elems(0))} // TODO: Why is there a ListVector node for a vector??""")
+        case _ => 
+          emit(s"""val ${quote(sym)} = ${elems.map(quote)} // TODO: Probably incorrect codegen""")
+      }
+      
+      // emit(s"""DFEVector<DFEVar> ${quote(sym)} = new DFEVectorType<DFEVar>($ts, ${elems.size}).newInstance(this, Arrays.asList(${elems.map(quote).mkString(",")}));""")
 
     case _ => super.emitNode(sym, rhs)
   }

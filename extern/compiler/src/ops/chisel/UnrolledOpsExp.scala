@@ -23,10 +23,10 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
 
     iters.zipWithIndex.foreach{ case (is, i) =>
       if (is.size == 1) { // This level is not parallelized, so assign the iter as-is
-          emit("DFEVar " + quote(is(0)) + " = " + quote(counters(i)) + ";");
+          emit("val " + quote(is(0)) + " = " + quote(counters(i)) + "_0(0)");
       } else { // This level IS parallelized, index into the counters correctly
         is.zipWithIndex.foreach{ case (iter, j) =>
-          emit("DFEVar " + quote(iter) + " = " + quote(counters(i)) + "[" + j + "];")
+          emit("val " + quote(iter) + " = " + quote(counters(i)) + s"_$i(" + j + ")")
         }
       }
     }
@@ -84,8 +84,6 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case e@UnrolledForeach(cchain, func, inds, vs) =>
       controlNodeStack.push(sym)
-      emitComment(s"""UnrolledForeach ${quote(sym)} = UnrolledForeach(${quote(cchain)}) {""")
-      emit("""{""")
 
       // Ctr analysis for controller_tree diagram
       val Def(EatReflect(Counterchain_new(diagram_counters))) = cchain
@@ -94,27 +92,18 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
         s"${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
       }
 
-      var hadThingsInside = true
-      styleOf(sym) match {
-        case StreamPipe =>
-          emitComment(s"""StrmPipe to be emitted""")
-          print_stage_prefix(s"Foreach Streampipe",s"${ctr_str}",s"${quote(sym)}")
-        case CoarsePipe =>
-          emitComment(s"""MPSM to be emitted""")
-          print_stage_prefix(s"Foreach Metapipe",s"${ctr_str}",s"${quote(sym)}")
-        case InnerPipe =>
-          emitComment(s"""PipeSM to be emitted""")
-          print_stage_prefix(s"Foreach Innerpipe",s"${ctr_str}",s"${quote(sym)}", false)
-          hadThingsInside = false
-        case SequentialPipe =>
-          emitComment(s"""SeqSM to be emitted""")
-          print_stage_prefix(s"Foreach Seqpipe",s"${ctr_str}",s"${quote(sym)}")
-        case _ =>
-          emitComment(s"""UnrolledForeach style: ${styleOf(sym)}""")
-          print_stage_prefix(s"Foreach ${styleOf(sym)}",s"${ctr_str}",s"${quote(sym)}")
+      val style = styleOf(sym) match {
+        case StreamPipe => "Stream"
+        case CoarsePipe => "Meta"
+        case InnerPipe => "Pipe"
+        case SequentialPipe => "Seq"
+        case _ => s"${styleOf(sym)}"
       }
+      print_stage_prefix(s"Foreach $style",s"${ctr_str}",s"${quote(sym)}")
+      // emit(s"""//  ---- style ${quote(sym)} (UnrolledForeach(${quote(cchain)})) ----""")
+
       emitController(sym, Some(cchain))
-      emit(s"DFEVar ${quote(sym)}_redLoop_done = constant.var(true); // Hack for new fold unrolling...")
+      // emit(s"DFEVar ${quote(sym)}_redLoop_done = constant.var(true); // Hack for new fold unrolling...")
       emitParallelizedLoop(inds, cchain)
       emitRegChains(sym, inds.flatten)
 
@@ -166,9 +155,9 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
           emitBlock(func)
       }
 
-      emit("""}""")
-      emitComment(s"""} UnrolledForeach ${quote(sym)}""")
-      print_stage_suffix(quote(sym), hadThingsInside)
+      // emit("""}""")
+      // emitComment(s"""} UnrolledForeach ${quote(sym)}""")
+      print_stage_suffix(quote(sym), style == "Pipe")
       controlNodeStack.pop
 
     case e@UnrolledReduce(cchain, accum, func, rFunc, inds, vs, acc, rV) =>
