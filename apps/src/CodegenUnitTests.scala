@@ -37,7 +37,7 @@ trait SimpleSequentialApp extends SpatialApp {
     println("expected: " + gold)
     println("result:   " + result)
     val cksum = result == gold
-    println("PASS: " + cksum + " (SimpleSeq)")
+    println("PASS: " + cksum + " (SimpleSequential)")
 
   }
 }

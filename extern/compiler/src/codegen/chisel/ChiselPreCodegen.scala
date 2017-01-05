@@ -65,15 +65,13 @@ trait ChiselPreCodegen extends Traversal  {
       chiselManagerGen.quote(x)
   }
 
-    val argInOuts  = Set.empty[Sym[Reg[_]]]
-    val argIns  = Set.empty[Sym[Reg[_]]]
-    val argOuts  = Set.empty[Sym[Reg[_]]]
+    var argIns: List[Sym[Reg[_]]] = List()
+    var argOuts: List[Sym[Reg[_]]] = List()
     val memStreams = Set.empty[Sym[Any]]
 
   override def preprocess[A:Manifest](b: Block[A]): Block[A] = {
-        argInOuts.clear
-        argIns.clear
-        argOuts.clear
+        argIns = List()
+        argOuts = List()
         memStreams.clear
         b
     }
@@ -135,8 +133,8 @@ trait ChiselPreCodegen extends Traversal  {
     case e@UnitPipe(func) =>
     case e@Counter_new(start,end,step,par) =>
     case e@Counterchain_new(counters) =>
-    case e:Argin_new[_] => argIns += sym.asInstanceOf[Sym[Register[_]]]
-    case e:Argout_new[_] => argOuts += sym.asInstanceOf[Sym[Register[_]]]
+    case e:Argin_new[_] => argIns = argIns :+ sym.asInstanceOf[Sym[Reg[_]]]
+    case e:Argout_new[_] => argOuts = argOuts :+ sym.asInstanceOf[Sym[Reg[_]]]
 
     case _:BurstStore[_] => memStreams += sym
     case _:BurstLoad[_] => memStreams += sym
@@ -927,22 +925,22 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
   """)
   }
 
-  private def emitArgInBundle(ports: Set[Sym[Reg[_]]]) {
+  private def emitArgInBundle(ports: List[Sym[Reg[_]]]) {
     emit(s"""package interfaces
 import chisel3._
 
 class ArgInBundle() extends Bundle{
 """)
-    ports.map { p => emit(s"  val ${quote(p)} = Input(UInt(32.W))")}
+    ports.map { p => emit(s"  val ${quote(p)} = Input(UInt(32.W)) // ${nameOf(p).getOrElse("")}")}
 emit(s"""
 }""")
   }
 
-  private def emitArgOutBundle(ports: Set[Sym[Reg[_]]]) {
+  private def emitArgOutBundle(ports: List[Sym[Reg[_]]]) {
     emit(s"""
 class ArgOutBundle() extends Bundle{
 """)
-    ports.map { p => emit(s"  val ${quote(p)} = Output(UInt(32.W))")}
+    ports.map { p => emit(s"  val ${quote(p)} = Output(UInt(32.W)) // ${nameOf(p).getOrElse("")}")}
 emit(s"""
 }""")
   }
