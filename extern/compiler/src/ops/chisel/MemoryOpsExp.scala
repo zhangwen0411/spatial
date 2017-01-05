@@ -188,7 +188,7 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
   }
 
   def sramLoad(read: Sym[Any], sram: Exp[SRAM[Any]], addr: Exp[Any], par: Boolean = false) {
-    emitComment("Bram_load {")
+    emit(s"// ---- sram load ----")
     val dups = duplicatesOf(sram)
     val readers = readersOf(sram)
     val reader = readers.find{_.node == read}.get   // Corresponding reader for this read node
@@ -196,102 +196,28 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
     val p = portsOf(read, sram, b_i).head
 
     val sram_name = s"${quote(sram)}_${b_i}"
-    val pre = if (!par) maxJPre(sram) else "DFEVector<DFEVar>"
     val num_dims = dimsOf(sram).length
-    if (isDummy(sram)) {
-      val pre = if (!par) maxJPre(sram) else "DFEVector<DFEVar>"
-      bankOverride(read) match {
-        case -1 =>
-          emit(s"""${pre} ${quote(read)} = ${quote(sram_name)}.connectRport(${quote(addr)}); //r1.0 ${nameOf(sram).getOrElse("")}""")
-          emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(sram_name)} %f @ %d\\n", ${quote(read)}, ${quote(addr)});""")
-        case b => emit(s"""${pre} ${quote(read)} = ${quote(sram_name)}.connectRport(${quote(addr)}, $b); //r1.5 ${nameOf(sram).getOrElse("")}""")
 
-      }
-    } else {
+    val inds = parIndicesOf(read)
+    val rPar = inds.length
 
-      val inds = parIndicesOf(read)
-      assert(inds.nonEmpty, s"Empty par access indices for read $read of $sram")
-
-      num_dims match {
-        case 1 => // 1D sram
-          if (inds.length == 1) {
-            // One address
-            // Spit out DFEVar if not already done
-            val addr0 = inds(0)(0)
-            addEmittedConsts(addr0)
-
-            if (par){
-              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${sram_name}.type, 1).newInstance(this, Arrays.asList(${quote(sram_name)}.connectRport(${quote(addr0)}, new int[] {$p}))); //r2 ${nameOf(sram).getOrElse("")}""")
-              emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(sram_name)} %f @ %d from port {$p}\\n", ${quote(read)}[0], ${quote(addr0)}[0]);""")
-            } else{
-              emit(s"""$pre ${quote(read)} = ${sram_name}.connectRport(${quote(addr0)}, new int[] {$p}); //r3 ${nameOf(sram).getOrElse("")}""")
-              emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(sram_name)} %f @ %d from port {$p}\\n", ${quote(read)}, ${quote(addr0)});""")
-            }
-          }
-          else {
-            // Many addresses
-            emit(s"""$pre ${quote(read)} = ${sram_name}.connectRport(${quote(addr)}, new int[] {$p}); //r4 ${nameOf(sram).getOrElse("")}""")
-            emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(sram_name)} %f @ %d from port {$p}\\n", ${quote(read)}[0], ${quote(addr)}[0]);""")
-          }
-        case 2 => // 2D sram
-          if (inds.length == 1) {
-            // One address
-            val addr0 = inds(0)(0)
-            val addr1 = inds(0)(1)
-            addEmittedConsts(addr0, addr1)
-
-            if (par){
-              emit(s"""$pre ${quote(read)} = new DFEVectorType<DFEVar>(${sram_name}.type, 1).newInstance(this, Arrays.asList(${sram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}, new int[] {$p}))); //r5 ${nameOf(sram).getOrElse("")}""")
-              emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(sram_name)} %f @ %d from port {$p}\\n", ${quote(read)}[0], ${quote(addr0)}[0], ${quote(addr1)}[0]);""")
-            }else{
-              emit(s"""$pre ${quote(read)} = ${sram_name}.connectRport(${quote(addr0)}, ${quote(addr1)}, new int[] {$p}); //r6 ${nameOf(sram).getOrElse("")}""")
-              emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(sram_name)} %f @ %d from port {$p}\\n", ${quote(read)}[0], ${quote(addr0)}[0], ${quote(addr1)}[0]);""")
-            }
-
-          }
-          else {
-            // TODO: This may not quite be right
-            def quote2D(ind: List[Exp[Any]], i: Int) = if (i >= ind.length) quote(0) else quote(ind(i))
-            // Many addresses
-            // Same columns?
-            if (inds.map{ind => quote2D(ind, 1)}.distinct.length == 1) {
-              val addr0 = inds.map{ind => quote2D(ind,0) }
-              val addr1 = quote2D(inds(0), 1)
-              emit(s"""// All readers share column. vectorized """)
-              emit(s"""$pre ${quote(read)} = ${sram_name}.connectRport(new DFEVectorType<DFEVar>(${addr0(0)}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr0.map(quote).mkString(",")})), ${quote(addr1)}, new int[] {$p}); //r7 ${nameOf(sram).getOrElse("")}""")
-              emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(sram_name)} %f @ %d from port {$p}\\n", ${quote(read)}[0], ${quote(addr0.head)}[0], ${quote(addr1)}[0]);""")
-            }
-            // Same rows?
-            else if (inds.map{ind => quote2D(ind, 0)}.distinct.length == 1) {
-              val addr0 = quote2D(inds(0), 0)
-              val addr1 = inds.map{ind => quote2D(ind, 0) }
-              emit(s"""// All readers share row. vectorized""")
-              emit(s"""${pre} ${quote(read)} = ${sram_name}.connectRport(${quote(addr0)}, new DFEVectorType<DFEVar>(${quote(addr1(0))}.getType(), ${inds.length}).newInstance(this, Arrays.asList(${addr1.map(quote).mkString(",")})), new int[] {$p}); //r8 ${nameOf(sram).getOrElse("")}""")
-              emit(s"""// debug.simPrintf(<insert enable>, "read ${quote(sram_name)} %f @ %d from port {$p}\\n", ${quote(read)}[0], ${quote(addr0)}[0], ${quote(addr1.head)}[0]);""")
-            }
-            else {
-              throw new Exception("Cannot handle this parallel reader because not exclusively row-wise or column-wise access!")
-            }
-          }
-        case _ =>
-          throw new Exception("MaxJ generation of more than 2D SRAMs is currently unsupported.")
+    emit(s"""// Assemble multidimR vector
+val ${quote(read)}_rVec = Wire(Vec(${rPar}, new multidimR(${num_dims}, 32)))
+${quote(read)}_rVec.foreach { r => r.en := true.B}""")
+    inds.zipWithIndex.foreach{ case(ind,i) => 
+      ind.zipWithIndex.foreach { case(wire,j) =>
+        emit(s"""${quote(read)}_rVec($i).addr($j) := ${quote(wire)}""")
       }
     }
 
-    // Handle if loading a composite type
-    //n.compositeValues.zipWithIndex.map { t =>
-    //  val v = t._1
-    //  val idx = t._2
-    //  visitNode(v)
-    //  emit(s"""${quote(v)} <== ${quote(read)}[$idx];""")
-    //}
-    emitComment("} Bram_load")
+    emit(s"""${quote(sram_name)}.connectRPort(Vec(${quote(read)}_rVec.toArray))""")
+    emit(s"""val ${quote(read)} = ${quote(sram_name)}.io.output.data${if (!par) "(0)"}""")
 
 
   }
 
-  def sramStore(write: Sym[Any], sram: Exp[SRAM[Any]], addr: Exp[Any], value: Exp[Any]) {
-    emitComment("Bram_store {")
+  def sramStore(write: Sym[Any], sram: Exp[SRAM[Any]], addr: Exp[Any], value: Exp[Any], ens: Exp[Any]) {
+    emit(s"// ---- sram store ----")
     val dataStr = quote(value)
     val allDups = duplicatesOf(sram)
 
@@ -323,23 +249,37 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
         case Deff(d:UnitPipe) => true // Not sure why but this makes matmult work
         case p => throw UnknownParentControllerException(sram, write, writeCtrl)
     }
-
+    val globalEn = if (isAccum(sram) & isAccumCtrl) {
+      writeCtrl match {
+        case Deff(_: UnitPipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
+        case Deff(a) => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*wtf pipe is $a*/"
+        case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*no def node*/"
+      }
+    } else {
+      s"${quote(writeCtrl)}_datapath_en /*old behavior mask*/"
+    }
 
     val dups = allDups.zipWithIndex.filter{dup => instanceIndicesOf(writer,sram).contains(dup._2) }
 
     val inds = parIndicesOf(write)
     val num_dims = dimsOf(sram).length
+    val wPar = inds.length
 
     if (inds.isEmpty) throw NoParIndicesException(sram, write)
 
     emit(s"""// Assemble multidimW vector
-val ${quote(write)}_wVec = new multidimW(${num_dims}, 32)
-${quote(write)}_wVec.zip(${quote(value)}.foreach {case (w,d) => w.data := d}""")
+val ${quote(write)}_wVec = Wire(Vec(${wPar}, new multidimW(${num_dims}, 32)))
+${quote(write)}_wVec.zip(${quote(value)}).foreach {case (w,d) => w.data := d}
+${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.en := e}""")
     inds.zipWithIndex.foreach{ case(ind,i) => 
       ind.zipWithIndex.foreach { case(wire,j) =>
-        emit(s"""${quote(write)}_wVec(${i*num_dims+j}).addr($j) := ${quote(wire)}""")
+        emit(s"""${quote(write)}_wVec($i).addr($j) := ${quote(wire)}""")
       }
     }
+    dups.foreach{ case (d,i) =>
+      emit(s"""${quote(sram)}_$i.connectWPort(${quote(write)}_wVec, ${quote(globalEn)}) """)
+    }
+    
     // if (isAccum(sram) & isAccumCtrl) {
     //   // val offsetStr = quote(writeCtrl) + "_offset"
     //   // val parentPipe = parentOf(sram).getOrElse(throw UndefinedParentException(sram))
@@ -356,7 +296,6 @@ ${quote(write)}_wVec.zip(${quote(value)}.foreach {case (w,d) => w.data := d}""")
     // else { // Not accum
 
     // }
-    emitComment("} Bram_store")
   }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
@@ -748,10 +687,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       sramLoad(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, true)
 
     case Sram_store(EatAlias(sram), addr, value, en) =>
-      sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value)
+      sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value, en)
 
     case Par_sram_store(EatAlias(sram), addr, value, ens) =>
-      sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value)
+      sramStore(sym, sram.asInstanceOf[Exp[SRAM[Any]]], addr, value, ens)
 
     case Fifo_new(size, zero) =>  // FIFO is always parallel
       val duplicates = duplicatesOf(sym)

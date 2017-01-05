@@ -272,7 +272,7 @@ trait PrimitiveTypes {
     impl (convert_fixpt)  (codegen(chisel, ${
             //TODO: right way to do this?
             @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
-      val $sym = $0.U // TODO: This is wrong
+      val $sym = $0 // TODO: This is wrong
         }))
     impl (fix_to_rep_int) (codegen(chisel, ${ $0.implementMe }))
     impl (rep_int_to_fix) (codegen(chisel, ${ implementMe[$t[S],$t[I],B0]($0) }))

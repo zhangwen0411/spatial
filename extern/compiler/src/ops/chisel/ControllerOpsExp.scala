@@ -323,7 +323,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       controlNodeStack.pop
 
 		case e@UnitPipe(func: Block[Unit]) =>
-      var hadThingsInside = if (isInnerPipe(sym)) {false} else {true}
+      var inner = if (isInnerPipe(sym)) {false} else {true}
       controlNodeStack.push(sym)
       val smStr = styleOf(sym) match {
         case CoarsePipe => s"Metapipe"
@@ -333,11 +333,11 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         case ForkJoin => s"Parpipe"
       }
 
-      print_stage_prefix(s"Unit $smStr",s"",s"${quote(sym)}", hadThingsInside)
-      emit(s"""// Unit pipe writtenIn(${quote(sym)}) = ${writtenIn(sym)}""")
+      print_stage_prefix(s"Unit $smStr",s"",s"${quote(sym)}", inner)
+      // emit(s"""// Unit pipe writtenIn(${quote(sym)}) = ${writtenIn(sym)}""")
       writtenIn(sym) foreach { s =>
         val Def(d) = s
-        emit(s"""//   ${quote(s)} = $d, isAccum(${quote(s)}) = ${isAccum(s)}""")
+        // emit(s"""//   ${quote(s)} = $d, isAccum(${quote(s)}) = ${isAccum(s)}""")
       }
       val writesToAccumReg = writtenIn(sym).exists {s => s match {
           case Def(EatReflect(Reg_new(_))) => isAccum(s)
@@ -352,6 +352,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         }.head
       }
       emitController(sym, None)
+
+      emit(s"""// ---- Begin unit counter for ${quote(sym)} ---- """)
+      emit(s"""${quote(sym)}_sm.io.input.ctr_done := Reg(next = ${quote(sym)}_sm.io.output.ctr_en, init = 0.U)""")
 
       if (writesToAccumReg) {
 
@@ -414,7 +417,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
           emitBlock(func, s"${quote(sym)} Unitpipe")
       }
 
-      print_stage_suffix(quote(sym), hadThingsInside)
+      print_stage_suffix(quote(sym), inner)
       controlNodeStack.pop
 
     case _ => super.emitNode(sym,rhs)
@@ -448,13 +451,13 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     }
 
     val constrArg = smStr match {
-      case "Pipe" => s"numCounters /*probably don't need*/"
+      case "Pipe" => s"$numCounters /*probably don't need*/"
       case "Parallel" => ""
       case _ => childrenOf(sym).length
     }
 
     emit(s"""val ${quote(sym)}_sm_offset = Module(new Delay(3)) // TODO: Compute real delays""")
-    emit(s"""val ${quote(sym)}_sm = Module(new ${smStr}(${constrArg})) // TODO: Get num stages""")
+    emit(s"""val ${quote(sym)}_sm = Module(new ${smStr}(${constrArg}))""")
     emit(s"""  ${quote(sym)}_sm.io.input.enable := ${quote(sym)}_en;""")
     emit(s"""  ${quote(sym)}_done := ${quote(sym)}_sm.io.output.done""")
     emit(s"""val ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.output.rst_en""")
@@ -705,7 +708,7 @@ val ${quote(sym)}_maxed = ${quote(sym)}.io.output.saturated""")
     }
 
     emit(s"""  ${quote(sym)}.io.input.maxes.zip(${quote(sym)}_maxes).foreach { case (port,max) => port := max }""")
-    emit(s"""  ${quote(sym)}.io.input.strides.zip(${quote(sym)}_maxes).foreach { case (port,stride) => port := stride }""")
+    emit(s"""  ${quote(sym)}.io.input.strides.zip(${quote(sym)}_strides).foreach { case (port,stride) => port := stride.U }""")
     // emit(s"""  ${quote(sym)}.io.input.starts.zip(${quote(sym)}_starts).foreach { (port,start) => port := start }""")
     counters.zipWithIndex.map { case (ctr, i) =>
       val drop = pars.take(i+1).reduce{_+_} - pars(i)
