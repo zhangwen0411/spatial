@@ -164,7 +164,7 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
     val bnks = sram.banking.map(_.banks)
     sram.banking.length match {
       case 1 => bnks(0)
-      case 2 => bnks.mkString("new int[] {", ",", "}")
+      case 2 => bnks.mkString("List(", ",", ")")
       case _ => throw new Exception(s"Can't handle ${sram.banking.length}-D memory!")
     }
   }
@@ -175,8 +175,8 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
       case _ => 1
     }
     sram.banking.length match {
-      case 1 => strds(0)
-      case 2 => strds.mkString("new int[] {", ",", "}")
+      case 1 => s"List(${strds(0)})"
+      case 2 => strds.mkString("List(", ",", ")")
       case _ => throw new Exception(s"Can't handle ${sram.banking.length}-D memory!")
     }
 
@@ -637,7 +637,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
         val dups = duplicatesOf(sym)
         dups.zipWithIndex.foreach { case (r, i) =>
-          val banks = getBanking(r)
+          val banks = r.banking.map(_.banks).mkString("List(", ",", ")")
           val strides = getStride(r)
           if (isDummy(sym)) {
             emit(s"""DummyMemLib ${quote(sym)}_${i} = new DummyMemLib(this, ${ts}, ${banks}); //dummymem""")

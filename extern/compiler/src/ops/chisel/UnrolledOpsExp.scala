@@ -23,10 +23,16 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
 
     iters.zipWithIndex.foreach{ case (is, i) =>
       if (is.size == 1) { // This level is not parallelized, so assign the iter as-is
-          emit("val " + quote(is(0)) + " = " + quote(counters(i)) + "_0(0)");
+          emit(quote(is(0)) + " := " + quote(counters(i)) + "(0)");
+          withStream(baseStream) {
+            emit(s"val " + quote(is(0)) + " = Wire(UInt(32.W))")
+          }
       } else { // This level IS parallelized, index into the counters correctly
         is.zipWithIndex.foreach{ case (iter, j) =>
-          emit("val " + quote(iter) + " = " + quote(counters(i)) + s"_$i(" + j + ")")
+          emit(quote(iter) + " := " + quote(counters(i)) + s"(" + j + ")")
+          withStream(baseStream) {
+            emit(s"val " + quote(iter) + " = Wire(UInt(32.W))")
+          }
         }
       }
     }

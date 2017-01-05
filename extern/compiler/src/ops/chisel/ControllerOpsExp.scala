@@ -713,7 +713,24 @@ val ${quote(sym)}_maxed = ${quote(sym)}.io.output.saturated""")
     counters.zipWithIndex.map { case (ctr, i) =>
       val drop = pars.take(i+1).reduce{_+_} - pars(i)
       val take = pars(i)
-      emit(s"""val ${quote(ctr)}_${i} = ${quote(sym)}.io.output.counts.drop(${drop}).take(${take})""")
+      emit(s"""val ${quote(ctr)} = ${quote(sym)}.io.output.counts.drop(${drop}).take(${take})""")
+    }
+
+    // Emit the valid bit calculations that don't exist in the IR
+    parent match {
+      case Deff(UnrolledForeach(_,_,counts,vs)) =>
+        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) =>
+          layer.zip(count).map { case (v, c) =>
+            emit(s"val ${quote(v)} = ${quote(c)} < ${quote(sym)}_maxes(${i})")
+          }
+        }
+      case Deff(UnrolledReduce(_,_,_,_,counts,vs,_,_)) =>
+        vs.zip(counts).zipWithIndex.map { case ((layer,count), i) =>
+          layer.zip(count).map { case (v, c) =>
+            emit(s"val ${quote(v)} = ${quote(c)} < ${quote(sym)}_max(${i})")
+          }
+        }
+      case _ =>
     }
 
   }

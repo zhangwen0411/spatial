@@ -906,16 +906,20 @@ trait MemTest2DApp extends SpatialApp {
   def main() {
 
     // Declare SW-HW interface vals
-    val x = ArgIn[SInt]
-    val y = ArgOut[SInt]
-    val N = args(0).to[SInt]
+    val x = ArgIn[UInt]
+    val y = ArgOut[UInt]
+    val N = args(0).to[UInt]
 
     // Connect SW vals to HW vals
     setArg(x, N)
 
     // Create HW accelerator
     Accel {
-      Pipe { y := ((2.as[SInt]*x + 4)-1.as[SInt]) }
+      val mem = SRAM[UInt](64, 128)
+      Pipe(64 by 1, 128 by 1) { (i,j) =>
+        mem(i,j) = x + (i*128+j).to[UInt]
+      }
+      Pipe { y := mem(63,127) }
     }
 
 
@@ -923,7 +927,7 @@ trait MemTest2DApp extends SpatialApp {
     val result = getArg(y)
 
     // Create validation checks and debug code
-    val gold = ((N*2 + 4)-1)
+    val gold = N+63*128+127
     println("expected: " + gold)
     println("result: " + result)
 
