@@ -119,15 +119,6 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
           val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
           val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
           val fullPorts = (0 until d.depth).map{ i => i }.toSet
-          // val fullPorts = d.depth match {// TODO: proper way to make this list?
-          //   case 1 => Set(0)
-          //   case 2 => Set(0,1)
-          //   case 3 => Set(0,1,2)
-          //   case 4 => Set(0,1,2,3)
-          //   case 5 => Set(0,1,2,3,4)
-          //   case 6 => Set(0,1,2,3,4,5)
-          //   case _ => throw new Exception(s"Cannot handle nBuf this big! How to I do 0 until d.depth properly?")
-          // }
           val dummyWPorts = fullPorts -- wPorts
           val dummyRPorts = fullPorts -- rPorts
           val dummyDonePorts = fullPorts -- wPorts -- rPorts
@@ -412,8 +403,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
     case Reg_new(init) =>
       val tp = sym.tp.typeArguments(0)
-      Console.println(s"$sym = reg_new")
-      Console.println(s"tp = $tp [${isTup2(tp)}]")
 
       // TODO: This is known to have a def, so it shouldn't be necessary to use EatAlias here
       val EatAlias(alias) = sym
@@ -436,18 +425,13 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     Console.println(s"[WARNING] Assume duplicate 0 is the inside reduction register and do not emit lib")
                   case _ =>
                     val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
-                    if (false/*d.depth == 2*/) {
-                      emit(s"""DblBufReg ${quote(sym)}_${i}_lib = new DblBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal)); //${d.depth} depth ${nameOf(sym).getOrElse("")}""")
-                      val readstr = if (parOf(sym)>1) "readv" else "read"
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this); // ${nameOf(sym).getOrElse("")}""")
-                    } else if (d.depth > 1) {
+                    if (d.depth > 1) {
                       emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal), ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
                     } else {
-                      emit(s"""DelayLib ${quote(sym)}_${i}_lib = new DelayLib(this, ${quote(ts)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal)); // ${nameOf(sym).getOrElse("")}""")
+                      emit(s"""val ${quote(sym)}_${i}_lib = Module(new FF(32)); // ${nameOf(sym).getOrElse("")}""")
                       val readstr = if (parOf(sym) > 1) "readv" else "read"
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.${readstr}(); // ${nameOf(sym).getOrElse("")}""")
-                      emit(s"""${maxJPre(sym)} ${quote(sym)}_${i}_delayed = ${ts}.newInstance(this); // ${nameOf(sym).getOrElse("")}""")
+                      emit(s"""val ${quote(sym)}_$i = ${quote(sym)}_${i}_lib.io.output.data // ${nameOf(sym).getOrElse("")}""")
+                      emit(s"""val ${quote(sym)}_${i}_delayed = Wire(UInt(32)) // ${nameOf(sym).getOrElse("")}""")
                     }
                 }
               case _ => throw new Exception(s"""Unknown reg type ${regType(sym)}""")
@@ -527,7 +511,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
       assert(writersOf(reg).nonEmpty, s"Register ${quote(reg)} is not written by a controller")
 
-      Console.println(s"Checking writers of $reg (" + writersOf(reg).mkString(", ") + s") for $sym")
       val writer = writersOf(reg).find(_.node == sym).get
 
       val writeCtrl = writersOf(reg).head.controlNode  // Regs have unique writer which also drives reset
@@ -541,75 +524,61 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         case ArgumentIn => throw new Exception("Cannot write to ArgIn " + quote(reg) + "!")
         case ArgumentOut =>
           if (isAccum(reg)) throw new Exception(s"""ArgOut (${quote(reg)}) cannot be used as an accumulator!""")
-
           val controlStr = if (parentOf(reg).isEmpty) s"top_done" else quote(parentOf(reg).get) + "_done"
           // emitGlobal(s"""var ${quote(reg)} =  $tsb OUTPUT $tse;""")
           emit(s"""io.ArgOut.${quote(reg)} := ${quote(value)}""")
-
-
         case _ =>
           if (isAccum(reg)) {
-            en match {
-              case Deff(ConstBit(true)) =>
-              case _ => throw new Exception("Enabled register write is not yet supported for an accumulator!")
-            }
-
             // Not sure how to decide this now...
             val accEn = writeCtrl match {
               case Deff(_: UnitPipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
               case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done"
             }
 
-            val rstStr = quote(parentOf(reg).get) + "_done /*because _rst_en goes hi on each iter*/"
+            val rstStr = quote(parentOf(reg).get) + "_done"
             writeCtrl match {
               // case p@Def(EatReflect(_:OpForeach | _:UnrolledForeach)) => // Safe to comment this out??
               //   throw new Exception(s"Foreaches may not have accumulators ($reg in $p)")
 
               case p@Deff(_:OpReduce[_,_] | _:UnrolledReduce[_,_] | _:UnitPipe | _:OpForeach | _:UnrolledForeach) =>
                 emit(s"// Write to accumulator register")
-                emit(s"""DFEVar ${quote(reg)}_en = ${accEn};""")
                 reduceType(reg) match {
-                  case Some(fps: ReduceFunction) => fps match {
-                    case FixPtSum =>
-                      emit(s"""Accumulator.Params ${quote(reg)}_accParams = Reductions.accumulator.makeAccumulatorConfig($ts).withClear(${rstStr}).withEnable(${quote(reg)}_en);""")
-                      emit(s"""DFEVar ${quote(reg)} = Reductions.accumulator.makeAccumulator(${quote(value)}, ${quote(reg)}_accParams);""")
-                    case FltPtSum =>
-                      emit(s"""DFEVar ${quote(reg)} = FloatingPointAccumulator.accumulateWithReset(${quote(value)}, ${quote(reg)}_en, $rstStr, true);""")
+                  case Some(fps: ReduceFunction) => 
+                    emit(s"// ---- Specialized reduce for $fps ---- ")
+                    fps match {
+                      case FixPtSum =>
+                        emit(s"""val ${quote(reg)}_accum = Module(new UIntAccum(32,"add"))""")
+                        emit(s"""${quote(reg)}_accum.io.next := ${quote(value)}""")
+                        emit(s"""${quote(reg)}_accum.io.en := ${quote(accEn)}""")
+                        emit(s"""${quote(reg)}_accum.io.reset := ${quote(rstStr)}""")
+                        emit(s"""val ${quote(reg)} = ${quote(reg)}_accum.io.output""")
+                      case FltPtSum =>
+                        emit(s"""// TODO: Specialized accum, set val ${quote(reg)} = specialAccum( + ${quote(value)} ).withClear(${rstStr}).withEnable(${accEn});""")
+                    }
+                    // TODO: I think this is a maxj vestige, but assume duplicate 0 is used for reduction, all others need writes
+                    dups.foreach { case (dup, ii) =>
+                      val port = portsOf(writer, reg, ii).head
+                      if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, false.B, $port); // ${nameOf(reg).getOrElse("")}""")
+                    }
                   }
-                  // Assume duplicate 0 is used for reduction, all others need writes
-                  dups.foreach { case (dup, ii) =>
-                    val port = portsOf(writer, reg, ii).head
-                    if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
-                  }
-                }
               case _ =>
-                emit(s"DFEVar ${quote(reg)}_en = constant.var(true)")
+                emit(s"DFEVar ${accEn} = constant.var(true)")
             }
           }
           else { // Non-accumulator registers
             dups.foreach{case (dup, ii) =>
               val regname = s"${quote(reg)}_${ii}"
-              regType(reg) match {
-                case _ =>
-                  val port = portsOf(writer, reg, ii).head
-                  val rstStr = quote(parentOf(reg).get) + "_rst_en"
-                  // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
-                  if (false/*dup.depth == 2*/) {
-                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false)); // ${nameOf(reg).getOrElse("")}""")
-                  } else if (dup.depth > 1) {
-                    emit(s"""${regname}_lib.write(${quote(value)}, ${quote(writeCtrl)}_done, constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
-                  }
-                  else {
-                    // Using an enable signal instead of "always true" is causing an illegal loop.
-                    // Using a reset signal instead of "always false" is causing an illegal loop.
-                    // These signals don't matter for pass-through registers anyways.
-                    emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), constant.var(false), $port); // ${nameOf(reg).getOrElse("")}""")
-                  }
-              }
+              val port = portsOf(writer, reg, ii).head
+              val rstStr = quote(parentOf(reg).get) + "_rst_en"
+              // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
+              val portSelector = if (dup.depth > 1) s"($port)" else ""
+              emit(s"""${regname}_lib.io.input${portSelector}.data := ${quote(value)}; // ${nameOf(reg).getOrElse("")}""")
+              emit(s"""${regname}_lib.io.input${portSelector}.en := ${quote(writeCtrl)}_done""")
+              emit(s"""${regname}_lib.io.input${portSelector}.reset := false.B""")
             }
           } // End non-accumulator case
       }
-      emitComment(s"} Reg_write // regType ${regType(reg)}, numDuplicates = ${allDups.length}")
+      // emitComment(s"} Reg_write // regType ${regType(reg)}, numDuplicates = ${allDups.length}")
 
     case Sram_new(size, zero) =>
       srams += sym.asInstanceOf[Sym[SRAM[Any]]]
@@ -644,7 +613,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           } else {
             if (r.depth == 1) {
               emit(s"""val ${quote(sym)}_${i} = Module(new SRAM(
-          List(${sizes.map(quote).mkString(",")}), ${r.depth}, 32,
+          List(${sizes.map(quote).mkString(",")}), 32,
           ${banks}, ${strides}, $numDistinctWriters, 1, 
           ${write_head}, ${read_head})) // ${nameOf(sym).getOrElse("")}""")
             } else if (r.depth == 2) {

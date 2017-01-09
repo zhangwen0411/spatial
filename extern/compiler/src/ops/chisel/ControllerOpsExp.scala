@@ -353,72 +353,32 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       }
       emitController(sym, None)
 
-      emit(s"""// ---- Begin unit counter for ${quote(sym)} ---- """)
-      emit(s"""${quote(sym)}_sm.io.input.ctr_done := Reg(next = ${quote(sym)}_sm.io.output.ctr_en, init = 0.U)""")
+      if (styleOf(sym) == "InnerPipe") {
+        emit(s"""// ---- Begin unit counter for ${quote(sym)} ---- """)
+        emit(s"""${quote(sym)}_sm.io.input.ctr_done := Reg(next = ${quote(sym)}_sm.io.output.ctr_en, init = 0.U)""")        
+      }
 
       if (writesToAccumReg) {
 
-        emit(s"""var ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
+        emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
         emit(s"""Count.Params ${quote(sym)}_redLoopParams = control.count.makeParams(9)
                               .withEnable(${quote(sym)}_datapath_en)
                               .withReset(${quote(sym)}_done)
                               .withMax(${quote(sym)}_loopLengthVal)
                               .withWrapMode(WrapMode.STOP_AT_MAX);
     Counter ${quote(sym)}_redLoopCounter = control.count.makeCounter(${quote(sym)}_redLoopParams);
-    var ${quote(sym)}_redLoop_done = ${quote(sym)}_redLoopCounter.getCount() === ${quote(sym)}_loopLengthVal-1;""")
+    DFEVar ${quote(sym)}_redLoop_done = ${quote(sym)}_redLoopCounter.getCount() === ${quote(sym)}_loopLengthVal-1;""")
       }
 
-
-      parentOf(sym).get match {
-        case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
-          if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
-            styleOf(sym) match {
-              case InnerPipe =>
-                // Putting reduction tree in its own kernel
-                var inputVecs = Set[Sym[Any]]()
-                var consts_args_bnds_list = Set[Exp[Any]]()
-                var treeResult = ""
-                focusBlock(func){ // Send reduce tree to separate file
-                  focusExactScope(func){ stms =>
-                    stms.foreach { case TP(s,d) =>
-                      val Deff(dd) = s
-                      dd match {
-                        case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                          if (isReduceResult(s)) {
-                            val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                            emit(s"var ${quote(s)} = ${ts}.newInstance(this);")
-                            treeResult = quote(s)
-                          }
-                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-                          inputVecs += s
-                        case _ =>
-                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                      }
-                    }
-                  }
-                }
-
-                emitBlock(func, s"${quote(sym)} Unitpipe", true /*do not close*/)
-                val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
-                val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-                val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-                val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
-                emit(s"}")
-              case _ =>
-                emitBlock(func, s"${quote(sym)} Unitpipe")
-              }
-            } else {
-              emitBlock(func, s"${quote(sym)} Unitpipe")
-            }
-        case _ =>
-          emitBlock(func, s"${quote(sym)} Unitpipe")
-      }
+      emitBlock(func, s"${quote(sym)} Unitpipe")
+      // parentOf(sym).get match {
+      //   case e@Deff(UnrolledReduce(_,accum,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
+      //     emitBlock(func, s"${quote(sym)} Unitpipe")
+      // }
 
       print_stage_suffix(quote(sym), inner)
       controlNodeStack.pop
+
 
     case _ => super.emitNode(sym,rhs)
   }
@@ -443,11 +403,11 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         if (i > 0) {
           niter_str += " * "
         }
-        niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}))"
+        niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}.U))"
       }
       (counters.size, niter_str)
     } else { 
-      (1, 1)
+      (1, "1.U")
     }
 
     val constrArg = smStr match {
@@ -468,9 +428,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         // emit(s"""${quote(sym)}_sm_offset.io.input.data := ${quote(sym)}_sm.io.output.done // TODO: Does this make sense?""")
         // emit(s"""${quote(sym)}_sm.io.output.reset := ${quote(sym)}_sm.io.output.rst_en // TODO: Doesn't make sense""")
       case CoarsePipe =>
-        emit(s"""  ${quote(sym)}_sm.io.input.numIter := (${quote(numIter)}).U""")
+        emit(s"""  ${quote(sym)}_sm.io.input.numIter := (${quote(numIter)})""")
       case SequentialPipe =>
-        emit(s"""  ${quote(sym)}_sm.io.input.numIter := (${quote(numIter)}).U""")
+        emit(s"""  ${quote(sym)}_sm.io.input.numIter := (${quote(numIter)})""")
         // emit(s"""  ${quote(sym)}_done := ${quote(sym)}_sm_offset.io.output.data""")
         //emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done;""")
         // emit(s"""${quote(sym)}_sm_offset.io.input.data := ${quote(sym)}_sm.io.output.done // TODO: Does this make sense?""")
@@ -585,11 +545,12 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
             }
 
           case n@UnrolledReduce(cchain, accum, func, rFunc, inds, ens, acc, rV) =>
-            emit(s"""var ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
-            emit(s"""CounterChain ${quote(sym)}_redLoopChain = control.count.makeCounterChain(${quote(sym)}_datapath_en);""")
-            // emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${stream_offset_guess+1}, 1);""")
-            emit(s"""var ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
-            emit(s"""var ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
+            emit(s"""val ${quote(sym)}_loopLengthVal = 1.U // TODO: fix this;""")
+            emit(s"""val ${quote(sym)}_redLoopChain = Module(new SingleCounter(1));""")
+            emit(s"""val ${quote(sym)}_redLoopChain.io.input.en = ${quote(sym)}_datapath_en""")
+            // // emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${stream_offset_guess+1}, 1);""")
+            // emit(s"""var ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
+            emit(s"""var ${quote(sym)}_redLoop_done = ${quote(sym)}_redLoopCtr.io.output.done;""")
             val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
             emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
             val rstStr = s"${quote(sym)}_done"
@@ -656,15 +617,16 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     // Connect maxes
     val maxes = counters.zipWithIndex.map { case (ctr, i) =>
       val Def(EatReflect(Counter_new(start, end, step, _))) = ctr
-      parentOf(cchain.asInstanceOf[Rep[CounterChain]]) match {
-        case Some(s) =>
-          s.tp.erasure.getSimpleName match {  // <- There's got to be a better way
-          case "Pipeline" => s"${quote(ctr)}_max_$i"
-          case "SpatialPipeline" => s"${quote(ctr)}_max_$i"
-          case _ => quote(end)
-        }
-        case None => quote(end)
-      }
+      quote(end)
+      // parentOf(cchain.asInstanceOf[Rep[CounterChain]]) match {
+      //   case Some(s) =>
+      //     s.tp.erasure.getSimpleName match {  // <- There's got to be a better way
+      //     case "Pipeline" => s"${quote(ctr)}_max_$i"
+      //     case "SpatialPipeline" => s"${quote(ctr)}_max_$i"
+      //     case _ => quote(end)
+      //   }
+      //   case None => quote(end)
+      // }
     }
 
     // val trashStr = if (false/*consumesMemFifo(sym)*/) {
@@ -701,7 +663,7 @@ ${quote(sym)}.io.input.reset := ${rstStr.get}
 val ${quote(sym)}_maxed = ${quote(sym)}.io.output.saturated""")
 
     if (!doneDeclaredSet.contains(sym)) {
-      emit(s"""val ${quote(sym)}_done := ${quote(sym)}.io.output.done""")
+      emit(s"""val ${quote(sym)}_done = ${quote(sym)}.io.output.done""")
       doneDeclaredSet += sym
     } else {
       emit(s"""${quote(sym)}_done := ${quote(sym)}.io.output.done""")
