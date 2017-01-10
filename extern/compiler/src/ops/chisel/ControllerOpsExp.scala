@@ -164,12 +164,12 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
   }
 
   def emitBlock(y: Block[Any], blockName:String, doNotClose:Boolean = false): Unit = {
-    emit("\n//  ---- Emitting COMPUTATION BLOCK ----\n")
-    emitComment(s"Block ${blockName} {")
+    // emit("\n//  ---- Emitting COMPUTATION BLOCK ----\n")
+    emit(s"//     ---- Block ${blockName} ----")
     //emit("{")
     emitBlock(y)
     //emit(s"""${if (doNotClose) "" else "}"}""")
-    emitComment(s"} Block ${blockName}")
+    // emitComment(s"} Block ${blockName}")
   }
 
 	def emitNestedIdx(cchain:Exp[CounterChain], inds:List[Sym[FixPt[Signed,B32,B0]]]) = {
@@ -353,9 +353,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       }
       emitController(sym, None)
 
-      if (styleOf(sym) == "InnerPipe") {
+      if (styleOf(sym) == "Innerpipe") {
         emit(s"""// ---- Begin unit counter for ${quote(sym)} ---- """)
-        emit(s"""${quote(sym)}_sm.io.input.ctr_done := Reg(next = ${quote(sym)}_sm.io.output.ctr_en, init = 0.U)""")        
+        emit(s"""${quote(sym)}_sm.io.input.ctr_done := Reg(next = ${quote(sym)}_sm.io.output.ctr_en, init = false.B)""")        
       }
 
       if (writesToAccumReg) {
@@ -416,7 +416,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       case _ => childrenOf(sym).length
     }
 
-    emit(s"""val ${quote(sym)}_sm_offset = Module(new Delay(3)) // TODO: Compute real delays""")
+    emit(s"""val ${quote(sym)}_offset = 3 // TODO: Compute real delays""")
     emit(s"""val ${quote(sym)}_sm = Module(new ${smStr}(${constrArg}))""")
     emit(s"""  ${quote(sym)}_sm.io.input.enable := ${quote(sym)}_en;""")
     emit(s"""  ${quote(sym)}_done := ${quote(sym)}_sm.io.output.done""")
@@ -437,6 +437,16 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       case ForkJoin =>
     }
 
+    if (styleOf(sym)!=ForkJoin) {
+      if (cchain.isDefined) {
+        emitCChainCtrl(sym, cchain.get)
+      } else {
+        emit(s"""// val ${quote(sym)}_datapath_en = ${quote(sym)}_en & ~${quote(sym)}_rst_en;""")
+        emit(s"""//val ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en;""")
+        emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_sm.io.output.ctr_en // TODO: Why did we originally generate the 2 lines above??""")
+      }
+    }
+
     // val childrenSet = Set[String]()
     // val percentDSet = Set[String]()
     /* Control Signals to Children Controllers */
@@ -455,14 +465,6 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
     // emit(s"""// debug.simPrintf(${quote(sym)}_en, "pipe ${quote(sym)}: ${percentDSet.toList.mkString(",   ")}\\n", ${childrenSet.toList.mkString(",")});""")
 
-    if (styleOf(sym)!=ForkJoin) {
-      if (cchain.isDefined) {
-        emitCChainCtrl(sym, cchain.get)
-      } else {
-        emit(s"""val ${quote(sym)}_datapath_en = ${quote(sym)}_en & ~${quote(sym)}_rst_en;""")
-        emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en;""")
-      }
-    }
   }
 
   def emitCChainCtrl(sym: Sym[Any], cchain: Exp[CounterChain]) {
@@ -513,13 +515,13 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
             if (writesToAccumRam) {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: Not migrated from maxj yet!!!""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym,
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: Not migrated from maxj yet!!!""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
@@ -533,13 +535,13 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
             }
             if (writesToAccumRam) {
               val ctrEn = s"${quote(sym)}_datapath_en | ${quote(sym)}_rst_en"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: Not migrated from maxj yet!!!""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym,
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: Not migrated from maxj yet!!!""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
@@ -553,7 +555,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
             // emit(s"""var ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopCtr.addCounter(${quote(sym)}_loopLengthVal, 1);""")
             emit(s"""var ${quote(sym)}_redLoop_done = ${quote(sym)}_redLoopCtr.io.output.done;""")
             val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
-            emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
+            emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: Not migrated from maxj yet!!!""")
             val rstStr = s"${quote(sym)}_done"
             emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
 
@@ -572,7 +574,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 			      val specializeReduce = true;
             if (specializeReduce) {
               val ctrEn = s"${quote(sym)}_datapath_en"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: Not migrated from maxj yet!!!""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             } else {
@@ -583,7 +585,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
               emit(s"""var ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
               emit(s"""var ${quote(sym)}_redLoop_done = stream.offset(${quote(sym)}_redLoopChain.getCounterWrap(${quote(sym)}_redLoopCtr), -1);""")
               val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
-              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
+              emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: Not migrated from maxj yet!!!""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }

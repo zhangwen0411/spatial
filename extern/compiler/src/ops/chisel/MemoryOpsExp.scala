@@ -460,7 +460,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
     case e@Reg_read(EatAlias(reg)) =>
       val readers = readersOf(reg).filter(_.node == sym) // There can be more than one!
       readers.foreach{reader =>
-        // if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
+        if (!isReduceStarter(sym)) { // Hack to check if this is reduction read
 
           val pre = maxJPre(sym)
           val inst = instanceIndicesOf(reader, reg).head // Reads should only have one index
@@ -499,10 +499,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               }
           }
 
-        // }
-        // else {
-        //   emit(s"""// ${quote(sym)} is just a register read""")
-        // }
+        }
+        else {
+          emit(s"""val ${quote(sym)} = 0.U // TODO: Figure out how to change the final reduction node that uses this reg_read to a no-op in the unrolling xformer""")
+        }
       }
 
     case e@Reg_write(EatAlias(reg), value, en) =>
@@ -513,8 +513,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val writer = writersOf(reg).find(_.node == sym).get
 
       val writeCtrl = writersOf(reg).head.controlNode  // Regs have unique writer which also drives reset
-      val tsb = ctpstrb(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])
-      val tse = ctpstre(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])
       val ts = tpstr(parOf(reg))(reg.tp.typeArguments.head, implicitly[SourceContext])// Deprecated
       val allDups = duplicatesOf(reg).zipWithIndex
       val dups = allDups.filter{case (dup, i) => instanceIndicesOf(writer, reg).contains(i) }

@@ -95,7 +95,7 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
       val Def(EatReflect(Counterchain_new(diagram_counters))) = cchain
       var ctr_str = diagram_counters.map { ctr =>
         val Def(EatReflect(Counter_new(start, end, step, par))) = ctr
-        s"${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
+        s"${quote(ctr)}: ${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
       }
 
       val style = styleOf(sym) match {
@@ -171,7 +171,7 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
       val Def(EatReflect(Counterchain_new(diagram_counters))) = cchain
       var ctr_str = diagram_counters.map { ctr =>
         val Def(EatReflect(Counter_new(start, end, step, par))) = ctr
-        s"${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
+        s"${quote(ctr)}: ${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
       }
 
       emit(s"""// ---- UnrolledReduce ${quote(sym)} = UnrolledReduce(${quote(cchain)}, ${quote(accum)}) ----""")
