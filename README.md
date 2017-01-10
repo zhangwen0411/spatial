@@ -21,7 +21,7 @@ To setup hyperdsl, do the following:
     git submodule update --init
     cd forge && git checkout spatial
     cd ../delite && git checkout spatial
-    cd ../virtualization_lms_core && git checkout spatial
+    cd ../virtualization-lms-core && git checkout spatial
     cd ../ && git checkout spatial
 
 Set the following environment variables, requried for sbt and hyperdsl scripts:
