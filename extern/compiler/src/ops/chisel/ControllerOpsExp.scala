@@ -353,9 +353,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       }
       emitController(sym, None)
 
-      if (styleOf(sym) == "Innerpipe") {
+      if (smStr == "Innerpipe") {
         emit(s"""// ---- Begin unit counter for ${quote(sym)} ---- """)
-        emit(s"""${quote(sym)}_sm.io.input.ctr_done := Reg(next = ${quote(sym)}_sm.io.output.ctr_en, init = false.B)""")        
+        emit(s"""${quote(sym)}_sm.io.input.ctr_done := Delay.delay(${quote(sym)}_sm.io.output.ctr_en, 1)""")
       }
 
       if (writesToAccumReg) {
@@ -441,9 +441,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       if (cchain.isDefined) {
         emitCChainCtrl(sym, cchain.get)
       } else {
-        emit(s"""// val ${quote(sym)}_datapath_en = ${quote(sym)}_en & ~${quote(sym)}_rst_en;""")
-        emit(s"""//val ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en;""")
-        emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_sm.io.output.ctr_en // TODO: Why did we originally generate the 2 lines above??""")
+        emit(s"""val ${quote(sym)}_datapath_en = ${quote(sym)}_en & ~${quote(sym)}_rst_en;""")
+        emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en;""")
+        // emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_sm.io.output.ctr_en // TODO: Why did we originally generate the 2 lines above??""")
       }
     }
 
