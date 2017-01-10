@@ -174,9 +174,8 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
         s"${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
       }
 
-      emitComment(s"""UnrolledReduce ${quote(sym)} = UnrolledReduce(${quote(cchain)}, ${quote(accum)}) {""")
-      emit("""{""")
-      var hadThingsInside = true
+      emit(s"""// ---- UnrolledReduce ${quote(sym)} = UnrolledReduce(${quote(cchain)}, ${quote(accum)}) ----""")
+      var inner = true
       styleOf(sym) match {
         case CoarsePipe =>
           emitComment(s"""MPSM to be emitted""")
@@ -184,7 +183,7 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
         case InnerPipe =>
           emitComment(s"""PipeSM to be emitted""")
           print_stage_prefix(s"Reduce Innerpipe",s"${ctr_str}",s"${quote(sym)}", false)
-          hadThingsInside = false
+          inner = false // [sic]
         case SequentialPipe =>
           emitComment(s"""SeqSM to be emitted""")
           print_stage_prefix(s"Reduce Seqpipe",s"${ctr_str}",s"${quote(sym)}")
@@ -200,13 +199,11 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
       duplicatesOf(acc) = duplicatesOf(accum)
       readersOf(acc) = readersOf(accum)
 
-      emitComment(s"""UnrolledReduce ${quote(sym)} controller {""")
+      emit(s"""// ---- UnrolledReduce ${quote(sym)} controller ----""")
       emitController(sym, Some(cchain))
-      emitComment(s"""} ${quote(sym)} controller""")
 
-      emitComment(s"""UnrolledReduce ${quote(sym)} par loop {""")
+      emit(s"""// ---- UnrolledReduce ${quote(sym)} par loop ----""")
       emitParallelizedLoop(inds, cchain)
-      emitComment(s"""} ${quote(sym)} par loop""")
 
       styleOf(sym) match {
         case InnerPipe =>
@@ -222,7 +219,7 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
                   case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
                     if (isReduceResult(s)) {
                       val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                      emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
+                      emit(s"// val ${quote(s)} = Wire(${ts})")
                       treeResult = quote(s)
                     }
                     consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
@@ -236,21 +233,19 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
           }
 
           emitRegChains(sym, inds.flatten)
-          emitComment(s"""UnrolledReduce ${quote(sym)} func block {""")
+          emit(s"""// ---- UnrolledReduce ${quote(sym)} func block""")
           emitBlock(func)
-          emitComment(s"""} ${quote(sym)} func block""")
 
-          val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
-          val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-          val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-          val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-          val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-          emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+          // val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
+          // val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
+          // val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+          // val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
+          // val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+          // emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
         case _ =>
           emitRegChains(sym, inds.flatten)
-          emitComment(s"""UnrolledReduce ${quote(sym)} func block {""")
+          emit(s"""// ---- UnrolledReduce ${quote(sym)} func block ----""")
           emitBlock(func)
-          emitComment(s"""} ${quote(sym)} func block""")
         }
 
       val Def(EatReflect(dp)) = accum
@@ -266,9 +261,7 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
           throw new Exception(s"""Unknown accum in UnrolledReduce on ${dp}!""")
       }
 
-      emit("""}""")
-      emitComment(s"""} UnrolledReduce ${quote(sym)}""")
-      print_stage_suffix(quote(sym), hadThingsInside)
+      print_stage_suffix(quote(sym), inner)
       controlNodeStack.pop
 
     case _ => super.emitNode(sym, rhs)

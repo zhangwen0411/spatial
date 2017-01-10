@@ -546,10 +546,11 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
           case n@UnrolledReduce(cchain, accum, func, rFunc, inds, ens, acc, rV) =>
             emit(s"""val ${quote(sym)}_loopLengthVal = 1.U // TODO: fix this;""")
-            emit(s"""val ${quote(sym)}_redLoopChain = Module(new SingleCounter(1));""")
-            emit(s"""val ${quote(sym)}_redLoopChain.io.input.en = ${quote(sym)}_datapath_en""")
-            // // emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${stream_offset_guess+1}, 1);""")
-            // emit(s"""var ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopChain.addCounter(${quote(sym)}_loopLengthVal, 1);""")
+            emit(s"""val ${quote(sym)}_redLoopCtr = Module(new RedxnCtr());""")
+            emit(s"""${quote(sym)}_redLoopCtr.io.input.enable := ${quote(sym)}_datapath_en""")
+            emit(s"""${quote(sym)}_redLoopCtr.io.input.max := 5.U //TODO: Really calculate this""")
+            // // emit(s"""DFEVar ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopCtr.addCounter(${stream_offset_guess+1}, 1);""")
+            // emit(s"""var ${quote(sym)}_redLoopCtr = ${quote(sym)}_redLoopCtr.addCounter(${quote(sym)}_loopLengthVal, 1);""")
             emit(s"""var ${quote(sym)}_redLoop_done = ${quote(sym)}_redLoopCtr.io.output.done;""")
             val ctrEn = s"${quote(sym)}_datapath_en & ${quote(sym)}_redLoop_done"
             emit(s"""var ${quote(sym)}_ctr_en = $ctrEn; // TODO: This codegen branch not migrated from maxj""")
@@ -675,7 +676,7 @@ val ${quote(sym)}_maxed = ${quote(sym)}.io.output.saturated""")
     counters.zipWithIndex.map { case (ctr, i) =>
       val drop = pars.take(i+1).reduce{_+_} - pars(i)
       val take = pars(i)
-      emit(s"""val ${quote(ctr)} = ${quote(sym)}.io.output.counts.drop(${drop}).take(${take})""")
+      emit(s"""val ${quote(ctr)} = ${quote(sym)}.io.output.counts.drop(${drop}).take(${take})""")      
     }
 
     // Emit the valid bit calculations that don't exist in the IR
@@ -689,7 +690,7 @@ val ${quote(sym)}_maxed = ${quote(sym)}.io.output.saturated""")
       case Deff(UnrolledReduce(_,_,_,_,counts,vs,_,_)) =>
         vs.zip(counts).zipWithIndex.map { case ((layer,count), i) =>
           layer.zip(count).map { case (v, c) =>
-            emit(s"val ${quote(v)} = ${quote(c)} < ${quote(sym)}_max(${i})")
+            emit(s"val ${quote(v)} = ${quote(c)} < ${quote(sym)}_maxes(${i})")
           }
         }
       case _ =>

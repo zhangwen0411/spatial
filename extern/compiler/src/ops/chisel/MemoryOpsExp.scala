@@ -410,7 +410,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         regs += alias.asInstanceOf[Sym[Reg[Any]]]
 
         withStream(baseStream) {
-          emitComment("Reg_new {")
           val ts = tpstr(parOf(sym))(sym.tp.typeArguments.head, implicitly[SourceContext])
           val duplicates = duplicatesOf(sym)
           val rstVal = resetValue(sym.asInstanceOf[Sym[Reg[Any]]]) match {
@@ -422,11 +421,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               case Regular =>
                 (reduceType(sym), i) match {
                   case (Some(fps: ReduceFunction), 0) =>
-                    Console.println(s"[WARNING] Assume duplicate 0 is the inside reduction register and do not emit lib")
+                    emit(s"""val ${quote(sym)}_${i}_accum = Module(new UIntAccum(32,"add")) // TODO: Is first instance always accum?""")
+                    emit(s"""val ${quote(sym)}_${i} = ${quote(sym)}_${i}_accum.io.output""")
                   case _ =>
                     val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
                     if (d.depth > 1) {
-                      emit(s"""NBufReg ${quote(sym)}_${i}_lib = new NBufReg(this, $ts, "${quote(sym)}_${i}", ${parOf(sym)}, new Bits(${quote(ts)}.getTotalBits(), $rstVal), ${d.depth}); // ${nameOf(sym).getOrElse("")}""")
+                      emit(s"""val ${quote(sym)}_${i}_lib = new NBufFF(${d.depth}, 32) // ${nameOf(sym).getOrElse("")}""")
                     } else {
                       emit(s"""val ${quote(sym)}_${i}_lib = Module(new FF(32)); // ${nameOf(sym).getOrElse("")}""")
                       val readstr = if (parOf(sym) > 1) "readv" else "read"
@@ -437,7 +437,6 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               case _ => throw new Exception(s"""Unknown reg type ${regType(sym)}""")
             }
           }
-          emitComment("Reg_new }")
         }
       } else {
         withStream(baseStream) {
@@ -495,7 +494,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               }
             case _ => // Otherwise emit here
               if (!emitted_reglibreads.contains((sym, regStr))) {
-                emit(s"""val ${quote(sym)} = $regStr; // reg read ${nameOf(reg).getOrElse("")}""")
+                emit(s"""val ${quote(sym)} = $regStr; // ${nameOf(reg).getOrElse("")}""")
                 emitted_reglibreads += ((sym, regStr))
               }
           }
@@ -547,11 +546,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     emit(s"// ---- Specialized reduce for $fps ---- ")
                     fps match {
                       case FixPtSum =>
-                        emit(s"""val ${quote(reg)}_accum = Module(new UIntAccum(32,"add"))""")
-                        emit(s"""${quote(reg)}_accum.io.next := ${quote(value)}""")
-                        emit(s"""${quote(reg)}_accum.io.en := ${quote(accEn)}""")
-                        emit(s"""${quote(reg)}_accum.io.reset := ${quote(rstStr)}""")
-                        emit(s"""val ${quote(reg)} = ${quote(reg)}_accum.io.output""")
+                        emit(s"""${quote(reg)}_0_accum.io.next := ${quote(value)}""")
+                        emit(s"""${quote(reg)}_0_accum.io.en := ${quote(accEn)}""")
+                        emit(s"""${quote(reg)}_0_accum.io.reset := ${quote(rstStr)}""")
+                        emit(s"""val ${quote(reg)} = ${quote(reg)}_0_accum.io.output""")
                       case FltPtSum =>
                         emit(s"""// TODO: Specialized accum, set val ${quote(reg)} = specialAccum( + ${quote(value)} ).withClear(${rstStr}).withEnable(${accEn});""")
                     }
