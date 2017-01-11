@@ -62,9 +62,9 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Min2(a, b) =>
-      emit(s"""var ${quote(sym)} = KernelMath.min(${quote(a)}, ${quote(b)});""")
+      emit(s"""val ${quote(sym)} = Utils.min(${quote(a)}, ${quote(b)});""")
     case Max2(a, b) =>
-      emit(s"""var ${quote(sym)} = KernelMath.max(${quote(a)}, ${quote(b)});""")
+      emit(s"""val ${quote(sym)} = Utils.max(${quote(a)}, ${quote(b)});""")
     case ConstFixPt(x,_,_,_) =>
       if (!emitted_consts.contains((sym, rhs))) {
         emitted_consts += ((sym, rhs))

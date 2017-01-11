@@ -399,7 +399,7 @@ trait NiterApp extends SpatialApp {
 
   def nIterTest(len: Rep[SInt]) = {
     val innerPar = param(1); domainOf(innerPar) = (1, 1, 1)
-    val tileSize = param(constTileSize); domainOf(constTileSize) = (constTileSize, constTileSize, constTileSize)
+    val tileSize = constTileSize ( 1 -> 96 -> 999)
     bound(len) = 9216
 
     val N = ArgIn[SInt]
@@ -409,7 +409,9 @@ trait NiterApp extends SpatialApp {
     Accel {
       Sequential {
         Sequential (N by tileSize) { i =>
-          val accum = Reduce (tileSize par innerPar)(0.as[T]) { ii =>
+          val redMax = Reg[SInt](999)
+          Pipe{ redMax := min(tileSize, N.value-i) }
+          val accum = Reduce (redMax par innerPar)(0.as[T]) { ii =>
             i + ii
           } {_+_}
           Pipe { out := accum }

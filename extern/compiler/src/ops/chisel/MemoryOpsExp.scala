@@ -194,7 +194,7 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
 
     emit(s"""// Assemble multidimR vector
 val ${quote(read)}_rVec = Wire(Vec(${rPar}, new multidimR(${num_dims}, 32)))
-${quote(read)}_rVec.foreach { r => r.en := true.B}""")
+${quote(read)}_rVec.foreach { r => r.enable := true.B}""")
     inds.zipWithIndex.foreach{ case(ind,i) => 
       ind.zipWithIndex.foreach { case(wire,j) =>
         emit(s"""${quote(read)}_rVec($i).addr($j) := ${quote(wire)}""")
@@ -261,7 +261,7 @@ ${quote(read)}_rVec.foreach { r => r.en := true.B}""")
     emit(s"""// Assemble multidimW vector
 val ${quote(write)}_wVec = Wire(Vec(${wPar}, new multidimW(${num_dims}, 32)))
 ${quote(write)}_wVec.zip(${quote(value)}).foreach {case (w,d) => w.data := d}
-${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.en := e}""")
+${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.enable := e}""")
     inds.zipWithIndex.foreach{ case(ind,i) => 
       ind.zipWithIndex.foreach { case(wire,j) =>
         emit(s"""${quote(write)}_wVec($i).addr($j) := ${quote(wire)}""")
@@ -545,8 +545,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                     fps match {
                       case FixPtSum =>
                         emit(s"""${quote(reg)}_0_accum.io.next := ${quote(value)}""")
-                        emit(s"""${quote(reg)}_0_accum.io.en := ${quote(accEn)}""")
-                        emit(s"""${quote(reg)}_0_accum.io.reset := Delay.delay(${quote(rstStr)}, 1)""")
+                        emit(s"""${quote(reg)}_0_accum.io.enable := ${quote(accEn)}""")
+                        emit(s"""${quote(reg)}_0_accum.io.reset := Utils.delay(${quote(rstStr)}, 1)""")
                         emit(s"""val ${quote(reg)} = ${quote(reg)}_0_accum.io.output""")
                       case FltPtSum =>
                         emit(s"""// TODO: Specialized accum, set val ${quote(reg)} = specialAccum( + ${quote(value)} ).withClear(${rstStr}).withEnable(${accEn});""")
@@ -569,7 +569,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
               // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
               val portSelector = if (dup.depth > 1) s"($port)" else ""
               emit(s"""${regname}_lib.io.input${portSelector}.data := ${quote(value)}; // ${nameOf(reg).getOrElse("")}""")
-              emit(s"""${regname}_lib.io.input${portSelector}.en := ${quote(writeCtrl)}_done""")
+              emit(s"""${regname}_lib.io.input${portSelector}.enable := ${quote(writeCtrl)}_done""")
               emit(s"""${regname}_lib.io.input${portSelector}.reset := false.B""")
             }
           } // End non-accumulator case

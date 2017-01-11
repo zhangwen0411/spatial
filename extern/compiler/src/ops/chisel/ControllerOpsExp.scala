@@ -355,7 +355,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
       if (smStr == "Innerpipe") {
         emit(s"""// ---- Begin unit counter for ${quote(sym)} ---- """)
-        emit(s"""${quote(sym)}_sm.io.input.ctr_done := Delay.delay(${quote(sym)}_sm.io.output.ctr_en, 1)""")
+        emit(s"""${quote(sym)}_sm.io.input.ctr_done := Utils.delay(${quote(sym)}_sm.io.output.ctr_en, 1)""")
       }
 
       if (writesToAccumReg) {
@@ -395,23 +395,19 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
     /* State Machine Instatiation */
     // IO
-    val (numCounters, numIter) = if (cchain.isDefined) {
+    val numIter = if (cchain.isDefined) {
       val Def(EatReflect(Counterchain_new(counters))) = cchain.get
-      var niter_str = s""
       counters.zipWithIndex.map {case (ctr,i) =>
         val Def(EatReflect(Counter_new(start, end, step, par))) = ctr
-        if (i > 0) {
-          niter_str += " * "
-        }
-        niter_str += s"((${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}.U))"
+        emit(s"""val ${quote(sym)}_level${i}_iters = (${quote(end)} - ${quote(start)}) / (${quote(step)} * ${quote(par)}.U) + Mux(((${quote(end)} - ${quote(start)}) % (${quote(step)} * ${quote(par)}.U) === 0.U), 0.U, 1.U)""")
+        s"${quote(sym)}_level${i}_iters"
       }
-      (counters.size, niter_str)
     } else { 
-      (1, "1.U")
+      List("1.U")
     }
 
     val constrArg = smStr match {
-      case "Pipe" => s"$numCounters /*probably don't need*/"
+      case "Pipe" => s"${numIter.length} /*probably don't need*/"
       case "Parallel" => ""
       case _ => childrenOf(sym).length
     }
@@ -423,18 +419,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     emit(s"""val ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.output.rst_en""")
 
     styleOf(sym) match {
-      case InnerPipe =>
-        //emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done;""")
-        // emit(s"""${quote(sym)}_sm_offset.io.input.data := ${quote(sym)}_sm.io.output.done // TODO: Does this make sense?""")
-        // emit(s"""${quote(sym)}_sm.io.output.reset := ${quote(sym)}_sm.io.output.rst_en // TODO: Doesn't make sense""")
-      case CoarsePipe =>
-        emit(s"""  ${quote(sym)}_sm.io.input.numIter := (${quote(numIter)})""")
-      case SequentialPipe =>
-        emit(s"""  ${quote(sym)}_sm.io.input.numIter := (${quote(numIter)})""")
-        // emit(s"""  ${quote(sym)}_done := ${quote(sym)}_sm_offset.io.output.data""")
-        //emit(s"""    ${quote(sym)}_done := ${quote(sym)}.io.sm_done;""")
-        // emit(s"""${quote(sym)}_sm_offset.io.input.data := ${quote(sym)}_sm.io.output.done // TODO: Does this make sense?""")
-      case ForkJoin =>
+      case s @ (CoarsePipe | SequentialPipe) =>
+        emit(s"""  ${quote(sym)}_sm.io.input.numIter := (${numIter.mkString(" * ")})""")
+      case _ =>
     }
 
     if (styleOf(sym)!=ForkJoin) {
