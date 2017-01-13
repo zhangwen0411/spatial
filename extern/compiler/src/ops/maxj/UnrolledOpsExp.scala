@@ -386,6 +386,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DF
                 case FltPtSum => true
                 case _ => false
               }
+              case _ => false
             }
 
             styleOf(sym) match {
@@ -520,6 +521,7 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
           case FltPtSum => true
           case _ => false
         }
+        case _ => false
       }
 
       styleOf(sym) match {

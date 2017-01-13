@@ -143,9 +143,14 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
     emitBufferControlSignals()
     withStream(baseStream) {
       emit(s"""// Emit argin reads""")
+      // Get each all unique reg strings
+      emitted_argins.toList.map{a=>a._2}.distinct.foreach{ a => 
+        emit(s"""val ${a} = io.ArgIn.ports(${argInsByName.indexOf(a)})""")
+      }
+
       emitted_argins.toList.foreach {
         case (sym, regStr) =>
-          emit(s"""val ${quote(sym)} = io.ArgIn.$regStr; // reg read""")
+          emit(s"""val ${quote(sym)} = $regStr""")
       }
     }
     super.emitFileFooter()
@@ -194,7 +199,7 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
 
     emit(s"""// Assemble multidimR vector
 val ${quote(read)}_rVec = Wire(Vec(${rPar}, new multidimR(${num_dims}, 32)))
-${quote(read)}_rVec.foreach { r => r.enable := true.B}""")
+${quote(read)}_rVec.foreach { r => r.en := true.B}""")
     inds.zipWithIndex.foreach{ case(ind,i) => 
       ind.zipWithIndex.foreach { case(wire,j) =>
         emit(s"""${quote(read)}_rVec($i).addr($j) := ${quote(wire)}""")
@@ -261,7 +266,7 @@ ${quote(read)}_rVec.foreach { r => r.enable := true.B}""")
     emit(s"""// Assemble multidimW vector
 val ${quote(write)}_wVec = Wire(Vec(${wPar}, new multidimW(${num_dims}, 32)))
 ${quote(write)}_wVec.zip(${quote(value)}).foreach {case (w,d) => w.data := d}
-${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.enable := e}""")
+${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.en := e}""")
     inds.zipWithIndex.foreach{ case(ind,i) => 
       ind.zipWithIndex.foreach { case(wire,j) =>
         emit(s"""${quote(write)}_wVec($i).addr($j) := ${quote(wire)}""")
@@ -523,7 +528,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
           if (isAccum(reg)) throw new Exception(s"""ArgOut (${quote(reg)}) cannot be used as an accumulator!""")
           val controlStr = if (parentOf(reg).isEmpty) s"top_done" else quote(parentOf(reg).get) + "_done"
           // emitGlobal(s"""var ${quote(reg)} =  $tsb OUTPUT $tse;""")
-          emit(s"""io.ArgOut.${quote(reg)} := ${quote(value)}""")
+          emit(s"""io.ArgOut.ports(${argOutsByName.indexOf(quote(reg))}) := ${quote(value)} // ${quote(reg)}""")
         case _ =>
           if (isAccum(reg)) {
             // Not sure how to decide this now...
@@ -550,12 +555,14 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                         emit(s"""val ${quote(reg)} = ${quote(reg)}_0_accum.io.output""")
                       case FltPtSum =>
                         emit(s"""// TODO: Specialized accum, set val ${quote(reg)} = specialAccum( + ${quote(value)} ).withClear(${rstStr}).withEnable(${accEn});""")
+                      case _ =>
                     }
                     // TODO: I think this is a maxj vestige, but assume duplicate 0 is used for reduction, all others need writes
                     dups.foreach { case (dup, ii) =>
                       val port = portsOf(writer, reg, ii).head
                       if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, false.B, $port); // ${nameOf(reg).getOrElse("")}""")
                     }
+                  case _ =>
                   }
               case _ =>
                 emit(s"DFEVar ${accEn} = constant.var(true)")

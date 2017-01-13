@@ -930,8 +930,13 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
 import chisel3._
 
 class ArgInBundle() extends Bundle{
+  val ports = Vec(${ports.length}, Input(UInt(32.W)))
+
 """)
-    ports.map { p => emit(s"  val ${quote(p)} = Input(UInt(32.W)) // ${nameOf(p).getOrElse("")}")}
+    ports.zipWithIndex.map { case(p,i) => 
+      emit(s"//  ${quote(p)} = ports($i) (${nameOf(p).getOrElse("")})")
+      argInsByName = argInsByName :+ s"${quote(p)}"
+    }
 emit(s"""
 }""")
   }
@@ -939,8 +944,13 @@ emit(s"""
   private def emitArgOutBundle(ports: List[Sym[Reg[_]]]) {
     emit(s"""
 class ArgOutBundle() extends Bundle{
+  val ports = Vec(${ports.length}, Output(UInt(32.W)))
+
 """)
-    ports.map { p => emit(s"  val ${quote(p)} = Output(UInt(32.W)) // ${nameOf(p).getOrElse("")}")}
+    ports.zipWithIndex.map { case(p,i) => 
+      emit(s"//  ${quote(p)} = ports($i) (${nameOf(p).getOrElse("")})")
+      argOutsByName = argOutsByName :+ s"${quote(p)}"
+    }
 emit(s"""
 }""")
   }

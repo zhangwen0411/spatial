@@ -451,6 +451,101 @@ else
   touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_no_validation_check.${3}_${4}    
   fi
 fi" >> $1
+  elif [[ ${type_todo} = "chisel" ]]; then
+  echo "
+#!/bin/bash
+# Override env vars to point to a separate directory for this regression test
+export SPATIAL_HOME=${SPATIAL_HOME}
+export PUB_HOME=${SPATIAL_HOME}/published/Spatial
+export HYPER_HOME=${HYPER_HOME}
+export PATH=/opt/maxcompiler/bin:/opt/maxcompiler2016/bin:/opt/maxeler/bin:/opt/altera/quartus/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
+export FORGE_HOME=${HYPER_HOME}/forge
+export DELITE_HOME=${HYPER_HOME}/delite
+export LMS_HOME=${HYPER_HOME}/virtualization-lms-core
+export PIR_HOME=${HYPER_HOME}/spatial/published/Spatial
+export PATH=/opt/maxeler/maxcompiler-2014.1/bin:$PATH
+
+sleep \$((${3}*${spacing})) # Backoff time to prevent those weird file IO errors
+
+cd ${PUB_HOME}
+${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} 2>&1 | tee -a ${5}/log
+
+sed -i \"s/^ERROR.*ignored\./Ignoring silly LD_PRELOAD  e r r o r/g\" ${5}/log
+sed -i \"s/error retrieving current directory/Ignoring getcwd e r r o r/g\" ${5}/log
+sed -i \"s/error: illegal sharing of mutable object/Ignoring scattergather mutable sharing e r r o r/g\" ${5}/log
+
+wc=\$(cat ${5}/log | grep \"couldn't find DEG file\" | wc -l)
+if [ \"\$wc\" -ne 0 ]; then
+  echo \"PASS: -1 (${4} Spatial Error)\"
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+      echo \"[STATUS] Declaring failure app_not_written\"
+      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_not_written.${3}_${4}
+    fi
+  exit 1
+fi
+
+wc=\$(cat ${5}/log | grep \"error\" | wc -l)
+if [ \"\$wc\" -ne 0 ]; then
+  echo \"PASS: -2 (${4} Spatial Error)\"
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+      cat ${5}/log
+      echo \"[STATUS] Declaring failure build_in_spatial\"
+      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
+    fi
+  exit 1
+fi
+
+cd ${5}/out
+
+make clean sim 2>&1 | tee -a ${5}/log
+wc=\$(cat ${5}/log | sed \"s/Error 1 (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
+if [ \"\$wc\" -ne 0 ]; then
+  echo \"PASS: -3 (${4} Spatial Error)\"
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+      echo \"[STATUS] Declaring failure compile_maxj\"
+      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_maxj.${3}_${4}
+  fi
+  exit 1
+fi
+
+rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+
+bash ${5}/out/run.sh ${args} 2>&1 | tee -a ${5}/log
+if grep -q \"PASS: 1\" ${5}/log; then
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
+  cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
+  fi
+elif grep -q \"PASS: true\" ${5}/log; then
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
+  cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
+  fi
+elif grep -q \"PASS: 0\" ${5}/log; then
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    echo \"[STATUS] Declaring failure validation\"
+  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+  fi
+elif grep -q \"PASS: false\" ${5}/log; then
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    echo \"[STATUS] Declaring failure validation\"
+    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+  fi
+else 
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+    echo \"[STATUS] Declaring failure no_validation_check\"
+  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_no_validation_check.${3}_${4}    
+  fi
+fi" >> $1
   else
     echo -e "Error! ${type_todo} type of regression test not yet supported."
     stamp_commit_msgs

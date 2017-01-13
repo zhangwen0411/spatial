@@ -232,9 +232,9 @@ trait ScalaGenMemoryOps extends ScalaGenEffect {
 }
 
 trait CGenMemoryOps extends CGenEffect {
-  val IR: ControllerOpsExp with SpatialIdentifiers with DRAMOpsExp with DRAMAddrAnalysisExp
+  val IR: ControllerOpsExp with UnrollingTransformExp with SpatialIdentifiers with DRAMOpsExp with DRAMAddrAnalysisExp
   with NosynthOpsExp
-  import IR._
+  import IR.{__ifThenElse => _, _}
 
 //  private def bitsToStringInt(bits: Int): String = {
 //    if (bits <= 8) "8"
@@ -263,30 +263,48 @@ trait CGenMemoryOps extends CGenEffect {
 
   override def emitDataStructures(path: String) {
     super.emitDataStructures(path)
-    val stream = new PrintWriter(path + "maxjLmem.h")
-    stream.println(
-"""
-#ifndef __MAXJLMEM_H__
-#define __MAXJLMEM_H__
-#include <stdint.h>
 
-class maxjLmem {
-public:
-  uint64_t baseAddr;
-  uint32_t size;
+    if (Config.generateMaxJ) { // TODO: Why won't an if statement work here...
+      val stream = new PrintWriter(path + "maxjLmem.h")
+      stream.println(
+  """
+  #ifndef __MAXJLMEM_H__
+  #define __MAXJLMEM_H__
+  #include <stdint.h>
 
-  maxjLmem(uint64_t base, int size) {
-    this->baseAddr = base;
-    this->size = size;
-  }
-};
-#endif
-""")
+  class maxjLmem {
+  public:
+    uint64_t baseAddr;
+    uint32_t size;
+
+    maxjLmem(uint64_t base, int size) {
+      this->baseAddr = base;
+      this->size = size;
+    }
+  };
+  #endif
+  """)
+      stream.close()
+
+      typesStream.println(s"""#include "maxjLmem.h" """)
+      typesStream.println(s"""#include <Top.h>""")
+      typesStream.println(s"""extern max_engine_t *engine;""")
+    } else if (Config.generateChisel) {
+      val stream = new PrintWriter(path + "interface.h")
+      stream.println(s"""// Interface between delite c++ and hardware tester
+  class Interface_t {
+
+  public:
+    int32_t* ArgIns[${argInsByName.length}];
+    int32_t* ArgOuts[${argOutsByName.length}];
+    long* MemIns[0];
+    long* MemOuts[0];
+    uint64_t* cycles;
+  };
+  """)
     stream.close()
 
-    typesStream.println(s"""#include "maxjLmem.h" """)
-    typesStream.println(s"""#include <Top.h>""")
-    typesStream.println(s"""extern max_engine_t *engine;""")
+    }
   }
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {

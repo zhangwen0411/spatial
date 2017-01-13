@@ -428,9 +428,10 @@ trait NiterApp extends SpatialApp {
 
     val result = nIterTest(len)
 
-    val b1 = Array.tabulate[SInt](len) { i => i }
-
-    val gold = b1.reduce {_+_} - ((len-constTileSize) * (len-constTileSize-1))/2
+    // val m = if (len % constTileSize == 0) constTileSize else len % constTileSize
+    val m = (len-1)%constTileSize + 1
+    val b1 = m*(m-1)/2
+    val gold = b1 + (len - m)*m
     println("expected: " + gold)
     println("result:   " + result)
 
@@ -872,18 +873,18 @@ trait MemTest1DApp extends SpatialApp {
   def main() {
 
     // Declare SW-HW interface vals
-    val x = ArgIn[UInt]
-    val y = ArgOut[UInt]
-    val N = args(0).to[UInt]
+    val x = ArgIn[SInt]
+    val y = ArgOut[SInt]
+    val N = args(0).to[SInt]
 
     // Connect SW vals to HW vals
     setArg(x, N)
 
     // Create HW accelerator
     Accel {
-      val mem = SRAM[UInt](384)
+      val mem = SRAM[SInt](384)
       Pipe(384 by 1) { i =>
-        mem(i) = x + i.to[UInt]
+        mem(i) = x + i.to[SInt]
       }
       Pipe { y := mem(383) }
     }
@@ -908,18 +909,18 @@ trait MemTest2DApp extends SpatialApp {
   def main() {
 
     // Declare SW-HW interface vals
-    val x = ArgIn[UInt]
-    val y = ArgOut[UInt]
-    val N = args(0).to[UInt]
+    val x = ArgIn[SInt]
+    val y = ArgOut[SInt]
+    val N = args(0).to[SInt]
 
     // Connect SW vals to HW vals
     setArg(x, N)
 
     // Create HW accelerator
     Accel {
-      val mem = SRAM[UInt](64, 128)
+      val mem = SRAM[SInt](64, 128)
       Pipe(64 by 1, 128 by 1) { (i,j) =>
-        mem(i,j) = x + (i*128+j).to[UInt]
+        mem(i,j) = x + (i*128+j).to[SInt]
       }
       Pipe { y := mem(63,127) }
     }

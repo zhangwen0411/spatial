@@ -106,6 +106,8 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         case Def(ConstFlt(value)) =>
           val str = s"$value"
           s"const${str.replace('.', 'p').replace('-', 'n')}_" + s.tp.erasure.getSimpleName() + n
+        // case Def(ConstBool(value)) =>
+        //   s"${value}.B"
         case _ =>
     			val tstr = s.tp.erasure.getSimpleName().replace("Spatial","")
           val customStr = tstr match {
@@ -271,7 +273,10 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       // emit(s"""io.top_done := ${quote(sym)}_done;""")
       // emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")
       emitController(sym, None)
-      emit(s"""io.top_done := ${quote(sym)}_sm.io.output.done""")
+      emit(s"""val done_latch = Module(new SRFF())""")
+      emit(s"""done_latch.io.input.set := ${quote(sym)}_sm.io.output.done""")
+      emit(s"""//done_latch.io.input.reset := some global reset signal""")
+      emit(s"""io.top_done := done_latch.io.output.data""")
       // emitComment("\n--------------- HW BLOCK ----------------\n")      
       emitBlock(func)
 			inHwScope = false
