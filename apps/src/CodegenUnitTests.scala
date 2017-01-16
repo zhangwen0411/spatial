@@ -250,6 +250,7 @@ trait ParFifoLoadApp extends SpatialApp {
   }
 }
 
+
 object FifoLoadStore extends SpatialAppCompiler with FifoLoadStoreApp // Regression (Unit) // Args: none
 trait FifoLoadStoreApp extends SpatialApp {
   type T = SInt
@@ -301,39 +302,40 @@ trait FifoLoadStoreApp extends SpatialApp {
   }
 }
 
-object SimpleReduce extends SpatialAppCompiler with SimpleReduceApp // Regression (Unit) // Args: 72
-trait SimpleReduceApp extends SpatialApp {
+object TileLoad extends SpatialAppCompiler with TileLoadApp // Regression (Unit) // Args: 72
+trait TileLoadApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
 
-  val N = 96.as[SInt]
+  val N = 64.as[SInt]
 
-  def simpleReduce(xin: Rep[SInt]) = {
-    val P = param(8)
+  def tileload(data: Rep[Array[SInt]]) = {
+    val P = param(1)
 
-    val x = ArgIn[SInt]
+    val src = DRAM[SInt](N)
     val out = ArgOut[SInt]
-    setArg(x, xin)
+    setMem(src, data)
 
     Accel {
-      out := Reduce(N by 1)(0.as[T]) { ii =>
-        x.value * ii
+      val b = SRAM[SInt](N)
+      b := src(0::N)
+      out := Reduce(N by 1)(0.as[SInt]) { ii => 
+        b(ii)
       }{_+_}
     }
     getArg(out)
   }
 
   def main() {
-    val x = args(unit(0)).to[SInt]
 
-    val result = simpleReduce(x)
-
-    val gold = Array.tabulate[SInt](N){i => x * i}.reduce{_+_}
+    val data = Array.tabulate[SInt](N){i => i*2}
+    val result = tileload(data)
+    val gold = data.reduce{_+_}
     println("expected: " + gold)
     println("result:   " + result)
 
     val cksum = gold == result
-    println("PASS: " + cksum + " (SimpleReduce)")
+    println("PASS: " + cksum + " (TileLoad)")
   }
 }
 
