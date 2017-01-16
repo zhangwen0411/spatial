@@ -67,18 +67,19 @@ trait ChiselPreCodegen extends Traversal  {
 
     var argIns: List[Sym[Reg[_]]] = List()
     var argOuts: List[Sym[Reg[_]]] = List()
-    val memStreams = Set.empty[Sym[Any]]
+    val memStreams: List[Sym[Any]] = List()
 
   override def preprocess[A:Manifest](b: Block[A]): Block[A] = {
         argIns = List()
         argOuts = List()
-        memStreams.clear
+        memStreams = List()
         b
     }
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
     withStream(newStream("IOBundle")) {
       emitArgInBundle(argIns)
       emitArgOutBundle(argOuts)
+      emitMemStreamBundle(memStreams)
     }
 		/*withStream(newStream("ChiselManager")) {
 			chiselManagerGen.emitManager(stream, argInOuts, memStreams)
@@ -136,10 +137,10 @@ trait ChiselPreCodegen extends Traversal  {
     case e:Argin_new[_] => argIns = argIns :+ sym.asInstanceOf[Sym[Reg[_]]]
     case e:Argout_new[_] => argOuts = argOuts :+ sym.asInstanceOf[Sym[Reg[_]]]
 
-    case _:BurstStore[_] => memStreams += sym
-    case _:BurstLoad[_] => memStreams += sym
-    case _:Scatter[_] => memStreams += sym
-    case _:Gather[_] => memStreams += sym
+    case _:BurstStore[_] => memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
+    case _:BurstLoad[_] => memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
+    case _:Scatter[_] => memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
+    case _:Gather[_] => memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
 
     case Sram_new(size, zero) =>
       val dups = duplicatesOf(sym)
@@ -928,6 +929,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
   private def emitArgInBundle(ports: List[Sym[Reg[_]]]) {
     emit(s"""package interfaces
 import chisel3._
+import templates._
 
 class ArgInBundle() extends Bundle{
   val ports = Vec(${ports.length}, Input(UInt(32.W)))
@@ -953,6 +955,16 @@ class ArgOutBundle() extends Bundle{
     }
 emit(s"""
 }""")
+  }
+
+  private def emitMemStreamBundle(ports: List[Sym[Any]]) {
+    emit(s"""
+class MemStreamsBundle() extends Bundle{
+  val outPorts = Vec(${ports.length}, Output(new ToDRAM(1)))
+  val inPorts = Vec(${ports.length}, Input(new FromDRAM(1)))
+
+}
+""")
   }
 
   private def stateTextSeq(state: Int, N: Int) = {

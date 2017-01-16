@@ -697,12 +697,13 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}_rdata[0];""")
 
     case Vec_apply(vec, idx) =>
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""DFEVar ${quote(sym)} = ${quote(vec)}[${quote(idx)}];""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(vec)}[${quote(idx)}];""")
+      // rTreeMap(sym) match {
+      //   case Nil =>
+      //     emit(s"""DFEVar ${quote(sym)} = ${quote(vec)}[${quote(idx)}];""")
+      //   case m =>
+      //     emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
+      // }
 
     case ListVector(elems) =>
       // val ts = tpstr(1)(elems(0).tp, implicitly[SourceContext])
