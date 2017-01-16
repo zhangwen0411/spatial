@@ -671,10 +671,10 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val par = duplicates.head.banking.head.banks
       val ts = tpstr(1)(sym.tp.typeArguments.head, implicitly[SourceContext])
       emit(s"""// FIFO ${quote(sym)} = Fifo_new[$ts](${quote(size)}, ${quote(zero)});""")
-      emit(s"""DFEVector<DFEVar> ${quote(sym)}_rdata = new DFEVectorType<DFEVar>($ts, $par).newInstance(this);""")
-      emit(s"""DFEVector<DFEVar> ${quote(sym)}_wdata = new DFEVectorType<DFEVar>($ts, $par).newInstance(this);""")
-      emit(s"""DFEVar ${quote(sym)}_readEn = dfeBool().newInstance(this);""")
-      emit(s"""DFEVar ${quote(sym)}_writeEn = dfeBool().newInstance(this);""")
+      emit(s"""val ${quote(sym)}_rdata = Vec($par, Wire(UInt(32.W))) // $ts""")
+      emit(s"""val ${quote(sym)}_wdata = Vec($par, Wire(UInt(32.W))) // $ts""")
+      emit(s"""val ${quote(sym)}_readEn = Wire(Bool())""")
+      emit(s"""val ${quote(sym)}_writeEn = Wire(Bool())""")
 
     case Par_push_fifo(fifo, value, en, shuffle) =>
       emit(s"""// Par_push_fifo(${quote(fifo)}, ${quote(value)}, ${quote(en)}, ${quote(shuffle)});""")
@@ -687,20 +687,20 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, ${quote(en)});""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       val readEn = s"${reader}_ctr_en"
-      emit(s"""${quote(fifo)}_readEn <== ${readEn};""")
-      emit(s"""DFEVector<DFEVar> ${quote(sym)} = ${quote(fifo)}_rdata;""")
+      emit(s"""${quote(fifo)}_readEn := ${readEn};""")
+      emit(s"""val ${quote(sym)} = ${quote(fifo)}_rdata;""")
 
     case Pop_fifo(fifo,en) =>
       emit(s"""// DFEVar ${quote(sym)} = Par_pop_fifo(${quote(fifo)}, 1);""")
       val reader = quote(readersOf(fifo).head.controlNode)  // Assuming that each fifo has a unique reader
       emit(s"""${quote(fifo)}_readEn <== ${reader}_ctr_en;""")
-      emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}_rdata[0];""")
+      emit(s"""DFEVar ${quote(sym)} = ${quote(fifo)}_rdata(0);""")
 
     case Vec_apply(vec, idx) =>
-      emit(s"""val ${quote(sym)} = ${quote(vec)}[${quote(idx)}];""")
+      emit(s"""val ${quote(sym)} = ${quote(vec)}(${quote(idx)});""")
       // rTreeMap(sym) match {
       //   case Nil =>
-      //     emit(s"""DFEVar ${quote(sym)} = ${quote(vec)}[${quote(idx)}];""")
+      //     emit(s"""DFEVar ${quote(sym)} = ${quote(vec)}(${quote(idx)});""")
       //   case m =>
       //     emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       // }

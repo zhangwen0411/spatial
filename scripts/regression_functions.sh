@@ -327,7 +327,7 @@ sed -i '4i J_HOME=/usr/lib/jvm/java-1.6.0-openjdk-1.6.0.40.x86_64' Makefile
 sed -i \"s/-I\\\$(JAVA_HOME)\/include -I\\\$(JAVA_HOME)\/include\/linux/-I\\\$(J_HOME)\/include -I\\\$(J_HOME)\/include\/linux/g\" Makefile
 
 make clean sim 2>&1 | tee -a ${5}/log
-wc=\$(cat ${5}/log | sed \"s/Error 1 (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
+wc=\$(cat ${5}/log | sed \"s/Error [0-9]\+ (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
   echo \"PASS: -3 (${4} Spatial Error)\"
   if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
@@ -458,12 +458,10 @@ fi" >> $1
 export SPATIAL_HOME=${SPATIAL_HOME}
 export PUB_HOME=${SPATIAL_HOME}/published/Spatial
 export HYPER_HOME=${HYPER_HOME}
-export PATH=/opt/maxcompiler/bin:/opt/maxcompiler2016/bin:/opt/maxeler/bin:/opt/altera/quartus/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games
 export FORGE_HOME=${HYPER_HOME}/forge
 export DELITE_HOME=${HYPER_HOME}/delite
 export LMS_HOME=${HYPER_HOME}/virtualization-lms-core
 export PIR_HOME=${HYPER_HOME}/spatial/published/Spatial
-export PATH=/opt/maxeler/maxcompiler-2014.1/bin:$PATH
 
 sleep \$((${3}*${spacing})) # Backoff time to prevent those weird file IO errors
 
@@ -500,7 +498,7 @@ fi
 cd ${5}/out
 
 make clean sim 2>&1 | tee -a ${5}/log
-wc=\$(cat ${5}/log | sed \"s/Error 1 (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
+wc=\$(cat ${5}/log | sed \"s/Error [0-9]\+ (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
   echo \"PASS: -3 (${4} Spatial Error)\"
   if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
@@ -514,7 +512,7 @@ fi
 rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
 touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
 
-bash ${5}/out/run.sh ${args} 2>&1 | tee -a ${5}/log
+bash ${5}/out/run.sh \"${args}\" 2>&1 | tee -a ${5}/log
 if grep -q \"PASS: 1\" ${5}/log; then
   if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
     rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
