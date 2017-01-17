@@ -98,14 +98,17 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
         s"${quote(ctr)}: ${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
       }
 
+      var inner = true // [sic]
       val style = styleOf(sym) match {
         case StreamPipe => "Stream"
         case CoarsePipe => "Meta"
-        case InnerPipe => "Pipe"
+        case InnerPipe => 
+          inner = false
+          "Pipe"
         case SequentialPipe => "Seq"
         case _ => s"${styleOf(sym)}"
       }
-      print_stage_prefix(s"Foreach $style",s"${ctr_str}",s"${quote(sym)}")
+      print_stage_prefix(s"Foreach $style",s"${ctr_str}",s"${quote(sym)}", inner)
       // emit(s"""//  ---- style ${quote(sym)} (UnrolledForeach(${quote(cchain)})) ----""")
 
       emitController(sym, Some(cchain))
@@ -163,7 +166,7 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
 
       // emit("""}""")
       // emitComment(s"""} UnrolledForeach ${quote(sym)}""")
-      print_stage_suffix(quote(sym), style == "Pipe")
+      print_stage_suffix(quote(sym), inner)
       controlNodeStack.pop
 
     case e@UnrolledReduce(cchain, accum, func, rFunc, inds, vs, acc, rV) =>

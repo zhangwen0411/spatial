@@ -2,6 +2,17 @@ import spatial.compiler._
 import spatial.library._
 import spatial.shared._
 
+// // Standard incrementing array used for testing, since chisel does not have communication between C++ and hw
+// object TestUtils extends SpatialAppCompiler {
+//   def standard_array(length: Any):Rep[ForgeArray[SInt]] = { 
+//     length match {
+//       case l: Rep[SInt] => Array.tabulate[SInt](l) { i => i }
+//       // case l: Int => (0 until l).map{ i => i }
+//     }
+    
+//   }  
+// }
+
 object SimpleSequential extends SpatialAppCompiler with SimpleSequentialApp // Regression (Unit) // Args: 5 8
 trait SimpleSequentialApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
@@ -328,7 +339,7 @@ trait TileLoadApp extends SpatialApp {
 
   def main() {
 
-    val data = Array.tabulate[SInt](N){i => i*2}
+    val data = Array.tabulate[SInt](N) { i => i } //TestUtils.standard_array(N)
     val result = tileload(data)
     val gold = data.reduce{_+_}
     println("expected: " + gold)

@@ -57,11 +57,11 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
   // statically known during graph build time in MaxJ. That can be
   // changed, but until then we have to assign LMem addresses
   // statically. Assigning each DRAM memory a 384MB chunk now
-  val burstSize = 384
-  var nextLMemAddr: Long = burstSize * 1024 * 1024
-  def getNextLMemAddr() = {
+  val burstSize = 256
+  var nextLMemAddr: Long = 0//burstSize * 1024 * 1024
+  def getNextLMemAddr(/*dram_size: Int*/) = {
     val addr = nextLMemAddr
-    nextLMemAddr += burstSize * 1024 * 1024;
+    nextLMemAddr += burstSize * 1024 * 1024; //dram_size + (burstSize - dram_size % burstSize)
     addr/burstSize
   }
 
@@ -110,7 +110,7 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
             throw UndefinedSwapControllerException(mem, i, accesses, ports.head)
           else if (isBuffered) {
             val portlist = ports.mkString{","} // TODO: Can probably use ports.head here
-            emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, new int[] { $portlist }); /*$comment*/""")
+            emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, List($portlist)); /*$comment*/""")
           }
         }
         if (d.depth > 1) { // Deprecated dblbuf
@@ -124,9 +124,9 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
           val dummyDonePorts = fullPorts -- wPorts -- rPorts
           readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl","read") }
           writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
-          emit(s"""${quote(mem)}_${i}${suff}.connectUnwrittenPorts(new int[] {${dummyWPorts.mkString(",")}});""")
-          emit(s"""${quote(mem)}_${i}${suff}.connectUnreadPorts(new int[] {${dummyRPorts.mkString(",")}});""")
-          emit(s"""${quote(mem)}_${i}${suff}.connectUntouchedPorts(new int[] {${dummyDonePorts.mkString(",")}});""")
+          emit(s"""${quote(mem)}_${i}${suff}.connectUnwrittenPorts(List(${dummyWPorts.mkString(",")}));""")
+          emit(s"""${quote(mem)}_${i}${suff}.connectUnreadPorts(List(${dummyRPorts.mkString(",")}));""")
+          emit(s"""${quote(mem)}_${i}${suff}.connectUntouchedPorts(List(${dummyDonePorts.mkString(",")}));""")
           if (writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }.toList.length == 0) {
             emit(s"""${quote(mem)}_${i}${suff}.connectDummyBroadcast();""")
           }
@@ -206,8 +206,9 @@ ${quote(read)}_rVec.foreach { r => r.en := true.B}""")
       }
     }
 
+    val suff = if (!par) "(0)" else "" 
     emit(s"""${quote(sram_name)}.connectRPort(Vec(${quote(read)}_rVec.toArray))""")
-    emit(s"""val ${quote(read)} = ${quote(sram_name)}.io.output.data${if (!par) "(0)"}""")
+    emit(s"""val ${quote(read)} = ${quote(sram_name)}.io.output.data${suff}""")
 
 
   }
@@ -264,7 +265,7 @@ ${quote(read)}_rVec.foreach { r => r.en := true.B}""")
     if (inds.isEmpty) throw NoParIndicesException(sram, write)
 
     emit(s"""// Assemble multidimW vector
-val ${quote(write)}_wVec = Wire(Vec(${wPar}, new multidimW(${num_dims}, 32)))
+val ${quote(write)}_wVec = Wire(Vec(${wPar}, new multidimW(${num_dims}, 32))) // Make List because Vec is unsynthesizable for some reason
 ${quote(write)}_wVec.zip(${quote(value)}).foreach {case (w,d) => w.data := d}
 ${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.en := e}""")
     inds.zipWithIndex.foreach{ case(ind,i) => 
@@ -297,7 +298,7 @@ ${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.en := e}""")
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Dram_new(size) =>
         emitComment(s""" Dram_new(${quote(size)}) {""")
-        alwaysGen { emit(s"""int ${quote(sym)} = ${getNextLMemAddr()};""") }
+        alwaysGen { emit(s"""val ${quote(sym)} = ${getNextLMemAddr()};""") }
         emitComment(s""" Dram_new(${quote(size)}) }""")
 
     case Gather(mem,local,addrs,len,_,i) =>
@@ -365,12 +366,22 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       print_stage_suffix(quote(sym),false)
 
     case BurstLoad(mem, fifo, ofs, len, par) =>
-      // print_stage_prefix(s"Offchip Load",s"",s"${quote(sym)}", false)
-      // withStream(baseStream) {
-      //   emit(s"""DFEVar ${quote(fifo)}_trashEn = dfeBool().newInstance(this); // Send stream to trash for when read is not burst-aligned""")
-      // }
-      // len match {
-      //   case ConstFix(length) =>
+      print_stage_prefix(s"Offchip Load",s"",s"${quote(sym)}", false)
+      withStream(baseStream) {
+        emit(s"""val ${quote(sym)} = Module(new MemController(${quote(par)}))""")
+        emit(s"""io.MemStreams.outPorts(0) := ${quote(sym)}.io.CtrlToDRAM""")
+        emit(s"""io.MemStreams.inPorts(0) := ${quote(sym)}.io.DRAMToCtrl""")
+      }
+      emit(s"""// ---- Memory Controller ${quote(sym)} ----
+${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.done
+${quote(sym)}.io.AccelToCtrl.en := ${quote(sym)}_en
+${quote(sym)}.io.AccelToCtrl.offset := ${quote(ofs)}
+${quote(sym)}.io.AccelToCtrl.base := ${quote(mem)}.U
+// connect these: ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
+
+      len match {
+        case ConstFix(length) =>
+          emit(s"""${quote(sym)}.io.AccelToCtrl.size := ${length}""")
       //     emit(s"""MemoryCmdGenLib ${quote(sym)} = new MemoryCmdGenLib(
       //         this,
       //         ${quote(sym)}_en, ${quote(sym)}_done,
@@ -378,22 +389,16 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       //         "${quote(mem)}_${quote(sym)}_in",
       //         ${length},
       //         ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
-      //   case _ =>
-      //     emit(s"""MemoryCmdGenLib ${quote(sym)} = new MemoryCmdGenLib(
-      //         this,
-      //         ${quote(sym)}_en, ${quote(sym)}_done,
-      //         ${quote(mem)}, ${quote(ofs)},
-      //         "${quote(mem)}_${quote(sym)}_in",
-      //         ${quote(len)},
-      //         ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
-      // }
-      // emit(s"""${quote(fifo)}_writeEn <== ${quote(sym)}_en;""")
-      // emit(s"""${quote(fifo)}_wdata <== ${quote(fifo)}_rdata;""")
-      // print_stage_suffix(quote(sym), false)
+        case _ =>
+          emit(s"""${quote(sym)}.io.AccelToCtrl.size := ${quote(len)}""")
+      }
+      emit(s"""${quote(fifo)}_writeEn := ${quote(sym)}_en;""")
+      emit(s"""${quote(fifo)}_wdata := ${quote(fifo)}_rdata;""")
+      print_stage_suffix(quote(sym), false)
 
     case BurstStore(mem, fifo, ofs, len, par) =>
 //       // TODO: Offchip stores with burst not aligned
-//       print_stage_prefix(s"Offchip Store",s"",s"${quote(sym)}", false)
+      print_stage_prefix(s"Offchip Store",s"",s"${quote(sym)}", false)
 //       emit(s"""// ${quote(sym)}: BurstStore(${quote(mem)},${quote(fifo)}, ${quote(ofs)}, ${quote(len)}, ${quote(par)})""")
 //       emit(s"""MemoryCmdStLib ${quote(sym)} = new MemoryCmdStLib(
 //           this,
@@ -404,7 +409,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 //           ${quote(fifo)}_writeEn, ${quote(fifo)}_wdata);""")
 //       emit(s"""${quote(fifo)}_readEn <== ${quote(sym)}_en;""")
 //       print_stage_suffix(quote(sym), false)
-// //      emitComment("Offchip store from fifo")
+     emitComment("Offchip store from fifo")
 
     case Reg_new(init) =>
       val tp = sym.tp.typeArguments(0)
@@ -431,7 +436,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
                   case _ =>
                     val parent = if (parentOf(sym).isEmpty) "top" else quote(parentOf(sym).get) //TODO
                     if (d.depth > 1) {
-                      emit(s"""val ${quote(sym)}_${i}_lib = new NBufFF(${d.depth}, 32) // ${nameOf(sym).getOrElse("")}""")
+                      emit(s"""val ${quote(sym)}_${i}_lib = Module(new NBufFF(${d.depth}, 32)) // ${nameOf(sym).getOrElse("")}""")
                     } else {
                       emit(s"""val ${quote(sym)}_${i}_lib = Module(new FF(32)); // ${nameOf(sym).getOrElse("")}""")
                       val readstr = if (parOf(sym) > 1) "readv" else "read"
@@ -671,8 +676,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val par = duplicates.head.banking.head.banks
       val ts = tpstr(1)(sym.tp.typeArguments.head, implicitly[SourceContext])
       emit(s"""// FIFO ${quote(sym)} = Fifo_new[$ts](${quote(size)}, ${quote(zero)});""")
-      emit(s"""val ${quote(sym)}_rdata = Vec($par, Wire(UInt(32.W))) // $ts""")
-      emit(s"""val ${quote(sym)}_wdata = Vec($par, Wire(UInt(32.W))) // $ts""")
+      emit(s"""val ${quote(sym)}_rdata = Wire(Vec($par, UInt(32.W))) // $ts""")
+      emit(s"""val ${quote(sym)}_wdata = Wire(Vec($par, UInt(32.W))) // $ts""")
       emit(s"""val ${quote(sym)}_readEn = Wire(Bool())""")
       emit(s"""val ${quote(sym)}_writeEn = Wire(Bool())""")
 

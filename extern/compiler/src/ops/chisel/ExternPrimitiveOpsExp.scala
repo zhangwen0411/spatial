@@ -110,6 +110,9 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
           emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
       }
 
+    case FixPt_Mod(a,b) =>
+      emit(s"""val ${quote(sym)} = ${quote(a)} % ${quote(b)};""")
+
     case FltPt_Mul(a,b) =>
       val pre = chiselPre(sym)
       rTreeMap(sym) match {
@@ -120,121 +123,40 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       }
 
     case FixPt_Lt(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} < ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} < ${quote(b)}""")
 
     case FixPt_Leq(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} <= ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} <= ${quote(b)}""")
 
     case FixPt_Neq(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} !== {quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} != ${quote(b)}""")
 
     case FixPt_Eql(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} === ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} == ${quote(b)}""")
 
     case FixPt_And(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
 
     case FixPt_Or(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} | ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} | ${quote(b)} ;""")
 
     case FixPt_Lsh(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} << ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} << ${quote(b)} ;""")
 
     case FixPt_Rsh(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} >> ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} >> ${quote(b)} ;""")
 
     case FltPt_Lt(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} < ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} < ${quote(b)}""")
 
     case FltPt_Leq(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} <= ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} <= ${quote(b)};""")
 
     case FltPt_Neq(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} !== ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""val ${quote(sym)} = ${quote(a)} != ${quote(b)};""")
 
     case FltPt_Eql(a,b) =>
-      val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = dfeFixOffset(1, 0, SignMode.UNSIGNED).newInstance(this);""")
-          emit(s"""${quote(sym)} <== ${quote(a)} === ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
-
+      emit(s"""val ${quote(sym)} = ${quote(a)} == ${quote(b)};""")
 
     case Bit_Not(a) =>
       val pre = chiselPre(sym)
@@ -285,7 +207,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(sel)} ? ${quote(a)} : ${quote(b)} ;""")
+          emit(s"""$pre ${quote(sym)} = Mux(${quote(sel)}, ${quote(a)}, ${quote(b)})""")
         case m =>
           emit(s"""// ${quote(sym)} already emitted in $m""")
       }

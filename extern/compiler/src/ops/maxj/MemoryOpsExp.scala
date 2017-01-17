@@ -254,7 +254,7 @@ trait CGenMemoryOps extends CGenEffect {
     // case "SpatialCAM" => ???
     case "SpatialSRAM" => remapWithRef(m.typeArguments(0))
     // case "SpatialFIFO" => ???
-    case "SpatialDRAM"   => "maxjLmem"
+    case "SpatialDRAM"   => if (Config.generateMaxJ) "maxjLmem" else "DRAM"
     case "SpatialVector" => remapWithRef(m.typeArguments(0))
     case "SpatialPipeline" => "void"
     case _ => super.remap(m)
@@ -303,6 +303,27 @@ trait CGenMemoryOps extends CGenEffect {
   };
   """)
     stream.close()
+      
+    val stream2 = new PrintWriter(path + "DRAM.h")
+    stream2.println(
+"""
+#include <stdint.h>
+
+class DRAM {
+public:
+  uint64_t baseAddr;
+  uint32_t size;
+
+  DRAM(uint64_t base, int size) {
+    this->baseAddr = base;
+    this->size = size;
+  }
+};
+""")
+    stream2.close()
+
+    typesStream.println(s"""#include "DRAM.h" """)
+
 
     }
   }
@@ -311,11 +332,15 @@ trait CGenMemoryOps extends CGenEffect {
     case Set_mem(fpgamem, cpumem) =>
       stream.println(s"""
       // Transfer DRAM -> LMEM
-      Top_writeLMem_actions_t ${quote(fpgamem)}_wrAct;
-      ${quote(fpgamem)}_wrAct.param_size = ${quote(cpumem)}->length * sizeof(${remap(fpgamem.tp.typeArguments.head)});
-      ${quote(fpgamem)}_wrAct.param_start = ${quote(fpgamem)}->baseAddr;
-      ${quote(fpgamem)}_wrAct.instream_fromcpu = (const uint8_t*) ${quote(cpumem)}->data;
-      Top_writeLMem_run(engine, &${quote(fpgamem)}_wrAct);""")
+      for (int i = 0; i < x862->length; i++) {
+        
+      } 
+
+      // Top_writeLMem_actions_t ${quote(fpgamem)}_wrAct;
+      // ${quote(fpgamem)}_wrAct.param_size = ${quote(cpumem)}->length * sizeof(${remap(fpgamem.tp.typeArguments.head)});
+      // ${quote(fpgamem)}_wrAct.param_start = ${quote(fpgamem)}->baseAddr;
+      // ${quote(fpgamem)}_wrAct.instream_fromcpu = (const uint8_t*) ${quote(cpumem)}->data;
+      // Top_writeLMem_run(engine, &${quote(fpgamem)}_wrAct);""")
     case Get_mem(fpgamem, cpumem) =>
       stream.println(s"""
       // Transfer LMEM -> DRAM
@@ -328,7 +353,8 @@ trait CGenMemoryOps extends CGenEffect {
       Top_readLMem_run(engine, &${quote(fpgamem)}_rdAct);
       fprintf(stderr, "FPGA -> CPU copy done\\n");""")
     case Dram_new(size) =>
-      emitValDef(sym, s"""new maxjLmem(${dramAddr(sym)}, ${quote(size)})""")
+      val name = if (Config.generateMaxJ) "maxjLmem" else "DRAM"
+      emitValDef(sym, s"""new ${name}(${dramAddr(sym)}, ${quote(size)})""")
 
     case Forloop(start, end, step, body, idx) =>
       val itp = remap(start.tp)

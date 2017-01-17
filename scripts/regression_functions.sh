@@ -122,26 +122,26 @@ update_log() {
     if [[ $p == *"pass"* ]]; then
       echo "**$p**${cute_plot}  " | sed "s/\.\///g" >> $1
       t=(`cat $p`)
-    elif [[ $p == *"failed_did_not_finish"* ]]; then
+    elif [[ $p == *"failed_execution_validation"* ]]; then
+      echo "<----${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+      t=0
+    elif [[ $p == *"failed_execution_nonexistent_validation"* ]]; then
+      echo "<--------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+      t=0
+    elif [[ $p == *"failed_execution_hanging"* ]]; then
       echo "<------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
       t=0
-    elif [[ $p == *"failed_compile_stuck"* ]]; then
+    elif [[ $p == *"failed_compile_backend_hanging"* ]]; then
       echo "<----------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+      t=0
+    elif [[ $p == *"failed_compile_backend_crash"* ]]; then
+      echo "<--------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+      t=0
+    elif [[ $p == *"failed_app_spatial_compile"* ]]; then
+      echo "<------------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
       t=0
     elif [[ $p == *"failed_app_not_written"* ]]; then
       echo "<----------------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
-      t=0
-    elif [[ $p == *"failed_build_in_spatial"* ]]; then
-      echo "<------------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
-      t=0
-    elif [[ $p == *"failed_compile_maxj"* ]]; then
-      echo "<--------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
-      t=0
-    elif [[ $p == *"failed_no_validation_check"* ]]; then
-      echo "<--------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
-      t=0
-    elif [[ $p == *"failed_validation"* ]]; then
-      echo "<----${p}${cute_plot}  " | sed "s/\.\///g" >> $1
       t=0
     else
       echo "Unknown result: $p  " | sed "s/\.\///g" >> $1
@@ -299,8 +299,8 @@ sed -i \"s/error: illegal sharing of mutable object/Ignoring scattergather mutab
 wc=\$(cat ${5}/log | grep \"couldn't find DEG file\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
   echo \"PASS: -1 (${4} Spatial Error)\"
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
       echo \"[STATUS] Declaring failure app_not_written\"
       touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_not_written.${3}_${4}
     fi
@@ -310,11 +310,11 @@ fi
 wc=\$(cat ${5}/log | grep \"error\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
   echo \"PASS: -2 (${4} Spatial Error)\"
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
       cat ${5}/log
       echo \"[STATUS] Declaring failure build_in_spatial\"
-      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
+      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_spatial_compile.${3}_${4}
     fi
   exit 1
 fi
@@ -330,47 +330,47 @@ make clean sim 2>&1 | tee -a ${5}/log
 wc=\$(cat ${5}/log | sed \"s/Error [0-9]\+ (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
   echo \"PASS: -3 (${4} Spatial Error)\"
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
       echo \"[STATUS] Declaring failure compile_maxj\"
-      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_maxj.${3}_${4}
+      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_crash.${3}_${4}
   fi
   exit 1
 fi
 
-rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
-touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
+touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
 cd out
 bash ${5}/out/run.sh ${args} 2>&1 | tee -a ${5}/log
 if grep -q \"PASS: 1\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   fi
 elif grep -q \"PASS: true\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   fi
 elif grep -q \"PASS: 0\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
     echo \"[STATUS] Declaring failure validation\"
-  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_validation.${3}_${4}
   fi
 elif grep -q \"PASS: false\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
     echo \"[STATUS] Declaring failure validation\"
-    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_validation.${3}_${4}
   fi
 else 
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
     echo \"[STATUS] Declaring failure no_validation_check\"
-  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_no_validation_check.${3}_${4}    
+  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_nonexistent_validation.${3}_${4}    
   fi
 fi" >> $1
   elif [[ ${type_todo} = "scala" ]]; then
@@ -400,8 +400,8 @@ sed -i \"s/error: illegal sharing of mutable object/Ignoring scattergather mutab
 wc=\$(cat ${5}/log | grep \"couldn't find DEG file\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
   echo \"PASS: -1 (${4} Spatial Error)\"
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
       echo \"[STATUS] Declaring failure app_not_written\"
       touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_not_written.${3}_${4}
     fi
@@ -411,44 +411,44 @@ fi
 wc=\$(cat ${5}/log | grep \"error\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
   echo \"PASS: -2 (${4} Spatial Error)\"
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
       cat ${5}/log
       echo \"[STATUS] Declaring failure build_in_spatial\"
-      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
+      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_spatial_compile.${3}_${4}
     fi
   exit 1
 fi
 
 if grep -q \"PASS: 1\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   fi
 elif grep -q \"PASS: true\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   fi
 elif grep -q \"PASS: 0\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
     echo \"[STATUS] Declaring failure validation\"
-  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_validation.${3}_${4}
   fi
 elif grep -q \"PASS: false\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
     echo \"[STATUS] Declaring failure validation\"
-    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_validation.${3}_${4}
   fi
 else 
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
     echo \"[STATUS] Declaring failure no_validation_check\"
-  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_no_validation_check.${3}_${4}    
+  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_nonexistent_validation.${3}_${4}    
   fi
 fi" >> $1
   elif [[ ${type_todo} = "chisel" ]]; then
@@ -475,8 +475,8 @@ sed -i \"s/error: illegal sharing of mutable object/Ignoring scattergather mutab
 wc=\$(cat ${5}/log | grep \"couldn't find DEG file\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
   echo \"PASS: -1 (${4} Spatial Error)\"
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
       echo \"[STATUS] Declaring failure app_not_written\"
       touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_not_written.${3}_${4}
     fi
@@ -486,11 +486,11 @@ fi
 wc=\$(cat ${5}/log | grep \"error\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
   echo \"PASS: -2 (${4} Spatial Error)\"
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
       cat ${5}/log
       echo \"[STATUS] Declaring failure build_in_spatial\"
-      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_build_in_spatial.${3}_${4}
+      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_app_spatial_compile.${3}_${4}
     fi
   exit 1
 fi
@@ -501,47 +501,47 @@ make clean sim 2>&1 | tee -a ${5}/log
 wc=\$(cat ${5}/log | sed \"s/Error [0-9]\+ (ignored)/ignore e r r o r/g\" | grep \"BUILD FAILED\\|Error 1\" | wc -l)
 if [ \"\$wc\" -ne 0 ]; then
   echo \"PASS: -3 (${4} Spatial Error)\"
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4} ]; then
-      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
       echo \"[STATUS] Declaring failure compile_maxj\"
-      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_maxj.${3}_${4}
+      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_crash.${3}_${4}
   fi
   exit 1
 fi
 
-rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_stuck.${3}_${4}
-touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
+touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
 
 bash ${5}/out/run.sh \"${args}\" 2>&1 | tee -a ${5}/log
 if grep -q \"PASS: 1\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   fi
 elif grep -q \"PASS: true\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
     touch ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   cat ${5}/log | grep \"Kernel done, cycles\" | sed \"s/Kernel done, cycles = //g\" > ${SPATIAL_HOME}/regression_tests/${2}/results/pass.${3}_${4}
   fi
 elif grep -q \"PASS: 0\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
     echo \"[STATUS] Declaring failure validation\"
-  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_validation.${3}_${4}
   fi
 elif grep -q \"PASS: false\" ${5}/log; then
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
     echo \"[STATUS] Declaring failure validation\"
-    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_validation.${3}_${4}
+    touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_validation.${3}_${4}
   fi
 else 
-  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4} ]; then
-    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_did_not_finish.${3}_${4}
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4} ]; then
+    rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
     echo \"[STATUS] Declaring failure no_validation_check\"
-  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_no_validation_check.${3}_${4}    
+  touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_nonexistent_validation.${3}_${4}    
   fi
 fi" >> $1
   else
@@ -595,7 +595,7 @@ launch_tests() {
         appname=(`echo $t | sed 's/|.*$//g'`)
         appargs=(`echo $t | sed 's/.*|.*|//g' | sed 's/-/ /g'`)
         # Initialize results
-        touch ${SPATIAL_HOME}/regression_tests/${ac}/results/failed_compile_stuck.${i}_${appname}
+        touch ${SPATIAL_HOME}/regression_tests/${ac}/results/failed_compile_backend_hanging.${i}_${appname}
 
         # Make dir for this vulture job
         vulture_dir="${SPATIAL_HOME}/regression_tests/${ac}/${i}_${appname}"
