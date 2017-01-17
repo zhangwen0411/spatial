@@ -90,7 +90,9 @@ for ac in ${types_list[@]}; do
 
 # ${ac}:
 " | awk '{print toupper($0)}' >> $wiki_file
+  init_travis_ci $ac
   update_log $wiki_file `echo ${spatial_hash} | cut -c1-5` `echo ${delite_hash} | cut -c1-5`
+  push_travis_ci $ac
 done
 
 echo -e "\n\n***\n\n" >> $wiki_file
@@ -120,31 +122,31 @@ update_log() {
     pname=(`echo $p | sed "s/.*[0-9]\+_//g"`)
     cute_plot="[🗠](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${branch}_$pname.png)"
     if [[ $p == *"pass"* ]]; then
-      echo "**$p**${cute_plot}  " | sed "s/\.\///g" >> $1
+      echo "**$p**${cute_plot}  " | sed "s/\.\///g" | tee -a $1 $tracker > /dev/null
       t=(`cat $p`)
     elif [[ $p == *"failed_execution_validation"* ]]; then
-      echo "<----${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+      echo "<----${p}${cute_plot}  " | sed "s/\.\///g" | tee -a $1 $tracker > /dev/null
       t=0
     elif [[ $p == *"failed_execution_nonexistent_validation"* ]]; then
-      echo "<--------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+      echo "<--------${p}${cute_plot}  " | sed "s/\.\///g" | tee -a $1 $tracker > /dev/null
       t=0
     elif [[ $p == *"failed_execution_hanging"* ]]; then
-      echo "<------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+      echo "<------------${p}${cute_plot}  " | sed "s/\.\///g" | tee -a $1 $tracker > /dev/null
       t=0
     elif [[ $p == *"failed_compile_backend_hanging"* ]]; then
-      echo "<----------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+      echo "<----------------${p}${cute_plot}  " | sed "s/\.\///g" | tee -a $1 $tracker > /dev/null
       t=0
     elif [[ $p == *"failed_compile_backend_crash"* ]]; then
-      echo "<--------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+      echo "<--------------------${p}${cute_plot}  " | sed "s/\.\///g" | tee -a $1 $tracker > /dev/null
       t=0
     elif [[ $p == *"failed_app_spatial_compile"* ]]; then
-      echo "<------------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+      echo "<------------------------${p}${cute_plot}  " | sed "s/\.\///g" | tee -a $1 $tracker > /dev/null
       t=0
     elif [[ $p == *"failed_app_not_written"* ]]; then
-      echo "<----------------------------${p}${cute_plot}  " | sed "s/\.\///g" >> $1
+      echo "<----------------------------${p}${cute_plot}  " | sed "s/\.\///g" | tee -a $1 $tracker > /dev/null
       t=0
     else
-      echo "Unknown result: $p  " | sed "s/\.\///g" >> $1
+      echo "Unknown result: $p  " | sed "s/\.\///g" | tee -a $1 $tracker > /dev/null
       t=0
     fi
 
@@ -257,8 +259,32 @@ echo "$line" >> ${pretty_file}
 # Sort file
 sort $pretty_file > ${pretty_file}.tmp
 mv ${pretty_file}.tmp ${pretty_file}
+
 }
 
+## $1 - test class (unit, dense, etc)
+init_travis_ci() {
+  # Pull Tracker repos
+  goto=(`pwd`)
+  cd ${SPATIAL_HOME}
+  cmd="git pull git@github.com:mattfel1/${1}Tracker.git"
+  eval "$cmd"
+  tracker="${SPATIAL_HOME}/${1}Tracker/results"
+  cmd="rm $tracker"
+  eval "$cmd"
+  cd ${goto}
+}
+
+## $1 - test class (unit, dense, etc)
+push_travis_ci() {
+  # Pull Tracker repos
+  goto=(`pwd`)
+  cd ${SPATIAL_HOME}/${1}
+  git add -A
+  git commit -m "auto update"
+  git push
+  cd ${goto}
+}
 
 # Helper function for creating script for vulture to use
 ## 1 - filename for this script

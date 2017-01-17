@@ -1,3 +1,9 @@
+Unit Test Status: [![Build Status](https://travis-ci.org/mattfel1/UnitTracker.svg?branch=master)](https://travis-ci.org/mattfel1/UnitTracker)
+Dense Test Status: [![Build Status](https://travis-ci.org/mattfel1/DenseTracker.svg?branch=master)](https://travis-ci.org/mattfel1/DenseTracker)
+Sparse Test Status: [![Build Status](https://travis-ci.org/mattfel1/SparseTracker.svg?branch=master)](https://travis-ci.org/mattfel1/SparseTracker)
+Characterization Test Status: [![Build Status](https://travis-ci.org/mattfel1/CharacterizationTracker.svg?branch=master)](https://travis-ci.org/mattfel1/CharacterizationTracker) 
+
+
 # Spatial
 Spatial is a Forge DSL for programming reconfigurable hardware from a parameterized, high level abstraction.
 

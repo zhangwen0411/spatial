@@ -313,7 +313,7 @@ trait FifoLoadStoreApp extends SpatialApp {
   }
 }
 
-object TileLoad extends SpatialAppCompiler with TileLoadApp // Regression (Unit) // Args: 72
+object TileLoad extends SpatialAppCompiler with TileLoadApp // Regression (Unit) // Args: 64
 trait TileLoadApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -347,6 +347,45 @@ trait TileLoadApp extends SpatialApp {
 
     val cksum = gold == result
     println("PASS: " + cksum + " (TileLoad)")
+  }
+}
+
+object TileStore extends SpatialAppCompiler with TileStoreApp // Regression (Unit) // Args: 64
+trait TileStoreApp extends SpatialApp {
+  type T = SInt
+  type Array[T] = ForgeArray[T]
+
+  val N = 64.as[T]
+
+  def TileStore(data: Rep[T]) = {
+    val P = param(1)
+
+    val start = ArgIn[T]
+    val dst = DRAM[T](N)
+    setArg(start, data)
+
+    Accel {
+      val b = SRAM[T](N)
+      Pipe(N by 1) { ii => 
+        b(ii) = ii + start.value
+      }
+      dst(0::N) := b
+    }
+    getMem(dst)
+  }
+
+  def main() {
+    val src = Array.tabulate[SInt](N) { i => i }
+
+    val gold = src.map { i => i }
+
+    val data = args(0).to[T]
+    val result = TileStore(data)
+    // println("expected: " + gold)
+    // println("result:   " + result)
+
+    val cksum = gold.zip(result){_==_}.reduce{_&&_}
+    println("PASS: " + cksum + " (TileStore)")
   }
 }
 
