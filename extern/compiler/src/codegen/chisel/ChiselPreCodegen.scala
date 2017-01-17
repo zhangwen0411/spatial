@@ -965,6 +965,11 @@ class MemStreamsBundle() extends Bundle{
 
 }
 """)
+    ports.zipWithIndex.map { case(p,i) => 
+      emit(s"//  ${quote(p)} = ports($i) (${nameOf(p).getOrElse("")})")
+      memStreamsByName = memStreamsByName :+ s"${quote(p)}"
+    }
+
   }
 
   private def stateTextSeq(state: Int, N: Int) = {

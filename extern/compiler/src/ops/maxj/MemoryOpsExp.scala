@@ -332,7 +332,7 @@ public:
     case Set_mem(fpgamem, cpumem) =>
       stream.println(s"""
       // Transfer DRAM -> LMEM
-      for (int i = 0; i < x862->length; i++) {
+      for (int i = 0; i < ${quote(cpumem)}->length; i++) {
         
       } 
 

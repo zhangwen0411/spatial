@@ -188,6 +188,7 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
     val dups = duplicatesOf(sram)
     val readers = readersOf(sram)
     val reader = readers.find{_.node == read}.get   // Corresponding reader for this read node
+    val parent = reader.controlNode
     val b_i = instanceIndicesOf(reader, sram).head    // Instance indices should have exactly one index for reads
     val p = portsOf(read, sram, b_i).head
 
@@ -199,7 +200,7 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
 
     emit(s"""// Assemble multidimR vector
 val ${quote(read)}_rVec = Wire(Vec(${rPar}, new multidimR(${num_dims}, 32)))
-${quote(read)}_rVec.foreach { r => r.en := true.B}""")
+${quote(read)}_rVec.foreach { r => r.en := ${quote(parent)}_en}""")
     inds.zipWithIndex.foreach{ case(ind,i) => 
       ind.zipWithIndex.foreach { case(wire,j) =>
         emit(s"""${quote(read)}_rVec($i).addr($j) := ${quote(wire)}""")
@@ -367,21 +368,24 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
 
     case BurstLoad(mem, fifo, ofs, len, par) =>
       print_stage_prefix(s"Offchip Load",s"",s"${quote(sym)}", false)
+      val streamId = memStreamsByName.indexOf(quote(sym))
       withStream(baseStream) {
         emit(s"""val ${quote(sym)} = Module(new MemController(${quote(par)}))""")
-        emit(s"""io.MemStreams.outPorts(0) := ${quote(sym)}.io.CtrlToDRAM""")
-        emit(s"""io.MemStreams.inPorts(0) := ${quote(sym)}.io.DRAMToCtrl""")
+        emit(s"""io.MemStreams.outPorts(${streamId}) := ${quote(sym)}.io.CtrlToDRAM""")
+        emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts(${streamId}) """)
       }
       emit(s"""// ---- Memory Controller ${quote(sym)} ----
-${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.done
+${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.valid
 ${quote(sym)}.io.AccelToCtrl.en := ${quote(sym)}_en
 ${quote(sym)}.io.AccelToCtrl.offset := ${quote(ofs)}
 ${quote(sym)}.io.AccelToCtrl.base := ${quote(mem)}.U
+${quote(sym)}.io.AccelToCtrl.pop := ${quote(fifo)}_readEn
+${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p) => d := p }
 // connect these: ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
 
       len match {
         case ConstFix(length) =>
-          emit(s"""${quote(sym)}.io.AccelToCtrl.size := ${length}""")
+          emit(s"""${quote(sym)}.io.AccelToCtrl.size := ${length}.U""")
       //     emit(s"""MemoryCmdGenLib ${quote(sym)} = new MemoryCmdGenLib(
       //         this,
       //         ${quote(sym)}_en, ${quote(sym)}_done,
@@ -516,7 +520,8 @@ ${quote(sym)}.io.AccelToCtrl.base := ${quote(mem)}.U
       }
 
     case e@Reg_write(EatAlias(reg), value, en) =>
-      emitComment("Reg_write {")
+      // emitComment("Reg_write {")
+      emit(s"")
 
       assert(writersOf(reg).nonEmpty, s"Register ${quote(reg)} is not written by a controller")
 
@@ -586,6 +591,7 @@ ${quote(sym)}.io.AccelToCtrl.base := ${quote(mem)}.U
             }
           } // End non-accumulator case
       }
+      emit(s"")
       // emitComment(s"} Reg_write // regType ${regType(reg)}, numDuplicates = ${allDups.length}")
 
     case Sram_new(size, zero) =>
