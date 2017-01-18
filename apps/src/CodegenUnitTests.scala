@@ -313,7 +313,7 @@ trait FifoLoadStoreApp extends SpatialApp {
   }
 }
 
-object TileLoad extends SpatialAppCompiler with TileLoadApp // Regression (Unit) // Args: 64
+object TileLoad extends SpatialAppCompiler with TileLoadApp // Regression (Unit) // Args: none
 trait TileLoadApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]

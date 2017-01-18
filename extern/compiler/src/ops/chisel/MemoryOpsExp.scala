@@ -374,25 +374,17 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         emit(s"""io.MemStreams.outPorts(${streamId}) := ${quote(sym)}.io.CtrlToDRAM""")
         emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts(${streamId}) """)
       }
-      emit(s"""// ---- Memory Controller ${quote(sym)} ----
+      emit(s"""// ---- Memory Controller (Load) ${quote(sym)} ----
 ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.valid
 ${quote(sym)}.io.AccelToCtrl.en := ${quote(sym)}_en
 ${quote(sym)}.io.AccelToCtrl.offset := ${quote(ofs)}
 ${quote(sym)}.io.AccelToCtrl.base := ${quote(mem)}.U
 ${quote(sym)}.io.AccelToCtrl.pop := ${quote(fifo)}_readEn
-${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p) => d := p }
-// connect these: ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
+${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p) => d := p }""")
 
       len match {
         case ConstFix(length) =>
           emit(s"""${quote(sym)}.io.AccelToCtrl.size := ${length}.U""")
-      //     emit(s"""MemoryCmdGenLib ${quote(sym)} = new MemoryCmdGenLib(
-      //         this,
-      //         ${quote(sym)}_en, ${quote(sym)}_done,
-      //         ${quote(mem)}, ${quote(ofs)},
-      //         "${quote(mem)}_${quote(sym)}_in",
-      //         ${length},
-      //         ${quote(fifo)}_readEn, ${quote(fifo)}_rdata);""")
         case _ =>
           emit(s"""${quote(sym)}.io.AccelToCtrl.size := ${quote(len)}""")
       }
@@ -401,19 +393,31 @@ ${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p
       print_stage_suffix(quote(sym), false)
 
     case BurstStore(mem, fifo, ofs, len, par) =>
-//       // TODO: Offchip stores with burst not aligned
       print_stage_prefix(s"Offchip Store",s"",s"${quote(sym)}", false)
-//       emit(s"""// ${quote(sym)}: BurstStore(${quote(mem)},${quote(fifo)}, ${quote(ofs)}, ${quote(len)}, ${quote(par)})""")
-//       emit(s"""MemoryCmdStLib ${quote(sym)} = new MemoryCmdStLib(
-//           this,
-//           ${quote(sym)}_en, ${quote(sym)}_done,
-//           ${quote(mem)}, ${quote(ofs)},
-//           "${quote(mem)}_${quote(sym)}_out",
-//           ${quote(len)},
-//           ${quote(fifo)}_writeEn, ${quote(fifo)}_wdata);""")
-//       emit(s"""${quote(fifo)}_readEn <== ${quote(sym)}_en;""")
-//       print_stage_suffix(quote(sym), false)
-     emitComment("Offchip store from fifo")
+      val streamId = memStreamsByName.indexOf(quote(sym))
+      withStream(baseStream) {
+        emit(s"""val ${quote(sym)} = Module(new MemController(${quote(par)}))""")
+        emit(s"""io.MemStreams.outPorts(${streamId}) := ${quote(sym)}.io.CtrlToDRAM""")
+        emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts(${streamId}) """)
+      }
+      emit(s"""// ---- Memory Controller (Store) ${quote(sym)} ----
+${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.valid
+${quote(sym)}.io.AccelToCtrl.en := ${quote(sym)}_en
+${quote(sym)}.io.AccelToCtrl.offset := ${quote(ofs)}
+${quote(sym)}.io.AccelToCtrl.base := ${quote(mem)}.U
+${quote(sym)}.io.AccelToCtrl.pop := ${quote(fifo)}_readEn
+${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p) => d := p }""")
+
+      len match {
+        case ConstFix(length) =>
+          emit(s"""${quote(sym)}.io.AccelToCtrl.size := ${length}.U""")
+        case _ =>
+          emit(s"""${quote(sym)}.io.AccelToCtrl.size := ${quote(len)}""")
+      }
+      emit(s"""${quote(fifo)}_writeEn := ${quote(sym)}_en;""")
+      emit(s"""${quote(fifo)}_wdata := ${quote(fifo)}_rdata;""")
+      emit(s"""${quote(fifo)}_readEn := ${quote(sym)}_en // TODO: Not sure if this is right""")
+      print_stage_suffix(quote(sym), false)
 
     case Reg_new(init) =>
       val tp = sym.tp.typeArguments(0)
@@ -690,8 +694,8 @@ ${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p
     case Par_push_fifo(fifo, value, en, shuffle) =>
       emit(s"""// Par_push_fifo(${quote(fifo)}, ${quote(value)}, ${quote(en)}, ${quote(shuffle)});""")
       val writer = quote(writersOf(fifo).head.controlNode)  // Not using 'en' or 'shuffle'
-      emit(s"""${quote(fifo)}_writeEn <== ${writer}_ctr_en;""")
-      emit(s"""${quote(fifo)}_wdata <== ${quote(value)};""")
+      emit(s"""${quote(fifo)}_writeEn := ${writer}_ctr_en;""")
+      emit(s"""${quote(fifo)}_wdata := ${quote(value)};""")
 
 
     case Par_pop_fifo(fifo, en) =>

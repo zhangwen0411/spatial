@@ -330,28 +330,40 @@ public:
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
     case Set_mem(fpgamem, cpumem) =>
+      if (Config.generateMaxJ) { // TODO: Why won't an if statement work here...
       stream.println(s"""
-      // Transfer DRAM -> LMEM
-      for (int i = 0; i < ${quote(cpumem)}->length; i++) {
-        
-      } 
-
-      // Top_writeLMem_actions_t ${quote(fpgamem)}_wrAct;
-      // ${quote(fpgamem)}_wrAct.param_size = ${quote(cpumem)}->length * sizeof(${remap(fpgamem.tp.typeArguments.head)});
-      // ${quote(fpgamem)}_wrAct.param_start = ${quote(fpgamem)}->baseAddr;
-      // ${quote(fpgamem)}_wrAct.instream_fromcpu = (const uint8_t*) ${quote(cpumem)}->data;
-      // Top_writeLMem_run(engine, &${quote(fpgamem)}_wrAct);""")
+        Top_writeLMem_actions_t ${quote(fpgamem)}_wrAct;
+        ${quote(fpgamem)}_wrAct.param_size = ${quote(cpumem)}->length * sizeof(${remap(fpgamem.tp.typeArguments.head)});
+        ${quote(fpgamem)}_wrAct.param_start = ${quote(fpgamem)}->baseAddr;
+        ${quote(fpgamem)}_wrAct.instream_fromcpu = (const uint8_t*) ${quote(cpumem)}->data;
+        Top_writeLMem_run(engine, &${quote(fpgamem)}_wrAct);""")
+      } else {
+        stream.println(s"""
+        // Transfer DRAM -> LMEM
+        for (int i = 0; i < ${quote(cpumem)}->length; i++) {
+          
+        }""") 
+      }
     case Get_mem(fpgamem, cpumem) =>
-      stream.println(s"""
-      // Transfer LMEM -> DRAM
-      // (sizeInBytes, address, dstptr)
-      Top_readLMem_actions_t ${quote(fpgamem)}_rdAct;
-      ${quote(fpgamem)}_rdAct.param_size = ${quote(cpumem)}->length *sizeof(${remap(fpgamem.tp.typeArguments.head)});
-      ${quote(fpgamem)}_rdAct.param_start = ${quote(fpgamem)}->baseAddr;
-      ${quote(fpgamem)}_rdAct.outstream_tocpu = (uint8_t*) ${quote(cpumem)}->data;
-      fprintf(stderr, "Starting FPGA -> CPU copy\\n");
-      Top_readLMem_run(engine, &${quote(fpgamem)}_rdAct);
-      fprintf(stderr, "FPGA -> CPU copy done\\n");""")
+      if (Config.generateMaxJ) { // TODO: Why won't an if statement work here...
+        stream.println(s"""
+        // Transfer LMEM -> DRAM
+        // (sizeInBytes, address, dstptr)
+        Top_readLMem_actions_t ${quote(fpgamem)}_rdAct;
+        ${quote(fpgamem)}_rdAct.param_size = ${quote(cpumem)}->length *sizeof(${remap(fpgamem.tp.typeArguments.head)});
+        ${quote(fpgamem)}_rdAct.param_start = ${quote(fpgamem)}->baseAddr;
+        ${quote(fpgamem)}_rdAct.outstream_tocpu = (uint8_t*) ${quote(cpumem)}->data;
+        fprintf(stderr, "Starting FPGA -> CPU copy\\n");
+        Top_readLMem_run(engine, &${quote(fpgamem)}_rdAct);
+        fprintf(stderr, "FPGA -> CPU copy done\\n");""")
+      } else {
+        stream.println(s"""
+        // Transfer LMEM -> DRAM
+        for (int i = 0; i < ${quote(cpumem)}->length; i++) {
+          
+        }
+        """)
+      }
     case Dram_new(size) =>
       val name = if (Config.generateMaxJ) "maxjLmem" else "DRAM"
       emitValDef(sym, s"""new ${name}(${dramAddr(sym)}, ${quote(size)})""")

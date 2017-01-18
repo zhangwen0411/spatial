@@ -184,6 +184,7 @@ trait DRAMs {
       }
 
       def loadBurst(memAddr: () => Rep[Index], addr: Rep[Index] => List[Rep[Index]]) = {
+        // TODO: Eventually need to use stream controller for this
         // val startBound = Reg[Index]
         // val endBound = Reg[Index]
         // val memAddrDowncast = Reg[Index]
