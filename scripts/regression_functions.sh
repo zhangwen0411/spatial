@@ -264,26 +264,32 @@ mv ${pretty_file}.tmp ${pretty_file}
 
 ## $1 - test class (unit, dense, etc)
 init_travis_ci() {
-  # Pull Tracker repos
-  goto=(`pwd`)
-  cd ${SPATIAL_HOME}
-  cmd="git pull git@github.com:mattfel1/${1}Tracker.git"
-  eval "$cmd"
-  tracker="${SPATIAL_HOME}/${1}Tracker/results"
-  cmd="rm $tracker"
-  eval "$cmd"
-  cd ${goto}
+  if [[ ${type_todo} = "chisel" ]]; then
+
+    # Pull Tracker repos
+    goto=(`pwd`)
+    cd ${SPATIAL_HOME}
+    cmd="git pull git@github.com:mattfel1/${1}Tracker.git"
+    eval "$cmd"
+    tracker="${SPATIAL_HOME}/${1}Tracker/results"
+    cmd="rm $tracker"
+    eval "$cmd"
+    cd ${goto}
+  fi
 }
 
 ## $1 - test class (unit, dense, etc)
 push_travis_ci() {
-  # Pull Tracker repos
-  goto=(`pwd`)
-  cd ${SPATIAL_HOME}/${1}
-  git add -A
-  git commit -m "auto update"
-  git push
-  cd ${goto}
+  if [[ ${type_todo} = "chisel" ]]; then
+
+    # Pull Tracker repos
+    goto=(`pwd`)
+    cd ${SPATIAL_HOME}/${1}
+    git add -A
+    git commit -m "auto update"
+    git push
+    cd ${goto}
+  fi
 }
 
 # Helper function for creating script for vulture to use
