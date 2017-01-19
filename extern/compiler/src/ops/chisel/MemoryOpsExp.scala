@@ -376,7 +376,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       }
       emit(s"""// ---- Memory Controller (Load) ${quote(sym)} ----
 ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.valid
-${quote(sym)}.io.AccelToCtrl.en := ${quote(sym)}_en
+${quote(sym)}.io.AccelToCtrl.enLoad := ${quote(sym)}_en
 ${quote(sym)}.io.AccelToCtrl.offset := ${quote(ofs)}
 ${quote(sym)}.io.AccelToCtrl.base := ${quote(mem)}.U
 ${quote(sym)}.io.AccelToCtrl.pop := ${quote(fifo)}_readEn
@@ -402,11 +402,14 @@ ${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p
       }
       emit(s"""// ---- Memory Controller (Store) ${quote(sym)} ----
 ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.valid
-${quote(sym)}.io.AccelToCtrl.en := ${quote(sym)}_en
+${quote(sym)}.io.AccelToCtrl.enStore := ${quote(sym)}_en
 ${quote(sym)}.io.AccelToCtrl.offset := ${quote(ofs)}
 ${quote(sym)}.io.AccelToCtrl.base := ${quote(mem)}.U
-${quote(sym)}.io.AccelToCtrl.pop := ${quote(fifo)}_readEn
-${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p) => d := p }""")
+${quote(sym)}.io.AccelToCtrl.data := ${quote(fifo)}_wdata
+${quote(sym)}.io.AccelToCtrl.push := ${quote(fifo)}_writeEn
+${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p) => d := p }
+${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
+""")
 
       len match {
         case ConstFix(length) =>
@@ -414,9 +417,6 @@ ${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p
         case _ =>
           emit(s"""${quote(sym)}.io.AccelToCtrl.size := ${quote(len)}""")
       }
-      emit(s"""${quote(fifo)}_writeEn := ${quote(sym)}_en;""")
-      emit(s"""${quote(fifo)}_wdata := ${quote(fifo)}_rdata;""")
-      emit(s"""${quote(fifo)}_readEn := ${quote(sym)}_en // TODO: Not sure if this is right""")
       print_stage_suffix(quote(sym), false)
 
     case Reg_new(init) =>

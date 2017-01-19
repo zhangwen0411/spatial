@@ -268,7 +268,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 			// emitComment(" End Hwblock dependencies }")
       // emitComment("\n//Setup Top Level IO")
       // emitComment(s"quoteSuffix = $quoteSuffix")
-      emit(s"""val ${quote(sym)}_en = io.top_en;""")
+      emit(s"""val ${quote(sym)}_en = io.top_en & !io.top_done;""")
       emitGlobalWire(s"""${quote(sym)}_done""")
       // emit(s"""io.top_done := ${quote(sym)}_done;""")
       // emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")

@@ -374,6 +374,12 @@ trait TileStoreApp extends SpatialApp {
     getMem(dst)
   }
 
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
   def main() {
     val src = Array.tabulate[SInt](N) { i => i }
 
@@ -381,8 +387,8 @@ trait TileStoreApp extends SpatialApp {
 
     val data = args(0).to[T]
     val result = TileStore(data)
-    // println("expected: " + gold)
-    // println("result:   " + result)
+    printArr(gold, "expected: ")
+    printArr(result, "result: ")
 
     val cksum = gold.zip(result){_==_}.reduce{_&&_}
     println("PASS: " + cksum + " (TileStore)")

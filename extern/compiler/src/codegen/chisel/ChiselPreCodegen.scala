@@ -137,9 +137,13 @@ trait ChiselPreCodegen extends Traversal  {
     case e:Argin_new[_] => argIns = argIns :+ sym.asInstanceOf[Sym[Reg[_]]]
     case e:Argout_new[_] => argOuts = argOuts :+ sym.asInstanceOf[Sym[Reg[_]]]
 
-    case _:BurstStore[_] => memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
+    case _:BurstStore[_] => 
+      memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
+      memStreamsOut = memStreamsOut :+ sym.asInstanceOf[Sym[Any]]
     case _:BurstLoad[_] => memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
-    case _:Scatter[_] => memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
+    case _:Scatter[_] => 
+      memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
+      memStreamsOut = memStreamsOut :+ sym.asInstanceOf[Sym[Any]]
     case _:Gather[_] => memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
 
     case Sram_new(size, zero) =>

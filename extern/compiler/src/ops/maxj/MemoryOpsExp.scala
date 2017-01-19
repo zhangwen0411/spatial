@@ -291,16 +291,48 @@ trait CGenMemoryOps extends CGenEffect {
       typesStream.println(s"""extern max_engine_t *engine;""")
     } else if (Config.generateChisel) {
       val stream = new PrintWriter(path + "interface.h")
+      val memStreamLength = if (memStreamsOut.length > 0) {
+        val Def(a) = memStreamsOut(0)
+        a match { 
+          case BurstStore(_,_,_,len,_) => bound(len).get.toInt
+          case _ => 0
+        }
+      } else {
+        0 
+      }
       stream.println(s"""// Interface between delite c++ and hardware tester
-  class Interface_t {
+  // class Interface_t {
 
+  // public:
+  //   int32_t* ArgIns[${argInsByName.length}]; // Can do sizeof this because we size arrays at codegen time
+  //   int32_t* ArgOuts[${argOutsByName.length}];
+  //   long* MemIns[0];
+  //   long* MemOuts[${memStreamsOut.length}][${memStreamLength}];
+  //   uint64_t* cycles;
+  // };
+  
+#include <vector>
+#include <iostream>
+
+class Interface_t
+{
   public:
-    int32_t* ArgIns[${argInsByName.length}];
-    int32_t* ArgOuts[${argOutsByName.length}];
-    long* MemIns[0];
-    long* MemOuts[0];
-    uint64_t* cycles;
-  };
+    Interface_t()
+    {}
+    ~Interface_t()
+    {}
+      int32_t* ArgIns[${argInsByName.length}];
+      int32_t* ArgOuts[${argOutsByName.length}];
+      long* MemIns[0];
+      // long* MemOuts[${memStreamsOut.length}[${memStreamLength}]
+      uint64_t* cycles;
+    void add_mem(long num) { memOut.push_back(num);}
+    long get_mem(int i) { return memOut[i]; }
+    long memOut_length() { return memOut.size(); } // Cannot size in advance because multiple DRAMs will share this header
+
+  private:
+    std::vector<long> memOut;
+};
   """)
     stream.close()
       
@@ -308,6 +340,8 @@ trait CGenMemoryOps extends CGenEffect {
     stream2.println(
 """
 #include <stdint.h>
+#include <vector>
+#include <iostream>
 
 class DRAM {
 public:
@@ -318,7 +352,15 @@ public:
     this->baseAddr = base;
     this->size = size;
   }
+  void add_mem(long num) { data.push_back(num); }
+  long get_mem(int i) { return data[i]; }
+  long data_length() { return data.size(); }
+
+private:
+  std::vector<long> data;
+
 };
+
 """)
     stream2.close()
 
@@ -360,7 +402,7 @@ public:
         stream.println(s"""
         // Transfer LMEM -> DRAM
         for (int i = 0; i < ${quote(cpumem)}->length; i++) {
-          
+          ${quote(cpumem)}->data[i] = ${quote(fpgamem)}->get_mem(i);
         }
         """)
       }
