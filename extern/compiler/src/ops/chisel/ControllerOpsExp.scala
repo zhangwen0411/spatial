@@ -434,7 +434,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
         emitCChainCtrl(sym, cchain.get)
       } else {
         emit(s"""val ${quote(sym)}_datapath_en = ${quote(sym)}_en & ~${quote(sym)}_rst_en;""")
-        emit(s"""val ${quote(sym)}_ctr_en = Utils.delay(${quote(sym)}_datapath_en, 1) // TODO: No delay if we go with dual-port memories""")
+        emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en""")
         // emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_sm.io.output.ctr_en // TODO: Why did we originally generate the 2 lines above??""")
       }
     }
@@ -513,7 +513,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
-              emit(s"""val ${quote(sym)}_ctr_en = Utils.delay(${quote(sym)}_datapath_en, 1) // TODO: No delay if we go with dual-port memories""")
+              emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
@@ -533,7 +533,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
                     Some(s"stream.offset(${quote(sym)}_datapath_en & ${quote(cchain)}_chain.getCounterWrap(${quote(counters.head)}), -${quote(sym)}_offset-1)"))
             } else {
               val ctrEn = s"${quote(sym)}_datapath_en"
-              emit(s"""val ${quote(sym)}_ctr_en = Utils.delay(${quote(sym)}_datapath_en, 1) // TODO: No delay if we go with dual-port memories""")
+              emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en""")
               val rstStr = s"${quote(sym)}_done"
               emitCustomCounterChain(cchain, Some(ctrEn), Some(rstStr), sym)
             }
