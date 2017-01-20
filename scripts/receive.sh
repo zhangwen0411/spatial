@@ -35,9 +35,9 @@ clean_exit() {
   echo "$summary"
   echo "`date` - $summary (clean_exit)" >> ${REGRESSION_HOME}/regression_history.log
   if [[ -z $2 ]]; then
-    echo "Unknown error (${1})" > $log
+    echo "Unknown error (${1})" >> $log
   else
-    echo "Error: ${2} (${1})" > $log
+    echo "Error: ${2} (${1})" >> $log
   fi
 
   logger "${2}"

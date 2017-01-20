@@ -279,9 +279,10 @@ init_travis_ci() {
       cmd="rm $tracker"
       eval "$cmd"
       cp $packet ${SPATIAL_HOME}/${1}Tracker/
+    else 
+      logger "Repo ${1}Tracker does not exist! Skipping Travis..."
+    fi
     cd ${goto}
-  else 
-    logger "Repo ${1}Tracker does not exist! Skipping Travis..."
   fi
 }
 
