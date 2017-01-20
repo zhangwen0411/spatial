@@ -27,8 +27,11 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
   }
 
   override def consumesMemFifo(node: Exp[Any]) = {
+    Console.println(s"who is the parent of ${node} = ${parentOf(node)}")
     parentOf(node) match {
-      case Some(parent) => childrenOf(parent).map { n => n match {
+      case Some(parent) => childrenOf(parent).map { n => 
+        Console.println(s"  checking child $n")
+        n match {
         case Deff(BurstLoad(mem, fifo, ofs, len, par)) => true
         case _ => false
       }}.reduce{_|_}
@@ -375,12 +378,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
         emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts(${streamId}) """)
       }
       emit(s"""// ---- Memory Controller (Load) ${quote(sym)} ----
-${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.valid
+${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.cmdIssued
 ${quote(sym)}.io.AccelToCtrl.enLoad := ${quote(sym)}_en
 ${quote(sym)}.io.AccelToCtrl.offset := ${quote(ofs)}
 ${quote(sym)}.io.AccelToCtrl.base := ${quote(mem)}.U
-${quote(sym)}.io.AccelToCtrl.pop := ${quote(fifo)}_readEn
-${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p) => d := p }""")
+${quote(sym)}.io.AccelToCtrl.pop := ${quote(fifo)}_writeEn
+${quote(fifo)}_wdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p) => d := p }""")
 
       len match {
         case ConstFix(length) =>
@@ -388,8 +391,8 @@ ${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p
         case _ =>
           emit(s"""${quote(sym)}.io.AccelToCtrl.size := ${quote(len)}""")
       }
-      emit(s"""${quote(fifo)}_writeEn := ${quote(sym)}_en;""")
-      emit(s"""${quote(fifo)}_wdata := ${quote(fifo)}_rdata;""")
+      emit(s"""${quote(fifo)}_writeEn := ${quote(sym)}.io.CtrlToAccel.valid;""")
+      // emit(s"""${quote(fifo)}_wdata := ${quote(fifo)}_rdata;""")
       print_stage_suffix(quote(sym), false)
 
     case BurstStore(mem, fifo, ofs, len, par) =>
@@ -407,7 +410,6 @@ ${quote(sym)}.io.AccelToCtrl.offset := ${quote(ofs)}
 ${quote(sym)}.io.AccelToCtrl.base := ${quote(mem)}.U
 ${quote(sym)}.io.AccelToCtrl.data := ${quote(fifo)}_wdata
 ${quote(sym)}.io.AccelToCtrl.push := ${quote(fifo)}_writeEn
-${quote(fifo)}_rdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p) => d := p }
 ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
 """)
 
@@ -683,16 +685,25 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
       val duplicates = duplicatesOf(sym)
       if (duplicates.size != 1) throw new Exception(s"More than 1 duplicates: $duplicates. Don't know how to handle.")
       if (duplicates.head.banking.size != 1) throw new Exception(s"More than 1 banking dimension: Don't know how to handle.")
+      val depth = bound(size).get.toInt
       val par = duplicates.head.banking.head.banks
       val ts = tpstr(1)(sym.tp.typeArguments.head, implicitly[SourceContext])
-      emit(s"""// FIFO ${quote(sym)} = Fifo_new[$ts](${quote(size)}, ${quote(zero)});""")
-      emit(s"""val ${quote(sym)}_rdata = Wire(Vec($par, UInt(32.W))) // $ts""")
       emit(s"""val ${quote(sym)}_wdata = Wire(Vec($par, UInt(32.W))) // $ts""")
       emit(s"""val ${quote(sym)}_readEn = Wire(Bool())""")
       emit(s"""val ${quote(sym)}_writeEn = Wire(Bool())""")
+      // if (consumesMemFifo(sym)) {
+      //   emit(s"""val ${quote(sym)}_rdata = Wire(Vec($par, UInt(32.W))) // $ts""")
+      //   emit(s"""// val ${quote(sym)} included in memory controller""")
+      // } else {
+      emit(s"""val ${quote(sym)} = Module(new FIFO($par, $par, ${quote(depth)}))""")          
+      emit(s"""val ${quote(sym)}_rdata = ${quote(sym)}.io.out""")
+      emit(s"""${quote(sym)}.io.in := ${quote(sym)}_wdata""")
+      emit(s"""${quote(sym)}.io.pop := ${quote(sym)}_readEn""")
+      emit(s"""${quote(sym)}.io.push := ${quote(sym)}_writeEn""")
+      // }
 
     case Par_push_fifo(fifo, value, en, shuffle) =>
-      emit(s"""// Par_push_fifo(${quote(fifo)}, ${quote(value)}, ${quote(en)}, ${quote(shuffle)});""")
+      emit(s"""// ---- Fifo Push ----""")
       val writer = quote(writersOf(fifo).head.controlNode)  // Not using 'en' or 'shuffle'
       emit(s"""${quote(fifo)}_writeEn := ${writer}_ctr_en;""")
       emit(s"""${quote(fifo)}_wdata := ${quote(value)};""")

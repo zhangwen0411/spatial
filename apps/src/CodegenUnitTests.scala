@@ -160,7 +160,7 @@ trait FifoLoadApp extends SpatialApp {
 
   type Array[T] = ForgeArray[T]
   def fifoLoad(srcHost: Rep[Array[T]], N: Rep[SInt]) = {
-    val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
+    val tileSize = param(64); domainOf(tileSize) = (96, 96, 96)
 
   	val size = ArgIn[SInt]
   	setArg(size, N)
@@ -184,6 +184,12 @@ trait FifoLoadApp extends SpatialApp {
     getMem(dstFPGA)
   }
 
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
   def main() {
     val arraySize = args(0).to[SInt]
 
@@ -193,10 +199,8 @@ trait FifoLoadApp extends SpatialApp {
     val gold = src.map { i => i }
 
     println("Sent in: ")
-    (0 until arraySize) foreach { i => print(gold(i) + " ") }
-    println("Got out:")
-    (0 until arraySize) foreach { i => print(dst(i) + " ") }
-    println("")
+    printArr(gold, "Sent in: ")
+    printArr(dst, "Got out: ")
 
     val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
     println("PASS: " + cksum + " (FifoLoadTest)")
@@ -253,7 +257,7 @@ trait ParFifoLoadApp extends SpatialApp {
 
     // val gold = src1.zip(src2){_*_}.zipWithIndex.filter( (a:Int, i:Int) => i > arraySize-96).reduce{_+_}
     val gold = src1.zip(src2){_*_}.reduce{_+_} - sub1_for_check.zip(sub2_for_check){_*_}.reduce(_+_)
-	println(s"gold = " + gold)
+	  println(s"gold = " + gold)
     println(s"out = " + out)
 
     val cksum = out == gold
@@ -292,6 +296,12 @@ trait FifoLoadStoreApp extends SpatialApp {
     getMem(dstFPGA)
   }
 
+  def printArr(a: Rep[Array[T]], str: String = "") {
+    println(str)
+    (0 until a.length) foreach { i => print(a(i) + " ") }
+    println("")
+  }
+
   def main() {
     val arraySize = N
 
@@ -300,12 +310,8 @@ trait FifoLoadStoreApp extends SpatialApp {
 
     val gold = src.map { i => i }
 
-    println("gold:")
-    (0 until arraySize) foreach { i => print(gold(i) + " ") }
-    println("")
-    println("dst:")
-    (0 until arraySize) foreach { i => print(dst(i) + " ") }
-    println("")
+    printArr(gold, "gold: ")
+    printArr(dst, "dst: ")
 
     val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
     println("PASS: " + cksum + " (FifoLoadStore)")

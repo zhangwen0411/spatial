@@ -934,6 +934,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
     emit(s"""package interfaces
 import chisel3._
 import templates._
+import types._
 
 class ArgInBundle() extends Bundle{
   val ports = Vec(${ports.length}, Input(UInt(32.W)))

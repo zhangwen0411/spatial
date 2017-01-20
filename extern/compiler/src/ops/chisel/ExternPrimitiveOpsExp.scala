@@ -221,6 +221,9 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
           emit(s"""// var $sym = ${quote(x)}.cast($ts) // emit const""")
         }
 
+    case Tpes_String_to_fixpt(x) =>
+      emit(s"""val ${quote(sym)} = UInt(${quote(x)})""")
+
     case _ => super.emitNode(sym, rhs)
 
   }

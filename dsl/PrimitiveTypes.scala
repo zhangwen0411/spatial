@@ -265,7 +265,7 @@ trait PrimitiveTypes {
     impl (bit_to_string)  (codegen(chisel, ${ $0.toString }))
     impl (bit_to_bool)    (codegen(chisel, ${ $0 }))
 
-    impl (string_to_fixpt) (codegen(chisel, ${ implementMe[$t[S],$t[I],$t[F]]($0) }))
+    // impl (string_to_fixpt) (codegen(chisel, ${ implementMe[$t[S],$t[I],$t[F]]($0) }))
     impl (const_to_fixpt) (codegen(chisel, ${ FixedPoint[$t[S],$t[I],$t[F]]($0.toString) }))
     impl (fixpt_to_string) (codegen(chisel, ${ $0.implementMe }))
     impl (fixpt_to_fltpt) (codegen(chisel, ${ $0.implementMe[$t[G],$t[E]] }))
