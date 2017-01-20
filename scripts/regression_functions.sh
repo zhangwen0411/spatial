@@ -266,28 +266,39 @@ mv ${pretty_file}.tmp ${pretty_file}
 init_travis_ci() {
   if [[ ${type_todo} = "chisel" ]]; then
 
+    logger "Pulling TRAVIS CI buttons for $1"
+
     # Pull Tracker repos
     goto=(`pwd`)
     cd ${SPATIAL_HOME}
     cmd="git pull git@github.com:mattfel1/${1}Tracker.git"
     eval "$cmd"
-    tracker="${SPATIAL_HOME}/${1}Tracker/results"
-    cmd="rm $tracker"
-    eval "$cmd"
+    if [ -d "${SPATIAL_HOME}/${1}Tracker" ]; then
+      logger "Repo ${1}Tracker exists, prepping it..."
+      tracker="${SPATIAL_HOME}/${1}Tracker/results"
+      cmd="rm $tracker"
+      eval "$cmd"
+      cp $packet ${SPATIAL_HOME}/${1}Tracker/
     cd ${goto}
+  else 
+    logger "Repo ${1}Tracker does not exist! Skipping Travis..."
   fi
 }
 
 ## $1 - test class (unit, dense, etc)
 push_travis_ci() {
   if [[ ${type_todo} = "chisel" ]]; then
-
     # Pull Tracker repos
     goto=(`pwd`)
-    cd ${SPATIAL_HOME}/${1}
-    git add -A
-    git commit -m "auto update"
-    git push
+    if [ -d "${SPATIAL_HOME}/${1}Tracker" ]; then
+      logger "Repo ${1}Tracker exists, pushing it..."
+      cd ${SPATIAL_HOME}/${1}Tracker
+      git add -A
+      git commit -m "auto update"
+      git push
+    else
+      logger "Repo ${1}Tracker does not exist, skipping it!"
+    fi
     cd ${goto}
   fi
 }

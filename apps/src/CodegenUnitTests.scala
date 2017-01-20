@@ -357,12 +357,12 @@ trait TileStoreApp extends SpatialApp {
 
   val N = 64.as[T]
 
-  def TileStore(data: Rep[T]) = {
+  def TileStore(x: Rep[T]) = {
     val P = param(1)
 
     val start = ArgIn[T]
     val dst = DRAM[T](N)
-    setArg(start, data)
+    setArg(start, x)
 
     Accel {
       val b = SRAM[T](N)
@@ -382,11 +382,11 @@ trait TileStoreApp extends SpatialApp {
 
   def main() {
     val src = Array.tabulate[SInt](N) { i => i }
+    val x = args(0).to[T]
 
-    val gold = src.map { i => i }
+    val gold = src.map { i => i + x }
 
-    val data = args(0).to[T]
-    val result = TileStore(data)
+    val result = TileStore(x)
     printArr(gold, "expected: ")
     printArr(result, "result: ")
 
