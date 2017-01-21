@@ -53,8 +53,8 @@ trait SimpleSequentialApp extends SpatialApp {
   }
 }
 
-// Regression (Unit) // Args: 288
-object DeviceMemcpy extends SpatialAppCompiler with DeviceMemcpyApp // TODO: fix this app when we have real mem interface
+
+object DeviceMemcpy extends SpatialAppCompiler with DeviceMemcpyApp // TODO: fix this app when we have real mem interface and arg 288
 trait DeviceMemcpyApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]
@@ -98,27 +98,25 @@ trait DeviceMemcpyApp extends SpatialApp {
 
 }
 
-object SimpleTileLoadStore extends SpatialAppCompiler with SimpleTileLoadStoreApp // Regression (Unit) // Args: 960 5
+object SimpleTileLoadStore extends SpatialAppCompiler with SimpleTileLoadStoreApp // Regression (Unit) // Args: 5
 trait SimpleTileLoadStoreApp extends SpatialApp {
   type T = SInt
-  val N = 192
+  val N = 384
   type Array[T] = ForgeArray[T]
   def simpleLoadStore(srcHost: Rep[Array[T]], value: Rep[SInt]) = {
     val loadPar = param(1); domainOf(loadPar) = (1, 1, 1)
     val storePar = param(1); domainOf(storePar) = (1, 1, 1)
-    val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
+    val tileSize = param(64); domainOf(tileSize) = (96, 96, 96)
 
     val srcFPGA = DRAM[SInt](N)
     val dstFPGA = DRAM[SInt](N)
     setMem(srcFPGA, srcHost)
 
-  	val size = ArgIn[SInt]
   	val x = ArgIn[SInt]
     setArg(x, value)
-    setArg(size, N)
     Accel {
       val b1 = SRAM[SInt](tileSize)
-      Sequential(size by tileSize) { i =>
+      Sequential(N by tileSize) { i =>
         b1 := srcFPGA(i::i+tileSize)
 
         val b2 = SRAM[SInt](tileSize)

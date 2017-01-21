@@ -196,8 +196,7 @@ trait DRAMs {
               burst_load(mem, fifo, maddr, len, p)
 
               Pipe(len par p){i =>
-                val en = i >= maddr && i < maddr + len
-                __mem.st($local, addr(i), fifo.pop(), en)
+                __mem.st($local, addr(i), fifo.pop(), true)
               }
           //   } else {
               // Pipe {
