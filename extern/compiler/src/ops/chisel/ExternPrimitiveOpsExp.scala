@@ -22,6 +22,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
   var emitted_consts: Set[(Exp[Any], Def[Any])] = Set.empty
   var emitted_argins: Set[(Exp[Any], String)] = Set.empty
   var emitted_reglibreads: Set[(Exp[Any], String)] = Set.empty
+  var emitted_ands = List() // TODO: HUGE HACK BECAUSE WE DON'T KNOW WHY SYMS GET RE-EMITTED!
   def addEmittedConsts(xs: Exp[Any]*) = xs.foreach {
     case lhs@Def(rhs) => if (!emitted_consts.contains((lhs, rhs))) { emitted_consts += ((lhs, rhs)) }
     case _ =>
@@ -171,7 +172,13 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       val pre = chiselPre(sym)
       rTreeMap(sym) match {
         case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
+          if (!emitted_ands.contains(quote(sym))) {
+            emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")  
+            emitted_ands = emitted_ands :+ quote(sym)
+          } else {
+            emit(s"""// Avoid re-emitting ${quote(sym)}""")
+          }
+          
         case m =>
           emit(s"""// ${quote(sym)} already emitted in $m""")
       }

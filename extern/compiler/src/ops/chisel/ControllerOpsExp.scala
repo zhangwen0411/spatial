@@ -184,9 +184,11 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       case CoarsePipe =>
         val stages = childrenOf(controller)
         inds.foreach { idx =>
-          emit(s"""DblBufReg[] ${quote(idx)}_chain = spatialUtils.getRegChain(
-              "${quote(controller)}_${quote(idx)}", ${stages.size}, ${quote(idx)},
-              new var[]{${stages.map{s => quote(s)+"_done"}.mkString(",")}});""")
+          emit(s"""val ${quote(idx)}_chain = Module(new NBufFF(${stages.size}, 32))""")
+          stages.zipWithIndex.foreach{ case (s, i) =>
+            emit(s"""${quote(idx)}_chain.io.sEn($i) := ${quote(s)}_en; ${quote(idx)}_chain.io.sDone($i) := ${quote(s)}_done""")
+          }
+          emit(s"""${quote(idx)}_chain.write(${quote(idx)}, ${quote(stages(0))}_done, false.B, 0) // TODO: Maybe wren should be tied to en and not done?""")
         }
       case _ =>
     }
