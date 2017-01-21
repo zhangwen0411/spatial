@@ -136,7 +136,7 @@ update_log() {
     elif [[ $p == *"failed_compile_backend_hanging"* ]]; then
       echo "<----------------${p}${cute_plot}  " | sed "s/\.\///g" | tee -a $1 $tracker > /dev/null
       t=0
-    elif [[ $p == *"failed_compile_backend_crash"* ]]; then
+    elif [[ $p == *"failed_compile_backend_crash"* || $p == *"failed_execution_backend_crash"* ]]; then
       echo "<--------------------${p}${cute_plot}  " | sed "s/\.\///g" | tee -a $1 $tracker > /dev/null
       t=0
     elif [[ $p == *"failed_app_spatial_compile"* ]]; then
@@ -557,6 +557,18 @@ rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.
 touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}
 
 bash ${5}/out/run.sh \"${args}\" 2>&1 | tee -a ${5}/log
+
+wc=\$(cat ${5}/log | grep \"Error: App\\|Segmentation fault\" | wc -l)
+if [ \"\$wc\" -ne 0 ]; then
+  echo \"PASS: -4 (${4} Spatial Error)\"
+  if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4} ]; then
+      rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_compile_backend_hanging.${3}_${4}
+      echo \"[STATUS] Declaring failure compile_maxj\"
+      touch ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_backend_crash.${3}_${4}
+  fi
+  exit 1
+fi
+
 if grep -q \"PASS: 1\" ${5}/log; then
   if [ -e ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4} ]; then
     rm ${SPATIAL_HOME}/regression_tests/${2}/results/failed_execution_hanging.${3}_${4}

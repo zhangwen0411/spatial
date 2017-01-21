@@ -22,7 +22,7 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
   import IR.{println => _, assert => _, infix_until => _, _}
 
   override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
-    case "SpatialVector" => "DFEVector<DFEVar>"
+    case "SpatialVector" => "val"
     case _ => super.remap(m)
   }
 

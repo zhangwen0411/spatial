@@ -241,7 +241,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       def emitIfUndeclared(e: Exp[Any]) = {
         if (!emitted.contains(e)) {
           val ts = tpstr(parOf(e))(e.tp, implicitly[SourceContext])
-          emit(s"""var ${quote(e)} = $ts.newInstance(this);""")
+          emit(s"""// val ${quote(e)} = What should this equal?""")
           emitted += e
         }
       }

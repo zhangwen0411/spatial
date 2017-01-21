@@ -222,7 +222,7 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
         }
 
     case Tpes_String_to_fixpt(x) =>
-      emit(s"""val ${quote(sym)} = UInt(${quote(x)})""")
+      emit(s"""// val ${quote(sym)} = UInt(${quote(x)}) // TODO: Why do these nodes exist?""")
 
     case _ => super.emitNode(sym, rhs)
 
