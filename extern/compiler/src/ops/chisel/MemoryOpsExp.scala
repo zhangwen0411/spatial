@@ -591,9 +591,9 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
               val rstStr = quote(parentOf(reg).get) + "_rst_en"
               // emit(s"""${regname}_lib.write(${quote(value)}, constant.var(true), $rstStr);""")
               val portSelector = if (dup.depth > 1) s"($port)" else ""
-              emit(s"""${regname}_lib.io.input${portSelector}.data := ${quote(value)}; // ${nameOf(reg).getOrElse("")}""")
-              emit(s"""${regname}_lib.io.input${portSelector}.enable := ${quote(writeCtrl)}_done""")
-              emit(s"""${regname}_lib.io.input${portSelector}.reset := false.B""")
+              emit(s"""${regname}_lib.io.input.data := ${quote(value)}; // ${nameOf(reg).getOrElse("")} // on port ${portSelector}""")
+              emit(s"""${regname}_lib.io.input.enable := ${quote(writeCtrl)}_done // on port ${portSelector}""")
+              emit(s"""${regname}_lib.io.input.reset := false.B // on port ${portSelector}""")
             }
           } // End non-accumulator case
       }
