@@ -24,7 +24,7 @@ coordinate() {
     exit 1
   fi
   while [ $rank -gt 0 ]; do
-    logger "This packet (${packet}) is ${rank}-th in line (${sorted_packet[@]})... Waiting $((delay/numpieces)) seconds..."
+    logger "This packet (${packet}) is ${rank}-th in line (${sorted_packets[@]})... Waiting $((delay/numpieces)) seconds..."
     sleep $((delay/numpieces))
     for i in ${!sorted_packets[@]}; do if [[ ${sorted_packets[$i]} = *"$packet"* ]]; then rank=${i}; fi; done
   done
