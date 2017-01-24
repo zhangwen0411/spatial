@@ -211,7 +211,11 @@ ${quote(read)}_rVec.foreach { r => r.en := ${quote(parent)}_en}""")
     }
 
     emit(s"""${quote(sram_name)}.connectRPort(Vec(${quote(read)}_rVec.toArray), ${p})""")
-    emit(s"""val ${quote(read)} = (0 until ${rPar}).map{i => ${quote(sram_name)}.io.output.data(${rPar}*${p}+i) }""")
+    if (par) {
+      emit(s"""val ${quote(read)} = (0 until ${rPar}).map{i => ${quote(sram_name)}.io.output.data(${rPar}*${p}+i) }""")
+    } else {
+      emit(s"""val ${quote(read)} = ${quote(sram_name)}.io.output.data(${rPar}*${p})""")
+    }
 
 
   }

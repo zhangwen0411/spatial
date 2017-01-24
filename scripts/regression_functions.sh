@@ -9,6 +9,27 @@ delay=2100
 numpieces=30
 hist=72
 
+## Function for finding filse with older timestamps.
+##   This tester will yield to any active or new tests who are older
+coordinate() {
+  cd ${REGRESSION_HOME}
+  files=(*)
+  new_packets=()
+  for f in ${files[@]}; do if [[ $f = *".new"* || $f = *".ack"* || $f = *".lock"* ]]; then new_packets+=($f); fi; done
+  sorted_packets=( $(for arr in "${new_packets[@]}"; do echo $arr; done | sort) )
+  rank=-1
+  for i in ${!sorted_packets[@]}; do if [[ ${sorted_packets[$i]} = *"$packet"* ]]; then rank=${i}; fi; done
+  if [ $rank = -1 ]; then 
+    logger "CRITICAL ERROR: This packet ${packet} was not found in waiting list ${sorted_packet[@]}"
+  fi
+  while [ $rank -gt 0 ]; do
+    logger "This packet (${packet}) is ${rank}-th in line (${sorted_packet[@]})... Waiting $((delay/numpieces)) seconds..."
+    sleep $((delay/numpieces))
+    for i in ${!sorted_packets[@]}; do if [[ ${sorted_packets[$i]} = *"$packet"* ]]; then rank=${i}; fi; done
+  done
+  cd -
+}
+
 ## Function for building spatial
 build_spatial() {
   logger "Cleaning old regression files..."
@@ -57,10 +78,12 @@ git add -A
 git commit -m "Automated incron update"
 git push
 
+logger "Removing packet ${packet} so those waiting are clear to launch"
 rm $packet
+
 # stubborn_delete ${dirname}
 
-ps aux | grep -ie mattfel | grep -v ssh | grep -v bash | grep -iv screen | awk '{system("kill -9 " $2)}'
+ps aux | grep -ie mattfel | grep -v ssh | grep -v bash | grep -iv screen | grep -v receive | awk '{system("kill -9 " $2)}'
 
 exit 1
 

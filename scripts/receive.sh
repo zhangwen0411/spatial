@@ -2,7 +2,7 @@
 
 # Argument 1 = Test type (maxj, scala, chisel, etc...)
 
-REGRESSION_HOME="/home/mattfel/regression"
+REGRESSION_HOME="${HOME}/regression"
 
 ## Helper for deleting directories when you still have those nfs files stuck in use
 # 1 - directory to delete
@@ -51,22 +51,31 @@ clean_exit() {
 get_packet() {
 # Make sure there is only one packet to work on
 wc=`ls $REGRESSION_HOME | grep "${test_to_run}.new" | wc -l`
+multiple_new=false
 if [[ $wc -gt 1 ]]; then
-  echo "Error: More than one packet detected.  Cannot run ${test_to_run} test!" > ${REGRESSION_HOME}/log
-  clean_exit 5
+  #echo "Warning: More than one packet detected.  Grabbing newest!" > ${REGRESSION_HOME}/log
+  cd ${REGRESSION_HOME}
+  files=(*)
+  new_packets=()
+  for f in ${files[@]}; do if [[ $f = *".new"* ]]; then new_packets+=($f); fi; done
+  sorted_packets=( $(for arr in "${new_packets[@]}"; do echo $arr; done | sort) )
+  packet=${sorted_packets[-1]}
+  multiple_new=true
+  cd -
+elif [[ $wc = 0 ]]; then
+  # echo "`date` - no new packet" >> ${REGRESSION_HOME}/regression_history.log
+  exit 1
+else
+  # Find the new packet 
+  packet=`ls $REGRESSION_HOME | grep "${test_to_run}.new"`  
 fi
 
-# Find the new packet 
-packet=`ls $REGRESSION_HOME | grep "${test_to_run}.new"`
 packet="${REGRESSION_HOME}/$packet"
 
 # Acknowledge packet
 ackfile=`echo $packet | sed 's/new/ack/g'`
 if [ -f $packet ]; then
   mv $packet $ackfile
-else
-  echo "`date` - no new packet" >> ${REGRESSION_HOME}/regression_history.log
-  exit 1
 fi
 packet=$ackfile
 
@@ -98,6 +107,10 @@ pretty_file=${SPATIAL_HOME}/spatial.wiki/${pretty_name}
 log="${REGRESSION_HOME}/${tim}.${branch}.${type_todo}.log"
 
 logger "Got packet.  `sed -n '1p' $packet`"
+if [ $multiple_new = "true" ]; then
+  logger "Had to get newest because multiple packets found:"
+  logger "   ${sorted_packets[@]}"
+fi
 
 }
 
@@ -245,19 +258,14 @@ if [[ $? -ne 0 ]]; then
 fi
 logger "Sourcing successful!"
 
+# Wait for channel to be free
+phase="COORDINATION"
+logger "Looking for senior files..."
+coordinate
+
 # Build spatial
 phase="BUILD"
 build_spatial
-
-# Wait for channel to be free
-phase="COORDINATION"
-logger "Looking for locks..."
-locks=`ls $REGRESSION_HOME | grep "{test_to_run}.lock"`
-while [ ! -z $locks ]; do
-  logger "$locks is still running"
-  sleep ${RANDOM:0:2}
-  locks=`ls $REGRESSION_HOME | grep lock`
-done
 
 # Lock file
 logger "Locking my packet!"
