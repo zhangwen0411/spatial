@@ -99,6 +99,8 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       val s = if (rwPortAlias.contains(ss)) rwPortAlias(ss) else ss
       val Sym(n) = s
       s match {
+        case Def(ConstBit(v)) => // Constant bool optimization
+          if (v == true) "true.B" else "false.B"
         case Def(Argin_new(init)) =>
           s"argin_" + s.tp.erasure.getSimpleName() + n
         case Def(ConstFix(value)) =>

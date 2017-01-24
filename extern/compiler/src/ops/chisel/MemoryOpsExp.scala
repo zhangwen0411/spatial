@@ -271,10 +271,21 @@ ${quote(read)}_rVec.foreach { r => r.en := ${quote(parent)}_en}""")
 
     if (inds.isEmpty) throw NoParIndicesException(sram, write)
 
+    val Deff(value_type) = value
+
+
     emit(s"""// Assemble multidimW vector
+val ${quote(write)}_wVec = Wire(Vec(${wPar}, new multidimW(${num_dims}, 32))) """)
+    value match {
+      case Deff(d:Reg_read[_]) => // Reg_reads produce scalar values
+        emit(s"""${quote(write)}_wVec(0).data := ${quote(value)}
+${quote(write)}_wVec(0).en := ${quote(ens)} // TODO: Not sure if it is always safe to assume this has size 1""")
+      case _ => // Otherwise, assume it is a vector value
+        emit(s"""
 val ${quote(write)}_wVec = Wire(Vec(${wPar}, new multidimW(${num_dims}, 32))) // Make List because Vec is unsynthesizable for some reason
 ${quote(write)}_wVec.zip(${quote(value)}).foreach {case (w,d) => w.data := d}
 ${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.en := e}""")
+    }
     inds.zipWithIndex.foreach{ case(ind,i) => 
       ind.zipWithIndex.foreach { case(wire,j) =>
         emit(s"""${quote(write)}_wVec($i).addr($j) := ${quote(wire)}""")
