@@ -48,13 +48,13 @@ trait SimpleSequentialApp extends SpatialApp {
     println("expected: " + gold)
     println("result:   " + result)
     val cksum = result == gold
-    println("PASS: " + cksum + " (SimpleSequential)")
+    println("PASS: " + cksum + " (SimpleSequential) *Here is an example for how to leave regression comments")
 
   }
 }
 
-
-object DeviceMemcpy extends SpatialAppCompiler with DeviceMemcpyApp // TODO: fix this app when we have real mem interface and arg 288
+// TODO: fix this app when we have real mem interface and arg 288
+object DeviceMemcpy extends SpatialAppCompiler with DeviceMemcpyApp 
 trait DeviceMemcpyApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]

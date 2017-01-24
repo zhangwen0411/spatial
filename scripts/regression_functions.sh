@@ -99,7 +99,7 @@ echo -e "\n\n***\n\n" >> $wiki_file
 
 # Link to logs
 # echo -e "\n## [History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${branch}_Regression_Test_History.csv) \n" >> $wiki_file
-echo -e "\n## [Prettier History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${pretty_name}) \n" >> $wiki_file
+echo -e "\n## [Pretty History log](https://raw.githubusercontent.com/wiki/stanford-ppl/spatial/${pretty_name}) \n" >> $wiki_file
 # echo -e "\n## [Performance Results](https://www.dropbox.com/s/a91ra3wvdyr3x5b/Performance_Results.xlsx?dl=0) \n" >> $wiki_file
 
 stamp_app_comments
@@ -215,6 +215,21 @@ for aa in ${headers[@]}; do
   a=(`echo $aa | sed "s/^.*|//g" | sed "s/\[.*//g"`)
   dashes=(`cat ${wiki_file} | grep "[0-9]\+\_$a\(\ \|\*\|\[\)" | sed "s/\[🗠.*//g" | grep -oh "\-" | wc -l`)
   num=$(($dashes/4))
+  echo "0  KEY:
+00 █ = Success
+00 ▇ = failed_execution_validation  
+00 ▆ = failed_execution_nonexistent_validation  
+00 ▅ = failed_execution_hanging  
+00 ▄ = failed_compile_backend_hanging 
+00 ▃ = failed_compile_backend_crash 
+00 ▂ = failed_app_spatial_compile 
+00 ▁ = failed_app_not_written 
+00 □ = unknown
+ 1 
+ 1
+ 1
+ 1
+" >> ${pretty_file}
   if [ $num = 0 ]; then bar=█; elif [ $num = 1 ]; then bar=▇; elif [ $num = 2 ]; then bar=▆; elif [ $num = 3 ]; then bar=▅; elif [ $num = 4 ]; then bar=▄; elif [ $num = 5 ]; then bar=▃; elif [ $num = 6 ]; then bar=▂; elif [ $num = 7 ]; then bar=▁; else bar=□; fi
 
   infile=(`cat ${pretty_file} | grep $aa | wc -l`)

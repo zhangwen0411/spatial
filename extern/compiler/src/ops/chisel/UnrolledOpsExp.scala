@@ -133,7 +133,7 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
                         case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
                           if (isReduceResult(s)) {
                             val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                            emit(s"DFEVar ${quote(s)} = ${ts}.newInstance(this);")
+                            emit(s"//val ${quote(s)} = Wire(${ts})")
                             treeResultSyms += s
                           }
                           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
@@ -146,14 +146,15 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
                   }
                 }
 
+                emit(s"""// ---- UnrolledForeach ${quote(sym)} func block ---- """)
                 emitBlock(func)
-                val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
-                val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
-                val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-                val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-                val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
+                // val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
+                // val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
+                // val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
+                // val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+                // val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
+                // val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
+                // emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
               case _ =>
                 emitBlock(func)
               }
@@ -236,7 +237,7 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
           }
 
           emitRegChains(sym, inds.flatten)
-          emit(s"""// ---- UnrolledReduce ${quote(sym)} func block""")
+          emit(s"""// ---- UnrolledReduce ${quote(sym)} func block ---- """)
           emitBlock(func)
 
           // val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
