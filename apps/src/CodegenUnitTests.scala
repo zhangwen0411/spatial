@@ -794,7 +794,7 @@ trait BlockReduce2DApp extends SpatialApp {
 }
 
 
-object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Regression (Unit) // Args: none
+object ScatterGather extends SpatialAppCompiler with ScatterGatherApp // Regression (Sparse) // Args: none
 trait ScatterGatherApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]

@@ -282,7 +282,6 @@ val ${quote(write)}_wVec = Wire(Vec(${wPar}, new multidimW(${num_dims}, 32))) ""
 ${quote(write)}_wVec(0).en := ${quote(ens)} // TODO: Not sure if it is always safe to assume this has size 1""")
       case _ => // Otherwise, assume it is a vector value
         emit(s"""
-val ${quote(write)}_wVec = Wire(Vec(${wPar}, new multidimW(${num_dims}, 32))) // Make List because Vec is unsynthesizable for some reason
 ${quote(write)}_wVec.zip(${quote(value)}).foreach {case (w,d) => w.data := d}
 ${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.en := e}""")
     }
