@@ -1046,7 +1046,7 @@ trait MultiplexedWriteTestApp extends SpatialApp {
 
   def main() = {
     val w = Array.tabulate[SInt](N){ i => i }
-    val i = Array.tabulate[SInt](N){ i => i*2 }
+    val i = Array.tabulate[SInt](N){ i => i }
 
     val result = multiplexedwrtest(w, i)
 
@@ -1239,14 +1239,14 @@ trait FifoPushPopApp extends SpatialApp {
 
   type Array[T] = ForgeArray[T]
   def fifopushpop(N: Rep[SInt]) = {
-    val tileSize = param(96); domainOf(tileSize) = (96, 96, 96)
+    val tileSize = 96
 
     val size = ArgIn[SInt]
     setArg(size, N)
     val acc = ArgOut[SInt]
 
     Accel {
-      val f1 = FIFO[SInt](tileSize)
+      val f1 = FIFO[SInt](tileSize*4) // Need tileSize*number of stages in metapipe
       val accum = Reg[SInt](0)
       Fold(size by tileSize)(accum, 0.as[SInt]) { iter => 
         Pipe(tileSize by 1) { i => f1.push(iter + i) }
