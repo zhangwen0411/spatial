@@ -266,12 +266,11 @@ mv ${pretty_file}.tmp ${pretty_file}
 init_travis_ci() {
   if [[ ${type_todo} = "chisel" ]]; then
 
-    logger "Pulling TRAVIS CI buttons for $1"
-
     # Pull Tracker repos
     goto=(`pwd`)
     cd ${SPATIAL_HOME}
-    cmd="git pull git@github.com:mattfel1/${1}Tracker.git"
+    cmd="git clone git@github.com:mattfel1/${1}Tracker.git"
+    logger "Pulling TRAVIS CI buttons with command: $cmd"
     eval "$cmd"
     if [ -d "${SPATIAL_HOME}/${1}Tracker" ]; then
       logger "Repo ${1}Tracker exists, prepping it..."

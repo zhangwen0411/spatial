@@ -247,11 +247,11 @@ trait ParFifoLoadApp extends SpatialApp {
     val arraySize = args(unit(0)).to[SInt]
 
     val src1 = Array.tabulate[SInt](arraySize) { i => i }
-    val src2 = Array.tabulate[SInt](arraySize) { i => i*2 }
+    val src2 = Array.tabulate[SInt](arraySize) { i => i }
     val out = parFifoLoad(src1, src2, arraySize)
 
     val sub1_for_check = Array.tabulate[SInt](arraySize-96) {i => i}
-    val sub2_for_check = Array.tabulate[SInt](arraySize-96) {i => i*2}
+    val sub2_for_check = Array.tabulate[SInt](arraySize-96) {i => i}
 
     // val gold = src1.zip(src2){_*_}.zipWithIndex.filter( (a:Int, i:Int) => i > arraySize-96).reduce{_+_}
     val gold = src1.zip(src2){_*_}.reduce{_+_} - sub1_for_check.zip(sub2_for_check){_*_}.reduce(_+_)

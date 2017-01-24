@@ -411,7 +411,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
     val constrArg = smStr match {
       case "Pipe" => s"${numIter.length} /*probably don't need*/"
-      case "Parallel" => ""
+      // case "Parallel" => ""
       case _ => childrenOf(sym).length
     }
 

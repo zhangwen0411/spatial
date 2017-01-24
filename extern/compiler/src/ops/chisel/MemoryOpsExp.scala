@@ -543,7 +543,9 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
           if (isAccum(reg)) throw new Exception(s"""ArgOut (${quote(reg)}) cannot be used as an accumulator!""")
           val controlStr = if (parentOf(reg).isEmpty) s"top_done" else quote(parentOf(reg).get) + "_done"
           // emitGlobal(s"""var ${quote(reg)} =  $tsb OUTPUT $tse;""")
-          emit(s"""io.ArgOut.ports(${argOutsByName.indexOf(quote(reg))}) := ${quote(value)} // ${quote(reg)}""")
+          emit(s"""val ${quote(reg)} = Reg(init = 0.U) // Write to output register""")
+          emit(s"""${quote(reg)} := Mux(${quote(writeCtrl)}_en, ${quote(value)}, ${quote(reg)})""")
+          emit(s"""io.ArgOut.ports(${argOutsByName.indexOf(quote(reg))}) := ${quote(reg)} // ${quote(reg)}""")
         case _ =>
           if (isAccum(reg)) {
             // Not sure how to decide this now...
