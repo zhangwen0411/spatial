@@ -28,7 +28,7 @@ coordinate() {
     sleep $((delay/numpieces))
     for i in ${!sorted_packets[@]}; do if [[ ${sorted_packets[$i]} = *"$packet"* ]]; then rank=${i}; fi; done
   done
-  logger "Packet cleared to launch! (${packet}) in list (${sorted_packet[@]})"
+  logger "Packet cleared to launch! (${packet}) in list (${sorted_packets[@]})"
 
   cd -
 }

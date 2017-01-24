@@ -79,6 +79,8 @@ if [ -f $packet ]; then
 fi
 packet=$ackfile
 
+sleep 2 # Because wft
+
 # Set vars based on this packet
 type_todo=`sed -n '4p' $packet`
 if [[ ! "${type_todo}" = "${test_to_run}" ]]; then
