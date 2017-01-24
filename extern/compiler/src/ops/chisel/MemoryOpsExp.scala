@@ -210,9 +210,8 @@ ${quote(read)}_rVec.foreach { r => r.en := ${quote(parent)}_en}""")
       }
     }
 
-    val suff = if (!par) "(0)" else "" 
-    emit(s"""${quote(sram_name)}.connectRPort(Vec(${quote(read)}_rVec.toArray))""")
-    emit(s"""val ${quote(read)} = ${quote(sram_name)}.io.output.data${suff}""")
+    emit(s"""${quote(sram_name)}.connectRPort(Vec(${quote(read)}_rVec.toArray), ${p})""")
+    emit(s"""val ${quote(read)} = (0 until ${rPar}).map{i => ${quote(sram_name)}.io.output.data(${rPar}*${p}+i) }""")
 
 
   }
@@ -278,7 +277,7 @@ ${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.en := e}""")
       }
     }
     dups.foreach{ case (d,i) =>
-      emit(s"""${quote(sram)}_$i.connectWPort(${quote(write)}_wVec, ${quote(globalEn)}) """)
+      emit(s"""${quote(sram)}_$i.connectWPort(${quote(write)}_wVec, ${quote(globalEn)}, 0) """)
     }
     
     // if (isAccum(sram) & isAccumCtrl) {
@@ -567,7 +566,7 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
                       case FixPtSum =>
                         emit(s"""${quote(reg)}_0_accum.io.next := ${quote(value)}""")
                         emit(s"""${quote(reg)}_0_accum.io.enable := ${quote(accEn)}""")
-                        emit(s"""${quote(reg)}_0_accum.io.reset := Utils.delay(${quote(rstStr)}, 1)""")
+                        emit(s"""${quote(reg)}_0_accum.io.reset := Utils.delay(${quote(rstStr)}, 2)""")
                         emit(s"""val ${quote(reg)} = ${quote(reg)}_0_accum.io.output""")
                       case FltPtSum =>
                         emit(s"""// TODO: Specialized accum, set val ${quote(reg)} = specialAccum( + ${quote(value)} ).withClear(${rstStr}).withEnable(${accEn});""")
@@ -576,7 +575,7 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
                     // TODO: I think this is a maxj vestige, but assume duplicate 0 is used for reduction, all others need writes
                     dups.foreach { case (dup, ii) =>
                       val port = portsOf(writer, reg, ii).head
-                      if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, ${quote(writeCtrl)}_done, false.B, $port); // ${nameOf(reg).getOrElse("")}""")
+                      if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, Utils.delay(${quote(writeCtrl)}_done, 1), false.B, $port); // ${nameOf(reg).getOrElse("")}""")
                     }
                   case _ =>
                   }
@@ -636,33 +635,12 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
           List(${sizes.map(quote).mkString(",")}), 32,
           ${banks}, ${strides}, $numDistinctWriters, 1, 
           ${write_head}, ${read_head})) // ${nameOf(sym).getOrElse("")}""")
-            } else if (r.depth == 2) {
-            //   val numReaders_for_this_duplicate = readersOf(sym).filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
-            //   emit(s"""SMIO ${quote(sym)}_${i}_sm = addStateMachine("${quote(sym)}_${i}_sm", new ${quote(sym)}_${i}_DblBufSM(this));""")
-            //   emit(s"""DblBufKernelLib ${quote(sym)}_${i} = new DblBufKernelLib(this, ${quote(sym)}_${i}_sm,
-            //     ${quote(size0)}, ${quote(size1)}, $ts, ${banks}, ${strides}, ${numReaders_for_this_duplicate});""")
-            // } else {
-            //   val row_majors = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.distinct.length == 1}
-            //   val all_same = (row_majors.reduce{_&_} == row_majors.reduce{_|_})
-            //   // {
-            //   //   throw new Exception(s"Cannot handle NBuf memory with both row- and column-major reads!")
-            //   // }
-            //   val read_pars = readersOf(sym).map{read => parIndicesOf(read.node).map{ind => quote2D(ind, 0)}.length}
-            //   val read_head = read_pars.head
-            //   if (!(read_pars.map{a => a == read_head}.reduce{_&_})) {
-            //     throw new Exception(s"""Cannot handle multiple NBuf readers on ${nameOf(sym).getOrElse("")} if they do not have the same access par! ($read_pars)""")
-            //   }
-            //   val write_pars = writersOf(sym).map{write => parIndicesOf(write.node).map{ind => quote2D(ind, 0)}.length }
-            //   val write_head = write_pars.head
-            //   if (!(write_pars.map{a => a == write_head}.reduce{_&_})) {
-            //     throw new Exception(s"Cannot handle multiple NBuf writers if they do not have the same access par!")
-            //   }
-            //   emit(s"""NBufKernelLib ${quote(sym)}_${i} = new NBufKernelLib(this, "${quote(sym)}_${i}",
-            //     ${quote(size0)}, ${quote(size1)}, /*size0, size1*/
-            //     $ts, ${banks}, ${strides}, ${r.depth}, /*banks, strides, depth*/
-            //     ${all_same}, /*all_same access (row_major or col_major)*/
-            //     new boolean[] {${row_majors.map{a => a | size1==1}.mkString(",")}}, /*rowmajor read?*/
-            //     ${write_head}, ${read_head} /*writepar, readpar*/); // ${nameOf(sym).getOrElse("")}""")
+            } else if (r.depth >= 2) {
+              val numReaders_for_duplicate = readersOf(sym).filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
+              emit(s"""val ${quote(sym)}_${i} = Module(new NBufSRAM(
+          List(${sizes.map(quote).mkString(",")}), ${r.depth}, 32,
+          ${banks}, ${strides}, $numDistinctWriters, ${numReaders_for_duplicate}, 
+          ${write_head}, ${read_head})) // ${nameOf(sym).getOrElse("")}""")
             }
           }
         }

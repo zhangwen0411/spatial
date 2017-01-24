@@ -360,22 +360,18 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       }
       emitController(sym, None)
 
+      val reductionLatency = if (writesToAccumReg) { "1 /*TODO: Compute correct val with retiming*/" } else "0"
+
       if (smStr == "Innerpipe") {
         emit(s"""// ---- Begin unit counter for ${quote(sym)} ---- """)
-        emit(s"""${quote(sym)}_sm.io.input.ctr_done := Utils.delay(${quote(sym)}_sm.io.output.ctr_en, 1)""")
+        emit(s"""${quote(sym)}_sm.io.input.ctr_done := Utils.delay(${quote(sym)}_sm.io.output.ctr_en, 1+${reductionLatency}) // TODO: Probably need to mask to make this one cycle""")
       }
 
-      if (writesToAccumReg) {
-
-        emit(s"""DFEVar ${quote(sym)}_loopLengthVal = ${quote(sym)}_offset.getDFEVar(this, dfeUInt(9));""")
-        emit(s"""Count.Params ${quote(sym)}_redLoopParams = control.count.makeParams(9)
-                              .withEnable(${quote(sym)}_datapath_en)
-                              .withReset(${quote(sym)}_done)
-                              .withMax(${quote(sym)}_loopLengthVal)
-                              .withWrapMode(WrapMode.STOP_AT_MAX);
-    Counter ${quote(sym)}_redLoopCounter = control.count.makeCounter(${quote(sym)}_redLoopParams);
-    DFEVar ${quote(sym)}_redLoop_done = ${quote(sym)}_redLoopCounter.getCount() === ${quote(sym)}_loopLengthVal-1;""")
-      }
+//         emit(s"""val ${quote(sym)}_redLoopCtr = Module(new RedxnCtr())
+// ${quote(sym)}_redLoopCtr.io.input.max := 1.U // TODO: Implement with retiming
+// ${quote(sym)}_redLoopCtr.io.input.enable := ${quote(sym)}_datapath_en
+// ${quote(sym)}_redLoopCtr.io.input.reset := ${quote(sym)}_done
+// val ${quote(sym)}_redLoop_done = ${quote(sym)}_redLoopCtr.io.output.done""")
 
       emitBlock(func, s"${quote(sym)} Unitpipe")
       // parentOf(sym).get match {
