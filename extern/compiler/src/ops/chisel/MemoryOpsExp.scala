@@ -256,7 +256,7 @@ ${quote(read)}_rVec.foreach { r => r.en := ${quote(parent)}_en}""")
     val globalEn = if (isAccum(sram) & isAccumCtrl) {
       writeCtrl match {
         case Deff(_: UnitPipe) => s"${quote(writeCtrl)}_done /* Not sure if this is right */"
-        case Deff(a) => s"${quote(writeCtrl)}_datapath_en l*& ${quote(writeCtrl)}_redLoop_done *//*wtf pipe is $a*/"
+        case Deff(a) => s"${quote(writeCtrl)}_datapath_en /*& ${quote(writeCtrl)}_redLoop_done *//*wtf pipe is $a*/"
         case _ => s"${quote(writeCtrl)}_datapath_en & ${quote(writeCtrl)}_redLoop_done /*no def node*/"
       }
     } else {
