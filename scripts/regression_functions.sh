@@ -18,9 +18,10 @@ coordinate() {
   for f in ${files[@]}; do if [[ $f = *".new"* || $f = *".ack"* || $f = *".lock"* ]]; then new_packets+=($f); fi; done
   sorted_packets=( $(for arr in "${new_packets[@]}"; do echo $arr; done | sort) )
   rank=-1
-  for i in ${!sorted_packets[@]}; do if [[ ${sorted_packets[$i]} = *"$packet"* ]]; then rank=${i}; fi; done
+  for i in ${!sorted_packets[@]}; do if [[  "$packet" = *"${sorted_packets[$i]}"* ]]; then rank=${i}; fi; done
   if [ $rank = -1 ]; then 
-    logger "CRITICAL ERROR: This packet ${packet} was not found in waiting list ${sorted_packet[@]}"
+    logger "CRITICAL ERROR: This packet ${packet} was not found in waiting list ${sorted_packets[@]}"
+    exit 1
   fi
   while [ $rank -gt 0 ]; do
     logger "This packet (${packet}) is ${rank}-th in line (${sorted_packet[@]})... Waiting $((delay/numpieces)) seconds..."
