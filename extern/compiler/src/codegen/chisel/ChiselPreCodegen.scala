@@ -971,7 +971,7 @@ import chisel3.iotesters.{PeekPokeTester, Driver, ChiselFlatSpec}
 import org.scalatest.Assertions._
 import java.io._
 class GeneratedPoker(c: TopModule) extends PeekPokeTester(c) {
-  
+
   var offchipMem = List[BigInt]()
 
   def handleLoadStore()  {""")
@@ -981,7 +981,8 @@ class GeneratedPoker(c: TopModule) extends PeekPokeTester(c) {
           ("receiveBurst", s"${bound(p).get.toInt}", "BurstLoad",
            s"""for (j <- 0 until size${i}) {
         (0 until par${i}).foreach { k => 
-          poke(c.io.MemStreams.inPorts${i}.data(k), addr${i}-base${i}+j+k) 
+          val element = addr${i}-base${i}+j*par${i}+k // TODO: Should be loaded from CPU side
+          poke(c.io.MemStreams.inPorts${i}.data(k), element) 
         }  
         poke(c.io.MemStreams.inPorts${i}.valid, 1)
         step(1)
@@ -997,8 +998,8 @@ class GeneratedPoker(c: TopModule) extends PeekPokeTester(c) {
         }  
         step(1)
         }
-        poke(c.io.MemStreams.inPorts${i}.pop, 0)
-        step(1)""", s"""${nameOf(mem)}.getOrElse("")}""")
+      poke(c.io.MemStreams.inPorts${i}.pop, 0)
+      step(1)""", s"""${nameOf(mem)}.getOrElse("")}""")
       }
       emit(s"""
     // ${interface._3} Poker -- ${quote(port)} <> ports${i} <> ${interface._5}
