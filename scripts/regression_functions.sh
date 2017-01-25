@@ -393,7 +393,7 @@ create_script() {
   	args=$6
   fi
 
-  if [[ ${type_todo} != "scala" || ${type_todo} = "maxj" || ${type_todo} = "chisel" ]]
+  if [[ ${type_todo} != "scala" || ${type_todo} = "maxj" || ${type_todo} = "chisel" ]]; then
     echo "ok!" > /tmp/log
   else
     logger "Error! ${type_todo} type of regression test not yet supported."
