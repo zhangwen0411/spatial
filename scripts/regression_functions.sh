@@ -37,7 +37,7 @@ coordinate() {
 build_spatial() {
   logger "Cleaning old regression files..."
   cd ${REGRESSION_HOME}
-  ls | grep -v $tim | grep -v receive | grep -v regression | xargs rm -rf
+  ls | grep -v $tim | grep -v receive | grep -v regression | grep -v ".log" | xargs rm -rf
   logger "Cleanup done!"
   
   logger "Patching the nsc library thing..."
