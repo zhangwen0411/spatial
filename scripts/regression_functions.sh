@@ -64,7 +64,7 @@ build_spatial() {
     exit 1
   fi
 
-  for i in `seq 1 $rank`; do
+  for i in `seq 0 $rank`; do
     logger "Cleaning ${sorted_testdirs[$i]}..."
     cmd="stubborn_delete ${sorted_testdirs[$i]}"
     eval "$cmd"
@@ -393,7 +393,7 @@ create_script() {
   	args=$6
   fi
 
-  if [[ ${type_todo} != "scala" || ${type_todo} = "maxj" || ${type_todo} = "chisel" ]]; then
+  if [[ ${type_todo} = "scala" || ${type_todo} = "maxj" || ${type_todo} = "chisel" ]]; then
     echo "ok!" > /tmp/log
   else
     logger "Error! ${type_todo} type of regression test not yet supported."

@@ -130,10 +130,10 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       emit(s"""val ${quote(sym)} = ${quote(a)} <= ${quote(b)}""")
 
     case FixPt_Neq(a,b) =>
-      emit(s"""val ${quote(sym)} = ${quote(a)} != ${quote(b)}""")
+      emit(s"""val ${quote(sym)} = ${quote(a)} =/= ${quote(b)}""")
 
     case FixPt_Eql(a,b) =>
-      emit(s"""val ${quote(sym)} = ${quote(a)} == ${quote(b)}""")
+      emit(s"""val ${quote(sym)} = ${quote(a)} === ${quote(b)}""")
 
     case FixPt_And(a,b) =>
       emit(s"""val ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")
@@ -154,10 +154,10 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
       emit(s"""val ${quote(sym)} = ${quote(a)} <= ${quote(b)};""")
 
     case FltPt_Neq(a,b) =>
-      emit(s"""val ${quote(sym)} = ${quote(a)} != ${quote(b)};""")
+      emit(s"""val ${quote(sym)} = ${quote(a)} =/= ${quote(b)};""")
 
     case FltPt_Eql(a,b) =>
-      emit(s"""val ${quote(sym)} = ${quote(a)} == ${quote(b)};""")
+      emit(s"""val ${quote(sym)} = ${quote(a)} === ${quote(b)};""")
 
     case Bit_Not(a) =>
       val pre = chiselPre(sym)
