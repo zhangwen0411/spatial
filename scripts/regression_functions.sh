@@ -33,6 +33,7 @@ coordinate() {
     new_packets=()
     for f in ${files[@]}; do if [[ $f = *".new"* || $f = *".ack"* || $f = *".lock"* ]]; then new_packets+=($f); fi; done
     sorted_packets=( $(for arr in "${new_packets[@]}"; do echo $arr; done | sort) )
+    stringified=$( IFS=$' '; echo "${sorted_packets[*]}" )
     for i in ${!sorted_packets[@]}; do if [[  "$packet" = *"${sorted_packets[$i]}"* ]]; then rank=${i}; fi; done
   done
   logger "Packet cleared to launch! (${packet}) in list (${stringified})"
@@ -244,12 +245,8 @@ for aa in ${all_apps[@]}; do
 done
 
 # Inject the new data to the history
-for aa in ${headers[@]}; do
-  a=(`echo $aa | sed "s/^.*|//g" | sed "s/\[.*//g"`)
-  dashes=(`cat ${wiki_file} | grep "[0-9]\+\_$a\(\ \|\*\|\[\)" | sed "s/\[🗠.*//g" | grep -oh "\-" | wc -l`)
-  num=$(($dashes/4))
-  key=(`cat ${pretty_file} | grep KEY | wc -l`)
-  if [[ $key = 0 ]]; then
+key=(`cat ${pretty_file} | grep KEY | wc -l`)
+if [[ $key = 0 ]]; then
     echo "00  KEY:
 000 █ = Success
 000 ▇ = failed_execution_validation  
@@ -260,12 +257,15 @@ for aa in ${headers[@]}; do
 000 ▂ = failed_app_spatial_compile 
 000 ▁ = failed_app_not_written 
 000 □ = unknown
- 1 
- 1
- 1
- 1
-" >> ${pretty_file}
-  fi
+1 
+1
+1
+1" >> ${pretty_file}
+fi
+for aa in ${headers[@]}; do
+  a=(`echo $aa | sed "s/^.*|//g" | sed "s/\[.*//g"`)
+  dashes=(`cat ${wiki_file} | grep "[0-9]\+\_$a\(\ \|\*\|\[\)" | sed "s/\[🗠.*//g" | grep -oh "\-" | wc -l`)
+  num=$(($dashes/4))
   if [ $num = 0 ]; then bar=█; elif [ $num = 1 ]; then bar=▇; elif [ $num = 2 ]; then bar=▆; elif [ $num = 3 ]; then bar=▅; elif [ $num = 4 ]; then bar=▄; elif [ $num = 5 ]; then bar=▃; elif [ $num = 6 ]; then bar=▂; elif [ $num = 7 ]; then bar=▁; else bar=□; fi
 
   infile=(`cat ${pretty_file} | grep $aa | wc -l`)
