@@ -47,13 +47,13 @@ trait RegChainPass extends Traversal  {
       if (quoteSuffix.contains(c.asInstanceOf[Sym[Any]])) {
         if (i > 0) {
           inds.foreach { idx =>
-            quoteSuffix(c.asInstanceOf[Sym[Any]]).put(idx, s"_chain[${i-1}].read()")
+            quoteSuffix(c.asInstanceOf[Sym[Any]]).put(idx, s"_chain.read(${i})")
           }
         }
       } else {
         if (i > 0) {
           inds.foreach { idx =>
-            localSuffixMap += idx -> s"_chain[${i-1}].read()"
+            localSuffixMap += idx -> s"_chain.read(${i})"
           }
         }
         quoteSuffix += c.asInstanceOf[Sym[Any]] -> localSuffixMap

@@ -65,13 +65,13 @@ trait ChiselManagerGen {
   }
 
   def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
-    case "SpatialReg" => remap(m.typeArguments(0))
-    case "SpatialBit" => "uint8_t"
-    case "Signed" => ""
-    case "Unsign" => "u"
-    case "FixedPoint" => remap(m.typeArguments(0)) + "int" + bitsToIntType(remap(m.typeArguments(1)).toInt + remap(m.typeArguments(2)).toInt) + "_t"
-    case "FloatPoint" => bitsToFloatType(remap(m.typeArguments(0)).toInt + remap(m.typeArguments(1)).toInt)
-    case bx(n) => n
+    // case "SpatialReg" => remap(m.typeArguments(0))
+    // case "SpatialBit" => "uint8_t"
+    // case "Signed" => ""
+    // case "Unsign" => "u"
+    // case "FixedPoint" => remap(m.typeArguments(0)) + "int" + bitsToIntType(remap(m.typeArguments(1)).toInt + remap(m.typeArguments(2)).toInt) + "_t"
+    // case "FloatPoint" => bitsToFloatType(remap(m.typeArguments(0)).toInt + remap(m.typeArguments(1)).toInt)
+    // case bx(n) => n
     case _ => throw new Exception(s"""No remap rule in ChiselManagerGen for ${m.erasure.getSimpleName}""")
   }
 

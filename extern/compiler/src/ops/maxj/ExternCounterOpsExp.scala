@@ -153,23 +153,3 @@ trait MaxJGenExternCounterOps extends MaxJGenEffect {
   }
 }
 
-trait ChiselGenExternCounterOps extends ChiselGenEffect {
-  val IR: ExternCounterOpsExp with SpatialMetadataOpsExp
-  import IR._
-
-  override def remap[A](m: Manifest[A]): String = m.erasure.getSimpleName match {
-    case "SpatialCounter" => "SpatialCounter"
-    case "SpatialCounterChain" => "CounterChain"
-    case _ => super.remap(m)
-  }
-
-  override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
-    case e@Counter_new(start,end,step,par) =>
-
-
-    case e@Counterchain_new(counters) =>
-      // See emitMaxJCounterChain() in PipeTemplateOpsExp.scala
-
-    case _ => super.emitNode(sym,rhs)
-  }
-}

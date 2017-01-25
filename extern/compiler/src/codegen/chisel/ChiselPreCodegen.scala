@@ -46,7 +46,7 @@ trait ChiselPreCodegen extends Traversal  {
 
   def emitBuildSBT(stream:PrintWriter) = {
 	this.stream = stream
-  	emit(s"""libraryDependencies += "edu.berkeley.cs" %% "chisel" % "latest.release"""")
+  	emit(s"""libraryDependencies += "edu.berkeley.cs" %% "chisel" % "latest.release" """)
   }
 
   def quote(x: Exp[Any]) = x match {
@@ -65,15 +65,22 @@ trait ChiselPreCodegen extends Traversal  {
       chiselManagerGen.quote(x)
   }
 
-    val argInOuts  = Set.empty[Sym[Reg[_]]]
-    val memStreams = Set.empty[Sym[Any]]
+    var argIns: List[Sym[Reg[_]]] = List()
+    var argOuts: List[Sym[Reg[_]]] = List()
+    val memStreams: List[Sym[Any]] = List()
 
   override def preprocess[A:Manifest](b: Block[A]): Block[A] = {
-        argInOuts.clear
-        memStreams.clear
+        argIns = List()
+        argOuts = List()
+        memStreams = List()
         b
     }
   override def postprocess[A:Manifest](b: Block[A]): Block[A] = {
+    withStream(newStream("IOBundle")) {
+      emitArgInBundle(argIns)
+      emitArgOutBundle(argOuts)
+      emitMemStreamBundle(memStreams)
+    }
 		/*withStream(newStream("ChiselManager")) {
 			chiselManagerGen.emitManager(stream, argInOuts, memStreams)
 		}
@@ -119,112 +126,25 @@ trait ChiselPreCodegen extends Traversal  {
 
   def preGenNodes(sym: Sym[Any], rhs: Def[Any]):Unit = rhs match {
     case e@Hwblock(func) =>
-            withStream(newStream("sequential_" + quote(sym))) {
-                emitSeqSM(quote(sym), childrenOf(sym).length)
-            }
-        case e@ParallelPipe(func: Block[Unit]) =>
-            withStream(newStream("parallel_" + quote(sym))) {
-                emitParallelSM(quote(sym), childrenOf(sym).length)
-            }
+    case e@ParallelPipe(func: Block[Unit]) =>
     case e@OpForeach(cchain, func, inds) =>
-            styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
-                case CoarsePipe =>
-                    withStream(newStream("metapipe_" + quote(sym))) {
-                    emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
-                    }
-                case InnerPipe =>
-                case SequentialPipe =>
-                    withStream(newStream("sequential_" + quote(sym))) {
-                    emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
-                    }
-            }
     case e@OpReduce(cchain, accum, zero, foldAccum, ldFunc, stFunc, func, rFunc, inds, acc, res, rV) =>
-            styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
-
-                case CoarsePipe =>
-                    withStream(newStream("metapipe_" + quote(sym))) {
-                    emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
-                    }
-                case InnerPipe =>
-                case SequentialPipe =>
-                    withStream(newStream("sequential_" + quote(sym))) {
-                    emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
-                    }
-            }
-
     case e@UnrolledForeach(cc, func, inds, vs) =>
-            styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
-                case CoarsePipe =>
-                    withStream(newStream("metapipe_" + quote(sym))) {
-                    emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
-                    }
-                case InnerPipe =>
-          parentOf(sym).get match {
-            case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
-              if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
-                withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-                  emitReduction(sym, rhs)
-                }
-              }
-            case _ =>
-          }
-                case SequentialPipe =>
-                    withStream(newStream("sequential_" + quote(sym))) {
-                    emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
-                    }
-            }
     case e@UnrolledReduce(cchain, accum, func, rFunc, inds, vs, acc, rV) =>
-      withStream(newStream("metapipe_" + quote(sym))) {
-        emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
-      }
-      styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
-        case InnerPipe =>
-          withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-            emitReduction(sym, rhs)
-          }
-        case _ =>
-      }
-
     case e@UnitPipe(func) =>
-            styleOf(sym.asInstanceOf[Rep[Pipeline]]) match {
-                case CoarsePipe =>
-                    withStream(newStream("metapipe_" + quote(sym))) {
-            emitMPSM(s"${quote(sym)}", childrenOf(sym).size)
-                    }
-                case InnerPipe =>
-          parentOf(sym).get match {
-            case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
-              if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
-                withStream(newStream(s"${quote(sym)}_reduce_kernel")) {
-                  emitReduction(sym, rhs)
-                }
-              }
-            case _ =>
-          }
-                case SequentialPipe =>
-          withStream(newStream("sequential_" + quote(sym))) {
-            emitSeqSM(s"${quote(sym)}", childrenOf(sym).size)
-                    }
-            }
-
     case e@Counter_new(start,end,step,par) =>
-      withStream(newStream("counter_" + quote(sym))) {
-        emitCtrSM(quote(sym), List(parOf(sym)), 0, 1)
-      }
     case e@Counterchain_new(counters) =>
-      val pars = counters.map { ctr => parOf(ctr) }
-      val gaps = counters.map { ctr => 0 }
-      withStream(newStream("counter_" + quote(sym))) {
-        emitCtrSM(quote(sym), pars, 0, counters.length)
-      }
+    case e:Argin_new[_] => argIns = argIns :+ sym.asInstanceOf[Sym[Reg[_]]]
+    case e:Argout_new[_] => argOuts = argOuts :+ sym.asInstanceOf[Sym[Reg[_]]]
 
-        case e:Argin_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
-    case e:Argout_new[_] => argInOuts += sym.asInstanceOf[Sym[Register[_]]]
-
-    case _:BurstStore[_] => memStreams += sym
-    case _:BurstLoad[_] => memStreams += sym
-    case _:Scatter[_] => memStreams += sym
-    case _:Gather[_] => memStreams += sym
+    case _:BurstStore[_] => 
+      memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
+      memStreamsOut = memStreamsOut :+ sym.asInstanceOf[Sym[Any]]
+    case _:BurstLoad[_] => memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
+    case _:Scatter[_] => 
+      memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
+      memStreamsOut = memStreamsOut :+ sym.asInstanceOf[Sym[Any]]
+    case _:Gather[_] => memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
 
     case Sram_new(size, zero) =>
       val dups = duplicatesOf(sym)
@@ -1008,6 +928,53 @@ ${quote(sym)}_reduce_kernel(KernelLib owner $first_comma /*1*/ $vec_input_args $
   }
   }
   """)
+  }
+
+  private def emitArgInBundle(ports: List[Sym[Reg[_]]]) {
+    emit(s"""package interfaces
+import chisel3._
+import templates._
+import types._
+
+class ArgInBundle() extends Bundle{
+  val ports = Vec(${ports.length}, Input(UInt(32.W)))
+
+""")
+    ports.zipWithIndex.map { case(p,i) => 
+      emit(s"//  ${quote(p)} = ports($i) (${nameOf(p).getOrElse("")})")
+      argInsByName = argInsByName :+ s"${quote(p)}"
+    }
+emit(s"""
+}""")
+  }
+
+  private def emitArgOutBundle(ports: List[Sym[Reg[_]]]) {
+    emit(s"""
+class ArgOutBundle() extends Bundle{
+  val ports = Vec(${ports.length}, Output(UInt(32.W)))
+
+""")
+    ports.zipWithIndex.map { case(p,i) => 
+      emit(s"//  ${quote(p)} = ports($i) (${nameOf(p).getOrElse("")})")
+      argOutsByName = argOutsByName :+ s"${quote(p)}"
+    }
+emit(s"""
+}""")
+  }
+
+  private def emitMemStreamBundle(ports: List[Sym[Any]]) {
+    emit(s"""
+class MemStreamsBundle() extends Bundle{
+  val outPorts = Vec(${ports.length}, Output(new ToDRAM(1)))
+  val inPorts = Vec(${ports.length}, Input(new FromDRAM(1)))
+
+}
+""")
+    ports.zipWithIndex.map { case(p,i) => 
+      emit(s"//  ${quote(p)} = ports($i) (${nameOf(p).getOrElse("")})")
+      memStreamsByName = memStreamsByName :+ s"${quote(p)}"
+    }
+
   }
 
   private def stateTextSeq(state: Int, N: Int) = {
