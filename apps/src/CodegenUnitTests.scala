@@ -1026,7 +1026,9 @@ trait MultiplexedWriteTestApp extends SpatialApp {
 
         // Some math nonsense (definitely not a correct implementation of anything)
         Pipe(I by 1){x =>
-          Fold(1 by 1)(wt, 0.as[SInt]){ k =>  // s0 write
+          val niter = Reg[SInt]
+          Pipe{ niter := x+1 }
+          Fold(niter by 1)(wt, 0.as[SInt]){ k =>  // s0 write
             in
           }{_+_}
           weightsResult(i*I+x*T::i*I+x*T+T) := wt //s1 read
@@ -1050,8 +1052,15 @@ trait MultiplexedWriteTestApp extends SpatialApp {
 
     val result = multiplexedwrtest(w, i)
 
-    val gold = Array.tabulate(N/tileSize){ k =>
-      Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten
+    // val gold = Array.tabulate(N/tileSize){ k =>
+    //   Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i + k*tileSize + (j+1)*k*tileSize*2 }}.flatten
+    // }.flatten
+    val gold = Array.tabulate(N/tileSize) { k =>
+      Array.tabulate(I){ j => 
+        Array.tabulate(tileSize) { i => 
+          ( 1 + (j+1)*(j+2)/2 ) * (i + k*tileSize)
+        }
+      }.flatten
     }.flatten
     printArr(gold, "gold: ");
     printArr(result, "result: ");
@@ -1079,9 +1088,6 @@ trait BubbledWriteTestApp extends SpatialApp {
     val weights = DRAM[SInt](N)
     val inputs  = DRAM[SInt](N)
     val weightsResult = DRAM[SInt](N*I)
-    val dummyWeightsResult = DRAM[SInt](T)
-    val dummyOut = DRAM[SInt](T)
-    val dummyOut2 = DRAM[SInt](T)
     setMem(weights, w)
     setMem(inputs,i)
     Accel {
@@ -1092,12 +1098,17 @@ trait BubbledWriteTestApp extends SpatialApp {
         in := inputs(i::i+T)
 
         Pipe(I by 1){x =>
-          Fold(1 by 1)(wt, 0.as[SInt]){ k =>  // s0 write
+          val niter = Reg[SInt]
+          Pipe{niter := x+1}
+          Fold(niter by 1)(wt, 0.as[SInt]){ k =>  // s0 write
             in
           }{_+_}
-          dummyOut(0::T) := in // s1 do not touch
-          dummyWeightsResult(0::T) := wt // s2 read
-          dummyOut2(0::T) := in // s3 do not touch
+          val dummyReg1 = Reg[SInt]
+          val dummyReg2 = Reg[SInt]
+          val dummyReg3 = Reg[SInt]
+          Pipe(T by 1) { i => dummyReg1 := in(i)} // s1 do not touch
+          Pipe(T by 1) { i => dummyReg2 := wt(i)} // s2 read
+          Pipe(T by 1) { i => dummyReg3 := in(i)} // s3 do not touch
           weightsResult(i*I+x*T::i*I+x*T+T) := wt //s4 read
         }
       }
@@ -1115,13 +1126,21 @@ trait BubbledWriteTestApp extends SpatialApp {
 
   def main() = {
     val w = Array.tabulate[SInt](N){ i => i }
-    val i = Array.tabulate[SInt](N){ i => i*2 }
+    val i = Array.tabulate[SInt](N){ i => i }
 
     val result = bubbledwrtest(w, i)
 
-    val gold = Array.tabulate(N/tileSize){ k =>
-      Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten
+    // val gold = Array.tabulate(N/tileSize){ k =>
+    //   Array.tabulate(I){ j => Array.tabulate(tileSize) { i => i + (j+1)*i*2 + k*tileSize + (j+1)*k*tileSize*2 }}.flatten
+    // }.flatten
+    val gold = Array.tabulate(N/tileSize) { k =>
+      Array.tabulate(I){ j => 
+        Array.tabulate(tileSize) { i => 
+          ( 1 + (j+1)*(j+2)/2 ) * (i + k*tileSize)
+        }
+      }.flatten
     }.flatten
+
     printArr(gold, "gold: ");
     printArr(result, "result: ");
 
@@ -1133,7 +1152,7 @@ trait BubbledWriteTestApp extends SpatialApp {
 }
 
 
-object SequentialWrites extends SpatialAppCompiler with SequentialWritesApp // Regression (Unit) // Args: none
+object SequentialWrites extends SpatialAppCompiler with SequentialWritesApp // Regression (Unit) // Args: 7
 trait SequentialWritesApp extends SpatialApp {
   type T = SInt
   type Array[T] = ForgeArray[T]

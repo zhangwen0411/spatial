@@ -291,7 +291,8 @@ ${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.en := e}""")
       }
     }
     dups.foreach{ case (d,i) =>
-      emit(s"""${quote(sram)}_$i.connectWPort(${quote(write)}_wVec, ${quote(globalEn)}, 0) """)
+      val p = portsOf(write, sram, i).mkString(",")
+      emit(s"""${quote(sram)}_$i.connectWPort(${quote(write)}_wVec, ${quote(globalEn)}, List(${p})) """)
     }
     
     // if (isAccum(sram) & isAccumCtrl) {
