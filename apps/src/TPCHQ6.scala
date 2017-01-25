@@ -46,15 +46,16 @@ trait TPCHQ6App extends SpatialApp {
   val MAX_DISC = 9999
   val tileSize = 96
   val outerPar = 1
-  val innerPar = 2
+  val innerPar = 1
+  val memPar = 1
   val margin = 1
 
-  def tpchq6(datesIn: Rep[Array[UInt]], quantsIn: Rep[Array[UInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
+  def tpchq6(datesIn: Rep[Array[SInt]], quantsIn: Rep[Array[SInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
     val dataSize = ArgIn[SInt]
     setArg(dataSize, datesIn.length)
 
-    val dates  = DRAM[UInt](dataSize)
-    val quants = DRAM[UInt](dataSize)
+    val dates  = DRAM[SInt](dataSize)
+    val quants = DRAM[SInt](dataSize)
     val discts = DRAM[FT](dataSize)
     val prices = DRAM[FT](dataSize)
     val minDateIn = MIN_DATE
@@ -64,6 +65,7 @@ trait TPCHQ6App extends SpatialApp {
     val ts = tileSize (96 -> 96 -> 192000)
     val op = outerPar (1 -> 6)
     val ip = innerPar (1 -> 384)
+    val tp = memPar (1 -> 384)
 
     setMem(dates, datesIn)
     setMem(quants, quantsIn)
@@ -76,15 +78,15 @@ trait TPCHQ6App extends SpatialApp {
 
       val acc = Reg[FT]
       Fold(dataSize by ts par op)(acc, 0.as[FT]){ i =>
-        val datesTile  = FIFO[UInt](ts)
-        val quantsTile = FIFO[UInt](ts)
+        val datesTile  = FIFO[SInt](ts)
+        val quantsTile = FIFO[SInt](ts)
         val disctsTile = FIFO[FT](ts)
         val pricesTile = FIFO[FT](ts)
         Parallel {
-          datesTile  := dates(i::i+ts par ip)
-          quantsTile := quants(i::i+ts par ip)
-          disctsTile := discts(i::i+ts par ip)
-          pricesTile := prices(i::i+ts par ip)
+          datesTile  := dates(i::i+ts par tp)
+          quantsTile := quants(i::i+ts par tp)
+          disctsTile := discts(i::i+ts par tp)
+          pricesTile := prices(i::i+ts par tp)
         }
         Reduce(ts par ip)(0.as[FT]){ j =>
           val date  = datesTile.pop
@@ -111,12 +113,17 @@ trait TPCHQ6App extends SpatialApp {
   def main() {
     val N = args(0).to[SInt]
 
-    val dates  = Array.fill(N){random[UInt](20) + 65}
-    val quants = Array.fill(N){random[UInt](25) }
-    // val discts = Array.fill(N){random[FT] * 0.05f + 0.02f}
-    // val prices = Array.fill(N){random[FT] * 1000f}
-    val discts = Array.fill(N){random[FT] /*/ 100000*/}
-    val prices = Array.fill(N){random[FT] /*/ 100000*/}
+    // val dates  = Array.fill(N){random[SInt](20) + 65}
+    // val quants = Array.fill(N){random[SInt](25) }
+    // // val discts = Array.fill(N){random[FT] * 0.05f + 0.02f}
+    // // val prices = Array.fill(N){random[FT] * 1000f}
+    // val discts = Array.fill(N){random[FT] /*/ 100000*/}
+    // val prices = Array.fill(N){random[FT] /*/ 100000*/}
+
+    val dates  = Array.tabulate[SInt](N){i => i}
+    val quants = Array.tabulate[SInt](N){i => i}
+    val discts = Array.tabulate[FT](N){i => i}
+    val prices = Array.tabulate[FT](N){i => i}
 
     val result = tpchq6(dates, quants, discts, prices)
 

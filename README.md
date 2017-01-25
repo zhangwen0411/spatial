@@ -1,7 +1,7 @@
-Unit: [![Build Status](https://travis-ci.org/mattfel1/UnitTracker.svg?branch=master)](https://github.com/stanford-ppl/spatial/wiki/chiselBranch-chiselTest-Regression-Tests-Status) ----
-Dense: [![Build Status](https://travis-ci.org/mattfel1/DenseTracker.svg?branch=master)](https://github.com/stanford-ppl/spatial/wiki/chiselBranch-chiselTest-Regression-Tests-Status) ----
-Sparse: [![Build Status](https://travis-ci.org/mattfel1/SparseTracker.svg?branch=master)](https://github.com/stanford-ppl/spatial/wiki/chiselBranch-chiselTest-Regression-Tests-Status) ----
-Characterization: [![Build Status](https://travis-ci.org/mattfel1/CharacterizationTracker.svg?branch=master)](https://github.com/stanford-ppl/spatial/wiki/chiselBranch-chiselTest-Regression-Tests-Status)
+Unit: [![Build Status](https://travis-ci.org/mattfel1/UnitTracker.svg?branch=chisel)](https://github.com/stanford-ppl/spatial/wiki/chiselBranch-chiselTest-Regression-Tests-Status) ----
+Dense: [![Build Status](https://travis-ci.org/mattfel1/DenseTracker.svg?branch=chisel)](https://github.com/stanford-ppl/spatial/wiki/chiselBranch-chiselTest-Regression-Tests-Status) ----
+Sparse: [![Build Status](https://travis-ci.org/mattfel1/SparseTracker.svg?branch=chisel)](https://github.com/stanford-ppl/spatial/wiki/chiselBranch-chiselTest-Regression-Tests-Status) ----
+Characterization: [![Build Status](https://travis-ci.org/mattfel1/CharacterizationTracker.svg?branch=chisel)](https://github.com/stanford-ppl/spatial/wiki/chiselBranch-chiselTest-Regression-Tests-Status)
 
 
 # Spatial

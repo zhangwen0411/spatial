@@ -147,35 +147,6 @@ trait ChiselPreCodegen extends Traversal  {
     case _:Gather[_] => memStreams = memStreams :+ sym.asInstanceOf[Sym[Any]]
 
     case Sram_new(size, zero) =>
-      val dups = duplicatesOf(sym)
-      dups.zipWithIndex.foreach { case (d, i) =>
-        val readers = readersOf(sym)
-        if (false/*d.depth == 2*/) {
-          val numReaders_for_this_duplicate = readers.filter{r => instanceIndicesOf(r, sym).contains(i) }.map{r => parentOf(r.controlNode)}.distinct.length
-          withStream(newStream("bram_" + quote(sym) + "_" + i)) {
-            emitDblBufSM(quote(sym) + "_" + i, numReaders_for_this_duplicate)
-          }
-        } else if (d.depth > 2) {
-          val numReaders_for_this_duplicate = readers.filter{r => instanceIndicesOf(r, sym).contains(i) }.length
-          withStream(newStream("bram_" + quote(sym) + "_" + i)) {
-            emitDblBufSM(quote(sym) + "_" + i, numReaders_for_this_duplicate)
-          }
-          // withStream(newStream("bram_" + quote(sym) + "_" + i)) {
-          //   emitNBufSM(quote(sym) + "_" + i, d.depth)
-          // }
-        }
-      }
-
-    // case Reg_new(init) =>
-    //   val duplicates = duplicatesOf(sym)
-    //   duplicates.zipWithIndex.foreach { case (d, i) =>
-    //     if (d.depth > 2) {
-    //       withStream(newStream("nbuf_" + quote(sym) + "_" + i)) {
-    //         emitNBufSM(quote(sym), i, d.depth)
-    //       }
-    //     }
-    //   }
-
 
 
     case Reflect(s, u, effects) =>
