@@ -17,14 +17,15 @@ coordinate() {
   new_packets=()
   for f in ${files[@]}; do if [[ $f = *".new"* || $f = *".ack"* || $f = *".lock"* ]]; then new_packets+=($f); fi; done
   sorted_packets=( $(for arr in "${new_packets[@]}"; do echo $arr; done | sort) )
+  stringified=$( IFS=$' '; echo "${sorted_packets[*]}" )
   rank=-1
   for i in ${!sorted_packets[@]}; do if [[  "$packet" = *"${sorted_packets[$i]}"* ]]; then rank=${i}; fi; done
   if [ $rank = -1 ]; then 
-    logger "CRITICAL ERROR: This packet ${packet} was not found in waiting list ${new_packets[@]}"
+    logger "CRITICAL ERROR: This packet ${packet} was not found in waiting list ${stringified}"
     exit 1
   fi
   while [ $rank -gt 0 ]; do
-    logger "This packet (${packet}) is ${rank}-th in line (${sorted_packets[@]})... Waiting $((delay/numpieces)) seconds..."
+    logger "This packet (${packet}) is ${rank}-th in line (${stringified})... Waiting $((delay/numpieces)) seconds..."
     sleep $((delay/numpieces))
 
     # Update active packets list
@@ -34,7 +35,7 @@ coordinate() {
     sorted_packets=( $(for arr in "${new_packets[@]}"; do echo $arr; done | sort) )
     for i in ${!sorted_packets[@]}; do if [[  "$packet" = *"${sorted_packets[$i]}"* ]]; then rank=${i}; fi; done
   done
-  logger "Packet cleared to launch! (${packet}) in list (${sorted_packets[@]})"
+  logger "Packet cleared to launch! (${packet}) in list (${stringified})"
 
   cd -
 }

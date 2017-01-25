@@ -9,12 +9,14 @@ trait OuterProductApp extends SpatialApp {
   val tileSize2 = 192
   val outerPar = 2
   val innerPar = 8
+  val tilePar = 1
 
   def outerproduct(a: Rep[ForgeArray[T]], b: Rep[ForgeArray[T]]) = {
     val tileSizeA = tileSize1 (96 -> 96 -> 38400)
     val tileSizeB = tileSize2 (96 -> 96 -> 38400)
     val op = outerPar (1 -> 4)
     val ip = innerPar (1 -> 256)
+    val tp = tilePar (1 -> 64)
 
     val M = a.length;  bound(M) = 38400
     val N = b.length;  bound(N) = 38400
@@ -39,14 +41,14 @@ trait OuterProductApp extends SpatialApp {
         val blkA = Reg[SInt]
         val blkB = Reg[SInt]
         Parallel {
-          b1 := vec1(i::i+tileSizeA par ip)
-          b2 := vec2(j::j+tileSizeB par ip)
+          b1 := vec1(i::i+tileSizeA par tp)
+          b2 := vec2(j::j+tileSizeB par tp)
           Pipe{ blkA := min(sizeA.value - i, tileSizeA) }
           Pipe{ blkB := min(sizeB.value - j, tileSizeB) }
         }
         Pipe(blkA by 1, blkB par ip){ (ii,jj) => outTile(ii, jj) = b1(ii) * b2(jj) } // 2
 
-        out(i::i+blkA, j::j+blkB par ip) := outTile
+        out(i::i+blkA, j::j+blkB par tp) := outTile
       }
     }
     getMem(out)
