@@ -13,7 +13,7 @@ trait MatMult_innerApp extends SpatialApp {
   val innerPar = 4
   val midPar = 2
   val outerPar = 2
-  val storePar = 1
+  val tilePar = 1
 
   def MatMult_inner(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
     val M = ArgIn[SInt]
@@ -35,7 +35,7 @@ trait MatMult_innerApp extends SpatialApp {
     val mp = midPar   (1 -> 96)
     val ip = innerPar (1 -> 96)
     val px = 1 (1 -> 1) // Cannot parallelize accum across k blocks
-    val stPar = storePar (1 -> 1)
+    val tPar = tilePar (1 -> 1)
 
     setMem(a, A)
     setMem(b, B)
@@ -47,8 +47,8 @@ trait MatMult_innerApp extends SpatialApp {
           val tileA = SRAM[T](bm, bp)
           val tileB = SRAM[T](bp, bn)
           Parallel {
-            tileA := a(i::i+bm, k::k+bp) // Reads M*N*P times
-            tileB := b(k::k+bp, j::j+bn)
+            tileA := a(i::i+bm, k::k+bp par tPar) // Reads M*N*P times
+            tileB := b(k::k+bp, j::j+bn par tPar)
           }
           Pipe(bm by 1, (bn by 1) par px){ (ii,jj) =>    // MetaPipe?
             val prod = Reduce((bp by 1) par ip)(0.as[T]){ kk => tileA(ii, kk) * tileB(kk, jj) }{_+_}
@@ -56,7 +56,7 @@ trait MatMult_innerApp extends SpatialApp {
             tileC(ii,jj) = prev + prod.value // Is a unit pipe that should be recognized as accum
           }
         }
-        c(i::i+bm, j::j+bn par stPar) := tileC
+        c(i::i+bm, j::j+bn par tPar) := tileC
       }
     }
     getMem(c)
@@ -73,8 +73,8 @@ trait MatMult_innerApp extends SpatialApp {
     val N = args(1).to[SInt]
     val P = args(2).to[SInt]
 
-    val a = Array.fill(M){ Array.fill(P){1} }
-    val b = Array.fill(P){ Array.fill(N){1} }
+    val a = Array.fill(M){ j => Array.fill(P){ i => i + j * P} }
+    val b = Array.fill(P){ j => Array.fill(N){ i => i + j * N} }
     // val a = Array.fill(M){ Array.fill(P){random[T](100)} }
     // val b = Array.fill(P){ Array.fill(N){random[T](100)} }
 
