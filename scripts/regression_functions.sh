@@ -17,18 +17,26 @@ coordinate() {
   new_packets=()
   for f in ${files[@]}; do if [[ $f = *".new"* || $f = *".ack"* || $f = *".lock"* ]]; then new_packets+=($f); fi; done
   sorted_packets=( $(for arr in "${new_packets[@]}"; do echo $arr; done | sort) )
+  stringified=$( IFS=$' '; echo "${sorted_packets[*]}" )
   rank=-1
   for i in ${!sorted_packets[@]}; do if [[  "$packet" = *"${sorted_packets[$i]}"* ]]; then rank=${i}; fi; done
   if [ $rank = -1 ]; then 
-    logger "CRITICAL ERROR: This packet ${packet} was not found in waiting list ${sorted_packets[@]}"
+    logger "CRITICAL ERROR: This packet ${packet} was not found in waiting list ${stringified}"
     exit 1
   fi
   while [ $rank -gt 0 ]; do
-    logger "This packet (${packet}) is ${rank}-th in line (${sorted_packets[@]})... Waiting $((delay/numpieces)) seconds..."
+    logger "This packet (${packet}) is ${rank}-th in line (${stringified})... Waiting $((delay/numpieces)) seconds..."
     sleep $((delay/numpieces))
-    for i in ${!sorted_packets[@]}; do if [[ ${sorted_packets[$i]} = *"$packet"* ]]; then rank=${i}; fi; done
+
+    # Update active packets list
+    files=(*)
+    new_packets=()
+    for f in ${files[@]}; do if [[ $f = *".new"* || $f = *".ack"* || $f = *".lock"* ]]; then new_packets+=($f); fi; done
+    sorted_packets=( $(for arr in "${new_packets[@]}"; do echo $arr; done | sort) )
+    stringified=$( IFS=$' '; echo "${sorted_packets[*]}" )
+    for i in ${!sorted_packets[@]}; do if [[  "$packet" = *"${sorted_packets[$i]}"* ]]; then rank=${i}; fi; done
   done
-  logger "Packet cleared to launch! (${packet}) in list (${sorted_packets[@]})"
+  logger "Packet cleared to launch! (${packet}) in list (${stringified})"
 
   cd -
 }
@@ -237,25 +245,27 @@ for aa in ${all_apps[@]}; do
 done
 
 # Inject the new data to the history
+key=(`cat ${pretty_file} | grep KEY | wc -l`)
+if [[ $key = 0 ]]; then
+    echo "00  KEY:
+000 █ = Success
+000 ▇ = failed_execution_validation  
+000 ▆ = failed_execution_nonexistent_validation  
+000 ▅ = failed_execution_hanging  
+000 ▄ = failed_compile_backend_hanging 
+000 ▃ = failed_compile_backend_crash 
+000 ▂ = failed_app_spatial_compile 
+000 ▁ = failed_app_not_written 
+000 □ = unknown
+1 
+1
+1
+1" >> ${pretty_file}
+fi
 for aa in ${headers[@]}; do
   a=(`echo $aa | sed "s/^.*|//g" | sed "s/\[.*//g"`)
   dashes=(`cat ${wiki_file} | grep "[0-9]\+\_$a\(\ \|\*\|\[\)" | sed "s/\[🗠.*//g" | grep -oh "\-" | wc -l`)
   num=$(($dashes/4))
-  echo "0  KEY:
-00 █ = Success
-00 ▇ = failed_execution_validation  
-00 ▆ = failed_execution_nonexistent_validation  
-00 ▅ = failed_execution_hanging  
-00 ▄ = failed_compile_backend_hanging 
-00 ▃ = failed_compile_backend_crash 
-00 ▂ = failed_app_spatial_compile 
-00 ▁ = failed_app_not_written 
-00 □ = unknown
- 1 
- 1
- 1
- 1
-" >> ${pretty_file}
   if [ $num = 0 ]; then bar=█; elif [ $num = 1 ]; then bar=▇; elif [ $num = 2 ]; then bar=▆; elif [ $num = 3 ]; then bar=▅; elif [ $num = 4 ]; then bar=▄; elif [ $num = 5 ]; then bar=▃; elif [ $num = 6 ]; then bar=▂; elif [ $num = 7 ]; then bar=▁; else bar=□; fi
 
   infile=(`cat ${pretty_file} | grep $aa | wc -l`)
@@ -315,9 +325,11 @@ init_travis_ci() {
     eval "$cmd"
     if [ -d "${SPATIAL_HOME}/${1}Tracker" ]; then
       logger "Repo ${1}Tracker exists, prepping it..."
-      tracker="${SPATIAL_HOME}/${1}Tracker/results"
-      cmd="rm $tracker"
+      cmd="git checkout ${branch}"
+      logger "Switching to branch ${branch}"
       eval "$cmd"
+      tracker="${SPATIAL_HOME}/${1}Tracker/results"
+      ls | grep -v travis | grep -v status | grep -v README | grep -v git | xargs rm -rf
       cp $packet ${SPATIAL_HOME}/${1}Tracker/
     else 
       logger "Repo ${1}Tracker does not exist! Skipping Travis..."

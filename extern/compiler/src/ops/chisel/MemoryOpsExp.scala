@@ -291,7 +291,8 @@ ${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.en := e}""")
       }
     }
     dups.foreach{ case (d,i) =>
-      emit(s"""${quote(sram)}_$i.connectWPort(${quote(write)}_wVec, ${quote(globalEn)}, 0) """)
+      val p = portsOf(write, sram, i).mkString(",")
+      emit(s"""${quote(sram)}_$i.connectWPort(${quote(write)}_wVec, ${quote(globalEn)}, List(${p})) """)
     }
     
     // if (isAccum(sram) & isAccumCtrl) {
@@ -387,8 +388,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val streamId = memStreamsByName.indexOf(quote(sym))
       withStream(baseStream) {
         emit(s"""val ${quote(sym)} = Module(new MemController(${quote(par)}))""")
-        emit(s"""io.MemStreams.outPorts(${streamId}) := ${quote(sym)}.io.CtrlToDRAM""")
-        emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts(${streamId}) """)
+        emit(s"""io.MemStreams.outPorts${streamId} := ${quote(sym)}.io.CtrlToDRAM""")
+        emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts${streamId} """)
       }
       emit(s"""// ---- Memory Controller (Load) ${quote(sym)} ----
 ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.cmdIssued
@@ -413,8 +414,8 @@ ${quote(fifo)}_wdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p
       val streamId = memStreamsByName.indexOf(quote(sym))
       withStream(baseStream) {
         emit(s"""val ${quote(sym)} = Module(new MemController(${quote(par)}))""")
-        emit(s"""io.MemStreams.outPorts(${streamId}) := ${quote(sym)}.io.CtrlToDRAM""")
-        emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts(${streamId}) """)
+        emit(s"""io.MemStreams.outPorts${streamId} := ${quote(sym)}.io.CtrlToDRAM""")
+        emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts${streamId} """)
       }
       emit(s"""// ---- Memory Controller (Store) ${quote(sym)} ----
 ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.valid
@@ -689,7 +690,7 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
       //   emit(s"""val ${quote(sym)}_rdata = Wire(Vec($par, UInt(32.W))) // $ts""")
       //   emit(s"""// val ${quote(sym)} included in memory controller""")
       // } else {
-      emit(s"""val ${quote(sym)} = Module(new FIFO($par, $par, ${quote(depth)}))""")          
+      emit(s"""val ${quote(sym)} = Module(new FIFO($par, $par, ${quote(depth)})) // ${nameOf(sym).getOrElse("")}""")
       emit(s"""val ${quote(sym)}_rdata = ${quote(sym)}.io.out""")
       emit(s"""${quote(sym)}.io.in := ${quote(sym)}_wdata""")
       emit(s"""${quote(sym)}.io.pop := ${quote(sym)}_readEn""")

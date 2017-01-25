@@ -13,6 +13,7 @@ trait MatMult_outerApp extends SpatialApp {
   val innerPar = 2
   val midPar = 1
   val outerPar = 1
+  val memPar = 1
 
   def MatMult_outer(A: Rep[Array[T]], B: Rep[Array[T]], C_init: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
     val M = ArgIn[SInt]
@@ -30,6 +31,7 @@ trait MatMult_outerApp extends SpatialApp {
     val op = outerPar (1 -> 6)
     val mp = midPar (1 -> 96)
     val ip = innerPar (1 -> 96)
+    val tp = memPar (1 -> 96)
 
     val px = 1 (1 -> 1) // Cannot parallelize accum across k blocks
 
@@ -48,8 +50,8 @@ trait MatMult_outerApp extends SpatialApp {
           val tileA = SRAM[T](bm, bp)
           val tileB = SRAM[T](bp, bn)
           Parallel {
-            tileA := a(i::i+bm, k::k+bp)
-            tileB := b(k::k+bp, j::j+bn)
+            tileA := a(i::i+bm, k::k+bp par tp)
+            tileB := b(k::k+bp, j::j+bn par tp)
           }
           // Requires tileC NOT to be reset until next j
           Fold(bp by 1 par mp)(tileC, 0.as[T]) { kk =>
@@ -60,7 +62,7 @@ trait MatMult_outerApp extends SpatialApp {
             tileC_partial
           }{_+_}
      		}
-        c(i::i+bm, j::j+bn) := tileC
+        c(i::i+bm, j::j+bn par tp) := tileC
      	}
     }
     getMem(c)
@@ -77,8 +79,8 @@ trait MatMult_outerApp extends SpatialApp {
     val N = args(1).to[SInt]
     val P = args(2).to[SInt]
 
-    val a = Array.fill(M){ Array.fill(P){1} }
-    val b = Array.fill(P){ Array.fill(N){1} }
+    val a = Array.tabulate(M){ j => Array.tabulate(P){ i => i + j * P} }
+    val b = Array.tabulate(P){ j => Array.tabulate(N){ i => i + j * N} }
     val c_init = Array.fill(M){ Array.fill(N){0} }
     // val a = Array.fill(M){ Array.fill(P){random[T](100)} }
     // val b = Array.fill(P){ Array.fill(N){random[T](100)} }

@@ -267,19 +267,19 @@ trait PrimitiveTypes {
 
     // impl (string_to_fixpt) (codegen(chisel, ${ implementMe[$t[S],$t[I],$t[F]]($0) }))
     impl (const_to_fixpt) (codegen(chisel, ${ FixedPoint[$t[S],$t[I],$t[F]]($0.toString) }))
-    impl (fixpt_to_string) (codegen(chisel, ${ $0.implementMe }))
+    // impl (fixpt_to_string) (codegen(chisel, ${ $0.implementMe }))
     impl (fixpt_to_fltpt) (codegen(chisel, ${ $0.implementMe[$t[G],$t[E]] }))
     impl (convert_fixpt)  (codegen(chisel, ${
             //TODO: right way to do this?
             @ val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
       val $sym = $0 // TODO: This is wrong
         }))
-    impl (fix_to_rep_int) (codegen(chisel, ${ $0.implementMe }))
+    // impl (fix_to_rep_int) (codegen(chisel, ${ $0.implementMe }))
     impl (rep_int_to_fix) (codegen(chisel, ${ implementMe[$t[S],$t[I],B0]($0) }))
 
-    impl (string_to_fltpt) (codegen(chisel, ${ implementMe[$t[G],$t[E]]($0) }))
+    // impl (string_to_fltpt) (codegen(chisel, ${ implementMe[$t[G],$t[E]]($0) }))
     impl (const_to_fltpt) (codegen(chisel, ${ implementMe[$t[G],$t[E]]($0.toString) }))
-    impl (fltpt_to_string) (codegen(chisel, ${ $0.implementMe }))
+    // impl (fltpt_to_string) (codegen(chisel, ${ $0.implementMe }))
     impl (fltpt_to_fixpt) (codegen(chisel, ${ $0.implementMe[$t[S],$t[I],$t[F]] }))
     impl (convert_fltpt) (codegen(chisel, ${ $0.implementMe[$t[G2],$t[E2]] }))
     
