@@ -18,39 +18,37 @@ Prerequisites
 Installation
 ============
 
+Start by setting the following environment variables, required for sbt.  You may need to customize some of them, such as JAVA_HOME. You can either set them in your bashrc or in your current shell:
+
+    export HYPER_HOME = ${HOME}/hyperdsl                        # hyperdsl repository home directory
+    export LMS_HOME = ${HYPER_HOME}/virtualization-lms-core     # virtualization-lms-core repository home directory
+    export DELITE_HOME = ${HYPER_HOME}/delite                   # Delite repository home directory
+    export FORGE_HOME = ${HYPER_HOME}/forge                     # Forge repository home directory
+    export JAVA_HOME = /usr/bin/                                # JDK home directory
+    export SPATIAL_HOME = ${HYPER_HOME}/spatial                 # Spatial repository home directory
+
 Building Spatial requires the `spatial` branch of the hyperdsl (https://github.com/stanford-ppl/hyperdsl) project. Hyperdsl is itself composed of three submodules: Forge, Delite, and LMS, all of which also have a `spatial` branch.
 
 To setup hyperdsl, do the following:
 
+    cd ${HOME}
     git clone https://github.com/stanford-ppl/hyperdsl.git
     cd hyperdsl
     git checkout spatial
-    git submodule update --init
-
-Set the following environment variables, requried for sbt and hyperdsl scripts:
-
-    HYPER_HOME: hyperdsl repository home directory
-    LMS_HOME: virtualization-lms-core repository home directory
-    DELITE_HOME: Delite repository home directory
-    FORGE_HOME: Forge repository home directory
-    JAVA_HOME: JDK home directory
-    SPATIAL_HOME: Spatial repository home directory
+    cd $DELITE_HOME && git checkout spatial
+    cd $FORGE_HOME && git checkout spatial
+    cd $LMS_HOME && git checkout spatial
+    cd $HYPER_HOME
 
 *init-env.sh* in hyperdsl sets the sensible defaults for all of these paths except `JAVA_HOME` for the current session. Add these variables to your login shell's startup script to avoid having to manually set these each session.
 
-Now, clone Spatial into hyperdsl as follows:
+Now, clone Spatial into your hyperdsl directory as follows:
 
     git clone https://github.com/stanford-ppl/spatial.git
     cd spatial && make
 
-The setup script will prompt you for the `SPATIAL_HOME` environment variable. Press enter to use the current directory. To skip this message in the future, set this variable in your login shell's startup script.
+**[Optional]** To get the latest version that may not be stable, switch your spatial repository to the `chisel` branch. ([status](https://github.com/stanford-ppl/spatial/wiki/chiselBranch-chiselTest-Regression-Tests-Status)) 
 
-
-**[Optional]** To track the most recent commits relevant to Spatial on each submodule of hyperdsl:
-
-    cd $DELITE_HOME && git checkout spatial
-    cd $FORGE_HOME && git checkout spatial
-    cd $LMS_HOME && git checkout spatial
 
 
 Introduction to Spatial
@@ -61,11 +59,16 @@ Now that you have cloned all of the code and set all of your environment variabl
 All Spatial programs have a few basic components. The following code example shows each of those components.
 
 ```scala
+// 0. Imports
+import spatial.compiler._
+import spatial.library._
+import spatial.shared._
+
 // 1. The Scala object which can be compiled and staged
-object MyAppCompiler extends SpatialAppCompiler with MyApp
+object MyApp extends SpatialAppCompiler with MyAppCompiler
 
 // 2. The SpatialApp trait provides all of the user syntax
-trait MyApp extends SpatialApp {
+trait MyAppCompiler extends SpatialApp {
 
   // 3. This method is called on program startup
   def main() {
@@ -81,8 +84,8 @@ trait MyApp extends SpatialApp {
     setArg(in, n)
 
     // 7. Declare memories in the accelerator's global memory
-    val data = OffChipMem[SInt](in)
-    val outputs = OffChipMem[SInt](in)
+    val data = DRAM[SInt](in)
+    val outputs = DRAM[SInt](in)
 
     // 8. Everything within this scope
     Accel {
@@ -110,8 +113,12 @@ You can find the source code (shown in the next section for convenience) for thi
 
 ### b) Hello, World!
 ```scala
-object HelloWorldCompiler extends SpatialAppCompiler with HelloWorld
-trait HelloWorld extends SpatialApp {
+import spatial.compiler._
+import spatial.library._
+import spatial.shared._
+
+object HelloWorld extends SpatialAppCompiler with HelloWorldCompiler
+trait HelloWorldCompiler extends SpatialApp {
   def main() {
     // Declare SW-HW interface vals
     val x = ArgIn[SInt]
@@ -150,21 +157,43 @@ Finally, we add any debug and validation code to check if the accelerator is per
 
 ### b) Compiling, Synthesizing, and Testing
 
-Now that you have a complete Spatial app, you will want to compile and run it.  Currently, there are three available targets; Scala, Dot, and MaxJ.
-
-**NOTE: Any time you change an app, you must remake Spatial with:**
+You should edit and place apps inside of your `${SPATIAL_HOME}/apps/src/` directory.  **Any time you change an app, you must remake Spatial with:**
 
     cd ${SPATIAL_HOME} && make
 
+Once you have a complete Spatial app, you will want to compile and run it.  Currently, there are four available targets; Scala, Chisel, Dot, and MaxJ.
+
 #### i) Scala
-Targetting Scala is the quickest way to simulate your app and test for accuracy.
-**Ask David**
+Targetting Scala is the quickest way to simulate your app and test for accuracy.  It also exposes println to code that exists inside the `Accel` block with string interpolation arguments (s"").  You should use this backend if you are debugging things at the algorithm level.  In order to compile and simulate for the Scala backend, run:
+
+    cd ${SPATIAL_HOME}/published/Spatial
+    bin/spatial --test <app name> <arguments>
+
+The "<app name>" refers to the name of the `Object`.  The "<arguments>" should be a space-separated list.  This command will automatically create the Scala backend and execute it, ultimately providing you with the results for the app.
 
 #### ii) Dot
 Targetting Dot is a good way to create a dataflow graph of your accelerator in GraphViz format.
-**Ask Yaqi**
+**Ask Yaqi for more**
 
-#### iii) MaxJ
+#### iii) Chisel
+Targetting Chisel will let you compile your app down into Berkeley's chisel language, which eventually compiles down to Verilog.  It also allows you to debug your app at the clock-cycle resolution. In order to compile with the Chisel backend, run the following:
+
+    cd ${SPATIAL_HOME}/published/Spatial
+    bin/spatial --chisel <app name>
+
+This will create a folder in `${SPATIAL_HOME}/published/Spatial` called `out` where it dumps all of the generated C++ (hostcode) and chisel (accelerator) files.  You can see the generated code in the `out/chisel/src/kernels/TopModule.scala` file to get a sense of what your Accel compiled into.  In order to compile this generated code into something you can test or target an FPGA with, do the following:
+    
+    cd out
+    make sim
+    bash run.sh <arguments>
+
+This will turn the Chisel code into verilog, which then gets turned into C++ through verilator.  It also compiles the Spatial-generated C++.  Finally, the run.sh script executes the entire application with communication between the hardware and CPU and returns the result.
+
+Aditionally, you can see the waveform from the test in the `test_run_dir/app.Launcher####` folder, with the `.vcd` extension. 
+
+In order to get oriented with the state machines in your app, you can look at a generated file in the published directory, `${SPATIAL_HOME}/published/Spatial/controller_tree_<app name>.html`.  If you open it with a browser, you will see expandable boxes that show the control nodes in your application and where they fall in the hierarchy.  From here, you can look at the waveform with some information about how the state machines are connected.  See the next section on **The Spatial Programming Model** for more information about control flow and the philosophy behind Spatial apps.
+
+#### iv) MaxJ
 Targetting MaxJ will let you generate a MaxJ app that you can either simulate through Maxeler's framework or synthesize and run on a real FPGA.
 
 Run the following commands to make your app:
