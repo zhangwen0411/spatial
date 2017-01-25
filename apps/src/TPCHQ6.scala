@@ -50,12 +50,12 @@ trait TPCHQ6App extends SpatialApp {
   val memPar = 1
   val margin = 1
 
-  def tpchq6(datesIn: Rep[Array[UInt]], quantsIn: Rep[Array[UInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
+  def tpchq6(datesIn: Rep[Array[SInt]], quantsIn: Rep[Array[SInt]], disctsIn: Rep[Array[FT]], pricesIn: Rep[Array[FT]]): Rep[FT] = {
     val dataSize = ArgIn[SInt]
     setArg(dataSize, datesIn.length)
 
-    val dates  = DRAM[UInt](dataSize)
-    val quants = DRAM[UInt](dataSize)
+    val dates  = DRAM[SInt](dataSize)
+    val quants = DRAM[SInt](dataSize)
     val discts = DRAM[FT](dataSize)
     val prices = DRAM[FT](dataSize)
     val minDateIn = MIN_DATE
@@ -78,8 +78,8 @@ trait TPCHQ6App extends SpatialApp {
 
       val acc = Reg[FT]
       Fold(dataSize by ts par op)(acc, 0.as[FT]){ i =>
-        val datesTile  = FIFO[UInt](ts)
-        val quantsTile = FIFO[UInt](ts)
+        val datesTile  = FIFO[SInt](ts)
+        val quantsTile = FIFO[SInt](ts)
         val disctsTile = FIFO[FT](ts)
         val pricesTile = FIFO[FT](ts)
         Parallel {
@@ -113,12 +113,17 @@ trait TPCHQ6App extends SpatialApp {
   def main() {
     val N = args(0).to[SInt]
 
-    val dates  = Array.fill(N){random[UInt](20) + 65}
-    val quants = Array.fill(N){random[UInt](25) }
-    // val discts = Array.fill(N){random[FT] * 0.05f + 0.02f}
-    // val prices = Array.fill(N){random[FT] * 1000f}
-    val discts = Array.fill(N){random[FT] /*/ 100000*/}
-    val prices = Array.fill(N){random[FT] /*/ 100000*/}
+    // val dates  = Array.fill(N){random[SInt](20) + 65}
+    // val quants = Array.fill(N){random[SInt](25) }
+    // // val discts = Array.fill(N){random[FT] * 0.05f + 0.02f}
+    // // val prices = Array.fill(N){random[FT] * 1000f}
+    // val discts = Array.fill(N){random[FT] /*/ 100000*/}
+    // val prices = Array.fill(N){random[FT] /*/ 100000*/}
+
+    val dates  = Array.tabulate[SInt](N){i => i}
+    val quants = Array.tabulate[SInt](N){i => i}
+    val discts = Array.tabulate[FT](N){i => i}
+    val prices = Array.tabulate[FT](N){i => i}
 
     val result = tpchq6(dates, quants, discts, prices)
 
