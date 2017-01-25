@@ -277,13 +277,13 @@ ${quote(read)}_rVec.foreach { r => r.en := ${quote(parent)}_en}""")
     emit(s"""// Assemble multidimW vector
 val ${quote(write)}_wVec = Wire(Vec(${wPar}, new multidimW(${num_dims}, 32))) """)
     value match {
-      case Deff(d:Reg_read[_]) => // Reg_reads produce scalar values
-        emit(s"""${quote(write)}_wVec(0).data := ${quote(value)}
-${quote(write)}_wVec(0).en := ${quote(ens)} // TODO: Not sure if it is always safe to assume this has size 1""")
-      case _ => // Otherwise, assume it is a vector value
+      case Deff(d:ListVector[_]) => // zip up vector nodes
         emit(s"""
 ${quote(write)}_wVec.zip(${quote(value)}).foreach {case (w,d) => w.data := d}
 ${quote(write)}_wVec.zip(${quote(ens)}).foreach {case (w,e) => w.en := e}""")
+      case _ => // Otherwise, just connect one thing
+        emit(s"""${quote(write)}_wVec(0).data := ${quote(value)}
+${quote(write)}_wVec(0).en := ${quote(ens)}""")
     }
     inds.zipWithIndex.foreach{ case(ind,i) => 
       ind.zipWithIndex.foreach { case(wire,j) =>

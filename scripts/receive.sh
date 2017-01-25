@@ -43,7 +43,7 @@ clean_exit() {
   logger "${2}"
 
   # errfile=`echo $packet | sed 's/ack/error/g'`
-  # rm $packet
+  rm $packet
   exit 1
 }
 
