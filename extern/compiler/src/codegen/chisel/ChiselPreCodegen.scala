@@ -81,6 +81,9 @@ trait ChiselPreCodegen extends Traversal  {
       emitArgOutBundle(argOuts)
       emitMemStreamBundle(memStreams)
     }
+    withStream(newStream("GeneratedPoker")) {
+      emitMemStreamPoker(memStreams)
+    }
 		/*withStream(newStream("ChiselManager")) {
 			chiselManagerGen.emitManager(stream, argInOuts, memStreams)
 		}
@@ -936,17 +939,87 @@ emit(s"""
   private def emitMemStreamBundle(ports: List[Sym[Any]]) {
     emit(s"""
 class MemStreamsBundle() extends Bundle{
-  val outPorts = Vec(${ports.length}, Output(new ToDRAM(1)))
-  val inPorts = Vec(${ports.length}, Input(new FromDRAM(1)))
-
+""")
+    ports.zipWithIndex.foreach{ case (port,i) => 
+      val info = port match {
+        case Deff(BurstLoad(mem,_,_,_,p)) => 
+          emit(s"// Burst Load")
+          (s"${bound(p).get.toInt}", s"""${nameOf(mem).getOrElse("")}""")
+        case Deff(BurstStore(mem,_,_,_,p)) =>
+          emit("// Burst Store")
+          (s"${bound(p).get.toInt}", s"""${nameOf(mem).getOrElse("")}""")
+        case _ => 
+          ("No match", s"No mem")
+      }
+      emit(s"""  val outPorts${i} = Output(new ToDRAM(${info._1}))
+  val inPorts${i} = Input(new FromDRAM(${info._1}))""")
+      emit(s"""//  ${quote(port)} = ports$i (${info._2})
+""")
+      memStreamsByName = memStreamsByName :+ s"${quote(port)}"
+    }
+    emit(s"""
 }
 """)
-    ports.zipWithIndex.map { case(p,i) => 
-      emit(s"//  ${quote(p)} = ports($i) (${nameOf(p).getOrElse("")})")
-      memStreamsByName = memStreamsByName :+ s"${quote(p)}"
-    }
 
   }
+
+  private def emitMemStreamPoker(ports: List[Sym[Any]]) {
+    emit(s"""
+package app
+
+import chisel3.iotesters.{PeekPokeTester, Driver, ChiselFlatSpec}
+import org.scalatest.Assertions._
+import java.io._
+class GeneratedPoker(c: TopModule) extends PeekPokeTester(c) {
+  
+  var offchipMem = List[BigInt]()
+
+  def handleLoadStore()  {""")
+    ports.zipWithIndex.foreach{ case (port,i) => 
+      val interface = port match {
+        case Deff(BurstLoad(mem,_,_,_,p)) => 
+          ("receiveBurst", s"${bound(p).get.toInt}", "BurstLoad",
+           s"""for (j <- 0 until size${i}) {
+        (0 until par${i}).foreach { k => 
+          poke(c.io.MemStreams.inPorts${i}.data(k), addr${i}-base${i}+j+k) 
+        }  
+        poke(c.io.MemStreams.inPorts${i}.valid, 1)
+        step(1)
+        }
+        poke(c.io.MemStreams.inPorts${i}.valid, 0)
+        step(1)""", s"""${nameOf(mem)}.getOrElse("")}""")
+        case Deff(BurstStore(mem,_,_,_,p)) =>
+          ("sendBurst", s"${bound(p).get.toInt}", "BurstStore",
+           s"""for (j <- 0 until size${i}) {
+        poke(c.io.MemStreams.inPorts${i}.pop, 1)
+        (0 until par${i}).foreach { k => 
+          offchipMem = offchipMem :+ peek(c.io.MemStreams.outPorts${i}.data(k)) 
+        }  
+        step(1)
+        }
+        poke(c.io.MemStreams.inPorts${i}.pop, 0)
+        step(1)""", s"""${nameOf(mem)}.getOrElse("")}""")
+      }
+      emit(s"""
+    // ${interface._3} Poker -- ${quote(port)} <> ports${i} <> ${interface._5}
+    val req${i} = (peek(c.io.MemStreams.outPorts${i}.${interface._1}) == 1)
+    val size${i} = peek(c.io.MemStreams.outPorts${i}.size).toInt
+    val base${i} = peek(c.io.MemStreams.outPorts${i}.base).toInt
+    val addr${i} = peek(c.io.MemStreams.outPorts${i}.addr).toInt
+    val par${i} = ${interface._2}
+    if (req${i}) {
+      ${interface._4}
+    }
+
+""")
+
+    }
+    emit(s"""
+  }
+}""")
+
+  }
+
 
   private def stateTextSeq(state: Int, N: Int) = {
     val max = N-1

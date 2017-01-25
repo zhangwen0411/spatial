@@ -325,10 +325,11 @@ init_travis_ci() {
     eval "$cmd"
     if [ -d "${SPATIAL_HOME}/${1}Tracker" ]; then
       logger "Repo ${1}Tracker exists, prepping it..."
-      git checkout ${branch}
-      tracker="${SPATIAL_HOME}/${1}Tracker/results"
-      cmd="rm $tracker"
+      cmd="git checkout ${branch}"
+      logger "Switching to branch ${branch}"
       eval "$cmd"
+      tracker="${SPATIAL_HOME}/${1}Tracker/results"
+      ls | grep -v travis | grep -v status | grep -v README | grep -v git | xargs rm -rf
       cp $packet ${SPATIAL_HOME}/${1}Tracker/
     else 
       logger "Repo ${1}Tracker does not exist! Skipping Travis..."
@@ -347,7 +348,7 @@ push_travis_ci() {
       cd ${SPATIAL_HOME}/${1}Tracker
       git add -A
       git commit -m "auto update"
-      git push origin ${branch}
+      git push
     else
       logger "Repo ${1}Tracker does not exist, skipping it!"
     fi

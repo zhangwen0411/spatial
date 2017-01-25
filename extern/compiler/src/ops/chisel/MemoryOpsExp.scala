@@ -388,8 +388,8 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       val streamId = memStreamsByName.indexOf(quote(sym))
       withStream(baseStream) {
         emit(s"""val ${quote(sym)} = Module(new MemController(${quote(par)}))""")
-        emit(s"""io.MemStreams.outPorts(${streamId}) := ${quote(sym)}.io.CtrlToDRAM""")
-        emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts(${streamId}) """)
+        emit(s"""io.MemStreams.outPorts${streamId} := ${quote(sym)}.io.CtrlToDRAM""")
+        emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts${streamId} """)
       }
       emit(s"""// ---- Memory Controller (Load) ${quote(sym)} ----
 ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.cmdIssued
@@ -414,8 +414,8 @@ ${quote(fifo)}_wdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p
       val streamId = memStreamsByName.indexOf(quote(sym))
       withStream(baseStream) {
         emit(s"""val ${quote(sym)} = Module(new MemController(${quote(par)}))""")
-        emit(s"""io.MemStreams.outPorts(${streamId}) := ${quote(sym)}.io.CtrlToDRAM""")
-        emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts(${streamId}) """)
+        emit(s"""io.MemStreams.outPorts${streamId} := ${quote(sym)}.io.CtrlToDRAM""")
+        emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts${streamId} """)
       }
       emit(s"""// ---- Memory Controller (Store) ${quote(sym)} ----
 ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.valid
