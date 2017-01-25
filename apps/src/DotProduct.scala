@@ -9,14 +9,14 @@ trait DotProductApp extends SpatialApp {
   val tileSize = 96
   val innerPar = 2
   val outerPar = 1
-  val tilePar = 1
+  val memPar = 1
   type Array[T] = ForgeArray[T]
 
   def dotproduct(a: Rep[Array[T]], b: Rep[Array[T]]) = {
     val B  = tileSize (96 -> 96 -> 19200)
     val P1 = outerPar (1 -> 6)
     val P2 = innerPar (1 -> 192)
-    val P3 = tilePar (1 -> 192)
+    val P3 = memPar (1 -> 192)
 
     val size = a.length
     bound(size) = 1920000
@@ -58,8 +58,8 @@ trait DotProductApp extends SpatialApp {
 
   def main() {
     val N = args(0).to[SInt]
-    val a = Array.fill(N)(/*random[T](10)*/ i => i)
-    val b = Array.fill(N)(/*random[T](10)*/ i => i)
+    val a = Array.tabulate[T](N){/*random[T](10)*/ i => i}
+    val b = Array.tabulate[T](N){/*random[T](10)*/ i => i}
 
     // printArr(a, "a")
     // printArr(b, "b")

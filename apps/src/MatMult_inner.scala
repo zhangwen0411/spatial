@@ -13,7 +13,7 @@ trait MatMult_innerApp extends SpatialApp {
   val innerPar = 4
   val midPar = 2
   val outerPar = 2
-  val tilePar = 1
+  val memPar = 1
 
   def MatMult_inner(A: Rep[Array[T]], B: Rep[Array[T]], mm: Rep[SInt], nn: Rep[SInt], pp: Rep[SInt]) = {
     val M = ArgIn[SInt]
@@ -35,7 +35,7 @@ trait MatMult_innerApp extends SpatialApp {
     val mp = midPar   (1 -> 96)
     val ip = innerPar (1 -> 96)
     val px = 1 (1 -> 1) // Cannot parallelize accum across k blocks
-    val tPar = tilePar (1 -> 1)
+    val tPar = memPar (1 -> 1)
 
     setMem(a, A)
     setMem(b, B)
@@ -73,8 +73,8 @@ trait MatMult_innerApp extends SpatialApp {
     val N = args(1).to[SInt]
     val P = args(2).to[SInt]
 
-    val a = Array.fill(M){ j => Array.fill(P){ i => i + j * P} }
-    val b = Array.fill(P){ j => Array.fill(N){ i => i + j * N} }
+    val a = Array.tabulate(M){ j => Array.tabulate(P){ i => i + j * P} }
+    val b = Array.tabulate(P){ j => Array.tabulate(N){ i => i + j * N} }
     // val a = Array.fill(M){ Array.fill(P){random[T](100)} }
     // val b = Array.fill(P){ Array.fill(N){random[T](100)} }
 

@@ -690,7 +690,7 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
       //   emit(s"""val ${quote(sym)}_rdata = Wire(Vec($par, UInt(32.W))) // $ts""")
       //   emit(s"""// val ${quote(sym)} included in memory controller""")
       // } else {
-      emit(s"""val ${quote(sym)} = Module(new FIFO($par, $par, ${quote(depth)}))""")          
+      emit(s"""val ${quote(sym)} = Module(new FIFO($par, $par, ${quote(depth)})) // ${nameOf(sym).getOrElse("")}""")
       emit(s"""val ${quote(sym)}_rdata = ${quote(sym)}.io.out""")
       emit(s"""${quote(sym)}.io.in := ${quote(sym)}_wdata""")
       emit(s"""${quote(sym)}.io.pop := ${quote(sym)}_readEn""")

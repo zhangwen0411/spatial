@@ -9,14 +9,14 @@ trait OuterProductApp extends SpatialApp {
   val tileSize2 = 192
   val outerPar = 2
   val innerPar = 8
-  val tilePar = 1
+  val memPar = 1
 
   def outerproduct(a: Rep[ForgeArray[T]], b: Rep[ForgeArray[T]]) = {
     val tileSizeA = tileSize1 (96 -> 96 -> 38400)
     val tileSizeB = tileSize2 (96 -> 96 -> 38400)
     val op = outerPar (1 -> 4)
     val ip = innerPar (1 -> 256)
-    val tp = tilePar (1 -> 64)
+    val tp = memPar (1 -> 64)
 
     val M = a.length;  bound(M) = 38400
     val N = b.length;  bound(N) = 38400
@@ -59,8 +59,8 @@ trait OuterProductApp extends SpatialApp {
     val N = args(1).to[SInt]
     // val a = Array.fill(M)(random[T](100))
     // val b = Array.fill(N)(random[T](100))
-    val a = Array.tabulate(M) { i => i }
-    val b = Array.fill(N)(1)
+    val a = Array.tabulate[SInt](M) { i => i }
+    val b = Array.tabulate[SInt](N) { i => i }
 
     val result = outerproduct(a, b)
 
