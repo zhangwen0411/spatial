@@ -141,7 +141,7 @@ Edited at `date`
 * <---- indicates relative amount of work needed before app will **pass**" > $wiki_file
 
 for ac in ${types_list[@]}; do
-  logger "Collecting results for ${ac} apps"
+  logger "Collecting results for ${ac} apps, putting in ${wiki_file}"
   cd ${SPATIAL_HOME}/regression_tests/${ac}/results
   echo "
 
@@ -348,6 +348,7 @@ init_travis_ci() {
     eval "$cmd"
     if [ -d "${SPATIAL_HOME}/${1}Tracker" ]; then
       logger "Repo ${1}Tracker exists, prepping it..."
+      cd ${SPATIAL_HOME}/${1}Tracker
       cmd="git checkout ${branch}"
       logger "Switching to branch ${branch}"
       eval "$cmd"
@@ -396,9 +397,8 @@ create_script() {
   if [[ ${type_todo} = "scala" || ${type_todo} = "maxj" || ${type_todo} = "chisel" ]]; then
     echo "ok!" > /tmp/log
   else
-    logger "Error! ${type_todo} type of regression test not yet supported."
     stamp_commit_msgs
-    exit 1
+    clean_exit 1 "Error! ${type_todo} type of regression test not yet supported."
   fi
 
   echo "
