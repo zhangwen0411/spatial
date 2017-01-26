@@ -69,77 +69,93 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
   }
 
   var emittedSize = Set.empty[Exp[Any]]
+
+  var myBuildDir = ""
   override def initializeGenerator(buildDir:String): Unit = {
     emittedSize = Set.empty[Exp[Any]]
     nextLMemAddr = burstSize * 1024 * 1024
+    myBuildDir = buildDir
     super.initializeGenerator(buildDir)
   }
 
   val srams = Set[Exp[SRAM[Any]]]()
   val regs = Set[Exp[Reg[Any]]]()
 
+  def newStream(fileName:String):PrintWriter = {
+    val path = myBuildDir + java.io.File.separator + fileName + ".scala"
+    val pw = new PrintWriter(path)
+    pw
+  }
+
   def emitBufferControlSignals() {
-    emit(s"""// rdone signals for N-Buffers go here""")
+    withStream(newStream("BufferControlSignals")) {
+      emit(s"""package app
+import templates._
+import chisel3._
+class BufferControlSignals(t: TopModule) {
+// rdone signals for N-Buffers go here""")
 
-    // Quote duplicate
-    // TODO: Change to common "quote duplicate" method?
-    def quoteDuplicate(mem: Exp[Any], i: Int): String = {
-      if      (isSRAM(mem.tp)) s"""${quote(mem)}_${i}"""
-      else if (isReg(mem.tp))  s"""${quote(mem)}_${i}_lib"""
-      else throw new Exception("Cannot double buffer type " + mem.tp)
-    }
+      // Quote duplicate
+      // TODO: Change to common "quote duplicate" method?
+      def quoteDuplicate(mem: Exp[Any], i: Int): String = {
+        if      (isSRAM(mem.tp)) s"""${quote(mem)}_${i}"""
+        else if (isReg(mem.tp))  s"""${quote(mem)}_${i}_lib"""
+        else throw new Exception("Cannot double buffer type " + mem.tp)
+      }
 
-    val nonBoundMemories = (srams ++ regs).map(aliasOf(_)).filter{case Def(_) => true; case _ => false}
+      val nonBoundMemories = (srams ++ regs).map(aliasOf(_)).filter{case Def(_) => true; case _ => false}
 
-    nonBoundMemories.foreach{mem =>
-      val buffers = duplicatesOf(mem).zipWithIndex.filter{case (d,i) => d.depth > 1}
-      val readers = readersOf(mem)
-      val writers = writersOf(mem)
+      nonBoundMemories.foreach{mem =>
+        val buffers = duplicatesOf(mem).zipWithIndex.filter{case (d,i) => d.depth > 1}
+        val readers = readersOf(mem)
+        val writers = writersOf(mem)
 
-      buffers.foreach{ case (d, i) =>
-        // Note: Grouping by sets of integers here. Accesses to a buffer should either have one port or all ports, so this is ok
-        val readsByPort = readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
-        val writesByPort = writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
+        buffers.foreach{ case (d, i) =>
+          // Note: Grouping by sets of integers here. Accesses to a buffer should either have one port or all ports, so this is ok
+          val readsByPort = readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
+          val writesByPort = writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
 
-        if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
+          if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
 
-        def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String, comment: String = "") {
-          val controllers = accesses.flatMap{access => topControllerOf(access, mem, i) }.distinct
-          val isBuffered = ports.size == 1 && accesses.nonEmpty
+          def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String, comment: String = "") {
+            val controllers = accesses.flatMap{access => topControllerOf(access, mem, i) }.distinct
+            val isBuffered = ports.size == 1 && accesses.nonEmpty
 
-          if (isBuffered && controllers.length > 1)
-            throw MultipleSwapControllersException(mem, i, accesses, ports.head)
-          else if (isBuffered && controllers.isEmpty)
-            throw UndefinedSwapControllerException(mem, i, accesses, ports.head)
-          else if (isBuffered) {
-            val portlist = ports.mkString{","} // TODO: Can probably use ports.head here
-            emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, List($portlist)); /*$comment*/""")
+            if (isBuffered && controllers.length > 1)
+              throw MultipleSwapControllersException(mem, i, accesses, ports.head)
+            else if (isBuffered && controllers.isEmpty)
+              throw UndefinedSwapControllerException(mem, i, accesses, ports.head)
+            else if (isBuffered) {
+              val portlist = ports.mkString{","} // TODO: Can probably use ports.head here
+              emit(s"""t.${quoteDuplicate(mem, i)}.${connect}(t.${quote(controllers.head.node)}_done, t.${quote(controllers.head.node)}_en, List($portlist)); /*$comment*/""")
+            }
           }
-        }
-        if (d.depth > 1) { // Deprecated dblbuf
-          val suff = if (isSRAM(mem.tp)) {""} else if (isReg(mem.tp)) {"_lib"}
-          val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length == 1 }.flatten
-          val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
-          val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
-          val fullPorts = (0 until d.depth).map{ i => i }.toSet
-          val dummyWPorts = fullPorts -- wPorts
-          val dummyRPorts = fullPorts -- rPorts
-          val dummyDonePorts = fullPorts -- wPorts -- rPorts
-          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl","read") }
-          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
-          emit(s"""${quote(mem)}_${i}${suff}.connectUnwrittenPorts(List(${dummyWPorts.mkString(",")}));""")
-          emit(s"""${quote(mem)}_${i}${suff}.connectUnreadPorts(List(${dummyRPorts.mkString(",")}));""")
-          emit(s"""${quote(mem)}_${i}${suff}.connectUntouchedPorts(List(${dummyDonePorts.mkString(",")}));""")
-          if (writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }.toList.length == 0) {
-            emit(s"""${quote(mem)}_${i}${suff}.connectDummyBroadcast();""")
+          if (d.depth > 1) { // Deprecated dblbuf
+            val suff = if (isSRAM(mem.tp)) {""} else if (isReg(mem.tp)) {"_lib"}
+            val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length == 1 }.flatten
+            val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
+            val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
+            val fullPorts = (0 until d.depth).map{ i => i }.toSet
+            val dummyWPorts = fullPorts -- wPorts
+            val dummyRPorts = fullPorts -- rPorts
+            val dummyDonePorts = fullPorts -- wPorts -- rPorts
+            readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl","read") }
+            writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
+            emit(s"""t.${quote(mem)}_${i}${suff}.connectUnwrittenPorts(List(${dummyWPorts.mkString(",")}));""")
+            emit(s"""t.${quote(mem)}_${i}${suff}.connectUnreadPorts(List(${dummyRPorts.mkString(",")}));""")
+            emit(s"""t.${quote(mem)}_${i}${suff}.connectUntouchedPorts(List(${dummyDonePorts.mkString(",")}));""")
+            if (writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }.toList.length == 0) {
+              emit(s"""t.${quote(mem)}_${i}${suff}.connectDummyBroadcast();""")
+            }
+          } else {
+            readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectRdone") }
+            writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectWdone") }
           }
-        } else {
-          readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectRdone") }
-          writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectWdone") }
         }
       }
+      emit("}")
     }
-
+    emit(s"new BufferControlSignals(this)")
   }
 
   override def emitFileFooter() = {

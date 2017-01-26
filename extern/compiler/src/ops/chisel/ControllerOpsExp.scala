@@ -445,9 +445,10 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     if (!isInnerPipe(sym)) {
       emit(s"""//      ---- Begin $smStr ${quote(sym)} Children Signals ----""")
 		  childrenOf(sym).zipWithIndex.foreach { case (c, idx) =>
-		  	emitGlobalWire(s"""${quote(c)}_done""")
+        emitGlobalWire(s"""${quote(c)}_done""")
+        emitGlobalWire(s"""${quote(c)}_en""")
 		  	emit(s"""    ${quote(sym)}_sm.io.input.stageDone(${idx}) := ${quote(c)}_done;""")
-        emit(s"""    val ${quote(c)}_en = ${quote(sym)}_sm.io.output.stageEnable(${quote(idx)})""")
+        emit(s"""    ${quote(c)}_en := ${quote(sym)}_sm.io.output.stageEnable(${quote(idx)})""")
         // childrenSet += (s"${quote(c)}_en, ${quote(c)}_done")
         // percentDSet += (s"${idx}: %d %d")
 		  	enDeclaredSet += c
