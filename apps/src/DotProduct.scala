@@ -13,7 +13,7 @@ trait DotProductApp extends SpatialApp {
   type Array[T] = ForgeArray[T]
 
   def dotproduct(a: Rep[Array[T]], b: Rep[Array[T]]) = {
-    val B  = tileSize (96 -> 96 -> 19200)
+    val B  = tileSize //(96 -> 96 -> 19200)
     val P1 = outerPar (1 -> 6)
     val P2 = innerPar (1 -> 192)
     val P3 = memPar (1 -> 192)
