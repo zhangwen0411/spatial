@@ -38,53 +38,6 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
     }
   }
 
-  override def isConstOrArgOrBnd(x: Exp[Any]) = x match {
-    case s@Sym(n) => {
-      s match {
-        case Deff(ConstFixPt(_,_,_,_)) => true
-        case Deff(ConstFltPt(_,_,_)) => true
-        case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
-          xx match {
-            case Deff(Argin_new(_)) => true
-            case _ =>
-              if (isReduceStarter(s)) {false} else {true}
-          }
-        case Deff(_) => false // None
-        case _ => true // Is bound
-      }
-    }
-  }
-
-  def addConstOrArgOrBnd(x: Exp[Any], set: Set[Exp[Any]]) = {
-    var ret = Set[Exp[Any]]()
-    val Deff(dd) = x
-    dd match {
-      case FltPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Lsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Rsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Xor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
-      case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case _ =>
-    }
-    set ++ ret
-  }
 
 
   override def emitNode(sym: Sym[Any], rhs: Def[Any]) = rhs match {
@@ -98,12 +51,12 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
         s"${quote(ctr)}: ${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
       }
 
-      var inner = true // [sic]
+      var inner = false
       val style = styleOf(sym) match {
         case StreamPipe => "Stream"
         case CoarsePipe => "Meta"
         case InnerPipe => 
-          inner = false
+          inner = true
           "Pipe"
         case SequentialPipe => "Seq"
         case _ => s"${styleOf(sym)}"
@@ -122,29 +75,29 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
             styleOf(sym) match {
               case InnerPipe =>
                 // Putting reduction tree in its own kernel
-                var inputVecs = Set[Sym[Any]]()
-                var consts_args_bnds_list = Set[Exp[Any]]()
-                var treeResultSyms = Set[Sym[Any]]()
-                focusBlock(func){ // Send reduce tree to separate file
-                  focusExactScope(func){ stms =>
-                    stms.foreach { case TP(s,d) =>
-                      val Deff(dd) = s
-                      dd match {
-                        case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                          if (isReduceResult(s)) {
-                            val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                            emit(s"//val ${quote(s)} = Wire(${ts})")
-                            treeResultSyms += s
-                          }
-                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                        case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-                          inputVecs += s
-                        case _ =>
-                          consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                      }
-                    }
-                  }
-                }
+                // var inputVecs = Set[Sym[Any]]()
+                // var consts_args_bnds_list = Set[Exp[Any]]()
+                // var treeResultSyms = Set[Sym[Any]]()
+                // focusBlock(func){ // Send reduce tree to separate file
+                //   focusExactScope(func){ stms =>
+                //     stms.foreach { case TP(s,d) =>
+                //       val Deff(dd) = s
+                //       dd match {
+                //         case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
+                //           if (isReduceResult(s)) {
+                //             val ts = tpstr(1)(s.tp, implicitly[SourceContext])
+                //             emit(s"//val ${quote(s)} = Wire(${ts})")
+                //             treeResultSyms += s
+                //           }
+                //           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                //         case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
+                //           inputVecs += s
+                //         case _ =>
+                //           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+                //       }
+                //     }
+                //   }
+                // }
 
                 emit(s"""// ---- UnrolledForeach ${quote(sym)} func block ---- """)
                 emitBlock(func)
@@ -179,7 +132,7 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
       }
 
       emit(s"""// ---- UnrolledReduce ${quote(sym)} = UnrolledReduce(${quote(cchain)}, ${quote(accum)}) ----""")
-      var inner = true
+      var inner = false
       styleOf(sym) match {
         case CoarsePipe =>
           emitComment(s"""MPSM to be emitted""")
@@ -187,7 +140,7 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
         case InnerPipe =>
           emitComment(s"""PipeSM to be emitted""")
           print_stage_prefix(s"Reduce Innerpipe",s"${ctr_str}",s"${quote(sym)}", false)
-          inner = false // [sic]
+          inner = true
         case SequentialPipe =>
           emitComment(s"""SeqSM to be emitted""")
           print_stage_prefix(s"Reduce Seqpipe",s"${ctr_str}",s"${quote(sym)}")
@@ -212,29 +165,29 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
       styleOf(sym) match {
         case InnerPipe =>
           // Putting reduction tree in its own kernel
-          var inputVecs = Set[Sym[Any]]()
-          var consts_args_bnds_list = Set[Exp[Any]]()
-          var treeResult = ""
-          focusBlock(func){ // Send reduce tree to separate file
-            focusExactScope(func){ stms =>
-              stms.foreach { case TP(s,d) =>
-                val Deff(dd) = s
-                dd match {
-                  case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                    if (isReduceResult(s)) {
-                      val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                      emit(s"// val ${quote(s)} = Wire(${ts})")
-                      treeResult = quote(s)
-                    }
-                    consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                  case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-                    inputVecs += s
-                  case _ =>
-                    consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                }
-              }
-            }
-          }
+          // var inputVecs = Set[Sym[Any]]()
+          // var consts_args_bnds_list = Set[Exp[Any]]()
+          // var treeResult = ""
+          // focusBlock(func){ // Send reduce tree to separate file
+          //   focusExactScope(func){ stms =>
+          //     stms.foreach { case TP(s,d) =>
+          //       val Deff(dd) = s
+          //       dd match {
+          //         case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
+          //           if (isReduceResult(s)) {
+          //             val ts = tpstr(1)(s.tp, implicitly[SourceContext])
+          //             emit(s"// val ${quote(s)} = Wire(${ts})")
+          //             treeResult = quote(s)
+          //           }
+          //           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+          //         case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
+          //           inputVecs += s
+          //         case _ =>
+          //           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
+          //       }
+          //     }
+          //   }
+          // }
 
           emitRegChains(sym, inds.flatten)
           emit(s"""// ---- UnrolledReduce ${quote(sym)} func block ---- """)

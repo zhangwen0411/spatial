@@ -15,6 +15,9 @@ trait UnrollingTransformExp extends ReductionAnalysisExp with UnrolledOpsExp {
   var argOutsByName: List[String] = List()
   var memStreamsByName: List[String] = List()
   var memStreamsOut: List[Sym[Any]] = List()
+  var insideBlock = false
+  var exemptList = Set.empty[Int] // Not used
+
 
   case class UnrolledResult(isIt: Boolean) extends Metadata
   object isReduceResult {

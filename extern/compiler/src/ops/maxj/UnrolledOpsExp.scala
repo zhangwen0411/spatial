@@ -19,15 +19,15 @@ trait UnrolledOpsExp extends ExternPrimitiveTypesExp with MemoryOpsExp {
   val controller_tree = new PrintWriter(new File(s"controller_tree_${appname}.html" ))
   val table_init = """<TABLE BORDER="3" CELLPADDING="10" CELLSPACING="10">"""
 
-  def print_stage_prefix(title: String, ctr: String, node: String, hasThingsInside: Boolean = true) {
+  def print_stage_prefix(title: String, ctr: String, node: String, inner: Boolean = false) {
     controller_tree.write(s"""<TD><font size = "6">$title<br><b>$node</b></font><br><font size = "1">$ctr</font> """)
-    if (hasThingsInside) {
+    if (!inner) {
       controller_tree.write(s"""<div data-role="collapsible">
       <h4> </h4>${table_init}""")
     }
   }
-  def print_stage_suffix(name: String, inner: Boolean = true) {
-    if (inner) {
+  def print_stage_suffix(name: String, inner: Boolean = false) {
+    if (!inner) {
       controller_tree.write("""</TABLE></div>""")
     }
     controller_tree.write(s"</TD><!-- Close $name -->")
@@ -353,7 +353,7 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DF
         s"${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
       }
 
-      var hadThingsInside = true
+      var inner = false
       styleOf(sym) match {
         case StreamPipe =>
           emitComment(s"""StrmPipe to be emitted""")
@@ -363,8 +363,8 @@ ${quote(sym)}_reduce_kernel(KernelLib owner, OffsetExpr ${quote(sym)}_offset, DF
           print_stage_prefix(s"Foreach Metapipe",s"${ctr_str}",s"${quote(sym)}")
         case InnerPipe =>
           emitComment(s"""PipeSM to be emitted""")
-          print_stage_prefix(s"Foreach Innerpipe",s"${ctr_str}",s"${quote(sym)}", false)
-          hadThingsInside = false
+          print_stage_prefix(s"Foreach Innerpipe",s"${ctr_str}",s"${quote(sym)}", true)
+          inner = true
         case SequentialPipe =>
           emitComment(s"""SeqSM to be emitted""")
           print_stage_prefix(s"Foreach Seqpipe",s"${ctr_str}",s"${quote(sym)}")
@@ -470,7 +470,7 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
 
       emit("""}""")
       emitComment(s"""} UnrolledForeach ${quote(sym)}""")
-      print_stage_suffix(quote(sym), hadThingsInside)
+      print_stage_suffix(quote(sym), inner)
       controlNodeStack.pop
 
     case e@UnrolledReduce(cchain, accum, func, rFunc, inds, vs, acc, rV) =>
@@ -483,7 +483,7 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
 
       emitComment(s"""UnrolledReduce ${quote(sym)} = UnrolledReduce(${quote(cchain)}, ${quote(accum)}) {""")
       emit("""{""")
-      var hadThingsInside = true
+      var inner = false
       styleOf(sym) match {
         case CoarsePipe =>
           emitComment(s"""MPSM to be emitted""")
@@ -491,7 +491,7 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
         case InnerPipe =>
           emitComment(s"""PipeSM to be emitted""")
           print_stage_prefix(s"Reduce Innerpipe",s"${ctr_str}",s"${quote(sym)}", false)
-          hadThingsInside = false
+          inner = true
         case SequentialPipe =>
           emitComment(s"""SeqSM to be emitted""")
           print_stage_prefix(s"Reduce Seqpipe",s"${ctr_str}",s"${quote(sym)}")
@@ -637,7 +637,7 @@ ${inputArgs.mkString(",")}); // Reduce kernel""")
 
       emit("""}""")
       emitComment(s"""} UnrolledReduce ${quote(sym)}""")
-      print_stage_suffix(quote(sym), hadThingsInside)
+      print_stage_suffix(quote(sym), inner)
       controlNodeStack.pop
 
     case _ => super.emitNode(sym, rhs)

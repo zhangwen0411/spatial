@@ -41,110 +41,74 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     }
   }
 
-  def isConstOrArgOrBnd(x: Exp[Any]) = x match {
-    case s@Sym(n) => {
-      s match {
-        case Deff(ConstFixPt(_,_,_,_)) => true
-        case Deff(ConstFltPt(_,_,_)) => true
-        case Deff(Reg_read(xx)) => // Only if rhs of exp is argin
-          xx match {
-            case Deff(Argin_new(_)) => true
-            case _ =>
-              if (isReduceStarter(s)) {false} else {true}
-          }
-        case Deff(_) => false // None
-        case _ => true // Is bound
-      }
-    }
-  }
+  val exemptSet = Set.empty[Int]
 
-  def addConstOrArgOrBnd(x: Exp[Any], set: Set[Exp[Any]]) = {
-    var ret = Set[Exp[Any]]()
-    val Deff(dd) = x
-    dd match {
-      case FltPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Add(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Mul(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Lsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FixPt_Rsh(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Lt(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Leq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Neq(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case FltPt_Eql(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_And(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Or(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Xor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Xnor(a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case Bit_Not(a) => if (isConstOrArgOrBnd(a)) {ret += a}
-      case Mux2(sel,a,b) => {if (isConstOrArgOrBnd(a)) {ret += a}; if (isConstOrArgOrBnd(b)) {ret += b}}
-      case _ =>
-    }
-    set ++ ret
-  }
   // HACK alert [TODO Raghu] : This code is duplicated in MaxJManagerGen so that argin and argout
   // have a consistent name. Code is duplicated because MaxJManagerGen is currently
   // a standalone thing that does not have a means to share things.
   // The correct fix is to put common things in a trait that is mixed into both
   // code generators
 	var quoteSuffix = HashMap[Sym[Any],HashMap[Sym[Any], String]]()
-  override def quote(x: Exp[Any]) = x match {
-		case ss@Sym(nn) => {
-      val s = if (rwPortAlias.contains(ss)) rwPortAlias(ss) else ss
-      val Sym(n) = s
-      s match {
-        case Def(ConstBit(v)) => // Constant bool optimization
-          if (v == true) "true.B" else "false.B"
-        case Def(Argin_new(init)) =>
-          s"argin_" + s.tp.erasure.getSimpleName() + n
-        case Def(ConstFix(value)) =>
-          s"const${value}_" + s.tp.erasure.getSimpleName() + n
-        case Def(ConstFlt(value)) =>
-          val str = s"$value"
-          s"const${str.replace('.', 'p').replace('-', 'n')}_" + s.tp.erasure.getSimpleName() + n
-        // case Def(ConstBool(value)) =>
-        //   s"${value}.B"
-        case _ =>
-    			val tstr = s.tp.erasure.getSimpleName().replace("Spatial","")
-          val customStr = tstr match {
-            case "Pipeline" => styleOf(s) match {
-              case CoarsePipe => "metapipe"
-              case InnerPipe => "pipe"
-              case SequentialPipe => "seq"
-              case StreamPipe => "strm"
-              case ForkJoin => "parallel"
-            }
-            case "Register" => regType(s) match {
-              case Regular => "reg"
-              case ArgumentIn => "argin"
-              case ArgumentOut => "argout"
-            }
+  override def quote(x: Exp[Any]) = {
+    // val submodule = if (insideBlock & !defList.contains(x)) "t." else ""
+    x match {
+  		case ss@Sym(nn) => {
+        val isBound = ss match {
+          case Deff(_) => false
+          case _ => true
+        }
+        val submodule = if (!exemptSet.contains(nn) & insideBlock) "t." else ""
+        // Console.println(s" for $x, look in ${exemptSet} => ${!exemptSet.contains(nn) & insideBlock} from ${!exemptSet.contains(nn)} & ${insideBlock}")
+        val s = if (rwPortAlias.contains(ss)) rwPortAlias(ss) else ss
+        val Sym(n) = s
+        s match {
+          case Def(ConstBit(v)) => // Constant bool optimization
+            if (v == true) "true.B" else "false.B"
+          case Def(Argin_new(init)) =>
+            s"${submodule}argin_" + s.tp.erasure.getSimpleName() + n
+          case Def(ConstFix(value)) =>
+            s"${submodule}const${value}_" + s.tp.erasure.getSimpleName() + n
+          case Def(ConstFlt(value)) =>
+            val str = s"$value"
+            s"${submodule}const${str.replace('.', 'p').replace('-', 'n')}_" + s.tp.erasure.getSimpleName() + n
+          // case Def(ConstBool(value)) =>
+          //   s"${value}.B"
+          case _ =>
+      			val tstr = s.tp.erasure.getSimpleName().replace("Spatial","")
+            val customStr = tstr match {
+              case "Pipeline" => styleOf(s) match {
+                case CoarsePipe => s"metapipe"
+                case InnerPipe => s"pipe"
+                case SequentialPipe => s"seq"
+                case StreamPipe => s"strm"
+                case ForkJoin => s"parallel"
+              }
+              case "Register" => regType(s) match {
+                case Regular => s"reg"
+                case ArgumentIn => s"argin"
+                case ArgumentOut => s"argout"
+              }
 
-            case _ => tstr
-          }
-          val suffix = if (controlNodeStack.isEmpty) "" else controlNodeStack.map { c =>
-            if (quoteSuffix.contains(c)) {
-              val suffixMap = quoteSuffix(c)
-              if (suffixMap.contains(x.asInstanceOf[Sym[Any]])) {
-                suffixMap(x.asInstanceOf[Sym[Any]])
+              case _ => tstr
+            }
+            val suffix = if (controlNodeStack.isEmpty) "" else controlNodeStack.map { c =>
+              if (quoteSuffix.contains(c)) {
+                val suffixMap = quoteSuffix(c)
+                if (suffixMap.contains(x.asInstanceOf[Sym[Any]])) {
+                  suffixMap(x.asInstanceOf[Sym[Any]])
+                } else {
+                  ""
+                }
               } else {
                 ""
               }
-            } else {
-              ""
-            }
-          }.reduce{_+_}
-          val rw_suffix = if (rwPortAlias.contains(ss)) "_rwport" else ""
-			    customStr + n + suffix + rw_suffix
-        }
-		  }
-    case _ => super.quote(x)
+            }.reduce{_+_}
+            val rw_suffix = if (rwPortAlias.contains(ss)) "_rwport" else ""
+  			    submodule + customStr + n + suffix + rw_suffix
+          }
+  		  }
+      case _ => super.quote(x)
+    }
   }
 
   /* Set of control nodes which already have their enable signal emitted */
@@ -153,11 +117,19 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
   /* Set of control nodes which already have their done signal emitted */
   val doneDeclaredSet = Set.empty[Exp[Any]]
 
+  var myBuildDir = ""
   override def initializeGenerator(buildDir:String): Unit = {
 		enDeclaredSet.clear
 		doneDeclaredSet.clear
+    myBuildDir = buildDir
 		super.initializeGenerator(buildDir)
 	}
+
+  def newStream(fileName:String):PrintWriter = {
+    val path = myBuildDir + java.io.File.separator + fileName + ".scala"
+    val pw = new PrintWriter(path)
+    pw
+  }
 
   override def emitValDef(sym: Sym[Any], rhs: String): Unit = {
     emit(s"""${maxJPre(sym)} ${quote(sym)} = ${quote(rhs)};""")
@@ -167,11 +139,48 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     emitValDef(sym, quote(exp))
   }
 
-  def emitBlock(y: Block[Any], blockName:String, doNotClose:Boolean = false): Unit = {
-    // emit("\n//  ---- Emitting COMPUTATION BLOCK ----\n")
-    emit(s"//     ---- Block ${blockName} ----")
-    //emit("{")
-    emitBlock(y)
+  def emitBlock(y: Block[Any], blockName:String, inner:Boolean = false): Unit = {
+    emit(s"//     ---- Block ${blockName} (inner=$inner) ----")
+
+    if (inner) {
+      insideBlock = true
+      exemptSet.clear
+      val stms = getStmsInBlock(y)
+      stms.foreach { case TP(s,d) =>
+        val Sym(nn) = s
+        s match {
+          case Deff(dd) =>
+            dd match {
+              case e@Reg_read(EatAlias(reg)) =>
+                regType(reg) match {
+                  case ArgumentIn => 
+                  case _ => exemptSet += nn
+                }
+              case e@ConstFixPt(_,_,_,_) => 
+              case _ => exemptSet += nn
+            }
+          case _ => 
+        }
+        val Def(dd) = s
+        Console.println(s"in the block, we have $s def $dd")
+      }
+      val title = blockName.replace(" ","").replace("t.","") + "Kernel"
+      Console.println(s"here is the list ${exemptSet}")
+      withStream(newStream(title)) {
+        emit(s"""package app
+  import templates._
+  import chisel3._
+  class ${title}(t: TopModule) {""")
+        emitBlock(y)  
+        emit("}")
+      }
+      exemptSet.clear
+      insideBlock = false
+
+      emit(s"""new ${title}(this)""")
+    } else {
+      emitBlock(y)
+    }
     //emit(s"""${if (doNotClose) "" else "}"}""")
     // emitComment(s"} Block ${blockName}")
   }
@@ -273,7 +282,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       // emitComment("\n//Setup Top Level IO")
       // emitComment(s"quoteSuffix = $quoteSuffix")
       emit(s"""val ${quote(sym)}_en = io.top_en & !io.top_done;""")
-      emitGlobalWire(s"""${quote(sym)}_done""")
+      emitGlobalWire(s"""${quote(sym).replace("t.","")}_done""")
       // emit(s"""io.top_done := ${quote(sym)}_done;""")
       // emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")
       emitController(sym, None)
@@ -299,10 +308,14 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     case e@OpForeach(cchain, func, inds) =>
       controlNodeStack.push(sym)
       print_stage_prefix(s"OpForeach",s"",s"${quote(sym)}")
+      val inner = styleOf(sym) match {
+      case InnerPipe => true
+      case _ => false
+    }
       emitController(sym, Some(cchain))
       emitNestedIdx(cchain, inds)
       emitRegChains(sym, inds)
-      emitBlock(func, s"${quote(sym)} Foreach")             // Map function
+      emitBlock(func, s"${quote(sym)} Foreach", inner)             // Map function
       print_stage_suffix(quote(sym))
       controlNodeStack.pop
 
@@ -312,6 +325,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       emitController(sym, Some(cchain))
       emitNestedIdx(cchain, inds)
       emitRegChains(sym, inds)
+      // TODO: Separating this into submodules?
       emitBlock(func, s"${quote(sym)} Foreach")
       emitBlock(ldFunc, s"${quote(sym)} Load")
       emitValDef(rV._1, quote(getBlockResult(ldFunc)))
@@ -332,7 +346,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
       controlNodeStack.pop
 
 		case e@UnitPipe(func: Block[Unit]) =>
-      var inner = if (isInnerPipe(sym)) {false} else {true}
+      var inner = if (isInnerPipe(sym)) {true} else {false}
       controlNodeStack.push(sym)
       val smStr = styleOf(sym) match {
         case CoarsePipe => s"Metapipe"
@@ -375,7 +389,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 // ${quote(sym)}_redLoopCtr.io.input.reset := ${quote(sym)}_done
 // val ${quote(sym)}_redLoop_done = ${quote(sym)}_redLoopCtr.io.output.done""")
 
-      emitBlock(func, s"${quote(sym)} Unitpipe")
+      emitBlock(func, s"${quote(sym)} Unitpipe", inner)
       // parentOf(sym).get match {
       //   case e@Deff(UnrolledReduce(_,accum,_,_,_,_,_,_)) => // If part of reduce, emit custom red kernel
       //     emitBlock(func, s"${quote(sym)} Unitpipe")
@@ -445,8 +459,8 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     if (!isInnerPipe(sym)) {
       emit(s"""//      ---- Begin $smStr ${quote(sym)} Children Signals ----""")
 		  childrenOf(sym).zipWithIndex.foreach { case (c, idx) =>
-        emitGlobalWire(s"""${quote(c)}_done""")
-        emitGlobalWire(s"""${quote(c)}_en""")
+        emitGlobalWire(s"""${quote(c).replace("t.","")}_done""")
+        emitGlobalWire(s"""${quote(c).replace("t.","")}_en""")
 		  	emit(s"""    ${quote(sym)}_sm.io.input.stageDone(${idx}) := ${quote(c)}_done;""")
         emit(s"""    ${quote(c)}_en := ${quote(sym)}_sm.io.output.stageEnable(${quote(idx)})""")
         // childrenSet += (s"${quote(c)}_en, ${quote(c)}_done")
@@ -486,7 +500,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
     styleOf(sym) match {
       case InnerPipe =>
-        emitGlobalWire(s"""${quote(cchain)}_done""")
+        emitGlobalWire(s"""${quote(cchain).replace("t.","")}_done""")
         doneDeclaredSet += cchain
         emit(s"""${quote(sym)}_sm.io.input.ctr_done := ${quote(cchain)}_done;""")
         emit(s"""val ${quote(sym)}_datapath_en = ${quote(sym)}_sm.io.output.ctr_en;""")

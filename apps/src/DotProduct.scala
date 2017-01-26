@@ -33,8 +33,8 @@ trait DotProductApp extends SpatialApp {
     Accel {
       val reg = Reg[T]
       Fold(N by B par P1)(reg, 0.as[T]){ i =>
-        val b1 = FIFO[T](B)
-        val b2 = FIFO[T](B)
+        val b1 = FIFO[T](B*2)
+        val b2 = FIFO[T](B*2)
         val bn = Reg[SInt](999)
         Parallel { // ISSUE #2
           b1 := v1(i::i+B par P3)
