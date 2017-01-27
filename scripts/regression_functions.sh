@@ -578,7 +578,7 @@ launch_tests() {
 
   # Assemble regression types
   for t in ${test_list[@]}; do
-    logger "Processing app: $t"
+    # logger "Processing app: $t"
     tp=(`echo $t | awk -F'|' '{print $2}'`)
     if [[ ! ${types_list[*]} =~ "$tp" ]]; then
       types_list=("${types_list[@]}" $tp)
@@ -610,6 +610,7 @@ launch_tests() {
         cmd_file="${vulture_dir}/cmd"
 
         # Create script
+        logger "Writing script for ${i}_${appname}"
         create_script $cmd_file ${ac} $i ${appname} ${vulture_dir} "$appargs"
 
         ((i++))
@@ -617,7 +618,7 @@ launch_tests() {
     done
     # Run vulture
     cd ${SPATIAL_HOME}/regression_tests/${ac}/
-    logger "Executing vulture script..."
+    logger "Executing vulture script in ${ac} directory..."
     bash ${SPATIAL_HOME}/static/vulture.sh ${ac}_${branch}_${type_todo}
     logger "Script executed!"
 

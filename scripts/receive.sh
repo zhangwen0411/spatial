@@ -90,7 +90,7 @@ fi
 tests_todo=`sed -n '5p' $packet`
 tim=`sed -n '2p' $packet`
 branch=`sed -n '12p' $packet`
-dirname="${REGRESSION_HOME}/testdir-${branch}.${type_todo}.${tests_todo}.${tim}"
+dirname="${REGRESSION_HOME}/testdir-${branch}.${tim}.${type_todo}.${tests_todo}"
 HYPER_HOME="$dirname/hyperdsl"
 DELITE_HOME="$HYPER_HOME/delite"
 FORGE_HOME="$HYPER_HOME/forge"
@@ -106,7 +106,7 @@ forge_hash=`sed -n '11p' $packet`
 PIR_HOME=$SPATIAL_HOME
 pretty_name=${branch}Branch_${type_todo}Test_Pretty_Regression_Test_History.csv
 pretty_file=${SPATIAL_HOME}/spatial.wiki/${pretty_name}
-log="${REGRESSION_HOME}/${tim}.${branch}.${type_todo}.log"
+log="${REGRESSION_HOME}/log-${tim}.${branch}.${type_todo}"
 
 logger "Got packet.  `sed -n '1p' $packet`"
 if [ $multiple_new = "true" ]; then

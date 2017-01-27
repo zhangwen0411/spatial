@@ -24,5 +24,11 @@ for f in $PWD/*; do
     
     # Launch $CMD in newly created screen window
     screen -S $SESSION_NAME -p $f -X stuff "$CMD$(printf \\r)"
+
+    # Acknowledge the screen exists and log if it doesn't
+    # logger "something"
+    
+    # Sleep because this may fix clobbering bug
+    sleep 0.2
   fi
 done
