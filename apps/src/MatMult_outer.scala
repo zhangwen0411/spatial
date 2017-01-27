@@ -79,8 +79,8 @@ trait MatMult_outerApp extends SpatialApp {
     val N = args(1).to[SInt]
     val P = args(2).to[SInt]
 
-    val a = Array.tabulate(M){ j => Array.tabulate(P){ i => i + j * P} }
-    val b = Array.tabulate(P){ j => Array.tabulate(N){ i => i + j * N} }
+    val a = Array.tabulate(M){ j => Array.tabulate(P){ i => (i + j * P) % 256 } } // Standard array
+    val b = Array.tabulate(P){ j => Array.tabulate(N){ i => (i + j * N) % 256 } } // Standard array
     val c_init = Array.fill(M){ Array.fill(N){0} }
     // val a = Array.fill(M){ Array.fill(P){random[T](100)} }
     // val b = Array.fill(P){ Array.fill(N){random[T](100)} }

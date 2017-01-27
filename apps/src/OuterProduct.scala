@@ -59,8 +59,8 @@ trait OuterProductApp extends SpatialApp {
     val N = args(1).to[SInt]
     // val a = Array.fill(M)(random[T](100))
     // val b = Array.fill(N)(random[T](100))
-    val a = Array.tabulate[SInt](M) { i => i }
-    val b = Array.tabulate[SInt](N) { i => i }
+    val a = Array.tabulate[SInt](M) { i => i % 256 } // Standard array
+    val b = Array.tabulate[SInt](N) { i => i % 256 } // Standard array
 
     val result = outerproduct(a, b)
 

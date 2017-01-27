@@ -41,8 +41,6 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     }
   }
 
-  val exemptSet = Set.empty[Int]
-
   // HACK alert [TODO Raghu] : This code is duplicated in MaxJManagerGen so that argin and argout
   // have a consistent name. Code is duplicated because MaxJManagerGen is currently
   // a standalone thing that does not have a means to share things.
@@ -50,27 +48,24 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
   // code generators
 	var quoteSuffix = HashMap[Sym[Any],HashMap[Sym[Any], String]]()
   override def quote(x: Exp[Any]) = {
-    // val submodule = if (insideBlock & !defList.contains(x)) "t." else ""
     x match {
   		case ss@Sym(nn) => {
         val isBound = ss match {
           case Deff(_) => false
           case _ => true
         }
-        val submodule = if (!exemptSet.contains(nn) & insideBlock) "t." else ""
-        // Console.println(s" for $x, look in ${exemptSet} => ${!exemptSet.contains(nn) & insideBlock} from ${!exemptSet.contains(nn)} & ${insideBlock}")
         val s = if (rwPortAlias.contains(ss)) rwPortAlias(ss) else ss
         val Sym(n) = s
         s match {
           case Def(ConstBit(v)) => // Constant bool optimization
             if (v == true) "true.B" else "false.B"
           case Def(Argin_new(init)) =>
-            s"${submodule}argin_" + s.tp.erasure.getSimpleName() + n
+            s"argin_" + s.tp.erasure.getSimpleName() + n
           case Def(ConstFix(value)) =>
-            s"${submodule}const${value}_" + s.tp.erasure.getSimpleName() + n
+            s"const${value}_" + s.tp.erasure.getSimpleName() + n
           case Def(ConstFlt(value)) =>
             val str = s"$value"
-            s"${submodule}const${str.replace('.', 'p').replace('-', 'n')}_" + s.tp.erasure.getSimpleName() + n
+            s"const${str.replace('.', 'p').replace('-', 'n')}_" + s.tp.erasure.getSimpleName() + n
           // case Def(ConstBool(value)) =>
           //   s"${value}.B"
           case _ =>
@@ -104,7 +99,7 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
               }
             }.reduce{_+_}
             val rw_suffix = if (rwPortAlias.contains(ss)) "_rwport" else ""
-  			    submodule + customStr + n + suffix + rw_suffix
+            customStr + n + suffix + rw_suffix
           }
   		  }
       case _ => super.quote(x)
@@ -126,6 +121,8 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 	}
 
   def newStream(fileName:String):PrintWriter = {
+    emit(s"// CREATED NEW KERNEL: $fileName")
+    if (fileName != "TopModule") subTraits = subTraits :+ fileName
     val path = myBuildDir + java.io.File.separator + fileName + ".scala"
     val pw = new PrintWriter(path)
     pw
@@ -143,46 +140,20 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     emit(s"//     ---- Block ${blockName} (inner=$inner) ----")
 
     if (inner) {
-      insideBlock = true
-      exemptSet.clear
-      val stms = getStmsInBlock(y)
-      stms.foreach { case TP(s,d) =>
-        val Sym(nn) = s
-        s match {
-          case Deff(dd) =>
-            dd match {
-              case e@Reg_read(EatAlias(reg)) =>
-                regType(reg) match {
-                  case ArgumentIn => 
-                  case _ => exemptSet += nn
-                }
-              case e@ConstFixPt(_,_,_,_) => 
-              case _ => exemptSet += nn
-            }
-          case _ => 
-        }
-        val Def(dd) = s
-        Console.println(s"in the block, we have $s def $dd")
-      }
-      val title = blockName.replace(" ","").replace("t.","") + "Kernel"
-      Console.println(s"here is the list ${exemptSet}")
+      val title = blockName.replace(" ","") + "Kernel"
       withStream(newStream(title)) {
         emit(s"""package app
-  import templates._
-  import chisel3._
-  class ${title}(t: TopModule) {""")
+import templates._
+import chisel3._
+trait ${title} extends BaseModule with TopModuleTrait /*and possibly other subkernels up to this point*/ {""")
         emitBlock(y)  
         emit("}")
       }
-      exemptSet.clear
-      insideBlock = false
 
-      emit(s"""new ${title}(this)""")
+      emit(s"""// Created ${title}""")
     } else {
       emitBlock(y)
     }
-    //emit(s"""${if (doNotClose) "" else "}"}""")
-    // emitComment(s"} Block ${blockName}")
   }
 
 	def emitNestedIdx(cchain:Exp[CounterChain], inds:List[Sym[FixPt[Signed,B32,B0]]]) = {

@@ -58,8 +58,8 @@ trait DotProductApp extends SpatialApp {
 
   def main() {
     val N = args(0).to[SInt]
-    val a = Array.tabulate[T](N){/*random[T](10)*/ i => i}
-    val b = Array.tabulate[T](N){/*random[T](10)*/ i => i}
+    val a = Array.tabulate[T](N){/*random[T](10)*/ i => i % 256 } // Standard array
+    val b = Array.tabulate[T](N){/*random[T](10)*/ i => i % 256 } // Standard array
 
     // printArr(a, "a")
     // printArr(b, "b")

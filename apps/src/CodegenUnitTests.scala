@@ -48,7 +48,7 @@ trait SimpleSequentialApp extends SpatialApp {
     println("expected: " + gold)
     println("result:   " + result)
     val cksum = result == gold
-    println("PASS: " + cksum + " (SimpleSequential) *Here is an example for how to leave regression comments")
+    println("PASS: " + cksum + " (SimpleSequential) * Here is an example for how to leave regression comments")
 
   }
 }
@@ -135,7 +135,7 @@ trait SimpleTileLoadStoreApp extends SpatialApp {
     val arraySize = N
     val value = args(unit(0)).to[SInt]
 
-    val src = Array.tabulate[SInt](arraySize) { i => i }
+    val src = Array.tabulate[SInt](arraySize) { i => i % 256 } // Standard array
     val dst = simpleLoadStore(src, value)
 
     val gold = src.map { _ * value }
@@ -191,7 +191,7 @@ trait FifoLoadApp extends SpatialApp {
   def main() {
     val arraySize = args(unit(0)).to[SInt]
 
-    val src = Array.tabulate[SInt](arraySize) { i => i }
+    val src = Array.tabulate[SInt](arraySize) { i => i % 256 } // Standard array
     val dst = fifoLoad(src, arraySize)
 
     val gold = src.map { i => i }
@@ -246,12 +246,12 @@ trait ParFifoLoadApp extends SpatialApp {
   def main() {
     val arraySize = args(unit(0)).to[SInt]
 
-    val src1 = Array.tabulate[SInt](arraySize) { i => i }
-    val src2 = Array.tabulate[SInt](arraySize) { i => i }
+    val src1 = Array.tabulate[SInt](arraySize) { i => i % 256 } // Standard array
+    val src2 = Array.tabulate[SInt](arraySize) { i => i % 256 } // Standard array
     val out = parFifoLoad(src1, src2, arraySize)
 
-    val sub1_for_check = Array.tabulate[SInt](arraySize-96) {i => i}
-    val sub2_for_check = Array.tabulate[SInt](arraySize-96) {i => i}
+    val sub1_for_check = Array.tabulate[SInt](arraySize-96) {i => i % 256 } // Standard array
+    val sub2_for_check = Array.tabulate[SInt](arraySize-96) {i => i % 256 } // Standard array
 
     // val gold = src1.zip(src2){_*_}.zipWithIndex.filter( (a:Int, i:Int) => i > arraySize-96).reduce{_+_}
     val gold = src1.zip(src2){_*_}.reduce{_+_} - sub1_for_check.zip(sub2_for_check){_*_}.reduce(_+_)
@@ -303,7 +303,7 @@ trait FifoLoadStoreApp extends SpatialApp {
   def main() {
     val arraySize = N
 
-    val src = Array.tabulate[SInt](arraySize) { i => i }
+    val src = Array.tabulate[SInt](arraySize) { i => i % 256 } // Standard array
     val dst = fifoLoadStore(src)
 
     val gold = src.map { i => i }
@@ -343,7 +343,7 @@ trait TileLoadApp extends SpatialApp {
 
   def main() {
 
-    val data = Array.tabulate[SInt](N) { i => i } //TestUtils.standard_array(N)
+    val data = Array.tabulate[SInt](N) { i => i % 256} // Standard array
     val result = tileload(data)
     val gold = data.reduce{_+_}
     println("expected: " + gold)
@@ -385,10 +385,10 @@ trait TileStoreApp extends SpatialApp {
   }
 
   def main() {
-    val src = Array.tabulate[SInt](N) { i => i }
+    val src = Array.tabulate[SInt](N) { i => i  % 256 } // Standard array
     val x = args(0).to[T]
 
-    val gold = src.map { i => i + x }
+    val gold = src.map { i => i % 256 + x }
 
     val result = TileStore(x)
     printArr(gold, "expected: ")
@@ -541,7 +541,7 @@ trait SimpleFoldApp extends SpatialApp {
   def main() {
     val len = args(unit(0)).to[SInt]
 
-    val src = Array.tabulate[T](len) { i => i }
+    val src = Array.tabulate[T](len) { i => i % 256 } // Standard array
     val result = simple_fold(src)
 
     val gold = src.reduce {_+_}
@@ -592,7 +592,7 @@ trait Memcpy2DApp extends SpatialApp {
   def main() = {
     val rows = R
     val cols = C
-    val src = Array.tabulate(rows*cols) { i => i }
+    val src = Array.tabulate(rows*cols) { i => i % 256 } // Standard array
 
     val dst = memcpy_2d(src, rows, cols)
 
@@ -642,15 +642,18 @@ trait BlockReduce1DApp extends SpatialApp {
 
   def main() = {
     val size = args(0).to[SInt]
-    val src = Array.tabulate(size) { i => i }
+    val src = Array.tabulate(size) { i => i % 256 } // Standard array
 
     val dst = blockreduce_1d(src, size)
 
-    val iters = size/tileSize
-    val first = ((iters*(iters-1))/2)*tileSize
+    // val iters = size/tileSize
+    // val first = ((iters*(iters-1))/2)*tileSize
 
-    val gold = Array.tabulate(tileSize) { i => first + i*iters }
+    // val gold = Array.tabulate(tileSize) { i => first + i*iters }
 
+    val tsArr = Array.tabulate(tileSize){i => i}
+    val perArr = Array.tabulate(size/tileSize){i => i}
+    val gold = tsArr.map{ i => perArr.map{j => src(i+j*tileSize)}.reduce{_+_}}
     printArr(gold, "src:")
     printArr(dst, "dst:")
     val cksum = dst.zip(gold){_ == _}.reduce{_&&_}
@@ -699,11 +702,11 @@ trait UnalignedLdApp extends SpatialApp {
     // val size = args(unit(0)).to[SInt]
     val ii = args(0).to[T]
     val size = paddedCols
-    val src = Array.tabulate(size) { i => i }
+    val src = Array.tabulate(size) { i => i % 256 } // Standard array
 
     val dst = unaligned_1d(src, ii)
 
-    val gold = Array.tabulate(ii*numCols) { i => i }.reduce{_+_}
+    val gold = Array.tabulate(ii*numCols) { i => i % 256 }.reduce{_+_}
 
     println("src:" + gold)
     println("dst:" + dst)
@@ -753,7 +756,7 @@ trait BlockReduce2DApp extends SpatialApp {
   def main() = {
     val numRows = args(0).to[SInt]
     val numCols = args(1).to[SInt]
-    val src = Array.tabulate(numRows) { i => Array.tabulate(numCols) { j => i*numCols + j} }
+    val src = Array.tabulate(numRows) { i => Array.tabulate(numCols) { j => (i*numCols + j)%256 } } // Standard array
     val flatsrc = src.flatten
 
     val dst = blockreduce_2d(src.flatten, numRows, numCols)
@@ -771,17 +774,17 @@ trait BlockReduce2DApp extends SpatialApp {
     val a2 = Array.tabulate(tileSize) { i => i }
     val a3 = Array.tabulate(numHorizontal) { i => i }
     val a4 = Array.tabulate(numVertical) { i => i }
-    val gold = Array.tabulate(tileSize) { i => Array.tabulate(tileSize) {j =>
-      Array.tabulate(numHorizontal) { case ii => Array.tabulate(numVertical) {case jj =>
-          i*tileSize*numVertical + j + ii*tileSize*numVertical*tileSize + jj*tileSize
-        }}.flatten.reduce{_+_}
-      }}.flatten
-    // val first_el = (0 until numVertical).map{ case j => (0 until numHorizontal).map {case i => src.flatten(tileSize*j + tileSize*tileSize*i)}}.flatten.reduce{_+_}
-    // val first_collapse_cols = ((numVertical*tileSize)/2)*(numVertical-1)
-    // val last_collapse_cols = (( numVertical*tileSize*tileSize*(numHorizontal-1) + (first_collapse_cols + numVertical*tileSize*tileSize*(numHorizontal-1)) ) / 2)*(numVertical-1)
-    // val first_collapse_rows = if (numHorizontal == 1) {first_collapse_cols} else { ((first_collapse_cols + last_collapse_cols) / 2) * (numHorizontal-1) }
+    val gold = a1.map{i=> a2.map{j => a3.map{ k=> a4.map {l=> 
+      flatsrc(i*numCols + j + k*tileSize*tileSize + l*tileSize) }}.flatten.reduce{_+_}
+    }}.flatten
+    // val gold = Array.tabulate(tileSize) { i => Array.tabulate(tileSize) {j =>
+    //   Array.tabulate(numHorizontal) { case ii => Array.tabulate(numVertical) {case jj =>
+    //       i*tileSize*numVertical + j + ii*tileSize*numVertical*tileSize + jj*tileSize
+    //     }}.flatten.reduce{_+_}
+    //   }}.flatten
+
     // // TODO: Why does DEG crash if I add first_collapse_rows rather???
-    // val gold = Array.tabulate(tileSize*tileSize) { i => first_collapse_cols + i*numBlocks }
+    // // val gold = Array.tabulate(tileSize*tileSize) { i => first_collapse_cols + i*numBlocks }
 
     printArr(gold, "src:")
     printArr(dst, "dst:")
@@ -1047,8 +1050,8 @@ trait MultiplexedWriteTestApp extends SpatialApp {
   }
 
   def main() = {
-    val w = Array.tabulate[SInt](N){ i => i }
-    val i = Array.tabulate[SInt](N){ i => i }
+    val w = Array.tabulate[SInt](N){ i => i % 256 } // Standard array
+    val i = Array.tabulate[SInt](N){ i => i % 256 } // Standard array
 
     val result = multiplexedwrtest(w, i)
 
@@ -1066,7 +1069,7 @@ trait MultiplexedWriteTestApp extends SpatialApp {
     printArr(result, "result: ");
 
     val cksum = gold.zip(result){_==_}.reduce{_&&_}
-    println("PASS: " + cksum  + " (MultiplexedWriteTest)")
+    println("PASS: " + cksum  + " (MultiplexedWriteTest) *Will break if N>256")
 
 
   }
@@ -1125,8 +1128,8 @@ trait BubbledWriteTestApp extends SpatialApp {
   }
 
   def main() = {
-    val w = Array.tabulate[SInt](N){ i => i }
-    val i = Array.tabulate[SInt](N){ i => i }
+    val w = Array.tabulate[SInt](N){ i => i % 256 } // Standard array
+    val i = Array.tabulate[SInt](N){ i => i % 256 } // Standard array
 
     val result = bubbledwrtest(w, i)
 
@@ -1145,7 +1148,7 @@ trait BubbledWriteTestApp extends SpatialApp {
     printArr(result, "result: ");
 
     val cksum = gold.zip(result){_==_}.reduce{_&&_}
-    println("PASS: " + cksum  + " (MultiplexedWriteTest)")
+    println("PASS: " + cksum  + " (BubbledWriteTest) *Will break if N>256")
 
 
   }
@@ -1191,7 +1194,7 @@ trait SequentialWritesApp extends SpatialApp {
 
   def main() = {
     val x = args(0).to[SInt]
-    val srcData = Array.tabulate(tileSize) { i => i }
+    val srcData = Array.tabulate(tileSize) { i => i % 256 } // Standard array
 
     val result = sequentialwrites(srcData, x)
 
@@ -1202,7 +1205,7 @@ trait SequentialWritesApp extends SpatialApp {
     printArr(gold, "gold: ")
     printArr(result, "result: ")
     val cksum = result.zip(gold){_ == _}.reduce{_&&_}
-    println("PASS: " + cksum  + " (SequentialWrites)")
+    println("PASS: " + cksum  + " (SequentialWrites) *Will break if tileSize>256")
 
   }
 }

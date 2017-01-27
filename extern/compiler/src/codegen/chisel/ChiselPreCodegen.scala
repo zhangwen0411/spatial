@@ -981,7 +981,7 @@ class GeneratedPoker(c: TopModule) extends PeekPokeTester(c) {
           ("receiveBurst", s"${bound(p).get.toInt}", "BurstLoad",
            s"""for (j <- 0 until size${i}) {
         (0 until par${i}).foreach { k => 
-          val element = addr${i}-base${i}+j*par${i}+k // TODO: Should be loaded from CPU side
+          val element = (addr${i}-base${i}+j*par${i}+k) % 256 // TODO: Should be loaded from CPU side
           poke(c.io.MemStreams.inPorts${i}.data(k), element) 
         }  
         poke(c.io.MemStreams.inPorts${i}.valid, 1)

@@ -59,7 +59,7 @@ if [[ $wc -gt 1 ]]; then
   new_packets=()
   for f in ${files[@]}; do if [[ $f = *".new"* ]]; then new_packets+=($f); fi; done
   sorted_packets=( $(for arr in "${new_packets[@]}"; do echo $arr; done | sort) )
-  packet=${sorted_packets[-1]}
+  packet=${sorted_packets[${#sorted_packets[@]}-1]}
   multiple_new=true
   cd -
 elif [[ $wc = 0 ]]; then
@@ -83,10 +83,6 @@ sleep 2 # Because wft
 
 # Set vars based on this packet
 type_todo=`sed -n '4p' $packet`
-if [[ ! "${type_todo}" = "${test_to_run}" ]]; then
-  echo "Error: packet mislabeled.  Cannot run ${test_to_run} test on ${type_todo} packet!" > ${REGRESSION_HOME}/log
-  clean_exit 6
-fi
 tests_todo=`sed -n '5p' $packet`
 tim=`sed -n '2p' $packet`
 branch=`sed -n '12p' $packet`
@@ -257,6 +253,10 @@ source ${SPATIAL_HOME}/scripts/regression_functions.sh
 if [[ $? -ne 0 ]]; then
   logger "${SPATIAL_HOME}/scripts/regression_functions.sh is nonexistent or has error!"
   clean_exit 7 "${SPATIAL_HOME}/scripts/regression_functions.sh is nonexistent or has error!"
+fi
+if [[ ! "${type_todo}" = "${test_to_run}" ]]; then
+  echo "Error: packet mislabeled.  Cannot run ${test_to_run} test on ${type_todo} packet!" > $log
+  clean_exit 6
 fi
 logger "Sourcing successful!"
 

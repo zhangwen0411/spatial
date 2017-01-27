@@ -93,8 +93,10 @@ def main():
   if opts.dot == True:
     java_opts = java_opts + " -Ddelite.generate.dot"
   if opts.maxj == True:
+    opts.chisel = False
     java_opts = java_opts + " -Ddelite.generate.maxj"
   if opts.chisel == True:
+    opts.maxj = False
     java_opts = java_opts + " -Ddelite.generate.chisel"
   if opts.cpp == True:
     java_opts = java_opts + " -Ddelite.generate.cpp"

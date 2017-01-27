@@ -81,27 +81,21 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
   val srams = Set[Exp[SRAM[Any]]]()
   val regs = Set[Exp[Reg[Any]]]()
 
-  // override def newStream(fileName:String):PrintWriter = {
-  //   val path = myBuildDir + java.io.File.separator + fileName + ".scala"
-  //   val pw = new PrintWriter(path)
-  //   pw
-  // }
-
   // Quote-Exempt method for quoting syms which should
   //    be exempt from kernel-quoting rules.  Used 
   //    in places where codegen secretly creates syms
   //    that are not in the IR and therefore are assumed
   //    to be bound
-  def quoteEx(x: Exp[Any]) = {
-    quote(x).replace("t.","")
-  }
+  // def quote(x: Exp[Any]) = {
+  //   quote(x)
+  // }
 
   def emitBufferControlSignals() {
     withStream(newStream("BufferControlSignals")) {
       emit(s"""package app
 import templates._
 import chisel3._
-class BufferControlSignals(t: TopModule) {
+trait BufferControlSignals extends BaseModule with TopModuleTrait {
 // rdone signals for N-Buffers go here""")
 
       // Quote duplicate
@@ -145,7 +139,7 @@ class BufferControlSignals(t: TopModule) {
               throw UndefinedSwapControllerException(mem, i, accesses, ports.head)
             else if (isBuffered) {
               val portlist = ports.mkString{","} // TODO: Can probably use ports.head here
-              emit(s"""t.${quoteDuplicate(mem, i)}.${connect}(t.${quote(controllers.head.node)}_done, t.${quote(controllers.head.node)}_en, List($portlist)); /*$comment*/""")
+              emit(s"""${quoteDuplicate(mem, i)}.${connect}(${quote(controllers.head.node)}_done, ${quote(controllers.head.node)}_en, List($portlist)); /*$comment*/""")
             }
           }
 
@@ -168,7 +162,7 @@ class BufferControlSignals(t: TopModule) {
             val rd = if (readPortsNumbers.toList.contains(ctrlId)) {"read"} else ""
             val wr = if (writePortsNumbers.toList.contains(ctrlId)) {"write"} else ""
             val empty = if (rd == "" & wr == "") "empty" else ""
-            emit(s"""t.${quoteDuplicate(mem,i)}.connectStageCtrl(t.${quote(node)}_done, t.${quote(node)}_en, List(${port})) /*$rd $wr $empty*/""")
+            emit(s"""${quoteDuplicate(mem,i)}.connectStageCtrl(${quote(node)}_done, ${quote(node)}_en, List(${port})) /*$rd $wr $empty*/""")
           }
 
           // (0 until numDupDups).foreach { ii =>
@@ -183,8 +177,18 @@ class BufferControlSignals(t: TopModule) {
       }
       emit("}")
     }
-    emit("""new BufferControlSignals(this)""")
+    emit("""// created BufferControlSignals""")
 
+  }
+
+  override def emitFileHeader() = {
+    emit(s"""package app
+import templates._
+import interfaces._
+import chisel3._
+trait TopModuleTrait extends BaseModule /*and possibly subkernels*/ {
+""")
+    super.emitFileHeader()
   }
 
   override def emitFileFooter() = {
@@ -200,6 +204,15 @@ class BufferControlSignals(t: TopModule) {
         case (sym, regStr) =>
           emit(s"""val ${quote(sym)} = $regStr""")
       }
+    }
+
+    withStream(newStream("TopModule")) {
+      emit("package app")
+      emit("import templates._")
+      emit("import interfaces._")
+      emit("import chisel3._")
+      emit(s"""class TopModule() extends BaseModule with TopModuleTrait with ${subTraits.mkString(" with ")} {}
+        // TopModule class mixes in all the other traits and is instantiated by tester""")
     }
     super.emitFileFooter()
   }
@@ -429,15 +442,12 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
       print_stage_suffix(quote(sym),false)
 
     case BurstLoad(mem, fifo, ofs, len, par) =>
-      val wasInside = insideBlock
-      insideBlock = false
       print_stage_prefix(s"Offchip Load",s"",s"${quote(sym)}", true)
       val streamId = memStreamsByName.indexOf(quote(sym))
       withStream(baseStream) {
         emit(s"""val ${quote(sym)} = Module(new MemController(${quote(par)}))""")
         emit(s"""io.MemStreams.outPorts${streamId} := ${quote(sym)}.io.CtrlToDRAM""")
         emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts${streamId} """)
-        insideBlock = wasInside
       }
       emit(s"""// ---- Memory Controller (Load) ${quote(sym)} ----
 ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.cmdIssued
@@ -458,15 +468,12 @@ ${quote(fifo)}_wdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p
       print_stage_suffix(quote(sym), true)
 
     case BurstStore(mem, fifo, ofs, len, par) =>
-      val wasInside = insideBlock
-      insideBlock = false
       print_stage_prefix(s"Offchip Store",s"",s"${quote(sym)}", true)
       val streamId = memStreamsByName.indexOf(quote(sym))
       withStream(baseStream) {
         emit(s"""val ${quote(sym)} = Module(new MemController(${quote(par)}))""")
         emit(s"""io.MemStreams.outPorts${streamId} := ${quote(sym)}.io.CtrlToDRAM""")
         emit(s"""${quote(sym)}.io.DRAMToCtrl := io.MemStreams.inPorts${streamId} """)
-        insideBlock = wasInside
       }
       emit(s"""// ---- Memory Controller (Store) ${quote(sym)} ----
 ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.valid
@@ -573,9 +580,9 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
           // Do not emit reg read twice
           regType(reg) match {
             case ArgumentIn => // emit in baselib suffix
-              if (!emitted_argins.contains((sym, regStr.replace("t.","")))) {
-                emit(s"""// Placing regread ${quote(sym).replace("t.","")} in BaseModule""")
-                emitted_argins += ((sym,regStr.replace("t.","")))
+              if (!emitted_argins.contains((sym, regStr))) {
+                emit(s"""// Placing regread ${quote(sym)} in BaseModule""")
+                emitted_argins += ((sym,regStr))
               }
             case _ => // Otherwise emit here
               if (!emitted_reglibreads.contains((sym, regStr))) {
@@ -608,14 +615,9 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
         case ArgumentOut =>
           if (isAccum(reg)) throw new Exception(s"""ArgOut (${quote(reg)}) cannot be used as an accumulator!""")
           val controlStr = if (parentOf(reg).isEmpty) s"top_done" else quote(parentOf(reg).get) + "_done"
-          // emitGlobal(s"""var ${quote(reg)} =  $tsb OUTPUT $tse;""")
-          // val wasInside = insideBlock
-          // insideBlock = false
-          val specialPre = if (insideBlock) "t." else ""
-          emit(s"""val ${quote(reg).replace("t.","")} = Reg(init = 0.U) // Write to output register""")
-          emit(s"""${quote(reg).replace("t.","")} := Mux(${quote(writeCtrl)}_en, ${quote(value)}, ${quote(reg).replace("t.","")})""")
-          emit(s"""${specialPre}io.ArgOut.ports(${argOutsByName.indexOf(quote(reg).replace("t.",""))}) := ${quote(reg).replace("t.","")} // ${quote(reg)}""")
-          // insideBlock = wasInside
+          emit(s"""val ${quote(reg)} = Reg(init = 0.U) // Write to output register""")
+          emit(s"""${quote(reg)} := Mux(${quote(writeCtrl)}_en, ${quote(value)}, ${quote(reg)})""")
+          emit(s"""io.ArgOut.ports(${argOutsByName.indexOf(quote(reg))}) := ${quote(reg)} // ${quote(reg)}""")
         case _ =>
           if (isAccum(reg)) {
             // Not sure how to decide this now...
@@ -639,7 +641,7 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
                         emit(s"""${quote(reg)}_0_accum.io.next := ${quote(value)}""")
                         emit(s"""${quote(reg)}_0_accum.io.enable := ${quote(accEn)}""")
                         emit(s"""${quote(reg)}_0_accum.io.reset := Utils.delay(${quote(rstStr)}, 2)""")
-                        emit(s"""val ${quoteEx(reg)} = ${quote(reg)}_0_accum.io.output""")
+                        emit(s"""val ${quote(reg)} = ${quote(reg)}_0_accum.io.output""")
                       case FltPtSum =>
                         emit(s"""// TODO: Specialized accum, set val ${quote(reg)} = specialAccum( + ${quote(value)} ).withClear(${rstStr}).withEnable(${accEn});""")
                       case _ =>
@@ -647,7 +649,7 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
                     // TODO: I think this is a maxj vestige, but assume duplicate 0 is used for reduction, all others need writes
                     dups.foreach { case (dup, ii) =>
                       val port = portsOf(writer, reg, ii).head
-                      if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quoteEx(reg)}, Utils.delay(${quote(writeCtrl)}_done, 1), false.B, $port); // ${nameOf(reg).getOrElse("")}""")
+                      if (ii > 0) emit(s"""${quote(reg)}_${ii}_lib.write(${quote(reg)}, Utils.delay(${quote(writeCtrl)}_done, 1), false.B, $port); // ${nameOf(reg).getOrElse("")}""")
                     }
                   case _ =>
                   }

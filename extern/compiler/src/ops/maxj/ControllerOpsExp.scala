@@ -463,7 +463,7 @@ DFEVar global_rst = constant.var(false); // Part of giant illegal loop in bfs...
       emitComment(s"quoteSuffix = $quoteSuffix")
       emit(s"""DFEVar ${quote(sym)}_en = top_en;""")
       emitGlobalWire(s"""${quote(sym)}_done""")
-      emit(s"""top_done := ${quote(sym)}_done;""")
+      emit(s"""top_done <== ${quote(sym)}_done;""")
       emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")
       emitController(sym, None)
       emitBlock(func)

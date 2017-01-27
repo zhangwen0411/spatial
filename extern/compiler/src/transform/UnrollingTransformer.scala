@@ -15,8 +15,29 @@ trait UnrollingTransformExp extends ReductionAnalysisExp with UnrolledOpsExp {
   var argOutsByName: List[String] = List()
   var memStreamsByName: List[String] = List()
   var memStreamsOut: List[Sym[Any]] = List()
-  var insideBlock = false
-  var exemptList = Set.empty[Int] // Not used
+  // var insideBlock = false
+  // var exemptList = Set.empty[Int] // Not used
+  var subTraits: List[String] = List()
+
+  /*
+  Subtraits is a list of all the inner kernels and things
+  that get placed in their own trait file, to avoid the 
+  64k java bytecode limit error.  Here is the current 
+  structure, unless if we decide TopModule needs declarations in
+  the subTraits, or subTraits need declarations inside each other:
+
+
+        class TopModule extends <all files>
+
+          BaseModule extends Module
+          
+          TopModule extends BaseModule
+                                      
+    subTraits.foreach{ t => t extends BaseModule with TopModule }            
+                                                  
+
+
+  */ 
 
 
   case class UnrolledResult(isIt: Boolean) extends Metadata
