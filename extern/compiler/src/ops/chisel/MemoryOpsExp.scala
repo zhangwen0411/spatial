@@ -118,13 +118,22 @@ class BufferControlSignals(t: TopModule) {
         val buffers = duplicatesOf(mem).zipWithIndex.filter{case (d,i) => d.depth > 1}
         val readers = readersOf(mem)
         val writers = writersOf(mem)
-
         buffers.foreach{ case (d, i) =>
           // Note: Grouping by sets of integers here. Accesses to a buffer should either have one port or all ports, so this is ok
-          val readsByPort = readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
-          val writesByPort = writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
+          val readPorts = readers.filter{reader => instanceIndicesOf(reader, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
+          val writePorts = writers.filter{writer => instanceIndicesOf(writer, mem).contains(i) }.groupBy{a => portsOf(a, mem, i) }
+          if (readPorts.isEmpty || writePorts.isEmpty) throw EmptyDuplicateException(mem, i)
 
-          if (readsByPort.isEmpty || writesByPort.isEmpty) throw EmptyDuplicateException(mem, i)
+          // val numDupDups = if (isSRAM(mem.tp)) {
+          //   if (nameOf(mem).getOrElse("") == "mu0Tile" | nameOf(mem).getOrElse("") == "mu1Tile" | nameOf(mem).getOrElse("") == "btheta" | nameOf(mem).getOrElse("") == "sgdmodel") { // Crazy issue 46 witchcraft
+          //     d.duplicates
+          //   } else {1} //SUPER TODO: Waiting for david's fix for duplication rules!!!!!!
+          //   } else {1}
+
+
+          // val prnt = parentOf(topCtrl).get
+          // val allSiblings = childrenOf(prnt) //-- List(prnt).map{ case (c,_) => c}.toSet
+
 
           def emitPortConnections(ports: scala.collection.immutable.Set[Int], accesses: List[Access], connect: String, comment: String = "") {
             val controllers = accesses.flatMap{access => topControllerOf(access, mem, i) }.distinct
@@ -139,32 +148,43 @@ class BufferControlSignals(t: TopModule) {
               emit(s"""t.${quoteDuplicate(mem, i)}.${connect}(t.${quote(controllers.head.node)}_done, t.${quote(controllers.head.node)}_en, List($portlist)); /*$comment*/""")
             }
           }
-          if (d.depth > 1) { // Deprecated dblbuf
-            val suff = if (isSRAM(mem.tp)) {""} else if (isReg(mem.tp)) {"_lib"}
-            val wPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length == 1 }.flatten
-            val broadcastPorts = writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }
-            val rPorts = readsByPort.map{case (ports, writers) => ports.toList.map{a => a}}.flatten
-            val fullPorts = (0 until d.depth).map{ i => i }.toSet
-            val dummyWPorts = fullPorts -- wPorts
-            val dummyRPorts = fullPorts -- rPorts
-            val dummyDonePorts = fullPorts -- wPorts -- rPorts
-            readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl","read") }
-            writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
-            emit(s"""t.${quote(mem)}_${i}${suff}.connectUnwrittenPorts(List(${dummyWPorts.mkString(",")}));""")
-            emit(s"""t.${quote(mem)}_${i}${suff}.connectUnreadPorts(List(${dummyRPorts.mkString(",")}));""")
-            emit(s"""t.${quote(mem)}_${i}${suff}.connectUntouchedPorts(List(${dummyDonePorts.mkString(",")}));""")
-            if (writesByPort.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }.toList.length == 0) {
-              emit(s"""t.${quote(mem)}_${i}${suff}.connectDummyBroadcast();""")
-            }
-          } else {
-            readsByPort.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectRdone") }
-            writesByPort.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectWdone") }
+
+          // Get all siblings of read/write ports and match to ports of buf
+          val allSiblings = childrenOf(parentOf(readPorts.map{case (_, readers) => readers.flatMap{a => topControllerOf(a,mem,i)}.head}.head.node).get)
+          val readSiblings = readPorts.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}
+          val writeSiblings = writePorts.map{case (_,r) => r.flatMap{ a => topControllerOf(a, mem, i)}}.filter{case l => l.length > 0}.map{case all => all.head.node}
+
+          val writePortsNumbers = writeSiblings.map{ sw => allSiblings.indexOf(sw) }
+          val readPortsNumbers = readSiblings.map{ sr => allSiblings.indexOf(sr) }
+          val firstActivePort = math.min( readPortsNumbers.min, writePortsNumbers.min )
+          val lastActivePort = math.max( readPortsNumbers.max, writePortsNumbers.max )
+          val numStagesInbetween = lastActivePort - firstActivePort
+          // readPorts.foreach{case (ports, readers) => emitPortConnections(ports, readers, "connectStageCtrl","read")}
+          // writePorts.foreach{case (ports, writers) => emitPortConnections(ports, writers, "connectStageCtrl","write") }
+          // Console.println(s" THERE ARE ${numStagesInbetween} stages for ${quoteDuplicate(mem,i)}, who reads ${readPortsNumbers} writes ${writePortsNumbers}, from ${firstActivePort} to ${lastActivePort}")
+          (0 to numStagesInbetween).foreach { port =>
+            val ctrlId = port + firstActivePort
+            val node = allSiblings(ctrlId)
+            val rd = if (readPortsNumbers.toList.contains(ctrlId)) {"read"} else ""
+            val wr = if (writePortsNumbers.toList.contains(ctrlId)) {"write"} else ""
+            val empty = if (rd == "" & wr == "") "empty" else ""
+            emit(s"""t.${quoteDuplicate(mem,i)}.connectStageCtrl(t.${quote(node)}_done, t.${quote(node)}_en, List(${port})) /*$rd $wr $empty*/""")
           }
+
+          // (0 until numDupDups).foreach { ii =>
+          //   emit(s"""${quoteDuplicate(mem,i,ii)}.connectUnwrittenPorts(new int[] {${noWritePorts.mkString(",")}});""")
+          //   emit(s"""${quoteDuplicate(mem,i,ii)}.connectUnreadPorts(new int[] {${noReadPorts.mkString(",")}});""")
+          //   // emit(s"""${quoteDuplicate(mem,i,ii)}.connectUntouchedPorts(new int[] {}); //new int[] {${inactivePortsNumbers.mkString(",")}});""")
+          //   if (writePorts.map{case (ports, writers) => ports.toList.map{a => a}}.filter{ a => a.length > 1 }.toList.length == 0) {
+          //     emit(s"""${quoteDuplicate(mem,i,ii)}.connectDummyBroadcast();""")
+          //   }
+          // }
         }
       }
       emit("}")
     }
-    emit(s"new BufferControlSignals(this)")
+    emit("""new BufferControlSignals(this)""")
+
   }
 
   override def emitFileFooter() = {
@@ -411,7 +431,7 @@ DFEVar ${quote(sym)}_wen = dfeBool().newInstance(this);""")
     case BurstLoad(mem, fifo, ofs, len, par) =>
       val wasInside = insideBlock
       insideBlock = false
-      print_stage_prefix(s"Offchip Load",s"",s"${quote(sym)}", false)
+      print_stage_prefix(s"Offchip Load",s"",s"${quote(sym)}", true)
       val streamId = memStreamsByName.indexOf(quote(sym))
       withStream(baseStream) {
         emit(s"""val ${quote(sym)} = Module(new MemController(${quote(par)}))""")
@@ -435,12 +455,12 @@ ${quote(fifo)}_wdata.zip(${quote(sym)}.io.CtrlToAccel.data).foreach { case (d, p
       }
       emit(s"""${quote(fifo)}_writeEn := ${quote(sym)}.io.CtrlToAccel.valid;""")
       // emit(s"""${quote(fifo)}_wdata := ${quote(fifo)}_rdata;""")
-      print_stage_suffix(quote(sym), false)
+      print_stage_suffix(quote(sym), true)
 
     case BurstStore(mem, fifo, ofs, len, par) =>
       val wasInside = insideBlock
       insideBlock = false
-      print_stage_prefix(s"Offchip Store",s"",s"${quote(sym)}", false)
+      print_stage_prefix(s"Offchip Store",s"",s"${quote(sym)}", true)
       val streamId = memStreamsByName.indexOf(quote(sym))
       withStream(baseStream) {
         emit(s"""val ${quote(sym)} = Module(new MemController(${quote(par)}))""")
@@ -464,7 +484,7 @@ ${quote(sym)}_done := ${quote(sym)}.io.CtrlToAccel.doneStore
         case _ =>
           emit(s"""${quote(sym)}.io.AccelToCtrl.size := ${quote(len)}""")
       }
-      print_stage_suffix(quote(sym), false)
+      print_stage_suffix(quote(sym), true)
 
     case Reg_new(init) =>
       val tp = sym.tp.typeArguments(0)

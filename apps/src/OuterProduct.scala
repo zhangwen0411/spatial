@@ -7,8 +7,8 @@ trait OuterProductApp extends SpatialApp {
   type T = SInt
   val tileSize1 = 192
   val tileSize2 = 192
-  val outerPar = 2
-  val innerPar = 8
+  val outerPar = 1
+  val innerPar = 4
   val memPar = 1
 
   def outerproduct(a: Rep[ForgeArray[T]], b: Rep[ForgeArray[T]]) = {
