@@ -233,8 +233,11 @@ git_things() {
 # Get test to run
 test_to_run=${1}
 if [[ "${test_to_run}" = "scala" ]]; then
-  # Give maxj headstart
+  # Give others headstart
   sleep 20
+elif [[ "${test_to_run}" = "maxj" ]]; then
+  # Give others headstart
+  sleep 40
 fi
 
 # Receive and parse packet

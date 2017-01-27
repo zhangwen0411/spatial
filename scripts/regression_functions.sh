@@ -426,7 +426,10 @@ export PATH=/opt/maxeler/maxcompiler-2014.1/bin:$PATH
   if [[ ${type_todo} = "scala" ]]; then
     echo "${PUB_HOME}/bin/spatial --test --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} ${args} 2>&1 | tee -a ${5}/log
     " >> $1
-  else 
+  elif [[ ${type_todo} = "maxj" ]]; then
+    echo "${PUB_HOME}/bin/spatial --maxj --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} ${args} 2>&1 | tee -a ${5}/log
+    " >> $1
+  elif [[ ${type_todo} = "chisel" ]]; then
     echo "${PUB_HOME}/bin/spatial --outdir=${SPATIAL_HOME}/regression_tests/${2}/${3}_${4}/out ${4} 2>&1 | tee -a ${5}/log
     " >> $1
   fi
