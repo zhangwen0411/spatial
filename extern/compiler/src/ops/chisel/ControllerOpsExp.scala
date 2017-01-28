@@ -122,9 +122,18 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
 
   def newStream(fileName:String):PrintWriter = {
     emit(s"// CREATED NEW KERNEL: $fileName")
-    if (fileName != "TopModule") subTraits = subTraits :+ fileName
     val path = myBuildDir + java.io.File.separator + fileName + ".scala"
     val pw = new PrintWriter(path)
+    if (fileName != "TopModule") {
+      subTraits = subTraits :+ fileName
+      withStream(pw) {
+        emit(s"""package app
+import templates._
+import chisel3._
+trait ${fileName} extends BaseModule with TopModuleTrait /*and possibly other subkernels up to this point*/ {
+  def create_${fileName}() {""")
+      }
+    }
     pw
   }
 
@@ -142,15 +151,9 @@ trait ChiselGenControllerOps extends ChiselGenEffect with ChiselGenFat {
     if (inner) {
       val title = blockName.replace(" ","") + "Kernel"
       withStream(newStream(title)) {
-        emit(s"""package app
-import templates._
-import chisel3._
-trait ${title} extends BaseModule with TopModuleTrait /*and possibly other subkernels up to this point*/ {""")
         emitBlock(y)  
-        emit("}")
+        emit("}}")
       }
-
-      emit(s"""// Created ${title}""")
     } else {
       emitBlock(y)
     }
@@ -253,7 +256,8 @@ trait ${title} extends BaseModule with TopModuleTrait /*and possibly other subke
       // emitComment("\n//Setup Top Level IO")
       // emitComment(s"quoteSuffix = $quoteSuffix")
       emit(s"""val ${quote(sym)}_en = io.top_en & !io.top_done;""")
-      emitGlobalWire(s"""${quote(sym).replace("t.","")}_done""")
+      emit(s"""val ${quote(sym)}_resetter = false.B // TODO: top level reset""")
+      emitGlobalWire(s"""${quote(sym)}_done""")
       // emit(s"""io.top_done := ${quote(sym)}_done;""")
       // emit(s"""// Hwblock: childrenOf(${quote(sym)}) = ${childrenOf(sym)}""")
       emitController(sym, None)
@@ -406,11 +410,12 @@ trait ${title} extends BaseModule with TopModuleTrait /*and possibly other subke
     emit(s"""val ${quote(sym)}_sm = Module(new ${smStr}(${constrArg}))""")
     emit(s"""  ${quote(sym)}_sm.io.input.enable := ${quote(sym)}_en;""")
     emit(s"""  ${quote(sym)}_done := ${quote(sym)}_sm.io.output.done""")
-    emit(s"""val ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.output.rst_en""")
+    emit(s"""val ${quote(sym)}_rst_en = ${quote(sym)}_sm.io.output.rst_en // Generally used in inner pipes""")
 
     styleOf(sym) match {
       case s @ (CoarsePipe | SequentialPipe) =>
         emit(s"""  ${quote(sym)}_sm.io.input.numIter := (${numIter.mkString(" * ")})""")
+        emit(s"""  ${quote(sym)}_sm.io.input.rst := ${quote(sym)}_resetter // generally set by parent""")
       case _ =>
     }
 
@@ -419,7 +424,7 @@ trait ${title} extends BaseModule with TopModuleTrait /*and possibly other subke
         emitCChainCtrl(sym, cchain.get)
       } else {
         emit(s"""val ${quote(sym)}_datapath_en = ${quote(sym)}_en & ~${quote(sym)}_rst_en;""")
-        emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en""")
+        emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_datapath_en """)
         // emit(s"""val ${quote(sym)}_ctr_en = ${quote(sym)}_sm.io.output.ctr_en // TODO: Why did we originally generate the 2 lines above??""")
       }
     }
@@ -430,10 +435,12 @@ trait ${title} extends BaseModule with TopModuleTrait /*and possibly other subke
     if (!isInnerPipe(sym)) {
       emit(s"""//      ---- Begin $smStr ${quote(sym)} Children Signals ----""")
 		  childrenOf(sym).zipWithIndex.foreach { case (c, idx) =>
-        emitGlobalWire(s"""${quote(c).replace("t.","")}_done""")
-        emitGlobalWire(s"""${quote(c).replace("t.","")}_en""")
+        emitGlobalWire(s"""${quote(c)}_done""")
+        emitGlobalWire(s"""${quote(c)}_en""")
+        emitGlobalWire(s"""${quote(c)}_resetter""")
 		  	emit(s"""    ${quote(sym)}_sm.io.input.stageDone(${idx}) := ${quote(c)}_done;""")
         emit(s"""    ${quote(c)}_en := ${quote(sym)}_sm.io.output.stageEnable(${quote(idx)})""")
+        emit(s"""    ${quote(c)}_resetter := ${quote(sym)}_sm.io.output.rst_en""")
         // childrenSet += (s"${quote(c)}_en, ${quote(c)}_done")
         // percentDSet += (s"${idx}: %d %d")
 		  	enDeclaredSet += c

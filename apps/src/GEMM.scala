@@ -258,8 +258,8 @@ trait GEMMApp extends SpatialApp {
     val N = args(1).to[SInt]
     val P = args(2).to[SInt]
 
-    val a = Array.fill(M){ Array.fill(P){1} }
-    val b = Array.fill(P){ Array.fill(N){1} }
+    val a = Array.tabulate(M){ i => Array.tabulate(P){ j => (j*P + i) % 256} }
+    val b = Array.tabulate(P){ i => Array.tabulate(N){ j => (j*N + i) % 256} }
     val c = Array.fill(M){ Array.fill(N){0} }
     // val a = Array.fill(M){ Array.fill(P){random[T](100)} }
     // val b = Array.fill(P){ Array.fill(N){random[T](100)} }

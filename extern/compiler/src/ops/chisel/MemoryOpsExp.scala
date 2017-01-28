@@ -92,10 +92,7 @@ trait ChiselGenMemoryOps extends ChiselGenExternPrimitiveOps with ChiselGenFat w
 
   def emitBufferControlSignals() {
     withStream(newStream("BufferControlSignals")) {
-      emit(s"""package app
-import templates._
-import chisel3._
-trait BufferControlSignals extends BaseModule with TopModuleTrait {
+      emit(s"""
 // rdone signals for N-Buffers go here""")
 
       // Quote duplicate
@@ -175,9 +172,8 @@ trait BufferControlSignals extends BaseModule with TopModuleTrait {
           // }
         }
       }
-      emit("}")
+      emit("}}")
     }
-    emit("""// created BufferControlSignals""")
 
   }
 
@@ -211,7 +207,9 @@ trait TopModuleTrait extends BaseModule /*and possibly subkernels*/ {
       emit("import templates._")
       emit("import interfaces._")
       emit("import chisel3._")
-      emit(s"""class TopModule() extends BaseModule with TopModuleTrait with ${subTraits.mkString(" with ")} {}
+      emit(s"""class TopModule() extends BaseModule with TopModuleTrait with ${subTraits.mkString("\n with ")} {
+        ${subTraits.map{ a => s"  create_${a}()"}.mkString("\n") }
+      }
         // TopModule class mixes in all the other traits and is instantiated by tester""")
     }
     super.emitFileFooter()

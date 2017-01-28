@@ -68,58 +68,15 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
       // emit(s"DFEVar ${quote(sym)}_redLoop_done = constant.var(true); // Hack for new fold unrolling...")
       emitParallelizedLoop(inds, cchain)
       emitRegChains(sym, inds.flatten)
-
-      parentOf(sym).get match {
-        case e@Deff(_:UnrolledReduce[_,_]) => // If part of reduce, emit custom red kernel
-          if (childrenOf(parentOf(sym).get).indexOf(sym) == childrenOf(parentOf(sym).get).length-1) {
-            styleOf(sym) match {
-              case InnerPipe =>
-                // Putting reduction tree in its own kernel
-                // var inputVecs = Set[Sym[Any]]()
-                // var consts_args_bnds_list = Set[Exp[Any]]()
-                // var treeResultSyms = Set[Sym[Any]]()
-                // focusBlock(func){ // Send reduce tree to separate file
-                //   focusExactScope(func){ stms =>
-                //     stms.foreach { case TP(s,d) =>
-                //       val Deff(dd) = s
-                //       dd match {
-                //         case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-                //           if (isReduceResult(s)) {
-                //             val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-                //             emit(s"//val ${quote(s)} = Wire(${ts})")
-                //             treeResultSyms += s
-                //           }
-                //           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                //         case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-                //           inputVecs += s
-                //         case _ =>
-                //           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-                //       }
-                //     }
-                //   }
-                // }
-
-                emit(s"""// ---- UnrolledForeach ${quote(sym)} func block ---- """)
-                emitBlock(func)
-                // val treeResult = treeResultSyms.map{a=>quote(a)}.toList.sortWith(_ < _).mkString(",")
-                // val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
-                // val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-                // val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                // val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-                // val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-                // emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
-              case _ =>
-                emitBlock(func)
-              }
-            } else {
-              emitBlock(func)
-            }
-        case _ =>
+      emit(s"""// ---- UnrolledForeach ${quote(sym)} func block ---- """)
+      if (inner) {
+        withStream(newStream(s"${quote(sym)}UnrolledForeach")) {
           emitBlock(func)
+          emit("}}")
+        }
+      } else {
+        emitBlock(func)
       }
-
-      // emit("""}""")
-      // emitComment(s"""} UnrolledForeach ${quote(sym)}""")
       print_stage_suffix(quote(sym), inner)
       controlNodeStack.pop
 
@@ -131,21 +88,16 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
         s"${quote(ctr)}: ${quote(start)} until ${quote(end)} by ${quote(step)} par ${quote(par)}"
       }
 
-      emit(s"""// ---- UnrolledReduce ${quote(sym)} = UnrolledReduce(${quote(cchain)}, ${quote(accum)}) ----""")
       var inner = false
       styleOf(sym) match {
         case CoarsePipe =>
-          emitComment(s"""MPSM to be emitted""")
           print_stage_prefix(s"Reduce Metapipe",s"${ctr_str}",s"${quote(sym)}")
         case InnerPipe =>
-          emitComment(s"""PipeSM to be emitted""")
           print_stage_prefix(s"Reduce Innerpipe",s"${ctr_str}",s"${quote(sym)}", false)
           inner = true
         case SequentialPipe =>
-          emitComment(s"""SeqSM to be emitted""")
           print_stage_prefix(s"Reduce Seqpipe",s"${ctr_str}",s"${quote(sym)}")
         case _ =>
-          emitComment(s"""UnrolledReduce style: ${styleOf(sym)}""")
           print_stage_prefix(s"Reduce ${styleOf(sym)}",s"${ctr_str}",s"${quote(sym)}")
       }
 
@@ -162,48 +114,16 @@ trait ChiselGenUnrolledOps extends ChiselGenControllerOps {
       emit(s"""// ---- UnrolledReduce ${quote(sym)} par loop ----""")
       emitParallelizedLoop(inds, cchain)
 
-      styleOf(sym) match {
-        case InnerPipe =>
-          // Putting reduction tree in its own kernel
-          // var inputVecs = Set[Sym[Any]]()
-          // var consts_args_bnds_list = Set[Exp[Any]]()
-          // var treeResult = ""
-          // focusBlock(func){ // Send reduce tree to separate file
-          //   focusExactScope(func){ stms =>
-          //     stms.foreach { case TP(s,d) =>
-          //       val Deff(dd) = s
-          //       dd match {
-          //         case tag @ (Vec_apply(_,_) | FixPt_Mul(_,_) | FixPt_Add(_,_) | FltPt_Mul(_,_) | FltPt_Add(_,_)) =>
-          //           if (isReduceResult(s)) {
-          //             val ts = tpstr(1)(s.tp, implicitly[SourceContext])
-          //             emit(s"// val ${quote(s)} = Wire(${ts})")
-          //             treeResult = quote(s)
-          //           }
-          //           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-          //         case input @ ( _:Par_sram_load[_] | _:Par_pop_fifo[_] | _:Pop_fifo[_] ) =>
-          //           inputVecs += s
-          //         case _ =>
-          //           consts_args_bnds_list = addConstOrArgOrBnd(s, consts_args_bnds_list)
-          //       }
-          //     }
-          //   }
-          // }
-
-          emitRegChains(sym, inds.flatten)
-          emit(s"""// ---- UnrolledReduce ${quote(sym)} func block ---- """)
+      emitRegChains(sym, inds.flatten)
+      emit(s"""// ---- UnrolledReduce ${quote(sym)} func block ---- """)
+      if (inner) {
+        withStream(newStream(s"${quote(sym)}UnrolledReduce")) {
           emitBlock(func)
-
-          // val inputVecsStr = inputVecs.map {a => quote(a)}.mkString(",")
-          // val trailingArgsStr = consts_args_bnds_list.toList.map {a => quote(a)}.sortWith(_ < _).mkString(",")
-          // val should_comma1 = if (inputVecs.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-          // val should_comma2 = if (treeResult != "") {","} else {""} // TODO: Such an ugly way to do this
-          // val should_comma3 = if (consts_args_bnds_list.toList.length > 0) {","} else {""} // TODO: Such an ugly way to do this
-          // emit(s"new ${quote(sym)}_reduce_kernel(owner $should_comma1 $inputVecsStr $should_comma2 $treeResult $should_comma3 $trailingArgsStr); // Reduce kernel")
-        case _ =>
-          emitRegChains(sym, inds.flatten)
-          emit(s"""// ---- UnrolledReduce ${quote(sym)} func block ----""")
-          emitBlock(func)
+          emit("}}")
         }
+      } else {
+        emitBlock(func)
+      }
 
       val Def(EatReflect(dp)) = accum
       dp match {

@@ -86,42 +86,22 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
 
     case FixPt_Div(a,b) =>
       val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} / ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
-      }
+      emit(s"""$pre ${quote(sym)} = ${quote(a)} / ${quote(b)};""")
 
     case FltPt_Div(a,b) =>
       val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} / ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
-      }
+      emit(s"""$pre ${quote(sym)} = ${quote(a)} / ${quote(b)};""")
 
     case FixPt_Mul(a,b) =>
       val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
-      }
+      emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
 
     case FixPt_Mod(a,b) =>
       emit(s"""val ${quote(sym)} = ${quote(a)} % ${quote(b)};""")
 
     case FltPt_Mul(a,b) =>
       val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in ${quote(m)};""")
-      }
+      emit(s"""$pre ${quote(sym)} = ${quote(a)} * ${quote(b)};""")
 
     case FixPt_Lt(a,b) =>
       emit(s"""val ${quote(sym)} = ${quote(a)} < ${quote(b)}""")
@@ -161,63 +141,27 @@ trait ChiselGenExternPrimitiveOps extends ChiselGenEffect {
 
     case Bit_Not(a) =>
       val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ~( ${quote(a)} );""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""$pre ${quote(sym)} = ~( ${quote(a)} );""")
 
     case Bit_And(a,b) =>
       val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          if (!emitted_ands.contains(quote(sym))) {
-            emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")  
-            emitted_ands = emitted_ands :+ quote(sym)
-          } else {
-            emit(s"""// Avoid re-emitting ${quote(sym)}""")
-          }
-          
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""$pre ${quote(sym)} = ${quote(a)} & ${quote(b)} ;""")  
 
     case Bit_Or(a,b) =>
       val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} | ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""$pre ${quote(sym)} = ${quote(a)} | ${quote(b)} ;""")
 
     case Bit_Xor(a,b) =>
       val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ${quote(a)} ^ ${quote(b)} ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""$pre ${quote(sym)} = ${quote(a)} ^ ${quote(b)} ;""")
 
     case Bit_Xnor(a,b) =>
       val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = ~ ( ${quote(a)} ^ ${quote(b)} ) ;""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""$pre ${quote(sym)} = ~ ( ${quote(a)} ^ ${quote(b)} ) ;""")
 
     case Mux2(sel,a,b) =>
       val pre = chiselPre(sym)
-      rTreeMap(sym) match {
-        case Nil =>
-          emit(s"""$pre ${quote(sym)} = Mux(${quote(sel)}, ${quote(a)}, ${quote(b)})""")
-        case m =>
-          emit(s"""// ${quote(sym)} already emitted in $m""")
-      }
+      emit(s"""$pre ${quote(sym)} = Mux(${quote(sel)}, ${quote(a)}, ${quote(b)})""")
 
     case Tpes_Int_to_fix(x) =>  // Emit this node in MaxJ only if x is a const
       val ts = tpstr(parOf(sym)) (sym.tp, implicitly[SourceContext])
