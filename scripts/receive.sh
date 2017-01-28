@@ -258,7 +258,7 @@ if [[ $? -ne 0 ]]; then
   clean_exit 7 "${SPATIAL_HOME}/scripts/regression_functions.sh is nonexistent or has error!"
 fi
 if [[ ! "${type_todo}" = "${test_to_run}" ]]; then
-  echo "Error: packet mislabeled.  Cannot run ${test_to_run} test on ${type_todo} packet!" > $log
+  echo "Error: packet mislabeled.  Cannot run ${test_to_run} test on ${type_todo} packet!" >> $log
   clean_exit 6
 fi
 logger "Sourcing successful!"

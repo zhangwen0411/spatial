@@ -120,10 +120,10 @@ trait TPCHQ6App extends SpatialApp {
     // val discts = Array.fill(N){random[FT] /*/ 100000*/}
     // val prices = Array.fill(N){random[FT] /*/ 100000*/}
 
-    val dates  = Array.tabulate[SInt](N){i => i}
-    val quants = Array.tabulate[SInt](N){i => i}
-    val discts = Array.tabulate[FT](N){i => i}
-    val prices = Array.tabulate[FT](N){i => i}
+    val dates  = Array.tabulate[SInt](N){i => i % 256 } // Standard array
+    val quants = Array.tabulate[SInt](N){i => i % 256 } // Standard array
+    val discts = Array.tabulate[FT](N){i => i % 256 } // Standard array
+    val prices = Array.tabulate[FT](N){i => i % 256 } // Standard array
 
     val result = tpchq6(dates, quants, discts, prices)
 
