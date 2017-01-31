@@ -132,6 +132,7 @@ trait TRSM_rowApp extends SpatialApp {
   val ip = param(innerPar)
   val op = param(outerPar)
 
+  /** B(id0::id0+K, 0::LDB) -= L(id0::id0+K, 0::id0) * B(0::id0, 0::LDB) */
   def blockedGEMM_row_inner(id0: Rep[SInt], L: Rep[SRAM[T]],
     B: Rep[SRAM[T]], LDB: Rep[SInt],
     K: Rep[SInt]) = {
@@ -161,6 +162,10 @@ trait TRSM_rowApp extends SpatialApp {
 
   // }
 
+  /**
+   * B(diag_index+1::diag_index+1+len, 0::K) -=
+   *   L(diag_index+1::diag_index+1+len, diag_index) * B(diag_index, 0::K)
+   */
   def rank1update_inner(L: Rep[SRAM[T]], diag_index: Rep[SInt], len: Rep[Reg[SInt]], 
     B: Rep[SRAM[T]], K:Rep[SInt]) = {
     Sequential(len.value by 1) { i => 
@@ -202,17 +207,16 @@ trait TRSM_rowApp extends SpatialApp {
 	      Sequential(full_N by inner_N) { diag_tile =>
 	        // Horizontal Blocking
 	        val id0 = diag_tile
-	        val LDA = diag_tile
-	        blockedGEMM_row_inner(id0, L, B, full_K, inner_N)
+	        blockedGEMM_row_inner(id0, L, B, tileSize, inner_N)
 
 	        Sequential(inner_N by 1) { diag_index => 
 	          val diag_addr = diag_index + diag_tile
 	          val lambda = L(diag_addr, diag_addr)
-	          Sequential(full_K by 1) { k => B(diag_addr,k) = B(diag_addr,k) / lambda }
+	          Sequential(tileSize by 1) { k => B(diag_addr,k) = B(diag_addr,k) / lambda }
 	          // Rank 1 update (outer product, subtraction accumulator)
 	          val len = Reg[SInt]
 	          Pipe{len := inner_N.as[SInt] - diag_index - 1}
-	          rank1update_inner(L, diag_addr, len, B, full_K)
+	          rank1update_inner(L, diag_addr, len, B, tileSize)
 	        }
 	      }
 	      // Pack result to 1D, to avoid burst alignment issues
@@ -294,6 +298,7 @@ trait TRSM_colApp extends SpatialApp {
     }
   }
 
+  /** B(id0::id0+LDA, 0::LDB) -= L(id0::id0+LDA, id1::id1+K) * B(id0-K::id0, 0::LDB) */
   def blockedGEMM_col(id0: Rep[SInt], id1: Rep[SInt],
     L: Rep[SRAM[T]], B: Rep[SRAM[T]], LDA: Rep[SInt], LDB: Rep[SInt],
     K: Rep[SInt]) = {
@@ -336,17 +341,17 @@ trait TRSM_colApp extends SpatialApp {
           Sequential(inner_N by 1) { diag_index => 
             val diag_addr = diag_index + diag_tile
             val lambda = L(diag_addr, diag_addr)
-            Sequential(full_K by 1) { k => B(diag_addr,k) = B(diag_addr,k) / lambda }
+            Sequential(tileSize by 1) { k => B(diag_addr,k) = B(diag_addr,k) / lambda }
             // Rank 1 update (outer product, subtraction accumulator)
             val len = Reg[SInt]
             Pipe{len := inner_N.as[SInt] - diag_index - 1}
-            rank1update_inner(L, diag_addr, len, B, full_K)
+            rank1update_inner(L, diag_addr, len, B, tileSize)
           }
 
           // Vertical Blocking
           val id0 = diag_tile + inner_N
           val LDA = full_N.as[SInt] - diag_tile - inner_N.as[SInt]
-          blockedGEMM_col(id0, diag_tile, L,B, LDA, full_K, inner_N) // TODO: Can be rewritten messily to outerprod B rows as they finish
+          blockedGEMM_col(id0, diag_tile, L,B, LDA, tileSize, inner_N) // TODO: Can be rewritten messily to outerprod B rows as they finish
 
         }
         // Pack result to 1D, to avoid burst alignment issues
@@ -395,7 +400,7 @@ trait TRSM_colApp extends SpatialApp {
     }.flatten
 
     val cksum = B_check.zip(B_computed){ (a,b) => a > b - margin && a < b + margin}.reduce{_&&_}
-    println("PASS: " + cksum + " (TRSM_row)")
+    println("PASS: " + cksum + " (TRSM_col)")
   }
 }
 
